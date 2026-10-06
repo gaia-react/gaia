@@ -50,8 +50,8 @@
 # fallback on stock macOS). The remote read/push and ledger append happen inside the
 # single held mutex so two same-machine `next` calls cannot interleave. A lock-
 # acquisition timeout (helper exit 75) maps to exit 4; reservation-retry exhaustion
-# also maps to exit 4; callers (the speckit preset) already handle 4 as "allocation
-# failed". Lock env knobs (GAIA_LEDGER_LOCK_TIMEOUT_SECONDS / _STALE_SECONDS / _POLL_SECONDS /
+# also maps to exit 4; the caller (.claude/skills/gaia/references/spec.md step 3) handles exit
+# 4, and every other non-zero exit, by surfacing the error and halting. Lock env knobs (GAIA_LEDGER_LOCK_TIMEOUT_SECONDS / _STALE_SECONDS / _POLL_SECONDS /
 # _FORCE_FALLBACK): see with-ledger-lock.sh. Reservation env knobs:
 #   GAIA_SPEC_REMOTE_TIMEOUT_SECONDS  per ls-remote / push bound (default 5)
 #   GAIA_SPEC_ALLOCATION_MAXIMUM_RETRIES    reservation retry bound     (default 5)
@@ -82,7 +82,7 @@ _remote_state=""
 _remote_tags_raw=""
 
 # Source the shared libs from this script's own directory so they resolve
-# identically from the speckit preset and from test copies of the lib dir (no
+# identically from a caller in any checkout and from test copies of the lib dir (no
 # hardcoded repo path, template-distributed, repo-relative). The ledger-path
 # lib is reached by the same own-directory hop rather than through repo_root:
 # repo_root is the value whose trustworthiness is in question here, so loading

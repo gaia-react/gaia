@@ -29,7 +29,7 @@ The harness's own plan mode (`ExitPlanMode`, a single markdown written to `~/.cl
 
 ## Ledger status and closure
 
-A plan's `.gaia/local/plans/ledger.json` row (or, for a spec-colocated plan, the parent SPEC's `.gaia/local/specs/ledger.json` row) carries a `status` of `ready | merged | abandoned`, allocated at `ready` and age-anchored on `merged_at`. `plan-close`, mirroring `spec-close`, runs consolidation once the implementing PR has merged, drains any deferred wiki-promote, and delegates the single-id reap to the retention helpers described in [[Task Orchestration]].
+A plan's `.gaia/local/plans/ledger.json` row (or, for a spec-colocated plan, the parent SPEC's `.gaia/local/specs/ledger.json` row) carries a `status` of `ready | merged | abandoned`, allocated at `ready` and age-anchored on `merged_at`. `plan-close` and `spec-close` are manual runbooks with no automatic trigger; a person runs them on the cold path. `plan-close`, mirroring `spec-close`, runs consolidation once the implementing PR has merged, drains any deferred wiki-promote, and delegates the single-id reap to the retention helpers described in [[Task Orchestration]].
 
 Reaching the wiki is offered-then-gated rather than default-on: the consolidated `SUMMARY.md` carries `wiki_promote_default: ask` and `wiki_promote_targets: [decisions]` unless the closer picks different targets, so a human is asked at close whether the plan's outcome is worth a wiki page; a declined promotion counts as drained, the same drain the retention gate checks for. This is deliberately asymmetric with a SPEC's default-on promotion, since not every plan produces wiki-durable knowledge.
 

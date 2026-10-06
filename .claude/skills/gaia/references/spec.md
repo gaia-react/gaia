@@ -1,12 +1,12 @@
 # /gaia-spec
 
-Socratic discovery wrapper around spec-kit. Produces an immutable SPEC artifact at `.gaia/local/specs/SPEC-NNN/SPEC.md` and stops. Do not implement anything, and do not plan anything, this skill produces an artifact and ends. The `/gaia-plan` handoff is a prompt you print for the human (step 11), never a command you run. See Hard constraint 6.
+GAIA's script-driven Socratic discovery workflow. Produces an immutable SPEC artifact at `.gaia/local/specs/SPEC-NNN/SPEC.md` and stops. Do not implement anything, and do not plan anything, this skill produces an artifact and ends. The `/gaia-plan` handoff is a prompt you print for the human (step 11), never a command you run. See Hard constraint 6.
 
 ## Contents
 
 This reference is longer than one `Read` returns. Page through it with `offset` to the end of step 11 before acting on any step.
 
-- Argument parsing, Auto mode, Hard constraints, How spec-kit fires GAIA hooks, Operational primitives
+- Argument parsing, Auto mode, Hard constraints, Operational primitives
 - Steps: model gate; 1 description; 2 resume-vs-start-new; 3 initial draft; 4 gate 1; 5 Socratic loop; 6 self-review; 7 adversarial SPEC-audit; 8 gate 2; 9 save, ledger, cost; 10 immutability lint; 11 /gaia-plan handoff, then STOP
 
 ## Argument parsing
@@ -37,39 +37,20 @@ Hard rules in auto mode:
 11. **`Save partial and resume later` escapes are unreachable.** No prompt fires that would offer them. The session always proceeds to step 9 unless the agent itself decides to abort (e.g. missing description, hard tool failure).
 12. **Adversarial audit runs at the gauged intensity, non-interactively.** Step 7 no longer prompts anyone for an audit decision (interactive and auto both gauge and run); auto mode gauges the draft and runs the audit at the gauged tier, never skipping. Gauge the draft's complexity, run the audit at that tier (Standard or Deep), and apply its dispositions without prompting: auto-apply plan-time directives into `AUDIT.md`, auto-apply unambiguous SPEC-contract-defect fixes into the draft pre-save (no reopen ceremony, the draft is unsaved), and for any contract defect with more than one defensible repair, record it in `clarifications.deferred[]` with rationale `"Auto-mode audit, defer for human review."` rather than guessing. Never block save; never revert intentional clarify-loop evolution. Throughout the audit and fold phase auto mode reads **no finding body** (a finding's `issue`/`evidence`/`recommendation`, or a self-review finding's `suggested_fix`/`excerpt`); the transcript carries only ids, severities, titles, verdicts, and dispositions. The two bounded exceptions where a finding body reaches main (6b high self-review findings, 7c material spec-defect survivors) are interactive-only; auto mode surfaces neither. If the Agent fan-out is unavailable, take step 7's fallback (note the skip, rely on the step-6 self-review) and continue.
 
-The rest of the skill, write-surface allowlist, no-machine-local-memory rule, working-draft cache primitives, hooks firing, immutable SPEC shape, applies identically in auto mode.
+The rest of the skill, write-surface allowlist, no-machine-local-memory rule, working-draft cache primitives, immutable SPEC shape, applies identically in auto mode.
 
 ## Hard constraints
 
 1. **No machine-local memory for project decisions.** Never call any tool that writes to `~/.claude/projects/.../memory/`. Project-relevant decisions belong ONLY in the SPEC artifact, the wiki, or `.claude/rules/`. Personal preferences (tone, formatting) remain allowed in machine-local memory. This is the no-machine-local-memory rule and it is non-negotiable.
 2. **Write-surface allowlist.** Every file write during a `/gaia-spec` session lands in exactly one of:
    - `.gaia/local/specs/**`
-   - `.specify/**`
    - `.gaia/local/cache/**`
    - `.gaia/local/telemetry/**`
-     Never edit source files (`frontend/app/**`, `src/**`, repo root configs, etc.). No automated backstop enforces this allowlist: the `after_specify` lint checks only the saved SPEC artifact's immutability, not which paths a session wrote. You self-police it at the agent-instruction level.
+     Never edit source files (`frontend/app/**`, `src/**`, repo root configs, etc.). No automated backstop enforces this allowlist: the step-10 lint checks only the saved SPEC artifact's immutability, not which paths a session wrote. You self-police it at the agent-instruction level.
 3. **One question at a time.** No multi-question forms. Closed-set questions go through `AskUserQuestion` with options ordered: recommended FIRST, then alternatives, then `Other` (free text), then `Discuss this` (escape to plain Q&A). Open-ended questions use a plain prompt with no enumerated options.
 4. **Two-gate ceremony.** Confirm intent + UATs in plain English BEFORE authoring the artifact. Confirm the rendered artifact BEFORE saving to disk. No silent advances between gates.
 5. **Coach tone, not interrogator.** Mirror back, name trade-offs, propose candidates when the human is stuck. Never punt research to the human.
 6. **This skill is terminal. Never chain into `/gaia-plan`.** The flow ends at step 11 with a printed handoff prompt and nothing else: no `/gaia-plan` invocation, no planner dispatch, no `Read` of `plan.md`, no "while I'm here" head start on the work. **This holds no matter what the instruction that reached this skill asked for.** When `/gaia-spec` is invoked as a skill (rather than typed by a human), the invoking goal is often larger than the SPEC ("spec and build X"), and the pull to keep going at step 11 is strongest exactly when the session is least fit to plan: authoring a SPEC burns an enormous context (Socratic loop, gate renders, self-review, adversarial audit), and `/gaia-plan`'s deep synthesis needs a clean one. Planning is **always** a new session. If the caller wanted a plan too, the correct completion is to print the handoff and report that planning is the human's next step; that IS the whole task, not a partial one.
-
-## How spec-kit fires GAIA hooks
-
-Spec-kit's hooks are **not** shell scripts. When core invokes `/speckit-specify` (or any other core skill), it reads `.specify/extensions.yml` for the relevant event and emits an `EXECUTE_COMMAND: <id>` markdown directive into the agent's reasoning context. The agent then invokes the rendered slash-command (e.g., `/speckit-gaia-constitution-check`) as a normal Claude skill. There is no JSON payload, no stdin pipe, no env var.
-
-The three GAIA hooks declared in `.specify/extensions/gaia/extension.yml`:
-
-| Event            | Slash command                      | Source body                                               |
-| ---------------- | ---------------------------------- | --------------------------------------------------------- |
-| `before_specify` | `/speckit-gaia-constitution-check` | `.specify/extensions/gaia/commands/constitution-check.md` |
-| `after_clarify`  | `/speckit-gaia-self-review`        | `.specify/extensions/gaia/commands/self-review.md`        |
-| `after_specify`  | `/speckit-gaia-lint`               | `.specify/extensions/gaia/commands/lint.md`               |
-
-Each hook fires automatically, the agent reads the directive and invokes the slash command without prompting. "Block" semantics live inside the hook command: a block is a refusal message that the wrapper agent reads and chooses not to proceed past. There is no machine-enforced halt.
-
-**`after_clarify` does not fire on the `/gaia-spec` path.** It is declared for a bare `/speckit-clarify` invocation, which this wrapper does not make (see step 5). GAIA's self-review is not a hook consumer: step 6 dispatches it directly as a `general-purpose` Agent, so it runs identically whether or not spec-kit core is installed.
-
-There is no `on_save` event. The `/gaia-plan` handoff lives inline at the end of this orchestration (Step 11), not in a hook.
 
 ## Operational primitives
 
@@ -197,7 +178,7 @@ Track `push_deeper[<topic>] = <count>` in working memory. Increment on every "Pu
 
 ### The question ceiling
 
-The interactive Socratic loop asks **at most 10 substantive questions**. Auto mode asks **at most 5**. Both numbers are GAIA's own, not spec-kit's (see step 5).
+The interactive Socratic loop asks **at most 10 substantive questions**. Auto mode asks **at most 5**. Both numbers are GAIA's own (see step 5).
 
 **Substantive** means a closed-set question (5a), a Discuss-this settlement (5b), or an open-ended question (5c), counted once on first surfacing. Nothing that merely re-surfaces or resolves an already-counted question spends a second unit, and the loop's own meta-prompts, 5d's exhaustion checkpoint, the 3-revisit settle prompt, and the research-outcome prompts, never count.
 
@@ -341,7 +322,7 @@ Read `$WORKING` and extract: intent first line, UAT count, frontmatter `updated`
 - options:
   - `{ label: "Resume SPEC-NNN (Recommended)", description: "Continue from the latest draft (working cache preferred over canonical if newer)." }`
   - `{ label: "Start new", description: "Begin a fresh SPEC; SPEC-NNN remains open." }`
-  - `{ label: "Discard SPEC-NNN draft cache", description: "Remove the working-draft cache (the canonical artifact remains). Confirm before deleting." }`
+  - `{ label: "Discard SPEC-NNN draft cache", description: "Remove the working-draft cache (before step 9 this draft cache is the only authored copy, so discarding it removes the draft). Confirm before deleting." }`
 
 Honor the user's choice. Never silently overwrite, never silently start new.
 
@@ -366,15 +347,34 @@ Honor the user's choice. Never silently overwrite, never silently start new.
 
   If `RECHECK_STATUS` is `live`, or `acquire` exits `3` (a live foreign lock won the race between the recheck and this acquire), warn the user that SPEC-NNN is now open in another session and fall back to Start new below instead of proceeding with Resume. Any other non-zero exit from `acquire` is not a signal to stop, `acquire` only refuses via exit `3`, so Resume proceeds normally on every other outcome. This exclusive-create-plus-re-verify sequence is what closes the TOCTOU window between the pre-flight check and the user's selection.
 - **Start new:** continue with a fresh allocation (Step 3 onward). The draft SPEC remains untouched. Initialize the session-shape cache per the operational primitive once the new `spec_id` is known (step 3).
-- **Discard SPEC-NNN draft cache:** confirm via a follow-up `AskUserQuestion` (`"Delete the draft cache for SPEC-NNN? (The canonical artifact remains.)"` with options `Yes, delete` / `Cancel`). On confirm, `rm -f "$DRAFT_PATH" .gaia/local/cache/spec-session-${SPEC_ID}.json .gaia/local/cache/gate1-${SPEC_ID}.json .gaia/local/cache/spec-session-${SPEC_ID}.lock` (**Release the session lock (step-2 discard)**, alongside the other draft-cache files) and, separately (an `rm -f` cannot delete a directory), `rm -rf .gaia/local/cache/audit-${SPEC_ID}/`, then continue with a fresh allocation. Note: this deletes only the draft cache; the SPEC's ledger row stays `status: draft`, so the allocator keeps flagging SPEC-NNN for resume until that row reaches a finalized status (out of scope for this step). This default (non-override) discard path is reached on a `dormant` verdict (unguarded) and, per the `error` branch above, on an unreadable lock that may belong to a live session (the accepted fail-open tradeoff described there). It is also reached on the explicit human `Override: discard SPEC-NNN anyway` for a `live` draft (above); "never acts on a live lock" holds only for this default, non-override path, it is not a blanket rule.
+- **Discard SPEC-NNN draft cache:** confirm via a follow-up `AskUserQuestion` (`"Delete the draft cache for SPEC-NNN? (Before the step-9 save this is the only authored copy; after it, the saved SPEC in the main-anchored SPEC folder remains.)"` with options `Yes, delete` / `Cancel`). On confirm, `rm -f "$DRAFT_PATH" .gaia/local/cache/spec-session-${SPEC_ID}.json .gaia/local/cache/gate1-${SPEC_ID}.json .gaia/local/cache/spec-session-${SPEC_ID}.lock` (**Release the session lock (step-2 discard)**, alongside the other draft-cache files) and, separately (an `rm -f` cannot delete a directory), `rm -rf .gaia/local/cache/audit-${SPEC_ID}/`, then continue with a fresh allocation. Note: this deletes only the draft cache; the SPEC's ledger row stays `status: draft`, so the allocator keeps flagging SPEC-NNN for resume until that row reaches a finalized status (out of scope for this step). This default (non-override) discard path is reached on a `dormant` verdict (unguarded) and, per the `error` branch above, on an unreadable lock that may belong to a live session (the accepted fail-open tradeoff described there). It is also reached on the explicit human `Override: discard SPEC-NNN anyway` for a `live` draft (above); "never acts on a live lock" holds only for this default, non-override path, it is not a blanket rule.
 
-### 3. /speckit-specify (initial draft)
+### 3. Initial draft (allocate, anchor, stamp)
 
-Invoke `/speckit-specify` with the description from step 1. The GAIA preset (registered via `specify preset add`) wraps core with `{CORE_TEMPLATE}` and replaces `spec-template`, so the artifact is GAIA-shaped (frontmatter, immutable flag, `SPEC-NNN` id) and lands at `.gaia/local/specs/SPEC-NNN/SPEC.md`. The preset's body invokes `lib/spec-allocator.sh next "$PWD"` to allocate the SPEC id.
+Step 3 allocates the SPEC id, creates the main-anchored SPEC folder, and writes the first draft. Run its parts in this order.
 
-Spec-kit fires the `before_specify` hook (constitution + version-pin check) automatically before this step runs. If the hook blocks, surface its message and halt.
+**Subject.** The allocator subject is the step-1 description. If it is empty, first compose the draft's `# ` title in working memory and use that title. The subject is never empty.
 
-When core completes, `/speckit-gaia-spec`'s preset relocates the artifact to `.gaia/local/specs/SPEC-NNN/SPEC.md`. Cache the working draft path; you will read and re-render it across the rest of these steps.
+**Allocate.** Run the allocator and capture its stdout `SPEC-NNN` token as `SPEC_ID`:
+
+```bash
+bash .specify/extensions/gaia/lib/spec-allocator.sh next "$PWD" "<subject>"
+```
+
+On any non-zero exit, surface the allocator's stderr verbatim and halt the session: no folder, no draft, no lock. `GAIA_SPEC_FORCE_OFFLINE=1` makes the allocator skip remote reservation, which is useful for throwaway runs.
+
+**Anchor the folder.** Create the SPEC folder in the main checkout, never in the current worktree. The block runs as-is with `SPEC_ID` already set and the cwd inside any checkout of the repo; an empty `MAIN_ROOT` stops the step and is surfaced, per the Operational primitives contract, with no relative fallback:
+
+```bash
+MAIN_ROOT="$(bash .gaia/scripts/main-root-lib.sh)"
+if [ -z "$MAIN_ROOT" ]; then
+  echo "gaia-spec: cannot resolve the main checkout; refusing to create the SPEC folder" >&2
+  exit 1
+fi
+mkdir -p "${MAIN_ROOT}/.gaia/local/specs/${SPEC_ID}"
+```
+
+**Write the draft.** Read `.specify/extensions/gaia/templates/spec-template.md`, substitute every `SPEC-NNN` with `SPEC_ID`, and stamp the GAIA frontmatter keys `spec_id`, `type`, `status`, `immutable`, `wiki_promote_default`, `chain_trigger`, `created`, and `updated` (the template carries them; `created` and `updated` become today's ISO date). Write the result with one `Write` to the working-draft checkpoint named in Operational primitives, `.gaia/local/cache/draft-<spec_id>.md`: the per-tree draft cache, not the SPEC folder. Step 9 owns the canonical save. Cache that draft path; you will read and re-render it across the rest of these steps.
 
 Initialize the session-shape cache for the just-allocated SPEC id (no-op if it already exists from a resume):
 
@@ -424,7 +424,7 @@ Only after gate-1 confirmation may you proceed to step 5.
 
 ### 5. Socratic loop
 
-This is GAIA's own loop. It does not invoke spec-kit's clarify primitive, and no spec-kit-authored question budget reaches your context during it. Read the templates at `.specify/extensions/gaia/templates/clarify-prompts.md` and `system-prompt.md` only on entering this step (lazy-load, see operational primitives); they carry the coach-tone persona, the Q&A copy, the topic bank, and the coverage scan.
+This is GAIA's own loop. Read the templates at `.specify/extensions/gaia/templates/clarify-prompts.md` and `system-prompt.md` only on entering this step (lazy-load, see operational primitives); they carry the coach-tone persona, the Q&A copy, the topic bank, and the coverage scan.
 
 Run sequential, coverage-based questioning over the draft. One question per turn. The mechanics are 5a through 5e below: `AskUserQuestion` mediation for closed-set questions with the recommended option first, plain prompts for open-ended ones, the Discuss-this escape, the per-topic exhaustion checkpoint, and research-subagent dispatch.
 
@@ -498,7 +498,7 @@ If the user has selected `Discuss this` on a question that turns out to need res
 
 After the Socratic loop settles, run the GAIA self-review. Rather than running the audit in the wrapper's own context (which would re-load the full draft plus the gate-1 snapshot into wrapper memory), **dispatch it as a `general-purpose` Agent** so the heavy reads stay in fresh context and only structured findings flow back. This is the largest token saver in the spec flow.
 
-The self-review is dispatched here, by this step, and does not depend on any spec-kit hook firing. It runs identically on a project with spec-kit core installed and on one without.
+The self-review is dispatched here, by this step.
 
 #### 6a. Dispatch the self-review agent
 
@@ -611,7 +611,7 @@ Announce once, verbatim, naming each lens in full with its id code in parenthese
 
 > Dispatching adversarial SPEC-audit (<audit_intensity>): lenses <selected lens names, each with its id in parentheses>, then refutation (typically a dozen-plus agents, several minutes).
 
-Capture the audit window start for the cost-ledger breadcrumb: `AUDIT_WINDOW_START="$(date -u +%Y-%m-%dT%H:%M:%SZ)"`. Then spawn **one `general-purpose` Agent per selected lens, all in parallel** (one message, one Agent tool call per lens): the four core lenses always, plus each specialist the gauge selected. Each agent audits the working-draft cache (`.gaia/local/cache/draft-<spec_id>.md`, the post-self-review draft, NOT the step-3 canonical file), **writes its findings JSON to `.gaia/local/cache/audit-<spec_id>/findings/<LENS>.json`** (writing the file even when its findings array is empty), then returns only the thin digest below, no finding bodies.
+Capture the audit window start for the cost-ledger breadcrumb: `AUDIT_WINDOW_START="$(date -u +%Y-%m-%dT%H:%M:%SZ)"`. Then spawn **one `general-purpose` Agent per selected lens, all in parallel** (one message, one Agent tool call per lens): the four core lenses always, plus each specialist the gauge selected. Each agent audits the working-draft cache (`.gaia/local/cache/draft-<spec_id>.md`, the post-self-review working draft), **writes its findings JSON to `.gaia/local/cache/audit-<spec_id>/findings/<LENS>.json`** (writing the file even when its findings array is empty), then returns only the thin digest below, no finding bodies.
 
 Shared preamble (interpolate `<DRAFT_PATH>` = the working-draft cache, `<spec_id>`, `<repo_root>` = `$PWD`, and `<LENS>` = the agent's lens id prefix):
 
@@ -736,7 +736,7 @@ Its bodies never flow into main.
 
 #### 7c. Disposition routing + apply
 
-Resolve the main-anchored SPEC folder first, before any dispatch below consumes it. The SPEC folder is main-anchored state (state registry `specs-main`), so the report lands beside the artifact the ledger row indexes rather than in a second specs tree inside a linked worktree. The `mkdir -p` keeps this self-sufficient: step 3 creates the same folder from another file under another agent, and this step writes into it either way. Whoever writes `AUDIT.md` there, the delegated applier or main's inline fallback, does so per the tool-choice contract in Operational primitives.
+Resolve the main-anchored SPEC folder first, before any dispatch below consumes it. The SPEC folder is main-anchored state (state registry `specs-main`), so the report lands beside the artifact the ledger row indexes rather than in a second specs tree inside a linked worktree. The `mkdir -p` keeps this self-sufficient: step 3 already created the folder earlier in the session, and this step's `mkdir -p` keeps it self-sufficient however it is reached. Whoever writes `AUDIT.md` there, the delegated applier or main's inline fallback, does so per the tool-choice contract in Operational primitives.
 
 ```bash
 MAIN_ROOT="$(bash .gaia/scripts/main-root-lib.sh)"
@@ -919,9 +919,9 @@ A wrong path prints a `no SPEC file` line to stderr even behind `|| true`. A SPE
 
 **Auto-mode:** the tally fires identically in interactive and auto mode; it is a mechanical helper call, not a user prompt, so no auto-mode branch is needed. In auto mode the printed tally simply lands in the transcript, nothing to prompt.
 
-### 10. after_specify hook (immutability lint)
+### 10. Immutability lint
 
-Spec-kit fires this hook automatically after the spec is written. The agent receives an `EXECUTE_COMMAND: speckit.gaia.lint` directive and invokes `/speckit-gaia-lint`, which runs `bash .specify/extensions/gaia/lib/lint.sh <spec-path>` and surfaces findings.
+After the step-9 save, run `bash .specify/extensions/gaia/lib/lint.sh <spec-path>` yourself against `${SPEC_FOLDER}/SPEC.md`, the file step 9 saved. Re-resolve `SPEC_FOLDER` through `bash .gaia/scripts/main-root-lib.sh`, since shell state does not persist between calls. This is an explicit agent step, not an event. The lint prints JSON (`{"ok":true,"findings":[]}` on pass); handle the result with the cycle rules below.
 
 Track `lint_cycle = <count>` in working memory (initialize to 1 on the first attempt).
 
@@ -944,7 +944,7 @@ Reset `lint_cycle = 0` on user choice. Step-back-to-gate-2 returns to step 8 wit
 
 ### 11. /gaia-plan handoff, then STOP
 
-There is no `on_save` hook in spec-kit, so the handoff lives here, inline, after the canonical save (step 9) and the immutability lint (step 10). `/gaia-spec` does not run `/gaia-plan` itself; it prints a copy-pasteable prompt and stops. Interactive and auto mode end identically, neither runs plan.
+The handoff lives here, inline, after the canonical save (step 9) and the immutability lint (step 10). `/gaia-spec` does not run `/gaia-plan` itself; it prints a copy-pasteable prompt and stops. Interactive and auto mode end identically, neither runs plan.
 
 **Printing the block below is the last action of the session.** Per Hard constraint 6, this is a hard stop, not a suggested one, and it binds even when the instruction that invoked this skill asked for more (a plan, an implementation, a PR). Do not invoke `/gaia-plan`, do not read `plan.md`, do not dispatch a planner, do not start the work. A session that authored a SPEC is the worst-conditioned session in GAIA to plan it: its context is enormous and its judgment is anchored on authoring decisions the planner should meet fresh.
 

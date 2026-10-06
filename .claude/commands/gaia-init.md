@@ -452,36 +452,6 @@ GAIA bundles project-scoped skills, the generic ones at `.claude/skills/` (`tdd`
 
 To upgrade an existing install, run `claude plugin list`, then `claude plugin uninstall <the id it shows>`, then the marketplace add and install above.
 
-### Initialize spec-kit and install the GAIA extension + preset
-
-The GAIA `/gaia-spec` Socratic discovery workflow runs on top of [spec-kit](https://github.com/github/spec-kit). The template already ships the GAIA extension at `.specify/extensions/gaia/` and the GAIA preset at `.specify/presets/gaia/`, they need spec-kit's runtime registered around them.
-
-Pin spec-kit at the version declared in `.specify/extensions/gaia/extension.yml` `requires.speckit_version` (currently `>=0.8.5,<0.10.0`; the floor is the runtime pin). Tell the user: "Initializing spec-kit and registering the GAIA extension + preset…" then run:
-
-```bash
-SPECKIT_PIN="v0.8.5"
-PROJECT_ROOT="$(git rev-parse --show-toplevel)"
-uvx --from "git+https://github.com/github/spec-kit.git@${SPECKIT_PIN}" specify init --here --ai claude --force
-# specify extension/preset add --dev consumes its source dir when source == install
-# dest (.specify/extensions|presets/gaia in PROJECT_ROOT). Stage a throwaway copy in a
-# unique in-project temp dir so source != dest and the originals in .specify/ survive.
-# A trap removes the staging dir on exit (repo-relative rm; absolute /tmp rm is sandbox-blocked).
-SPECKIT_STAGE="$(mktemp -d "${PROJECT_ROOT}/.gaia-speckit-stage.XXXXXX")"
-trap 'rm -rf "${SPECKIT_STAGE}"' EXIT
-cp -r "${PROJECT_ROOT}/.specify/extensions/gaia" "${SPECKIT_STAGE}/extension"
-yes | uvx --from "git+https://github.com/github/spec-kit.git@${SPECKIT_PIN}" specify extension add --dev "${SPECKIT_STAGE}/extension"
-cp -r "${PROJECT_ROOT}/.specify/presets/gaia" "${SPECKIT_STAGE}/preset"
-yes | uvx --from "git+https://github.com/github/spec-kit.git@${SPECKIT_PIN}" specify preset add --dev "${SPECKIT_STAGE}/preset"
-rm -rf "${SPECKIT_STAGE}"
-trap - EXIT
-```
-
-`specify init --here --ai claude --force` writes `.specify/{extensions.yml, integration.json, integrations/, memory/constitution.md, scripts/, templates/, workflows/}` and `.claude/skills/speckit-*` plus `CLAUDE.md`. The `--force` flag is required because the GAIA template ships some `.specify/` paths already; `specify init` refuses without it.
-
-After install, `.specify/extensions/.registry` lists the `gaia` extension with all four registered commands (`speckit.gaia.spec`, `speckit.gaia.constitution-check`, `speckit.gaia.lint`, `speckit.gaia.self-review`); `.specify/presets/.registry` lists the `gaia` preset (priority 10, replaces `speckit.specify` and `spec-template`); `.claude/skills/speckit-gaia-*/SKILL.md` exist for each GAIA hook target; and `.claude/skills/speckit-specify/SKILL.md` is the GAIA preset wrap (core body spliced in via `{CORE_TEMPLATE}` substitution under `strategy: wrap`).
-
-If any step fails, surface the error verbatim and halt, do not silently continue. The user can re-run the failing command manually and resume `/gaia-init` once spec-kit is in place.
-
 ### Make the statusline executable
 
 The CLI in Step 3 wired the statusline command into Claude settings; the wrapper still needs the executable bit:
@@ -503,7 +473,6 @@ After all installs and plugin registrations above, run a probe-after pass to con
 | Serena          | `claude mcp list 2>/dev/null \| grep -q '^serena:'`                                                                                                     |
 | typescript-lsp  | `claude plugin list 2>/dev/null \| grep -q 'typescript-lsp'`                                                                                            |
 | claude-obsidian | `claude plugin list 2>/dev/null \| grep -q 'claude-obsidian'`                                                                                           |
-| spec-kit        | `[ -f .specify/integration.json ] && grep -q 'gaia' .specify/extensions/.registry 2>/dev/null && grep -q 'gaia' .specify/presets/.registry 2>/dev/null` |
 
 Emit one line per component: `[ok] <component>` if the probe exits 0, `[FAIL] <component>` if it exits non-zero.
 
@@ -634,7 +603,7 @@ Append-only. New entries at the TOP.
 
 ## Step 11: Finalize
 
-Mark per-machine setup as complete so the statusline does not show "Run /setup-gaia (Required)". `/gaia-init` performs all the same per-machine work as `/setup-gaia` (tools, plugins, spec-kit, statusline chmod, .env), but it does not call `gaia setup mark-step` as it goes, so stamp the state file with `--force` now that everything is done:
+Mark per-machine setup as complete so the statusline does not show "Run /setup-gaia (Required)". `/gaia-init` performs all the same per-machine work as `/setup-gaia` (tools, plugins, statusline chmod, .env), but it does not call `gaia setup mark-step` as it goes, so stamp the state file with `--force` now that everything is done:
 
 ```bash
 .gaia/cli/gaia setup finalize --force

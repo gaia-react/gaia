@@ -50,13 +50,13 @@ describe('SETUP_STEPS', () => {
     expect([...SETUP_STEPS]).toEqual([
       'install-tools',
       'install-plugins',
-      'init-speckit',
       'chmod-statusline',
       'bootstrap-env',
     ]);
     expect(SETUP_STEPS as readonly string[]).not.toContain(
       'audit-mode-decision'
     );
+    expect(SETUP_STEPS as readonly string[]).not.toContain('init-speckit');
   });
 });
 
@@ -110,6 +110,21 @@ describe('readStateFile: retired-step migration', () => {
     });
 
     const state = readStateFile(sandbox.root);
+    expect(pendingSteps(state)).toEqual([]);
+  });
+
+  test('a persisted init-speckit entry from a pre-removal GAIA parses, is dropped, and leaves no pending step', () => {
+    writeStateJson(sandbox.statePath, {
+      completed_at: null,
+      completed_steps: [...SETUP_STEPS, 'init-speckit'],
+      started_at: '2026-05-07T11:00:00.000Z',
+      version: 1,
+    });
+
+    const state = readStateFile(sandbox.root);
+    expect(state).not.toBeNull();
+    expect(state?.completed_steps).not.toContain('init-speckit');
+    expect(state?.completed_steps).toEqual([...SETUP_STEPS]);
     expect(pendingSteps(state)).toEqual([]);
   });
 });
