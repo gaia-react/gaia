@@ -149,6 +149,7 @@ On GAIA 1.6.1? Choose Abort, then paste the prompt from https://gaiareact.com/mi
 
 ### Fixed
 
+- Chromatic TurboSnap now traces dependency changes through the pnpm lockfile, so editing `frontend/package.json` no longer forces a full Chromatic build. The pinned Chromatic action could not parse pnpm's multi-document `pnpm-lock.yaml` and disabled TurboSnap on any `package.json` edit, a script change included; it now moves to 18.10.2, and a dependency bump re-tests only the stories that import a changed package (#2530)
 - The client environment is now built from an allowlist. A variable added to the server env schema used to reach the browser, serialized into every page's HTML, unless someone remembered to exclude it; it now stays server-only until it is exposed on purpose. The variables the client receives today are unchanged (#2529)
 - `/gaia-debt`'s staleness probe is hardened in how it handles the dedup-key paths it reads from issue bodies. A new script, `.gaia/scripts/debt-path-probe.sh`, reads the backlog as JSON and compares every path against the git index as a plain string, so no issue-derived path is written into a command line, and the fix-time screen now opens body-cited files with the Read tool for the same reason. The probe also matches a path only as an exact tracked file, never as a directory or glob (#2521)
 - The RED ledger now records Playwright tests under the names Playwright reports. A `test.describe` block was read as a test of its own, which added a spurious record and left its title off every test inside it (#2518)

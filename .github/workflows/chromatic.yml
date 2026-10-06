@@ -199,9 +199,18 @@ jobs:
       # directory needs the stats file baked in already. The measured saving
       # is the ~5s Chromatic's own build otherwise costs, on runs that clear
       # the path filter above.
+      #
+      # Keep this pin at 18.10.0 or later. pnpm writes `pnpm-lock.yaml` as two
+      # YAML documents, and older CLIs cannot parse that: TurboSnap logs "Could
+      # not retrieve dependency changes from lockfiles", falls back to diffing
+      # `package.json`, and runs a full build on any edit to it, a script change
+      # included. 18.10.0 parses the multi-document lockfile and resolves
+      # `frontend/package.json` against its own importer in the root lockfile,
+      # so a dependency bump re-tests only the stories that import a changed
+      # package.
       - if: steps.chore-deps.outputs.skip == 'false' && steps.filter.outputs.code == 'true'
         name: Run Chromatic
-        uses: chromaui/action@bb3b582719a93c1828c5e520e62992b2937d7889 # v18.9.4
+        uses: chromaui/action@a18e9f57b71eb05f941848c0b927aab2ee644e3e # v18.10.2
         with:
           projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
           exitZeroOnChanges: true
