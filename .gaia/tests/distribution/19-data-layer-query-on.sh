@@ -198,10 +198,12 @@ if [ -n "$index_server_files" ]; then
   exit 1
 fi
 
-run_pnpm_steps "" "" typecheck lint test:ci build
+run_pnpm_steps "" "" typecheck lint
+run_test_ci_with_report "" "" "$WORK/test-ci-report.json"
+run_pnpm_steps "" "" build
 
 log "count tests per generated page story"
-assert_stories_collect "$FRONTEND" "$WORK" ${GENERATED_STORIES[@]+"${GENERATED_STORIES[@]}"}
+assert_stories_collect "$WORK/test-ci-report.json" ${GENERATED_STORIES[@]+"${GENERATED_STORIES[@]}"}
 
 # --- 6. Server render isolation ----------------------------------------------
 
