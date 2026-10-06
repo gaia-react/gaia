@@ -205,7 +205,7 @@ export const RoleTokensNoRawPalette: StoryObj<typeof meta> = {
 
       await expectToast(canvasElement, `${type} token message`);
 
-      // The per-type color classes sit on descendants (the icon, the title),
+      // The per-type color classes sit on descendants (the error icon),
       // not the root. getAttribute, because an SVG's className is an
       // SVGAnimatedString rather than a string.
       const toastElement = getToastElement(
