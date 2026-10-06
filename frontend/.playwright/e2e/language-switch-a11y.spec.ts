@@ -15,7 +15,8 @@ test('language switcher has no serious a11y violations', async ({
   // Smoke-test the switcher in its initial state.
   await expectNoSeriousA11yViolations(page, testInfo, {label: 'initial'});
 
-  // Re-select the current language to exercise the switch flow.
+  // Re-select the current language. LanguageSelect drops a same-language pick,
+  // so this submits nothing and only re-scans the unswitched page.
   await switcher.selectOption('en');
   await hydration(page);
 
