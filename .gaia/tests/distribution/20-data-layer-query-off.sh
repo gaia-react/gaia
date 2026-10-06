@@ -194,8 +194,9 @@ grep -q "'msw-storybook-addon'" "$FRONTEND/.storybook/main.ts" \
 
 # --- 7. Gate the scaffolded tree ---------------------------------------------
 
-run_pnpm_steps scaffolded- "scaffolded tree" typecheck lint test:ci
+run_pnpm_steps scaffolded- "scaffolded tree" typecheck lint
+run_test_ci_with_report scaffolded- "scaffolded tree" "$WORK/scaffolded-test-ci-report.json"
 log "count tests in the generated clientLoader page story"
-assert_stories_collect "$FRONTEND" "$WORK" app/pages/items/tests/page.stories.tsx
+assert_stories_collect "$WORK/scaffolded-test-ci-report.json" app/pages/items/tests/page.stories.tsx
 
 pass "Query-off data layer: Automatic init no-op, gate, scaffolds, refusal, lint ban, and Storybook wiring all green (${SECONDS}s)"
