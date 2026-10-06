@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-20
-updated: 2026-10-03
+updated: 2026-10-06
 tags: [concept, services, api]
 ---
 
@@ -34,7 +34,7 @@ Each domain is self-contained: its own `urls.ts` and `index.ts`. Services are is
 | File                 | Key rules                                                                                                              |
 | -------------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | `urls.ts`            | A domain's endpoints in one per-domain `{NAME}_URLS` constant; colon-prefixed segments interpolated from `pathParams`  |
-| `api.ts`             | `create()` from `../api` plus the `envelope(schema)` helper; wraps Ky with snake↔camel, per-request base URL, auth headers |
+| `api.ts`             | `create()` from `../api` plus the `envelope(schema)` helper; wraps Ky with opt-in snake↔camel, per-request base URL, auth headers |
 | `parsers.ts`         | `z.iso.datetime()` not `z.string().datetime()`; `.nullish()` for optional fields; an input schema for each mutation     |
 | `types.ts`           | `z.infer<typeof schema>` only; never hand-maintain types alongside schemas                                             |
 | `requests.ts`        | Passes `schema: envelope(<schema>)` to `api` and returns the unwrapped value; mutations send typed JSON from the input schema |
@@ -60,7 +60,9 @@ The call validates the body through Ky's `.json(schema)` over Standard Schema an
 
 ## Backend casing
 
-`create()` defaults to `useSnakeCase: true`: incoming response keys convert to camelCase, and outgoing JSON bodies and search params convert to snake_case. A backend that already speaks camelCase needs `useSnakeCase: false` on that `create()` instance. The symptom of leaving the default on a camelCase backend is 400 responses and requests arriving with snake_case keys. `gaia init configure-data-layer --casing camel` writes the flag into the domain layer's `api.ts`; see [[GAIA Init Workflow]].
+`create()` passes keys through unchanged, for a backend that speaks camelCase. A snake_case backend needs `isSnakeCaseEnabled: true` on that `create()` instance: incoming response keys then convert to camelCase, and outgoing JSON bodies and search params convert to snake_case. The symptom of a missing flag on a snake_case backend is Zod schema failures (500s through `attempt`) on responses and requests arriving with camelCase keys. `gaia init configure-data-layer --casing snake` writes the flag into the domain layer's `api.ts`; see [[GAIA Init Workflow]].
+
+An SDK-backed domain (Supabase, Firebase) has no `create()` instance: its request functions wrap the SDK's calls instead of `api`, and the data-loading rule applies unchanged.
 
 ## `state.tsx`: read-only context (optional)
 
@@ -70,7 +72,7 @@ Add `state.tsx` when a route loader fetches data that deeply nested client compo
 
 Every service has a matching mock layer in `frontend/test/mocks/{domain}/`. The folder structure mirrors the service: `get.ts`, `post.ts`, `put.ts`, `delete.ts` (one file per HTTP method), `data.ts` (server-shape Zod schema + `@msw/data` `Collection` + seed records + reset), and `index.ts` (barrel combining all handlers).
 
-Note: MSW mock data uses snake_case field names (matching the real API wire format). The Ky wrapper converts to camelCase before the Zod schemas see it, so the server schema in `data.ts` reflects the raw server shape, and the `Collection` consumes that schema directly via Standard Schema. Mutation handlers read the JSON body with `request.json()` and answer `{data}`.
+Note: MSW mock data uses the wire's field names: camelCase by default, snake_case when the layer sets `isSnakeCaseEnabled: true` (`scaffold service` reads the layer's `api.ts` to pick). On a snake_case layer the Ky wrapper converts to camelCase before the Zod schemas see it, so the server schema in `data.ts` reflects the raw server shape, and the `Collection` consumes that schema directly via Standard Schema. Mutation handlers read the JSON body with `request.json()` and answer `{data}`.
 
 Register handlers in `frontend/test/mocks/index.ts` and re-export the new collection (plus its reset) from `frontend/test/mocks/database.ts`. See [[MSW Handlers]] for full setup details.
 

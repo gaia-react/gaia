@@ -587,7 +587,29 @@ describe('gaia scaffold service', () => {
     expect(barrel).toContain('const handlers = [...get, post, put, del];');
   });
 
-  test('camelCase field name is converted to snake_case in mock data schema', () => {
+  test('mock data schema keeps camelCase field names by default', () => {
+    run(
+      [
+        'projects',
+        '--endpoints',
+        'get',
+        '--schema',
+        'id:string,createdAt:datetime',
+        '--mocks',
+      ],
+      {cwd: sandbox.dir}
+    );
+    const mockData = read(
+      path.join(sandbox.dir, 'test', 'mocks', 'projects', 'data.ts')
+    );
+    expect(mockData).toContain('createdAt: z.iso.datetime()');
+  });
+
+  test('a snake_case layer converts camelCase field names in mock data schema', () => {
+    writeFileSync(
+      path.join(sandbox.dir, 'app', 'services', 'gaia', 'api.ts'),
+      'export const api = create({isSnakeCaseEnabled: true});\n'
+    );
     run(
       [
         'projects',

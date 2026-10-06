@@ -114,6 +114,6 @@ For a large or fast-moving API, a generator such as Hey API or Orval can produce
 
 `gaia init` asks two data-layer questions (backend casing and whether to use TanStack Query; see [[GAIA Init Workflow]]). After init has finished, `./.gaia/cli/gaia init configure-data-layer --query true` adds Query: it writes the dependency into `frontend/package.json`, the runtime files, and one anchored edit in each of the provider, Storybook preview, and the two Vite configs, then prints the `next` commands (`pnpm install`, and `scaffold service <name> --queries-only` for each eligible existing service). It never runs pnpm.
 
-The subcommand is additive and removes nothing. To remove Query, delete the three files it wrote, the `QueryProvider` wrapper, the Storybook decorator entry, the `optimizeDeps` entries, and the dependency by hand. To restore snake_case, set `useSnakeCase` back to `true` (or drop it) on the layer's `create()` call.
+The subcommand is additive and removes nothing. To remove Query, delete the three files it wrote, the `QueryProvider` wrapper, the Storybook decorator entry, the `optimizeDeps` entries, and the dependency by hand. To return a layer to the camelCase default, drop `isSnakeCaseEnabled` (or set it to `false`) on the layer's `create()` call.
 
 Ownership: `app/query-client.ts`, `app/state/query-provider.tsx`, and the Storybook Query decorator are adopter-owned from the moment they are written, so a later fix to them reaches adopters as CHANGELOG guidance, not as an `/update-gaia` merge.

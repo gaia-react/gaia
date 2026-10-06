@@ -6,7 +6,7 @@ language: typescript
 purpose: API mocking layer shared across Vitest, Storybook, and dev
 depends_on: [[MSW]]
 created: 2026-04-20
-updated: 2026-10-03
+updated: 2026-10-06
 tags: [module, msw, testing, mocking]
 ---
 
@@ -57,7 +57,7 @@ The fix: both the service request functions and the handlers import the same per
 If you're editing an existing mock by hand instead of scaffolding, the invariants you must preserve:
 
 - Handlers use `url({NAME}_URLS.key)`, never a hardcoded string
-- Mock data stays snake_case (server shape); camelCase conversion happens in the service layer
+- Mock data keeps the server's wire shape: camelCase by default, snake_case when the layer's `create()` sets `isSnakeCaseEnabled: true` (the service layer then converts to camelCase)
 - New collections register their `reset*()` in `resetTestData()`
 
 See the `api-service` rule (`frontend/.claude/rules/api-service.md`) for the full contract and [[API Service Pattern]] for the service side.

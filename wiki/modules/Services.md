@@ -8,7 +8,7 @@ depends_on:
   - '[[Ky]]'
   - '[[Zod]]'
 created: 2026-04-20
-updated: 2026-10-03
+updated: 2026-10-06
 tags: [module, services, api]
 ---
 
@@ -18,7 +18,7 @@ tags: [module, services, api]
 
 ## `api/` vs `gaia/`: the convention
 
-- `frontend/app/services/api/`: the [[Ky]] wrapper. A `create()` factory plus path/search-param interpolation, snake_case ↔ camelCase conversion, a per-request base URL, and per-request `token` / `language` request options. **Reusable across domains.**
+- `frontend/app/services/api/`: the [[Ky]] wrapper. A `create()` factory plus path/search-param interpolation, opt-in snake_case ↔ camelCase conversion, a per-request base URL, and per-request `token` / `language` request options. **Reusable across domains.**
 - `frontend/app/services/gaia/`: the GAIA template's domain layer. Rename to your company name or 3rd-party API name; Claude updates imports, barrels, and references across the app.
 
 The pattern: each domain folder under `frontend/app/services/gaia/{domain}/` holds `parsers.ts`, `types.ts`, `requests.ts`, its own URL constants (`urls.ts`), and an `index.ts` barrel re-exporting parsers, types, and urls. Domains share the root `Ky` instance (`frontend/app/services/gaia/api.ts`) via `import {api, envelope} from '../api'`. `/new-service` scaffolds the full pattern into the domain-layer folder (`frontend/app/services/gaia/`, or whatever you renamed it to), and leaves the root `urls.ts` untouched.

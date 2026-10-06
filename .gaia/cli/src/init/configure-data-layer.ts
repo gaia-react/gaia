@@ -10,10 +10,10 @@
  *                    runtime files, and makes one anchored edit each in
  *                    `app/state/index.tsx`, `.storybook/preview.ts`,
  *                    `vite.config.ts`, and `vitest.config.ts`.
- *   --casing camel   Sets `useSnakeCase: false` on the domain layer's
+ *   --casing snake   Sets `isSnakeCaseEnabled: true` on the domain layer's
  *                    `create()` call.
  *
- * Additive and idempotent: `--query false` and every other casing change
+ * Additive and idempotent: `--query false` and `--casing camel` change
  * nothing, and each edit is skipped when its result is already in the file.
  * Every edit is planned and anchor-checked in memory before any file is
  * written, so a missing anchor leaves the tree untouched. This step never runs
@@ -32,7 +32,11 @@ import {
   TANSTACK_QUERY_VERSION,
 } from '../scaffold/data-layer.js';
 import {ensureDir} from '../scaffold/fs.js';
-import {listSubdirectories, resolveLayer} from '../scaffold/layer.js';
+import {
+  listSubdirectories,
+  resolveLayer,
+  SNAKE_CASE_FLAG,
+} from '../scaffold/layer.js';
 import {deriveNames} from '../scaffold/service.js';
 import {structuredError} from '../stderr.js';
 import {takeValue} from '../util/argv.js';
@@ -47,11 +51,11 @@ const HELP_TEXT = `Usage: gaia init configure-data-layer [--casing <c>] [--query
   Additive and idempotent: it never removes or reverts anything.
 
   Flags (at least one of --casing, --query is required):
-    --casing <c>         Backend field casing: snake, camel, sdk, or unsure.
-                         Only "camel" changes a file (useSnakeCase: false).
+    --casing <c>         Backend field casing: camel or snake.
+                         Only "snake" changes a file (isSnakeCaseEnabled: true).
     --query <bool>       "true" pins TanStack Query and wires its runtime.
     --layer <folder>     Domain-layer folder under app/services/ (needed only
-                         for --casing camel when there is not exactly one).
+                         for --casing snake when there is not exactly one).
 
   This is the one init step that writes to stdout: a single JSON line,
   {"changed": [<paths>], "next": [<commands to run>]}. It never runs pnpm.
@@ -67,7 +71,7 @@ const UNEXPECTED_EXIT = 2;
 const STEP_NAME = 'configure-data-layer';
 const SUBCOMMAND = 'init configure-data-layer';
 
-const CASINGS = ['camel', 'sdk', 'snake', 'unsure'] as const;
+const CASINGS = ['camel', 'snake'] as const;
 
 type Casing = (typeof CASINGS)[number];
 
@@ -410,11 +414,11 @@ const closingParen = (source: string, open: number): number => {
   return -1;
 };
 
-const planCamelApi = (packageDir: string, layer: string): Plan => {
+const planSnakeApi = (packageDir: string, layer: string): Plan => {
   const relative = `app/services/${layer}/api.ts`;
   const file = path.join(packageDir, relative);
   const source = readIfPresent(file);
-  const handEdit = 'pass {useSnakeCase: false} to the create() call';
+  const handEdit = 'pass {isSnakeCaseEnabled: true} to the create() call';
 
   if (source === null) return missingFile(relative, handEdit);
 
@@ -432,25 +436,25 @@ const planCamelApi = (packageDir: string, layer: string): Plan => {
 
   const before = source.slice(0, open + 1);
   const after = source.slice(close);
-  const existing = /useSnakeCase\s*:\s*([^,}\s]+)/u.exec(argument);
+  const existing = SNAKE_CASE_FLAG.exec(argument);
   const inner = argument.slice(1, -1);
   let nextArgument: string;
 
   if (argument === '' || (existing === null && inner.trim() === '')) {
-    nextArgument = '{useSnakeCase: false}';
+    nextArgument = '{isSnakeCaseEnabled: true}';
   } else if (existing === null) {
     const indent = /\n([ \t]*)\S/u.exec(inner)?.[1];
 
     if (indent === undefined) {
-      nextArgument = `{useSnakeCase: false, ${inner.trimStart()}}`;
+      nextArgument = `{isSnakeCaseEnabled: true, ${inner.trimStart()}}`;
     } else {
-      nextArgument = `{\n${indent}useSnakeCase: false,${inner}}`;
+      nextArgument = `{\n${indent}isSnakeCaseEnabled: true,${inner}}`;
     }
   } else {
-    if (existing[1] === 'false') return null;
+    if (existing[1] === 'true') return null;
     nextArgument = argument.replace(
-      /useSnakeCase\s*:\s*[^,}\s]+/u,
-      'useSnakeCase: false'
+      SNAKE_CASE_FLAG,
+      'isSnakeCaseEnabled: true'
     );
   }
 
@@ -520,7 +524,7 @@ const fail = (code: string, message: string): number => {
   return EXIT_CODES.UNKNOWN_SUBCOMMAND;
 };
 
-const resolveCamelPlan = (
+const resolveSnakePlan = (
   packageDir: string,
   layer: null | string
 ): {error: string} | {plan: Plan} => {
@@ -528,7 +532,7 @@ const resolveCamelPlan = (
 
   if ('error' in resolved) return resolved;
 
-  return {plan: planCamelApi(packageDir, resolved.layer)};
+  return {plan: planSnakeApi(packageDir, resolved.layer)};
 };
 
 const buildResult = (
@@ -537,14 +541,14 @@ const buildResult = (
 ): {code: string; error: string} | {next: string[]; writes: PlannedWrite[]} => {
   const plans: Plan[] = [];
 
-  if (flags.casing === 'camel') {
-    const camel = resolveCamelPlan(packageDir, flags.layer);
+  if (flags.casing === 'snake') {
+    const snake = resolveSnakePlan(packageDir, flags.layer);
 
-    if ('error' in camel) {
-      return {code: 'invalid_arguments', error: camel.error};
+    if ('error' in snake) {
+      return {code: 'invalid_arguments', error: snake.error};
     }
 
-    plans.push(camel.plan);
+    plans.push(snake.plan);
   }
 
   if (flags.query === true) plans.push(...planQueryOn(packageDir));

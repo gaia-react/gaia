@@ -128,12 +128,11 @@ step_two() {
 # Print each data-layer anchor missing from the file given as $1, one per line.
 data_layer_gaps() {
   local file="$1" label
-  for label in 'snake_case (Recommended)' 'camelCase' \
-    'SDK client such as Supabase or Firebase' 'Not sure' \
+  for label in 'camelCase (Recommended)' 'snake_case' 'Not sure' \
     'Add TanStack Query for client-owned data?' 'No (Recommended)'; do
     step_two "$file" | grep -qF -- "$label" || printf 'option: %s\n' "$label"
   done
-  grep -qF '| Backend casing            | `snake_case`' "$file" || echo 'safe-default row: casing'
+  grep -qF '| Backend casing            | `camelCase`' "$file" || echo 'safe-default row: casing'
   grep -qF '| TanStack Query            | `No`' "$file" || echo 'safe-default row: query'
   grep -qF '> | Backend casing ' "$file" || echo 'automatic row: casing'
   grep -qF '> | TanStack Query ' "$file" || echo 'automatic row: query'
@@ -152,8 +151,8 @@ data_layer_gaps() {
 
 @test "the data-layer check flags each anchor deleted from a scratch copy" {
   local pattern scratch
-  for pattern in 'snake_case (Recommended)' 'Not sure' 'No (Recommended)' \
-    '| Backend casing            | `snake_case`' '| TanStack Query            | `No`' \
+  for pattern in 'camelCase (Recommended)' 'Not sure' 'No (Recommended)' \
+    '| Backend casing            | `camelCase`' '| TanStack Query            | `No`' \
     '> | Backend casing ' '> | TanStack Query ' '- Backend casing (Step 2)' \
     '- TanStack Query (Step 2)' 'configure-data-layer --casing'; do
     scratch="$BATS_TEST_TMPDIR/gaia-init.scratch.md"

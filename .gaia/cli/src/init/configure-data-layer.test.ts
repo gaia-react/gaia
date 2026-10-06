@@ -122,14 +122,15 @@ const createCallArgument = (source: string): ts.Expression | undefined => {
   return found;
 };
 
-const useSnakeCaseValue = (source: string): string | undefined => {
+const isSnakeCaseEnabledValue = (source: string): string | undefined => {
   const argument = createCallArgument(source);
 
   if (argument === undefined || !ts.isObjectLiteralExpression(argument))
     return undefined;
   const property = argument.properties.find(
     (entry): entry is ts.PropertyAssignment =>
-      ts.isPropertyAssignment(entry) && entry.name.getText() === 'useSnakeCase'
+      ts.isPropertyAssignment(entry) &&
+      entry.name.getText() === 'isSnakeCaseEnabled'
   );
 
   return property?.initializer.getText();
@@ -165,6 +166,8 @@ describe('flag errors', () => {
     [[]],
     [['--bogus', 'x']],
     [['--casing', 'kebab']],
+    [['--casing', 'sdk']],
+    [['--casing', 'unsure']],
     [['--query', 'maybe']],
     [['--layer', 'gaia']],
   ])('%j exits 1', (args) => {
@@ -173,9 +176,9 @@ describe('flag errors', () => {
 });
 
 describe('query off', () => {
-  test('casing snake changes nothing and leaves the owned files byte-identical', () => {
+  test('casing camel changes nothing and leaves the owned files byte-identical', () => {
     const before = snapshot();
-    const result = configure('--casing', 'snake', '--query', 'false');
+    const result = configure('--casing', 'camel', '--query', 'false');
 
     expect(result.code).toBe(0);
     expect(result.changed).toEqual([]);
@@ -283,51 +286,55 @@ describe('query on', () => {
 });
 
 describe('casing', () => {
-  test('only camel adds useSnakeCase: false', () => {
-    for (const casing of ['snake', 'sdk', 'unsure']) {
-      configure('--casing', casing);
-      expect(
-        createCallArgument(read('app/services/gaia/api.ts'))
-      ).toBeUndefined();
-    }
+  test('only snake adds isSnakeCaseEnabled: true', () => {
+    configure('--casing', 'camel');
+    expect(
+      createCallArgument(read('app/services/gaia/api.ts'))
+    ).toBeUndefined();
     expect(existsSync(rootPath('app/services/gaia/api.ts'))).toBe(true);
 
-    const result = configure('--casing', 'camel');
+    const result = configure('--casing', 'snake');
 
     expect(result.code).toBe(0);
-    expect(useSnakeCaseValue(read('app/services/gaia/api.ts'))).toBe('false');
+    expect(isSnakeCaseEnabledValue(read('app/services/gaia/api.ts'))).toBe(
+      'true'
+    );
     expect(result.changed).toEqual(['app/services/gaia/api.ts']);
-    expect(configure('--casing', 'camel').changed).toEqual([]);
+    expect(configure('--casing', 'snake').changed).toEqual([]);
   });
 
-  test('sets an existing useSnakeCase to false and adds it to an object literal', () => {
+  test('sets an existing isSnakeCaseEnabled to true and adds it to an object literal', () => {
     write(
       'app/services/gaia/api.ts',
-      "import {create} from '../api';\n\nexport const api = create({useSnakeCase: true});\n"
+      "import {create} from '../api';\n\nexport const api = create({isSnakeCaseEnabled: false});\n"
     );
-    configure('--casing', 'camel');
-    expect(useSnakeCaseValue(read('app/services/gaia/api.ts'))).toBe('false');
+    configure('--casing', 'snake');
+    expect(isSnakeCaseEnabledValue(read('app/services/gaia/api.ts'))).toBe(
+      'true'
+    );
 
     write(
       'app/services/gaia/api.ts',
       "import {create} from '../api';\n\nexport const api = create({arrayFormat: 'comma'});\n"
     );
-    configure('--casing', 'camel');
-    expect(useSnakeCaseValue(read('app/services/gaia/api.ts'))).toBe('false');
+    configure('--casing', 'snake');
+    expect(isSnakeCaseEnabledValue(read('app/services/gaia/api.ts'))).toBe(
+      'true'
+    );
     expect(read('app/services/gaia/api.ts')).toContain("arrayFormat: 'comma'");
   });
 
   test('refuses an api.ts with no create() call', () => {
     write('app/services/gaia/api.ts', 'export const api = 1;\n');
-    const result = configure('--casing', 'camel');
+    const result = configure('--casing', 'snake');
 
     expect(result.code).toBe(1);
     expect(result.errors).toContain('data_layer_anchor_missing');
   });
 
-  test('refuses camel when the layer is ambiguous and names --layer', () => {
+  test('refuses snake when the layer is ambiguous and names --layer', () => {
     mkdirSync(rootPath('app/services/other'), {recursive: true});
-    const result = configure('--casing', 'camel');
+    const result = configure('--casing', 'snake');
 
     expect(result.code).toBe(1);
     expect(result.errors).toContain('--layer');
