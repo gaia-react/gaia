@@ -76,14 +76,25 @@ export const appendSearchParams = (
   return `${uri}${search}`;
 };
 
+// URL parsing resolves `.` and `..` segments, percent-encoded or not, so a
+// param equal to either would send the request to a different path.
+const encodePathParam = (value: number | string): string => {
+  const segment = String(value);
+
+  if (segment === '.' || segment === '..') {
+    throw new TypeError(`Path param cannot be a dot segment: "${segment}"`);
+  }
+
+  return encodeURIComponent(segment);
+};
+
 export const setPathParams = (
   url: string,
   pathParams?: Record<string, number | string>
 ): string =>
   pathParams ?
     Object.entries(pathParams).reduce(
-      (path, [key, value]) =>
-        path.replace(`:${key}`, encodeURIComponent(String(value))),
+      (path, [key, value]) => path.replace(`:${key}`, encodePathParam(value)),
       url
     )
   : url;

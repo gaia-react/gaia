@@ -54,7 +54,7 @@ export const getResourceById = async (
   }).then(({data}) => data);
 ```
 
-The call validates the body through Ky's `.json(schema)` over Standard Schema and resolves the typed value; there is no per-request `schema.parse`. A call without `schema` never parses the body, so a 204 resolves `undefined`.
+The call validates the body through Ky's `.json(schema)` over Standard Schema and resolves the typed value; there is no per-request `schema.parse`. A call without `schema` never parses the body (it is read and discarded so the connection returns to the keep-alive pool), so a 204 resolves `undefined`. `pathParams` values are percent-encoded, and a value of exactly `.` or `..` throws a `TypeError` because URL parsing would resolve it as a dot segment. A per-request `prefix` option overrides the create-level prefix and the `API_URL` default.
 
 `attempt` (from `~/services/api/helpers`) wraps a request into `[ApiError, undefined] | [undefined, T]`; use in loaders/actions when you need to handle errors without throwing. It maps an HTTP error to its status, and a Ky `SchemaValidationError` to `{status: 500}` with a constant message (the issues are logged on the server only).
 

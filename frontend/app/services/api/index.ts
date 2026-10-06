@@ -59,7 +59,7 @@ export const create = ({
         ...options,
         headers: buildRequestHeaders(options.headers, token, language),
         // Resolved per request: the base URL is unknown at module import.
-        prefix: prefix ?? (getBaseUrl() || '/'),
+        prefix: options.prefix ?? prefix ?? (getBaseUrl() || '/'),
       }
     );
 
@@ -67,7 +67,10 @@ export const create = ({
       return response.json(schema);
     }
 
-    await response;
+    // Read the body even though it is discarded: on Node, an unread body keeps
+    // its connection out of the keep-alive pool until garbage collection.
+    const discardedResponse = await response;
+    await discardedResponse.arrayBuffer();
   };
 
   return request as RequestFunction;

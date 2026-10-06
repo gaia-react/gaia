@@ -67,6 +67,20 @@ describe('api utils', () => {
     expect(setPathParams('items/:id', {id: value})).toBe(expected);
   });
 
+  test.each(['.', '..'])(
+    'setPathParams rejects the dot segment %s',
+    (value) => {
+      expect(() => setPathParams('items/:id', {id: value})).toThrow(
+        'Path param cannot be a dot segment'
+      );
+    }
+  );
+
+  test('setPathParams keeps a dot inside a longer segment', () => {
+    expect(setPathParams('items/:id', {id: 'a.b'})).toBe('items/a.b');
+    expect(setPathParams('items/:id', {id: '...'})).toBe('items/...');
+  });
+
   test('getUri should return the uri with no options', () => {
     expect(getUri('api/test')).toBe('api/test');
   });

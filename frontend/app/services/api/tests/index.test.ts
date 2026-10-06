@@ -148,4 +148,27 @@ describe('create', () => {
     expect(observed[0]).toMatch(new RegExp(`^${ORIGIN_A}`));
     expect(observed[1]).toMatch(new RegExp(`^${ORIGIN_B}`));
   });
+
+  test('a per-request prefix overrides the default origin', async () => {
+    const observed: string[] = [];
+    server.use(
+      http.get(`${ORIGIN_A}/items`, ({request}) => {
+        observed.push(request.url);
+
+        return HttpResponse.json({data: {display_name: 'a'}});
+      }),
+      http.get(`${ORIGIN_B}/items`, ({request}) => {
+        observed.push(request.url);
+
+        return HttpResponse.json({data: {display_name: 'b'}});
+      })
+    );
+    process.env.API_URL = ORIGIN_A;
+
+    const request = create();
+    await request('items', {prefix: ORIGIN_B, schema: envelopeSchema});
+
+    expect(observed).toHaveLength(1);
+    expect(observed[0]).toMatch(new RegExp(`^${ORIGIN_B}`));
+  });
 });
