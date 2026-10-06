@@ -122,5 +122,8 @@ export default defineConfig({
     },
   ],
 
-  workers: process.env.CI ? 1 : undefined,
+  // One worker per CI core: the story scan dominates the run and its tests
+  // share no state. Locally Playwright's default (half the cores) leaves room
+  // for the editor and other sessions.
+  workers: process.env.CI ? '100%' : undefined,
 });

@@ -21,12 +21,12 @@ jobs:
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     # 20 minutes bounds execution: a job that hits the cap is cancelled and
     # reports an ordinary red check to re-run rather than hanging. A full run
-    # here is about 7 minutes: typecheck and lint dominate the first part,
-    # Vitest is under a minute, and Playwright is about 4.5 minutes including
-    # the per-story light/dark a11y scan (built Storybook, one worker). On CI
-    # each broken story costs about 3.5 minutes across its retries, so the cap
-    # leaves room for a few broken stories to report in full. The browser
-    # install below fetches one engine rather than every engine Playwright ships.
+    # here is a few minutes: typecheck, lint, Vitest and Playwright (which
+    # includes the per-story dark a11y scan over the built Storybook, one
+    # worker per core). On CI each broken story costs about 3.5 minutes across
+    # its retries, so the cap leaves room for a few broken stories to report
+    # in full. The browser install below fetches one engine rather than every
+    # engine Playwright ships.
     timeout-minutes: 20
     runs-on: ubuntu-latest
     permissions:
@@ -214,8 +214,9 @@ jobs:
           name: playwright-traces
           path: frontend/.playwright/output
           retention-days: 5
-      # Every story is screenshotted in light and dark, so the maintainer can
-      # review hover, active and dark rendering by eye (axe checks neither).
+      # Every story is screenshotted in dark, so the maintainer can review
+      # hover, active and dark rendering by eye (axe checks neither); light
+      # rendering is in Chromatic's light-mode snapshots.
       # `always()` rather than `failure()`: a passing run keeps them too.
       - if: ${{ always() && steps.chore-deps.outputs.skip == 'false' && steps.filter.outputs.code == 'true' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

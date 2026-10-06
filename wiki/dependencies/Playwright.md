@@ -20,7 +20,7 @@ Tests that mutate MSW in-memory state call `resetTestData()` from `frontend/test
 
 ## Relationship to the story tests
 
-Component and page behavior is tested by story play functions under Vitest ([[Stories as Tests]]), not by Playwright. Playwright keeps user flows against the running app and the story scan, which axe-checks every story in light and dark at merge time. Vitest's addon-a11y covers the light theme only, so `pnpm pw` is the dark-theme check to run on any theme or token change.
+Component and page behavior is tested by story play functions under Vitest ([[Stories as Tests]]), not by Playwright. Playwright keeps user flows against the running app and the story scan, which axe-checks every story in dark at merge time. Vitest's addon-a11y covers the light theme only, so `pnpm pw` is the dark-theme check to run on any theme or token change.
 
 ## Hydration helper
 
@@ -130,7 +130,7 @@ When a project requires authentication, use a global setup file (`auth.setup.ts`
 
 ## Parallelism and CI
 
-`fullyParallel: true`; CI uses `workers: 1`, `retries: 2`. Locally, `retries: 0`: the global-setup warm-up and the `hydration()` probe-then-reload self-heal the cold dep-optimize race, so a real flake fails instead of being masked. Multi-browser (webkit, Firefox, mobile) is opt-in via `TEST_ALL_BROWSERS`. See `frontend/.claude/rules/playwright.md` for the full table.
+`fullyParallel: true`; CI uses `workers: '100%'` (one per runner core), `retries: 2`. Locally, `retries: 0`: the global-setup warm-up and the `hydration()` probe-then-reload self-heal the cold dep-optimize race, so a real flake fails instead of being masked. Multi-browser (webkit, Firefox, mobile) is opt-in via `TEST_ALL_BROWSERS`. See `frontend/.claude/rules/playwright.md` for the full table.
 
 ## Traces and screenshots
 
