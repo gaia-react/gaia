@@ -146,7 +146,7 @@ List every dead reference (one per line). Do not truncate: the count is small en
 
 ## Step 4: GAIA check #13: UAT/SPEC narrative-ref drift
 
-Detects narrative `UAT-NNN` and concrete maintainer `SPEC-NNN` references that crept into instruction files (`.claude/skills/`, `.claude/commands/`, `.claude/agents/`, `.claude/rules/`, `.claude/hooks/`) and the spec-lifecycle scripts (`.gaia/scripts/spec/`). The rule rationale + structural-vs-narrative triage lives in `.claude/rules/working-doc-ids.md`.
+Detects narrative `UAT-NNN` and concrete maintainer `SPEC-NNN` references that crept into instruction files (`.claude/skills/`, `.claude/commands/`, `.claude/agents/`, `.claude/rules/`, `.claude/hooks/`), the spec-lifecycle scripts (`.gaia/scripts/spec/`), and the spec templates (`.gaia/templates/spec/`). The rule rationale + structural-vs-narrative triage lives in `.claude/rules/working-doc-ids.md`.
 
 <!-- gaia:maintainer-only:start -->
 Both scans deliberately exclude `.gaia/tests/`: it is release-excluded maintainer-only test infrastructure that never reaches an adopter, so its UAT/SEC/TST test labels are legitimate SPEC-conformance traceability, not shipped-surface drift. Do not re-add `.gaia/tests/` to either grep.
@@ -160,12 +160,12 @@ Two scans, run from the repo root:
 # UAT-NNN narrative-ref candidates
 grep -rEn "UAT-[0-9]{3}" \
   .claude/skills/ .claude/commands/ .claude/agents/ .claude/rules/ .claude/hooks/ \
-  .gaia/scripts/spec/
+  .gaia/scripts/spec/ .gaia/templates/spec/
 
 # Concrete maintainer SPEC IDs
 grep -rEn "\bSPEC-[0-9]{3,}\b" \
   .claude/skills/ .claude/commands/ .claude/agents/ .claude/rules/ .claude/hooks/ \
-  .gaia/scripts/spec/
+  .gaia/scripts/spec/ .gaia/templates/spec/
 ```
 
 ### 4b. Triage and append
