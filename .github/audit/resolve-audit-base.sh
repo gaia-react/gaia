@@ -610,6 +610,62 @@ fi
 # (the full-branch base), never narrower scope.
 # -----------------------------------------------------------------------------
 
+# record_roster_scan <roster member> <clearance_scan output>: sorts one member's
+# earned markers into the full-tree and non-full-tree sets.
+record_roster_scan() {
+  local roster_member="$1" roster_scan="$2" scan_line recorded_tree
+  [ -n "$roster_scan" ] || return 0
+  while IFS= read -r scan_line; do
+    [ -n "$scan_line" ] || continue
+    recorded_tree="$(scan_field "$scan_line" 1)"
+    [ -n "$recorded_tree" ] || continue
+    if [ "$(scan_field "$scan_line" 4)" = "full" ]; then
+      full_trees="${full_trees}${recorded_tree}
+"
+    else
+      non_full_trees="${non_full_trees}${recorded_tree}
+"
+      non_full_owners="${non_full_owners}${recorded_tree}${TAB}${roster_member}
+"
+    fi
+  done <<EOF
+$roster_scan
+EOF
+}
+
+# scan_roster_depth: the whole-roster scan and check (a). The walk calls it once,
+# at the first whole-team signal, because nothing else reads its result and a
+# store scan costs seconds per member; the resolving member's scan is the one
+# already captured above, not repeated.
+scan_roster_depth() {
+  local roster_member roster_includes_member="false" candidate_tree non_full_owner
+  while IFS= read -r roster_member; do
+    [ -n "$roster_member" ] || continue
+    if [ "$roster_member" = "$member" ]; then
+      roster_includes_member="true"
+      record_roster_scan "$roster_member" "$earned_scan"
+    else
+      record_roster_scan "$roster_member" "$(clearance_scan "$repo_root" "$roster_member" earned 2>/dev/null || true)"
+    fi
+  done <<EOF
+$roster_members
+EOF
+  [ "$roster_includes_member" = "true" ] || record_roster_scan "$member" "$earned_scan"
+  if [ -n "$non_full_trees" ]; then
+    for sha in $candidates; do
+      candidate_tree="$(git -C "$repo_root" rev-parse "${sha}^{tree}" 2>/dev/null || true)"
+      [ -n "$candidate_tree" ] || continue
+      if grep -qxF -- "$candidate_tree" <<<"$non_full_trees"; then
+        non_full_owner="$(grep -F -- "${candidate_tree}${TAB}" <<<"$non_full_owners" | head -n 1 | cut -f2 || true)"
+        team_arm_refusal="${non_full_owner:-a member} holds a non-full clearance at ${sha}, so the whole-team signal may stand on content no full review read"
+        echo "resolve-audit-base: ${team_arm_refusal}; whole-team anchoring disabled for ${member} this run." >&2
+        break
+      fi
+    done
+  fi
+}
+
+roster_members=""
 if [ "$member_form" = "true" ]; then
   if ! command -v clearance_scan >/dev/null 2>&1; then
     team_arm_refusal="the clearance reader is unavailable, so review depth at the whole-team signal cannot be verified"
@@ -617,43 +673,6 @@ if [ "$member_form" = "true" ]; then
     roster_members="$(audit_roster_member_names "${repo_root}/.gaia/audit-ci.yml" 2>/dev/null || true)"
     if [ -z "$roster_members" ]; then
       team_arm_refusal="the audit roster is unreadable, so review depth at the whole-team signal cannot be verified"
-    else
-      roster_members="${roster_members}
-${member}"
-      while IFS= read -r roster_member; do
-        [ -n "$roster_member" ] || continue
-        roster_scan="$(clearance_scan "$repo_root" "$roster_member" earned 2>/dev/null || true)"
-        [ -n "$roster_scan" ] || continue
-        while IFS= read -r scan_line; do
-          [ -n "$scan_line" ] || continue
-          recorded_tree="$(scan_field "$scan_line" 1)"
-          [ -n "$recorded_tree" ] || continue
-          if [ "$(scan_field "$scan_line" 4)" = "full" ]; then
-            full_trees="${full_trees}${recorded_tree}
-"
-          else
-            non_full_trees="${non_full_trees}${recorded_tree}
-"
-            non_full_owners="${non_full_owners}${recorded_tree}${TAB}${roster_member}
-"
-          fi
-        done <<EOF
-$roster_scan
-EOF
-      done <<EOF
-$roster_members
-EOF
-      if [ -n "$non_full_trees" ]; then
-        for sha in $candidates; do
-          candidate_tree="$(git -C "$repo_root" rev-parse "${sha}^{tree}" 2>/dev/null || true)"
-          [ -n "$candidate_tree" ] || continue
-          if grep -qxF -- "$candidate_tree" <<<"$non_full_trees"; then
-            non_full_owner="$(grep -F -- "${candidate_tree}${TAB}" <<<"$non_full_owners" | head -n 1 | cut -f2 || true)"
-            team_arm_refusal="${non_full_owner:-a member} holds a non-full clearance at ${sha}, so the whole-team signal may stand on content no full review read"
-            break
-          fi
-        done
-      fi
     fi
   fi
   if [ -n "$team_arm_refusal" ]; then
@@ -703,6 +722,9 @@ for sha in $candidates; do
     # Check (b): a member's earned full marker must record the signal's tree.
     # The shared floor keeps this signal either way, so line 3 of the member
     # form still equals the argument-less answer.
+    if [ -n "$team_anchor" ] && [ "$member_form" = "true" ] && [ -z "$team_arm_refusal" ]; then
+      scan_roster_depth
+    fi
     if [ -n "$team_anchor" ] && [ "$member_form" = "true" ] && [ -z "$team_arm_refusal" ]; then
       signal_tree="$(git -C "$repo_root" rev-parse "${team_anchor}^{tree}" 2>/dev/null || true)"
       if [ -z "$signal_tree" ] || ! grep -qxF -- "$signal_tree" <<<"$full_trees"; then

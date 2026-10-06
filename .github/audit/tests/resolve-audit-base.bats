@@ -1253,6 +1253,52 @@ assert_global_reset_for() {
   grep -qF "roster is unreadable" <<<"$stderr"
 }
 
+# Records every clearance_scan call (member and provenance) into the file the
+# sandbox's reader copy appends to, so a test can see which stores were read.
+trace_clearance_scans() {
+  CLEARANCE_SCAN_TRACE="$BATS_TEST_TMPDIR/scan.trace"
+  export CLEARANCE_SCAN_TRACE
+  : > "$CLEARANCE_SCAN_TRACE"
+  local reader="$SANDBOX/.claude/hooks/lib/audit-clearance.sh"
+  awk '{ print } /^clearance_scan\(\) \{$/ { print "  printf \"%s %s\\n\" \"$2\" \"$3\" >>\"${CLEARANCE_SCAN_TRACE:-/dev/null}\"" }' "$reader" > "$reader.traced"
+  mv "$reader.traced" "$reader"
+  grep -qF 'CLEARANCE_SCAN_TRACE' "$reader"
+}
+
+@test "review depth: the roster scan is skipped when no whole-team signal is in range" {
+  require_jq
+  trace_clearance_scans
+  add_commit a
+  write_clearance "$OTHER_MEMBER" earned "$(tree_of HEAD)" 1.2.3 light >/dev/null
+  add_commit b
+  write_clearance "$SUPPORT_MEMBER" earned "$(tree_of HEAD)" 1.2.3 full >/dev/null
+  add_commit c
+
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  [ "$status" -eq 0 ]
+  [ "$(member_base)" = "main" ]
+  [ "$(member_reason)" = "no-anchor" ]
+  grep -qF "non-full clearance" <<<"$stderr" && return 1
+  [ "$(sort "$CLEARANCE_SCAN_TRACE" | tr '\n' ',')" = "${DEFAULT_MEMBER} earned,${DEFAULT_MEMBER} refused," ]
+}
+
+@test "review depth: a signal in range scans each roster member once and the resolving member only once" {
+  require_jq
+  trace_clearance_scans
+  add_commit a
+  add_commit b
+  signal_sha="$(stamp_anchor)"
+  add_commit c
+
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  [ "$status" -eq 0 ]
+  [ "$(member_base)" = "$signal_sha" ]
+  [ "$(grep -cxF "${DEFAULT_MEMBER} earned" "$CLEARANCE_SCAN_TRACE")" -eq 1 ]
+  grep -qxF "${OTHER_MEMBER} earned" "$CLEARANCE_SCAN_TRACE"
+  grep -qxF "${SUPPORT_MEMBER} earned" "$CLEARANCE_SCAN_TRACE"
+  [ -z "$(sort "$CLEARANCE_SCAN_TRACE" | uniq -d)" ]
+}
+
 # -----------------------------------------------------------------------------
 # Library availability. Four libs decide the answer and their absence resets
 # to full scope; the clearance reader's absence is the CONTRAST, because it is

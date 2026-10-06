@@ -178,6 +178,12 @@ lsb_mark() {
     "$LSB_ROOT/.gaia/scripts/audit-light-mark.sh" "$LSB_ROOT" "$1" "$reply_file"
 }
 
+# lsb_mark_file <member> <path>: the file form, `--verdict <path>`, with empty
+# stdin so a script that read stdin instead of the file would see no reply.
+lsb_mark_file() {
+  run bash "$LSB_ROOT/.gaia/scripts/audit-light-mark.sh" --root "$LSB_ROOT" --member "$1" --verdict "$2" </dev/null
+}
+
 _lsb_reply() {
   local member="$1" verdict="$2" digest record
   digest="$(lsb_member_digest "$member")" || return 1

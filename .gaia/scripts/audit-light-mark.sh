@@ -5,9 +5,15 @@
 # record, and only then writes the light sidecar and an earned marker carrying
 # `review: light` through the shared clearance writer.
 #
-#   audit-light-mark.sh --root <abs-checkout-root> --member <name> --verdict -
+#   audit-light-mark.sh --root <abs-checkout-root> --member <name>
+#                       --verdict <- | path-to-reply-file>
 #                       [--reviewer-tokens <int>] [--reviewer-duration-ms <int>]
-#                       < <the reviewer's reply, verbatim>
+#
+# `--verdict -` reads the reviewer's reply, verbatim, from stdin. `--verdict
+# <path>` reads it byte for byte from that file: an unattended unit in a
+# confined worktree cannot feed a heredoc, so it writes the reply to a file and
+# names the file. A missing or unreadable path prints `full verdict-noop`, the
+# answer a silent reviewer gets, and writes no marker.
 #
 # stdout is exactly one line, `light-cleared` or `full\t<reason>`; exit 0 on
 # both. Exit 2 is a usage error. Every consumer reads exit 2, any reason, and
@@ -18,7 +24,8 @@
 #   1. usage validation
 #   2. the member digest and the HEAD tree (degraded: nothing is persisted, as
 #      the verdict path is keyed by the digest)
-#   3. the reply, byte for byte, to <light>/<digest>.<member>.verdict.json
+#   3. the reply (stdin or the named file), byte for byte, to
+#      <light>/<digest>.<member>.verdict.json; an unreadable file: verdict-noop
 #   4. the route record: no-route-record, route-not-light, route-stale
 #   5. a fresh router run (--check): recheck-full
 #   6. the no-op classification of the reply: verdict-noop
@@ -44,7 +51,7 @@
 set -uo pipefail
 
 _light_mark_usage() {
-  printf 'usage: audit-light-mark.sh --root <abs-checkout-root> --member <name> --verdict - [--reviewer-tokens <int>] [--reviewer-duration-ms <int>]\n' >&2
+  printf 'usage: audit-light-mark.sh --root <abs-checkout-root> --member <name> --verdict <- | path> [--reviewer-tokens <int>] [--reviewer-duration-ms <int>]\n' >&2
 }
 
 _light_mark_degraded() {
@@ -104,7 +111,7 @@ light_mark_main() {
       *) printf 'audit-light-mark: unknown argument: %s\n' "$argument_name" >&2; _light_mark_usage; exit 2 ;;
     esac
   done
-  [ -n "$root" ] && [ -n "$member" ] && [ "$verdict_flag" = "-" ] || { _light_mark_usage; exit 2; }
+  [ -n "$root" ] && [ -n "$member" ] && [ -n "$verdict_flag" ] || { _light_mark_usage; exit 2; }
   case "$root" in /*) ;; *) printf 'audit-light-mark: --root must be absolute\n' >&2; exit 2 ;; esac
   # The member names the verdict, route record and sidecar paths.
   case "$member" in */* | *..* | -*) printf 'audit-light-mark: --member is not a plain name\n' >&2; exit 2 ;; esac
@@ -139,7 +146,13 @@ light_mark_main() {
   local temporary_file
   mkdir -p "$light_directory" 2>/dev/null || _light_mark_degraded
   temporary_file="$(mktemp "$light_directory/.verdict.XXXXXX" 2>/dev/null)" || _light_mark_degraded
-  if ! cat >"$temporary_file" 2>/dev/null || ! mv -f "$temporary_file" "$verdict_path" 2>/dev/null; then
+  if [ "$verdict_flag" = "-" ]; then
+    cat >"$temporary_file" 2>/dev/null || { rm -f "$temporary_file"; _light_mark_degraded; }
+  elif ! cat -- "$verdict_flag" >"$temporary_file" 2>/dev/null; then
+    rm -f "$temporary_file"
+    _light_mark_full verdict-noop
+  fi
+  if ! mv -f "$temporary_file" "$verdict_path" 2>/dev/null; then
     rm -f "$temporary_file"
     _light_mark_degraded
   fi

@@ -95,6 +95,18 @@ light_section() {
   assert_pinned "$UNIT" 'every member dispatches Full.'
 }
 
+@test "unit hands the reply over as a scratchpad file, not as stdin through a heredoc" {
+  assert_pinned "$UNIT" 'with the Write tool to a file in your session scratchpad directory'
+  assert_pinned "$UNIT" '--verdict <that file'
+  assert_pinned "$UNIT" '`--verdict -` and `< /dev/null`'
+  assert_pinned "$UNIT" 'A heredoc or pipe carrying the reply is refused under worktree confinement'
+  assert_pinned "$PAGE" 'names that file to `.gaia/scripts/audit-light-mark.sh`'
+  # The old stdin-only spelling is gone from both.
+  grep -qF -- 'on stdin through a quoted heredoc' "$UNIT" && return 1
+  grep -qF -- 'pipes the reply' "$PAGE" && return 1
+  true
+}
+
 @test "unit has no instruction to write a marker other than through the light-marker script" {
   # Any line telling the unit to write or create a marker must name the
   # light-marker script or be a prohibition.

@@ -132,6 +132,66 @@ light_sidecar_files() {
   true
 }
 
+@test "a reply named by file path clears exactly like the same reply on stdin" {
+  prepare_light
+  clear_reply_to_file
+  lsb_mark_file "$FRONTEND" "$REPLY_FILE"
+  expect_line "light-cleared"
+  [ "$(jq -r '[.provenance, .review, .digest, .tree] | join(" ")' "$(marker_path)")" = "earned light $(lsb_member_digest "$FRONTEND") $LSB_TREE" ]
+  [ "$(light_sidecar_files | wc -l | tr -d ' ')" = "1" ]
+  cmp -s "$REPLY_FILE" "$(verdict_path)"
+}
+
+@test "a reply file that is not clear is refused by the same checks as stdin" {
+  prepare_light
+  clear_reply_to_file
+  reply_edit '.files[0].verdict = "escalate"'
+  lsb_mark_file "$FRONTEND" "$REPLY_FILE"
+  expect_full escalate
+  assert_no_marker
+}
+
+@test "a missing reply file prints full verdict-noop and writes no marker" {
+  prepare_light
+  lsb_mark_file "$FRONTEND" "$BATS_TEST_TMPDIR/no-such-reply.json"
+  expect_full verdict-noop
+  assert_no_marker
+  [ -z "$(find "$(light_directory)" -name '.verdict.*')" ]
+}
+
+@test "a missing reply file never falls back to reading the reply from stdin" {
+  prepare_light
+  clear_reply_to_file
+  run bash -c 'bash "$1" --root "$2" --member "$3" --verdict "$4" <"$5"' _ \
+    "$LSB_ROOT/.gaia/scripts/audit-light-mark.sh" "$LSB_ROOT" "$FRONTEND" "$BATS_TEST_TMPDIR/no-such-reply.json" "$REPLY_FILE"
+  expect_full verdict-noop
+  assert_no_marker
+  # Control: the same reply on stdin through the stdin form clears.
+  lsb_mark "$FRONTEND" "$REPLY_FILE"
+  expect_line "light-cleared"
+}
+
+@test "an unreadable reply file prints full verdict-noop and writes no marker" {
+  prepare_light
+  clear_reply_to_file
+  # A directory cannot be read as a reply on any platform or user, root included.
+  mkdir "$BATS_TEST_TMPDIR/reply-directory"
+  lsb_mark_file "$FRONTEND" "$BATS_TEST_TMPDIR/reply-directory"
+  expect_full verdict-noop
+  assert_no_marker
+  # A mode-000 file, where the user is not root and the mode is enforced.
+  cp "$REPLY_FILE" "$BATS_TEST_TMPDIR/locked-reply.json"
+  chmod 000 "$BATS_TEST_TMPDIR/locked-reply.json"
+  if [ ! -r "$BATS_TEST_TMPDIR/locked-reply.json" ]; then
+    lsb_mark_file "$FRONTEND" "$BATS_TEST_TMPDIR/locked-reply.json"
+    expect_full verdict-noop
+    assert_no_marker
+  fi
+  # Control: the same reply, readable, clears.
+  lsb_mark_file "$FRONTEND" "$REPLY_FILE"
+  expect_line "light-cleared"
+}
+
 @test "the reply is persisted byte for byte to the keyed verdict path" {
   prepare_light
   clear_reply_to_file
@@ -520,7 +580,7 @@ light_sidecar_files() {
   local script="$LSB_ROOT/.gaia/scripts/audit-light-mark.sh"
   run bash "$script" --root "$LSB_ROOT" --member "$FRONTEND" </dev/null
   [ "$status" -eq 2 ]
-  run bash "$script" --root "$LSB_ROOT" --member "$FRONTEND" --verdict "$REPLY_FILE" </dev/null
+  run bash "$script" --root "$LSB_ROOT" --member "$FRONTEND" --verdict </dev/null
   [ "$status" -eq 2 ]
   run bash "$script" --root "$LSB_ROOT" --member "$FRONTEND" --verdict - --reviewer-tokens many </dev/null
   [ "$status" -eq 2 ]
