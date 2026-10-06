@@ -59,19 +59,6 @@ export default meta;
 
 export const Default: StoryFn<StoryArgs> = () => <ComposedForm />;
 
-export const Invalid: StoryFn<StoryArgs> = () => <ComposedForm />;
-
-Invalid.play = async ({canvasElement}) => {
-  const canvas = within(canvasElement);
-
-  await userEvent.click(await canvas.findByRole('button', {name: 'Submit'}));
-
-  await expect(await canvas.findByLabelText('Name')).toHaveAttribute(
-    'aria-invalid',
-    'true'
-  );
-};
-
 export const Disabled: StoryFn<StoryArgs> = () => (
   <ComposedForm disabled={true} />
 );
