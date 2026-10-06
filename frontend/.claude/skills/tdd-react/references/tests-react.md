@@ -142,13 +142,14 @@ Assert on `result.current`, the observable hook surface. Don't reach into closur
 
 ## Service Tests via MSW
 
-MSW handlers run inside the `node` Vitest project, you're exercising the real `api()` wrapper, real Zod parsing, and real URL resolution. No `vi.mock('fetch')`.
+MSW handlers run inside the `node` Vitest project against the MSW node server, so a service test exercises the real `api()` wrapper, real schema validation, and real URL resolution. No `vi.mock('fetch')`. Route and page tests are page stories with MSW handlers in `parameters.msw.handlers`.
 
 ```tsx
 // app/services/gaia/things/tests/requests.test.ts
 import {afterEach, describe, expect, test} from 'vitest';
 import database, {resetTestData} from 'test/mocks/database';
-import {getThings} from '../requests.server';
+import {attempt} from '~/services/api/helpers';
+import {getThings} from '../requests';
 
 describe('getThings', () => {
   afterEach(() => resetTestData());
@@ -162,9 +163,13 @@ describe('getThings', () => {
     });
   });
 
-  test('throws on malformed response', async () => {
+  test('reports a malformed response as a 500', async () => {
     await database.things.create({id: 'x', name: null as unknown as string});
-    await expect(getThings()).rejects.toThrow();
+    const result = await attempt(() => getThings());
+    expect(result).toEqual([
+      {status: 500, statusText: expect.any(String)},
+      undefined,
+    ]);
   });
 });
 ```
@@ -191,7 +196,7 @@ Mock at **system boundaries** only:
 
 **Mutating data in a test**: write to `database` directly; reset in `afterEach` via `resetTestData()` from `test/mocks/database`. The read-then-verify shape tests the interface end-to-end and survives schema renames as long as the public service contract holds.
 
-The MSW server runs in the `node` Vitest project and Playwright E2E uses the MSW browser layer; stories read seed data from the same `database` collections directly, since GAIA's Storybook does not wire an MSW addon.
+The MSW server runs in the `node` Vitest project and Playwright E2E uses the MSW browser layer; stories supply handlers through `parameters.msw.handlers` or read seed data from the same `database` collections directly.
 
 ## Testing Forms with Conform
 

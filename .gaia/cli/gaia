@@ -2829,10 +2829,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema2) {
   return mergeDefs(schema2._zod.def);
 }
-function getElementAtPath(obj, path64) {
-  if (!path64)
+function getElementAtPath(obj, path66) {
+  if (!path66)
     return obj;
-  return path64.reduce((acc, key) => acc?.[key], obj);
+  return path66.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -3241,11 +3241,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path64, issues) {
+function prefixIssues(path66, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path64);
+    iss.path.unshift(path66);
     return iss;
   });
 }
@@ -3392,16 +3392,16 @@ function flattenError(error51, mapper = (issue2) => issue2.message) {
 }
 function formatError(error51, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error52, path64 = []) => {
+  const processError = (error52, path66 = []) => {
     for (const issue2 of error52.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path64, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path66, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path64, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path66, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path64, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path66, ...issue2.path]);
       } else {
-        const fullpath = [...path64, ...issue2.path];
+        const fullpath = [...path66, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -3428,17 +3428,17 @@ function formatError(error51, mapper = (issue2) => issue2.message) {
 }
 function treeifyError(error51, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error52, path64 = []) => {
+  const processError = (error52, path66 = []) => {
     var _a3, _b;
     for (const issue2 of error52.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path64, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path66, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path64, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path66, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path64, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path66, ...issue2.path]);
       } else {
-        const fullpath = [...path64, ...issue2.path];
+        const fullpath = [...path66, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -3470,8 +3470,8 @@ function treeifyError(error51, mapper = (issue2) => issue2.message) {
 }
 function toDotPath(_path) {
   const segs = [];
-  const path64 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
-  for (const seg of path64) {
+  const path66 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path66) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -13121,10 +13121,10 @@ function _slugify() {
   return /* @__PURE__ */ _overwrite((input) => slugify(input));
 }
 // @__NO_SIDE_EFFECTS__
-function _array(Class2, element, params) {
+function _array(Class2, element2, params) {
   return new Class2({
     type: "array",
-    element,
+    element: element2,
     // get element() {
     //   return element;
     // },
@@ -15406,8 +15406,8 @@ var ZodArray = /* @__PURE__ */ $constructor("ZodArray", (inst, def) => {
     }
   });
 });
-function array(element, params) {
-  return _array(ZodArray, element, params);
+function array(element2, params) {
+  return _array(ZodArray, element2, params);
 }
 function keyof(schema2) {
   const shape = schema2._zod.def.shape;
@@ -16163,13 +16163,13 @@ function resolveRef(ref, ctx) {
   if (!ref.startsWith("#")) {
     throw new Error("External $ref is not supported, only local refs (#/...) are allowed");
   }
-  const path64 = ref.slice(1).split("/").filter(Boolean);
-  if (path64.length === 0) {
+  const path66 = ref.slice(1).split("/").filter(Boolean);
+  if (path66.length === 0) {
     return ctx.rootSchema;
   }
   const defsKey = ctx.version === "draft-2020-12" ? "$defs" : "definitions";
-  if (path64[0] === defsKey) {
-    const key = path64[1];
+  if (path66[0] === defsKey) {
+    const key = path66[1];
     if (!key || !ctx.defs[key]) {
       throw new Error(`Reference not found: ${ref}`);
     }
@@ -16444,8 +16444,8 @@ function convertBaseSchema(schema2, ctx) {
           zodSchema = zodSchema.check(z.maxLength(schema2.maxItems));
         }
       } else if (items !== void 0) {
-        const element = convertSchema(items, ctx);
-        let arraySchema = z.array(element);
+        const element2 = convertSchema(items, ctx);
+        let arraySchema = z.array(element2);
         if (typeof schema2.minItems === "number") {
           arraySchema = arraySchema.min(schema2.minItems);
         }
@@ -18090,8 +18090,8 @@ var parseGhPr = (value) => {
 var recordFromGhPr = (pr) => {
   const byAuditor = /* @__PURE__ */ new Map();
   for (const comment of pr.comments) {
-    const block = parseFindingsBlock(comment.body);
-    if (block !== null) byAuditor.set(block.auditor, block.findings);
+    const block2 = parseFindingsBlock(comment.body);
+    if (block2 !== null) byAuditor.set(block2.auditor, block2.findings);
   }
   if (byAuditor.size === 0) return null;
   return { findings: [...byAuditor.values()].flat(), pr_number: pr.number };
@@ -18731,6 +18731,18 @@ var writeFileIfAbsent = (absPath, contents, options = {}) => {
   }
   return { written: true };
 };
+var writeAndRecordWith = (args) => {
+  const { absPath, contents, dryRun, result } = args;
+  const { written } = writeFileIfAbsent(absPath, contents, { dryRun });
+  if (written) {
+    result.written.push(absPath);
+  } else {
+    result.skipped.push(absPath);
+  }
+};
+var writeAndRecord = (absPath, contents, result) => {
+  writeAndRecordWith({ absPath, contents, result });
+};
 
 // src/scaffold/layer.ts
 import { existsSync as existsSync6, readdirSync as readdirSync2, statSync } from "node:fs";
@@ -19149,16 +19161,8 @@ var baseTemplateVars = (derived) => ({
   Singular: derived.Singular,
   singular: derived.singular
 });
-var writeRendered = (absPath, contents, result) => {
-  const { written } = writeFileIfAbsent(absPath, contents);
-  if (written) {
-    result.written.push(absPath);
-  } else {
-    result.skipped.push(absPath);
-  }
-};
 var writeQueries = (serviceDir, baseVars, result) => {
-  writeRendered(
+  writeAndRecord(
     path14.join(serviceDir, "queries.ts"),
     renderServiceTemplate("service/queries.ts.tmpl", baseVars),
     result
@@ -19200,9 +19204,9 @@ var emitServiceFiles = (context, result) => {
     fields: renderClientFields(fields),
     inputSchemaExpression: hasId ? `${derived.singular}Schema.omit({id: true})` : `${derived.singular}Schema`
   });
-  writeRendered(path14.join(serviceDir, "parsers.ts"), parsersBody, result);
+  writeAndRecord(path14.join(serviceDir, "parsers.ts"), parsersBody, result);
   const typesBody = renderServiceTemplate("service/types.ts.tmpl", baseVars);
-  writeRendered(path14.join(serviceDir, "types.ts"), typesBody, result);
+  writeAndRecord(path14.join(serviceDir, "types.ts"), typesBody, result);
   const requestsBody = renderServiceTemplate("service/requests.ts.tmpl", {
     ...baseVars,
     hasDelete: endpoints.has("delete"),
@@ -19211,11 +19215,11 @@ var emitServiceFiles = (context, result) => {
     hasPut: endpoints.has("put"),
     importLines: composeRequestsImports(derived, endpoints)
   });
-  writeRendered(path14.join(serviceDir, "requests.ts"), requestsBody, result);
+  writeAndRecord(path14.join(serviceDir, "requests.ts"), requestsBody, result);
   const urlsBody = renderServiceTemplate("service/urls.ts.tmpl", baseVars);
-  writeRendered(path14.join(serviceDir, "urls.ts"), urlsBody, result);
+  writeAndRecord(path14.join(serviceDir, "urls.ts"), urlsBody, result);
   const indexBody = renderServiceTemplate("service/index.ts.tmpl", baseVars);
-  writeRendered(path14.join(serviceDir, "index.ts"), indexBody, result);
+  writeAndRecord(path14.join(serviceDir, "index.ts"), indexBody, result);
   if (endpoints.has("get") && hasTanstackQuery(repoRoot)) {
     writeQueries(serviceDir, baseVars, result);
   }
@@ -19229,30 +19233,30 @@ var emitMockFiles = (context, result) => {
     ...baseVars,
     serverFields: renderServerFields(fields)
   });
-  writeRendered(path14.join(mockDir, "data.ts"), dataBody, result);
+  writeAndRecord(path14.join(mockDir, "data.ts"), dataBody, result);
   if (endpoints.has("get")) {
-    writeRendered(
+    writeAndRecord(
       path14.join(mockDir, "get.ts"),
       renderServiceTemplate("service/mock.get.ts.tmpl", baseVars),
       result
     );
   }
   if (endpoints.has("post")) {
-    writeRendered(
+    writeAndRecord(
       path14.join(mockDir, "post.ts"),
       renderServiceTemplate("service/mock.post.ts.tmpl", baseVars),
       result
     );
   }
   if (endpoints.has("put")) {
-    writeRendered(
+    writeAndRecord(
       path14.join(mockDir, "put.ts"),
       renderServiceTemplate("service/mock.put.ts.tmpl", baseVars),
       result
     );
   }
   if (endpoints.has("delete")) {
-    writeRendered(
+    writeAndRecord(
       path14.join(mockDir, "delete.ts"),
       renderServiceTemplate("service/mock.delete.ts.tmpl", baseVars),
       result
@@ -19262,7 +19266,7 @@ var emitMockFiles = (context, result) => {
     ...baseVars,
     ...composeMockBarrel(endpoints)
   });
-  writeRendered(path14.join(mockDir, "index.ts"), barrelBody, result);
+  writeAndRecord(path14.join(mockDir, "index.ts"), barrelBody, result);
   const databasePath = path14.join(repoRoot, "test", "mocks", "database.ts");
   if (existsSync7(databasePath)) {
     const { written } = updateDatabaseBarrel(databasePath, derived);
@@ -19566,7 +19570,7 @@ var planOptimizeDeps = (packageDir, relative) => {
       message: `${relative}: expected one optimizeDeps.include array with one quoted entry per line; ${handEdit}`
     };
   }
-  const indent = /^\s*/u.exec(lines[0] ?? "")?.[0] ?? "";
+  const indent2 = /^\s*/u.exec(lines[0] ?? "")?.[0] ?? "";
   const names = lines.map((line) => /'([^']+)'/u.exec(line)?.[1] ?? "");
   const withComma = lines.map(
     (line) => line.trimEnd().endsWith(",") ? line : `${line.trimEnd()},`
@@ -19574,7 +19578,7 @@ var planOptimizeDeps = (packageDir, relative) => {
   withComma.splice(
     sortedInsertIndex(names, TANSTACK_QUERY_PACKAGE),
     0,
-    `${indent}'${TANSTACK_QUERY_PACKAGE}',`
+    `${indent2}'${TANSTACK_QUERY_PACKAGE}',`
   );
   return {
     content: `${source.slice(0, open + 1)}
@@ -19633,12 +19637,12 @@ var planCamelApi = (packageDir, layer) => {
   if (argument === "" || existing === null && inner.trim() === "") {
     nextArgument = "{useSnakeCase: false}";
   } else if (existing === null) {
-    const indent = /\n([ \t]*)\S/u.exec(inner)?.[1];
-    if (indent === void 0) {
+    const indent2 = /\n([ \t]*)\S/u.exec(inner)?.[1];
+    if (indent2 === void 0) {
       nextArgument = `{useSnakeCase: false, ${inner.trimStart()}}`;
     } else {
       nextArgument = `{
-${indent}useSnakeCase: false,${inner}}`;
+${indent2}useSnakeCase: false,${inner}}`;
     }
   } else {
     if (existing[1] === "false") return null;
@@ -23179,9 +23183,9 @@ var parseKey = (innerKey, grammar) => {
     };
   }
   const [, rawClass = "", rawPath = "", rawLine = ""] = fields;
-  const path64 = normalizeRepoRelativePath(rawPath);
-  if (!path64.ok) {
-    return path64;
+  const path66 = normalizeRepoRelativePath(rawPath);
+  if (!path66.ok) {
+    return path66;
   }
   const line = parseKeyLine(rawLine);
   if (!line.ok) {
@@ -23189,7 +23193,7 @@ var parseKey = (innerKey, grammar) => {
   }
   return {
     ok: true,
-    value: { class: rawClass, line: line.value, path: path64.value, version: "v1" }
+    value: { class: rawClass, line: line.value, path: path66.value, version: "v1" }
   };
 };
 var parseWrappedKeys = (text) => {
@@ -23199,10 +23203,10 @@ var parseWrappedKeys = (text) => {
     const rawPath = match[1];
     const digits = /^\d+/.exec(text.slice(match.index + match[0].length));
     if (rawPath !== void 0 && digits !== null) {
-      const path64 = normalizeRepoRelativePath(rawPath);
+      const path66 = normalizeRepoRelativePath(rawPath);
       const line = parseKeyLine(digits[0]);
-      if (path64.ok && line.ok) {
-        found.push({ line: line.value, path: path64.value });
+      if (path66.ok && line.ok) {
+        found.push({ line: line.value, path: path66.value });
       }
     }
   }
@@ -23255,13 +23259,13 @@ var decodeToken = (token) => {
   if (!Number.isSafeInteger(prNumber)) {
     return { ok: false, reason: "decoded token carries an invalid pr_number" };
   }
-  const path64 = normalizeRepoRelativePath(rawPath);
-  if (!path64.ok) return { ok: false, reason: path64.reason };
+  const path66 = normalizeRepoRelativePath(rawPath);
+  if (!path66.ok) return { ok: false, reason: path66.reason };
   const line = parseKeyLine(rawLine);
   if (!line.ok) return { ok: false, reason: line.reason };
   return {
     ok: true,
-    value: { line: line.value, path: path64.value, pr_number: prNumber }
+    value: { line: line.value, path: path66.value, pr_number: prNumber }
   };
 };
 
@@ -24204,8 +24208,8 @@ var resolveRoot5 = (cwd) => {
   }
 };
 var cursorForEmit = (cursor) => cursor === null ? null : { ...cursor, token: encodeToken(cursor) };
-var printEmit = (emit) => {
-  process.stdout.write(`${JSON.stringify(emit)}
+var printEmit = (emit2) => {
+  process.stdout.write(`${JSON.stringify(emit2)}
 `);
 };
 var buildFailureEmit = (params) => ({
@@ -25211,14 +25215,6 @@ var resolveTemplatesRoot = () => {
   const here = fileURLToPath3(import.meta.url);
   return path36.join(path36.dirname(here), "templates");
 };
-var writeOne = (absPath, contents, result) => {
-  const { written } = writeFileIfAbsent(absPath, contents);
-  if (written) {
-    result.written.push(absPath);
-  } else {
-    result.skipped.push(absPath);
-  }
-};
 var printHumanResult = (result, componentName) => {
   const lines = [`Scaffolded component ${componentName}.`];
   if (result.written.length > 0) {
@@ -25292,8 +25288,8 @@ var run29 = (argv, options = {}) => {
     templatesRoot
   };
   try {
-    writeOne(indexPath, renderComponentFile(renderOptions), result);
-    writeOne(storyPath, renderStoryFile(renderOptions), result);
+    writeAndRecord(indexPath, renderComponentFile(renderOptions), result);
+    writeAndRecord(storyPath, renderStoryFile(renderOptions), result);
   } catch (error51) {
     structuredError({
       code: "write_failed",
@@ -25498,72 +25494,541 @@ var run30 = (argv, options = {}) => {
 };
 
 // src/scaffold/route.ts
+import path40 from "node:path";
+import { fileURLToPath as fileURLToPath5 } from "node:url";
+
+// src/scaffold/route-data.ts
+var humanize = (identifier) => {
+  const words = identifier.replaceAll(/[A-Z]/gu, (letter) => ` ${letter}`).replaceAll("-", " ").toLowerCase().trim();
+  return `${words.charAt(0).toUpperCase()}${words.slice(1)}`;
+};
+var resolveDataRouteNames = (name, group, shape) => {
+  const pascal = toPascal(name);
+  const camel = toCamel(name);
+  if (shape === "list") {
+    return {
+      description: `Description of the ${name} page`,
+      fallbackName: `${pascal}HydrateFallback`,
+      i18nKey: camel,
+      localeModule: name,
+      pageName: `${pascal}Page`,
+      pagePath: name,
+      routeFile: `${group}.${name}`,
+      routeName: pascal,
+      storyTitle: pascal,
+      title: humanize(name)
+    };
+  }
+  return {
+    description: `Description of the ${name} detail page`,
+    fallbackName: `${pascal}DetailHydrateFallback`,
+    i18nKey: `${camel}Detail`,
+    localeModule: `${name}-detail`,
+    pageName: `${pascal}DetailPage`,
+    pagePath: `${name}/id`,
+    routeFile: `${group}.${name}_.$id`,
+    routeName: `${pascal}Detail`,
+    storyTitle: `${pascal}/Id`,
+    title: `${humanize(name)} detail`
+  };
+};
+var MAX_LINE_LENGTH = 80;
+var block = (...lines) => lines.map((line) => `${line}
+`).join("");
+var indent = (depth) => " ".repeat(depth);
+var destructure = (head, names, tail) => {
+  const oneLine = `${head}{${names.join(", ")}}${tail}`;
+  if (oneLine.length <= MAX_LINE_LENGTH) return oneLine;
+  const members = names.map((name) => `  ${name},`);
+  return [`${head}{`, ...members, `}${tail}`].join("\n");
+};
+var fitOnLine = (oneLine, wrapped) => oneLine.length <= MAX_LINE_LENGTH ? block(oneLine) : block(...wrapped);
+var metaElement = (depth, content) => {
+  const pad = indent(depth);
+  return fitOnLine(`${pad}<meta content=${content} name="description" />`, [
+    `${pad}<meta`,
+    `${pad}  content=${content}`,
+    `${pad}  name="description"`,
+    `${pad}/>`
+  ]);
+};
+var toLiteral = (value) => {
+  const escaped = value.replaceAll("'", String.raw`\'`);
+  return `'${escaped}'`;
+};
+var sortNames = (names) => names.toSorted((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+var serviceImportPath = (context) => `~/services/${context.binding.layer}/${context.binding.name}`;
+var isList = (context) => context.flags.shape === "list";
+var fieldLabel = (field2) => humanize(field2.name);
+var linkLabelField = (context) => context.binding.inputFields.find(
+  (field2) => field2.kind !== "boolean" && field2.kind !== "number" && !field2.nullish
+) ?? context.binding.idField;
+var dataExportNames = (data) => ({
+  action: data === "query" ? "clientAction" : "action",
+  loader: data === "server" ? "loader" : "clientLoader"
+});
+var routeArgsType = (exportName) => `Route.${exportName.charAt(0).toUpperCase()}${exportName.slice(1)}Args`;
+var dataSignatures = (context) => {
+  const { data } = context.flags;
+  const params = isList(context) ? ["request"] : ["params", "request"];
+  const { action: actionName, loader: loaderName } = dataExportNames(data);
+  const queryLoaderSignature = isList(context) ? "export const clientLoader = async () => {" : destructure(
+    "export const clientLoader = async (",
+    ["params"],
+    ": Route.ClientLoaderArgs) => {"
+  );
+  return {
+    actionSignature: destructure(
+      `export const ${actionName} = async (`,
+      params,
+      `: ${routeArgsType(actionName)}) => {`
+    ),
+    loaderSignature: data === "query" ? queryLoaderSignature : destructure(
+      `export const ${loaderName} = async (`,
+      params,
+      `: ${routeArgsType(loaderName)}): Promise<LoaderData> => ({`
+    )
+  };
+};
+var routeImportLines = (context) => {
+  const { derived } = context.binding;
+  const { getter, mutation, query } = context.calls;
+  const { action, data } = context.flags;
+  const service = serviceImportPath(context);
+  const pages = `~/pages/${context.names.pagePath}`;
+  const inputSchemaImport = `import {${derived.singular}InputSchema} from '${service}';`;
+  const requestNames = action ? [getter, mutation] : [getter];
+  const queryNames = [query, ...action ? [`${derived.singular}Keys`] : []];
+  const dataImports = data === "query" ? [
+    "import {getQueryClient} from '~/query-client';",
+    ...action ? [inputSchemaImport] : [],
+    `import {${sortNames(queryNames).join(", ")}} from '${service}/queries';`,
+    ...action ? [`import {${mutation}} from '${service}/requests';`] : []
+  ] : [
+    `import type {LoaderData} from '${pages}/types';`,
+    ...action ? [inputSchemaImport] : [],
+    `import {${sortNames(requestNames).join(", ")}} from '${service}/requests';`
+  ];
+  const needsRouteType = data !== "query" || action || !isList(context);
+  return [
+    ...action ? [
+      "import {redirect} from 'react-router';",
+      "import {parseWithZod} from '@conform-to/zod/v4';"
+    ] : [],
+    ...data === "server" ? [] : [
+      `import ${context.names.fallbackName} from '${pages}/hydrate-fallback';`
+    ],
+    `import ${context.names.pageName} from '${pages}/page';`,
+    ...dataImports,
+    ...needsRouteType ? [`import type {Route} from './+types/${context.names.routeFile}';`] : []
+  ].join("\n");
+};
+var buildDataRouteVars = (context) => {
+  const { derived } = context.binding;
+  const { dataKey, getter, mutation, query } = context.calls;
+  const list = isList(context);
+  return {
+    ...dataSignatures(context),
+    dataKey,
+    fallbackName: context.names.fallbackName,
+    getterCall: `${getter}(${list ? "" : "params.id, "}request.signal)`,
+    hasAction: context.flags.action,
+    importLines: routeImportLines(context),
+    inputSchema: `${derived.singular}InputSchema`,
+    keysName: `${derived.singular}Keys`,
+    mutationCall: `${mutation}(${list ? "" : "params.id, "}submission.value)`,
+    pageName: context.names.pageName,
+    queryCall: `${query}(${list ? "" : "params.id"})`,
+    routeName: context.names.routeName,
+    routeSlug: context.slug
+  };
+};
+var buildFallbackVars = (context) => ({
+  hasI18n: context.flags.i18n,
+  i18nKey: context.names.i18nKey,
+  metaLine: metaElement(4, `"${context.names.description}"`),
+  noI18n: !context.flags.i18n,
+  storyTitle: context.names.storyTitle,
+  title: context.names.title
+});
+var buildLoaderDataVars = (context) => {
+  const { derived } = context.binding;
+  return {
+    dataKey: context.calls.dataKey,
+    serviceImport: serviceImportPath(context),
+    typeName: isList(context) ? derived.Plural : derived.Singular
+  };
+};
+var objectLiteralLines = (entries, depth) => block(
+  ...entries.toSorted(([a], [b]) => a.localeCompare(b)).map(([key, value]) => `${indent(depth)}${key}: ${value},`)
+);
+var buildDataLocaleVars = (context) => ({
+  description: context.names.description,
+  fieldLabelLines: objectLiteralLines(
+    context.binding.inputFields.map((field2) => [
+      field2.name,
+      toLiteral(fieldLabel(field2))
+    ]),
+    4
+  ),
+  title: context.names.title
+});
+
+// src/scaffold/route-data-page.ts
+var closingTag = (open) => `</${/^<([\w.]+)/u.exec(open)?.[1] ?? ""}>`;
+var element = (depth, open, child) => {
+  const pad = indent(depth);
+  const close = closingTag(open);
+  return fitOnLine(`${pad}${open}${child}${close}`, [
+    `${pad}${open}`,
+    `${pad}  ${child}`,
+    `${pad}${close}`
+  ]);
+};
+var textHelpers = (i18n) => ({
+  attribute: (key, literal2) => i18n ? `{t('${key}')}` : `"${literal2}"`,
+  child: (key, literal2) => i18n ? `{t('${key}')}` : literal2
+});
+var formFieldMarkup = (field2, text) => {
+  const meta3 = `fields.${field2.name}`;
+  const label = element(
+    12,
+    `<FieldLabel htmlFor={${meta3}.id}>`,
+    text.child(meta3, fieldLabel(field2))
+  );
+  const errors = block(
+    "            <FieldError",
+    `              errors={${meta3}.errors?.map((message) => ({message}))}`,
+    `              id={${meta3}.errorId}`,
+    "            />"
+  );
+  const close = block("          </Field>");
+  if (field2.kind === "boolean") {
+    const checkbox = block(
+      "          <Field",
+      `            data-invalid={${meta3}.errors ? true : undefined}`,
+      '            orientation="horizontal"',
+      "          >",
+      "            <Checkbox",
+      `              {...omitType(getInputProps(${meta3}, {type: 'checkbox'}))}`,
+      "            />"
+    );
+    return `${checkbox}${label}${errors}${close}`;
+  }
+  const inputType = field2.kind === "number" ? "number" : "text";
+  const open = block(
+    `          <Field data-invalid={${meta3}.errors ? true : undefined}>`
+  );
+  const input = block(
+    `            <Input {...getInputProps(${meta3}, {type: '${inputType}'})} />`
+  );
+  return `${open}${label}${input}${errors}${close}`;
+};
+var formMarkup = (context, text) => {
+  if (!context.flags.action) return "";
+  const open = block(
+    "        <Form",
+    '          className="flex max-w-md flex-col gap-4"',
+    '          method="post"',
+    "          {...getFormProps(form)}",
+    "        >"
+  );
+  const fields = context.binding.inputFields.map((field2) => formFieldMarkup(field2, text)).join("");
+  const close = block(
+    `          <Button type="submit">${text.child("save", "Save")}</Button>`,
+    "        </Form>"
+  );
+  return `${open}${fields}${close}`;
+};
+var itemVariable = (context) => {
+  const { plural, singular } = context.binding.derived;
+  return singular === plural ? "entry" : singular;
+};
+var listMarkup = (context) => {
+  const item = itemVariable(context);
+  const { plural } = context.binding.derived;
+  const label = linkLabelField(context).name;
+  const href = `{\`/${context.slug}/\${${item}.id}\`}`;
+  return block(
+    '        <ul className="flex flex-col gap-2">',
+    `          {${plural}.map((${item}) => (`,
+    `            <li key={${item}.id}>`,
+    `              <Link className="underline" to=${href}>`,
+    `                {${item}.${label}}`,
+    "              </Link>",
+    "            </li>",
+    "          ))}",
+    "        </ul>"
+  );
+};
+var detailValue = (item, field2) => {
+  const value = `${item}.${field2.name}`;
+  if (field2.kind !== "boolean") return `{${value}}`;
+  return field2.nullish ? `{String(${value} ?? false)}` : `{String(${value})}`;
+};
+var detailMarkup = (context, text) => {
+  const item = context.binding.derived.singular;
+  const rows = context.binding.inputFields.map(
+    (field2) => element(
+      10,
+      '<dt className="font-semibold">',
+      text.child(`fields.${field2.name}`, fieldLabel(field2))
+    ) + element(10, "<dd>", detailValue(item, field2))
+  );
+  return `${block('        <dl className="flex flex-col gap-1">')}${rows.join("")}${block("        </dl>")}`;
+};
+var formImportLines = (context, hasBoolean) => {
+  const { derived, inputFields } = context.binding;
+  const hasInput = inputFields.some((field2) => field2.kind !== "boolean");
+  return [
+    "import {Button} from '~/components/ui/button';",
+    ...hasBoolean ? ["import {Checkbox} from '~/components/ui/checkbox';"] : [],
+    "import {Field, FieldError, FieldLabel} from '~/components/ui/field';",
+    ...hasInput ? ["import {Input} from '~/components/ui/input';"] : [],
+    `import {${derived.singular}InputSchema} from '${serviceImportPath(context)}';`
+  ];
+};
+var pageImportLines = (context, hasBoolean) => {
+  const { action, data, i18n } = context.flags;
+  const list = isList(context);
+  const isQuery = data === "query";
+  const routerNames = [
+    ...list ? ["Link"] : [],
+    ...isQuery ? [] : ["useLoaderData"],
+    ...isQuery && !list ? ["useParams"] : [],
+    ...action ? ["Form", "useActionData"] : []
+  ];
+  return [
+    ...i18n ? ["import {useTranslation} from 'react-i18next';"] : [],
+    `import {${sortNames(routerNames).join(", ")}} from 'react-router';`,
+    ...action ? [
+      "import type {SubmissionResult} from '@conform-to/react';",
+      "import {getFormProps, getInputProps, useForm} from '@conform-to/react';",
+      "import {parseWithZod} from '@conform-to/zod/v4';"
+    ] : [],
+    ...isQuery ? ["import {useSuspenseQuery} from '@tanstack/react-query';"] : [],
+    ...action ? formImportLines(context, hasBoolean) : [],
+    isQuery ? `import {${context.calls.query}} from '${serviceImportPath(context)}/queries';` : "import type {LoaderData} from './types';"
+  ].join("\n");
+};
+var dataReadLines = (context) => {
+  const { plural, singular } = context.binding.derived;
+  if (context.flags.data !== "query") {
+    return block(
+      `  const {${context.calls.dataKey}} = useLoaderData<LoaderData>();`
+    );
+  }
+  if (isList(context)) {
+    return block(
+      `  const {data: ${plural}} = useSuspenseQuery(${plural}Query());`
+    );
+  }
+  return block(
+    "  const {id = ''} = useParams();",
+    `  const {data: ${singular}} = useSuspenseQuery(${singular}Query(id));`
+  );
+};
+var formHookLines = (context) => {
+  if (!context.flags.action) return "";
+  const { singular } = context.binding.derived;
+  return block(
+    "  const lastResult = useActionData<SubmissionResult>();",
+    "  const [form, fields] = useForm({",
+    ...isList(context) ? [] : [`    defaultValue: ${singular},`],
+    "    lastResult,",
+    "    onValidate: ({formData}) =>",
+    `      parseWithZod(formData, {schema: ${singular}InputSchema}),`,
+    "    shouldValidate: 'onBlur',",
+    "  });"
+  );
+};
+var CHECKBOX_HELPER = block(
+  "// Conform's `type` is an input attribute the Base UI checkbox root does not take.",
+  "const omitType = <Props extends {type?: unknown}>({",
+  "  type: _type,",
+  "  ...props",
+  "}: Props) => props;",
+  ""
+);
+var buildDataPageVars = (context) => {
+  const { action, i18n } = context.flags;
+  const text = textHelpers(i18n);
+  const i18nLine = i18n ? block(
+    `  const {t} = useTranslation('pages', {keyPrefix: '${context.names.i18nKey}'});`
+  ) : "";
+  const hasBoolean = context.binding.inputFields.some(
+    (field2) => field2.kind === "boolean"
+  );
+  return {
+    checkboxHelper: action && hasBoolean ? CHECKBOX_HELPER : "",
+    dataMarkup: isList(context) ? listMarkup(context) : detailMarkup(context, text),
+    formMarkup: formMarkup(context, text),
+    hookLines: `${i18nLine}${dataReadLines(context)}${formHookLines(context)}`,
+    importLines: pageImportLines(context, hasBoolean),
+    metaLine: metaElement(
+      6,
+      text.attribute("meta.description", context.names.description)
+    ),
+    pageName: context.names.pageName,
+    titleText: text.child("title", context.names.title)
+  };
+};
+
+// src/scaffold/route-data-story.ts
+var textSample = (text) => ({ literal: toLiteral(text), text });
+var plainSample = (value) => ({
+  literal: String(value),
+  text: String(value)
+});
+var SAMPLE_BUILDERS = {
+  boolean: (_field, isRecord5) => plainSample(!isRecord5),
+  datetime: (_field, isRecord5) => textSample(isRecord5 ? "2026-01-01T00:00:00Z" : "2026-02-01T00:00:00Z"),
+  enum: (field2, isRecord5) => textSample(
+    (isRecord5 ? field2.enumValues.at(0) : field2.enumValues.at(-1)) ?? ""
+  ),
+  number: (_field, isRecord5) => plainSample(isRecord5 ? 42 : 7),
+  string: (field2, isRecord5) => textSample(`${humanize(field2.name)} ${isRecord5 ? 1 : 2}`)
+};
+var sample = (field2, phase) => SAMPLE_BUILDERS[field2.kind](field2, phase === "record");
+var idSample = (field2) => field2.kind === "number" ? plainSample(1) : textSample("1");
+var wireKey = (context, field2) => context.binding.snakeCaseWire ? camelToSnake(field2.name) : field2.name;
+var routeExportNames = (context) => {
+  const { action, data } = context.flags;
+  const { action: actionName, loader: loaderName } = dataExportNames(data);
+  return sortNames([
+    loaderName,
+    ...data === "server" ? [] : ["HydrateFallback"],
+    ...action ? [actionName] : []
+  ]);
+};
+var recordLines = (context) => {
+  const { idField, inputFields } = context.binding;
+  return objectLiteralLines(
+    [
+      [wireKey(context, idField), idSample(idField).literal],
+      ...inputFields.map(
+        (field2) => [wireKey(context, field2), sample(field2, "record").literal]
+      )
+    ],
+    2
+  );
+};
+var handlerLines = (context) => {
+  const { derived } = context.binding;
+  const list = isList(context);
+  const urls = `${derived.NAME_UPPER}_URLS`;
+  const target = list ? `url(${urls}.${derived.plural})` : `url(${urls}.${derived.plural}Id)`;
+  const getter = block(
+    `        http.get(${target}, () =>`,
+    `          HttpResponse.json({data: ${list ? "[RECORD]" : "RECORD"}})`,
+    "        ),"
+  );
+  if (!context.flags.action) return getter;
+  const mutation = block(
+    `        http.${list ? "post" : "put"}(${target}, async ({request}) => {`,
+    "          submittedBody = await request.json();",
+    "",
+    "          return HttpResponse.json({data: RECORD});",
+    "        }),"
+  );
+  return `${getter}${mutation}`;
+};
+var renderAssertion = (context) => {
+  const { idField, inputFields } = context.binding;
+  if (isList(context)) {
+    const labelField = linkLabelField(context);
+    const label = labelField === idField ? idSample(idField) : sample(labelField, "record");
+    return block(
+      "  await expect(",
+      `    await canvas.findByRole('link', {name: ${toLiteral(label.text)}})`,
+      `  ).toHaveAttribute('href', '/${context.slug}/${idSample(idField).text}');`
+    );
+  }
+  const [first] = inputFields;
+  const shown = first === void 0 ? "" : sample(first, "record").text;
+  return fitOnLine(
+    `  await expect(await canvas.findByText(${toLiteral(shown)})).toBeInTheDocument();`,
+    [
+      "  await expect(",
+      `    await canvas.findByText(${toLiteral(shown)})`,
+      "  ).toBeInTheDocument();"
+    ]
+  );
+};
+var fillStep = (field2) => {
+  const label = toLiteral(fieldLabel(field2));
+  if (field2.kind === "boolean") {
+    return block(
+      `  await userEvent.click(canvas.getByRole('checkbox', {name: ${label}}));`
+    );
+  }
+  const input = `canvas.getByLabelText(${label})`;
+  const value = toLiteral(sample(field2, "submitted").text);
+  const typeLine = `  await userEvent.type(${input}, ${value});`;
+  const clearLine = `  await userEvent.clear(${input});`;
+  return `${block(clearLine)}${fitOnLine(typeLine, [
+    "  await userEvent.type(",
+    `    ${input},`,
+    `    ${value}`,
+    "  );"
+  ])}`;
+};
+var expectedBody = (context) => {
+  const entries = objectLiteralLines(
+    context.binding.inputFields.map(
+      (field2) => [wireKey(context, field2), sample(field2, "submitted").literal]
+    ),
+    4
+  );
+  return `{
+${entries}  }`;
+};
+var storyImportLines = (context) => {
+  const { derived } = context.binding;
+  const testNames = context.flags.action ? ["expect", "userEvent", "within"] : ["expect", "within"];
+  return [
+    "import type {Meta, StoryFn} from '@storybook/react-vite';",
+    "import {http, HttpResponse} from 'msw';",
+    `import {${testNames.join(", ")}} from 'storybook/test';`,
+    "import {url} from 'test/mocks/url';",
+    "import stubs from 'test/stubs';",
+    "import Layout from '~/components/layout';",
+    destructure(
+      "import ",
+      routeExportNames(context),
+      ` from '~/routes/${context.names.routeFile}';`
+    ),
+    `import {${derived.NAME_UPPER}_URLS} from '${serviceImportPath(context)}';`,
+    `import ${context.names.pageName} from '../page';`
+  ].join("\n");
+};
+var buildDataStoryVars = (context) => {
+  const list = isList(context);
+  const { derived, idField, inputFields } = context.binding;
+  return {
+    expectedBody: expectedBody(context),
+    fillSteps: inputFields.map((field2) => fillStep(field2)).join(""),
+    handlerLines: handlerLines(context),
+    hasAction: context.flags.action,
+    importLines: storyImportLines(context),
+    initialEntry: list ? "" : `/${context.slug}/${idSample(idField).text}`,
+    isDetail: !list,
+    isList: list,
+    pageName: context.names.pageName,
+    recordLines: recordLines(context),
+    renderAssertion: renderAssertion(context),
+    routeExports: routeExportNames(context).join(", "),
+    routeSlug: context.slug,
+    saveLabel: "Save",
+    storyPath: list ? "/" : `/${context.slug}/:id`,
+    storyTitle: context.names.storyTitle,
+    submitStoryName: `${list ? "Creates" : "Updates"}${derived.Singular}`
+  };
+};
+
+// src/scaffold/route-locale.ts
 import { existsSync as existsSync24, readFileSync as readFileSync29 } from "node:fs";
 import path38 from "node:path";
-import { fileURLToPath as fileURLToPath5 } from "node:url";
-var VALID_GROUPS = /* @__PURE__ */ new Set(["_public", "_session"]);
-var RESERVED_PAGE_NAME_LIST = ["assets", "hooks", "state", "tests", "utils"];
-var RESERVED_PAGE_NAMES = new Set(RESERVED_PAGE_NAME_LIST);
-var KEBAB_PATTERN2 = /^[a-z\d]+(?:-[a-z\d]+)*$/u;
-var HELP_TEXT30 = `Usage: gaia scaffold route <name> --group <_public|_session> [flags]
-
-  --group     required, _public or _session
-  --loader    emit a loader stub
-  --action    emit an action stub
-  --i18n      emit a locale file and wire the locale barrel
-  --dry-run   print what would be written without touching the filesystem
-  --json      print ScaffoldResult as JSON
-`;
-var invalidGroupMessage = (rawGroup) => rawGroup.endsWith("+") ? '--group must be one of: _public, _session (drop the trailing "+"; the route groups are flat file prefixes)' : `--group must be one of: _public, _session (got "${rawGroup}")`;
-var userError2 = (message, subcommand = "scaffold route") => {
-  structuredError({ code: "invalid_input", message, subcommand });
-  return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-};
-var parseFlags10 = (rest) => {
-  const flags = {
-    action: false,
-    dryRun: false,
-    group: null,
-    i18n: false,
-    json: false,
-    loader: false
-  };
-  for (let index = 0; index < rest.length; index += 1) {
-    const flag = rest[index];
-    if (flag === "--group") {
-      const value = rest.at(index + 1);
-      if (value === void 0) return null;
-      flags.group = value;
-      index += 1;
-    } else if (flag === "--loader") {
-      flags.loader = true;
-    } else if (flag === "--action") {
-      flags.action = true;
-    } else if (flag === "--i18n") {
-      flags.i18n = true;
-    } else if (flag === "--dry-run") {
-      flags.dryRun = true;
-    } else if (flag === "--json") {
-      flags.json = true;
-    } else {
-      return null;
-    }
-  }
-  return flags;
-};
-var toPascalCase = (kebab) => kebab.split("-").map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`).join("");
-var toCamelCase = (kebab) => {
-  const parts = kebab.split("-");
-  const [first, ...rest] = parts;
-  return [
-    first,
-    ...rest.map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
-  ].join("");
-};
-var templateDir = () => {
-  const here = fileURLToPath5(import.meta.url);
-  return path38.join(path38.dirname(here), "templates", "route");
-};
 var CLOSE_BRACE_PATTERN = /^\s*\}[\s;]*$/u;
 var findImportInsertIndex = (lines, importName) => {
   const importLines = [];
@@ -25599,9 +26064,9 @@ var collectExportEntries = (lines, bounds) => {
     if (line !== void 0) {
       const match = EXPORT_ENTRY_PATTERN.exec(line);
       if (match !== null) {
-        const [, indent, key] = match;
-        if (indent !== void 0 && key !== void 0) {
-          entries.push({ indent, key, lineIdx: idx });
+        const [, indent2, key] = match;
+        if (indent2 !== void 0 && key !== void 0) {
+          entries.push({ indent: indent2, key, lineIdx: idx });
         }
       }
     }
@@ -25610,8 +26075,8 @@ var collectExportEntries = (lines, bounds) => {
 };
 var insertExportEntry = (lines, args) => {
   const { bounds, entries, importName } = args;
-  const indent = entries[0]?.indent ?? "  ";
-  const newEntryLine = `${indent}${importName},`;
+  const indent2 = entries[0]?.indent ?? "  ";
+  const newEntryLine = `${indent2}${importName},`;
   if (entries.length === 0) {
     lines.splice(bounds.openIndex + 1, 0, newEntryLine);
     return;
@@ -25662,25 +26127,261 @@ var insertIntoLocaleBarrel = (args) => {
   if (!dryRun) atomicWriteFileSync(barrelPath, next);
   return "inserted";
 };
-var templatePaths = () => {
-  const dir = templateDir();
-  return {
-    locale: path38.join(dir, "locale.ts.tmpl"),
-    pageIndex: path38.join(dir, "page.index.tsx.tmpl"),
-    pageStories: path38.join(dir, "page.stories.tsx.tmpl"),
-    route: path38.join(dir, "route.tsx.tmpl")
+var writeLocaleFiles = (args) => {
+  const { contents, dryRun, importName, moduleName, result, root } = args;
+  const pagesDir = path38.join(root, "app", "languages", "en", "pages");
+  writeAndRecordWith({
+    absPath: path38.join(pagesDir, `${moduleName}.ts`),
+    contents,
+    dryRun,
+    result
+  });
+  const localeBarrel = path38.join(pagesDir, "index.ts");
+  const status = insertIntoLocaleBarrel({
+    barrelPath: localeBarrel,
+    dryRun,
+    importName,
+    moduleName
+  });
+  if (status === "inserted") {
+    result.edited.push(localeBarrel);
+    return null;
+  }
+  if (status === "present") {
+    result.skipped.push(localeBarrel);
+    return null;
+  }
+  return `locale barrel not found at ${localeBarrel}; the locale file was written but its import was not wired. Run from the repo root, or add "import ${importName} from './${moduleName}';" to the barrel by hand.`;
+};
+
+// src/scaffold/route-service.ts
+import { existsSync as existsSync25, readFileSync as readFileSync30 } from "node:fs";
+import path39 from "node:path";
+var deriveRouteCalls = (shape, derived) => {
+  const { Plural, plural, Singular, singular } = derived;
+  return shape === "list" ? {
+    dataKey: plural,
+    getter: `getAll${Plural}`,
+    mutation: `create${Singular}`,
+    query: `${plural}Query`
+  } : {
+    dataKey: singular,
+    getter: `get${Singular}ById`,
+    mutation: `update${Singular}`,
+    query: `${singular}Query`
   };
 };
-var resolveNames = (kebabName, group) => {
-  const pascal = toPascalCase(kebabName);
+var FIELD_LINE_PATTERN = /^ {2}(\w+): (.+),$/u;
+var ENUM_VALUES_PATTERN = /^z\.(?:enum|literal)\(\[(.*)\]\)/u;
+var NULLISH_PATTERN = /\.(?:nullish|nullable|optional)\(\)/u;
+var KIND_PREFIXES = [
+  ["z.boolean(", "boolean"],
+  ["z.coerce.boolean(", "boolean"],
+  ["z.iso.datetime(", "datetime"],
+  ["z.number(", "number"],
+  ["z.coerce.number(", "number"],
+  ["z.literal([", "enum"],
+  ["z.enum([", "enum"],
+  ["z.string(", "string"],
+  ["z.email(", "string"],
+  ["z.url(", "string"],
+  ["z.uuid(", "string"]
+];
+var parseEnumValues = (expression) => {
+  const match = ENUM_VALUES_PATTERN.exec(expression);
+  if (match?.[1] === void 0) return [];
+  return match[1].split(",").map((value) => value.trim().replaceAll(/^['"]|['"]$/gu, "")).filter((value) => value.length > 0);
+};
+var parseField = (name, expression) => {
+  const kind = KIND_PREFIXES.find(
+    ([prefix]) => expression.startsWith(prefix)
+  )?.[1];
+  if (kind === void 0) return null;
+  const enumValues = kind === "enum" ? parseEnumValues(expression) : [];
+  if (kind === "enum" && enumValues.length === 0) return null;
+  return { enumValues, kind, name, nullish: NULLISH_PATTERN.test(expression) };
+};
+var relativeServicePath = (args, file2) => `app/services/${args.layer}/${args.service}/${file2}`;
+var parsersShapeMessage = (file2, singular) => `cannot read the schema fields in ${file2}. The route scaffold expects the shape \`gaia scaffold service\` writes: an \`export const ${singular}Schema = z.object({\` line, one \`  <name>: <zod expression>,\` line per field, then \`});\`, with an \`id\` field and an \`export const ${singular}InputSchema\`. Field expressions must start with one of: ${KIND_PREFIXES.map(
+  ([prefix]) => prefix
+).join(" ")}`;
+var readFieldBlock = (source, singular, file2) => {
+  const unreadable = { error: parsersShapeMessage(file2, singular) };
+  const lines = source.split("\n");
+  const open = lines.indexOf(`export const ${singular}Schema = z.object({`);
+  if (open === -1) return unreadable;
+  const fields = [];
+  for (const line of lines.slice(open + 1)) {
+    if (line === "});") return fields.length > 0 ? { fields } : unreadable;
+    const match = FIELD_LINE_PATTERN.exec(line);
+    const field2 = match?.[1] === void 0 || match[2] === void 0 ? null : parseField(match[1], match[2]);
+    if (field2 === null) {
+      return {
+        error: `${parsersShapeMessage(file2, singular)}. Unreadable line: "${line}"`
+      };
+    }
+    fields.push(field2);
+  }
+  return unreadable;
+};
+var exportsName = (source, name) => new RegExp(
+  String.raw`\bexport\s+(?:async\s+)?(?:const|function)\s+${name}\b`,
+  "u"
+).test(source);
+var readOptional = (filePath) => existsSync25(filePath) ? readFileSync30(filePath, "utf8") : null;
+var requiredRequests = (args, derived) => {
+  const { getter, mutation } = deriveRouteCalls(args.shape, derived);
+  return args.hasAction ? [getter, mutation] : [getter];
+};
+var checkServiceExports = ({
+  args,
+  derived,
+  serviceDir
+}) => {
+  const requestsFile = relativeServicePath(args, "requests.ts");
+  const requests = readOptional(path39.join(serviceDir, "requests.ts"));
+  const missing = requiredRequests(args, derived).filter(
+    (name) => requests === null || !exportsName(requests, name)
+  );
+  if (missing.length > 0) {
+    return `${requestsFile} does not export ${missing.join(", ")}; scaffold the service with the matching --endpoints first`;
+  }
+  if (args.data !== "query") return null;
+  const queries = readOptional(path39.join(serviceDir, "queries.ts"));
+  if (queries === null) {
+    return `--data query needs ${relativeServicePath(args, "queries.ts")}; run \`./.gaia/cli/gaia scaffold service ${args.service} --queries-only --layer ${args.layer}\` first`;
+  }
+  return null;
+};
+var readSnakeCaseWire = (packageDir, layer) => {
+  const api = readOptional(
+    path39.join(packageDir, "app", "services", layer, "api.ts")
+  );
+  return api === null || !/useSnakeCase:\s*false/u.test(api);
+};
+var readServiceBinding = (args) => {
+  const serviceDir = path39.join(
+    args.packageDir,
+    "app",
+    "services",
+    args.layer,
+    args.service
+  );
+  if (!existsSync25(serviceDir)) {
+    return {
+      error: `service folder not found: app/services/${args.layer}/${args.service}/ (scaffold it with \`./.gaia/cli/gaia scaffold service ${args.service}\` first)`
+    };
+  }
+  const derived = deriveNames(args.service);
+  const parsersFile = relativeServicePath(args, "parsers.ts");
+  const parsers = readOptional(path39.join(serviceDir, "parsers.ts"));
+  if (parsers === null) {
+    return { error: parsersShapeMessage(parsersFile, derived.singular) };
+  }
+  const block2 = readFieldBlock(parsers, derived.singular, parsersFile);
+  if ("error" in block2) return block2;
+  const idField = block2.fields.find((field2) => field2.name === "id");
+  const inputFields = block2.fields.filter((field2) => field2.name !== "id");
+  if (idField === void 0 || inputFields.length === 0 || !exportsName(parsers, `${derived.singular}InputSchema`)) {
+    return { error: parsersShapeMessage(parsersFile, derived.singular) };
+  }
+  const exportsError = checkServiceExports({ args, derived, serviceDir });
+  if (exportsError !== null) return { error: exportsError };
   return {
-    i18nKey: toCamelCase(kebabName),
-    // Page folder, component, and the route's import use the `<Pascal>Page`
-    // convention (e.g. `IndexPage`); the route component stays `<Pascal>Route`.
-    pageName: `${pascal}Page`,
-    routeFile: `${group}.${kebabName}`,
-    routeName: pascal
+    derived,
+    idField,
+    inputFields,
+    layer: args.layer,
+    name: args.service,
+    snakeCaseWire: readSnakeCaseWire(args.packageDir, args.layer)
   };
+};
+
+// src/scaffold/route.ts
+var VALID_GROUPS = /* @__PURE__ */ new Set(["_public", "_session"]);
+var DATA_VARIANTS = ["server", "client", "query"];
+var ROUTE_SHAPES = ["list", "detail"];
+var RESERVED_PAGE_NAME_LIST = ["assets", "hooks", "state", "tests", "utils"];
+var RESERVED_PAGE_NAMES = new Set(RESERVED_PAGE_NAME_LIST);
+var KEBAB_PATTERN2 = /^[a-z\d]+(?:-[a-z\d]+)*$/u;
+var HELP_TEXT30 = `Usage: gaia scaffold route <name> --group <_public|_session> [flags]
+
+  --group     required, _public or _session
+  --data      bind a service: server (loader), client (clientLoader +
+              HydrateFallback), or query (clientLoader + TanStack Query);
+              needs --service and --shape
+  --service   the service folder under app/services/<layer>/ to bind
+  --shape     list (app/routes/<group>.<name>.tsx) or detail
+              (app/routes/<group>.<name>_.$id.tsx)
+  --layer     the domain-layer folder under app/services/, when there are several
+  --loader    emit a title and meta loader (not with --data)
+  --action    emit an action stub; with --data, a create (list) or update
+              (detail) action validated by the service's input schema
+  --i18n      emit a locale file and wire the locale barrel
+  --dry-run   print what would be written without touching the filesystem
+  --json      print ScaffoldResult as JSON
+`;
+var invalidGroupMessage = (rawGroup) => rawGroup.endsWith("+") ? '--group must be one of: _public, _session (drop the trailing "+"; the route groups are flat file prefixes)' : `--group must be one of: _public, _session (got "${rawGroup}")`;
+var userError2 = (message, subcommand = "scaffold route") => {
+  structuredError({ code: "invalid_input", message, subcommand });
+  return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+};
+var VALUE_FLAGS = {
+  "--data": "data",
+  "--group": "group",
+  "--layer": "layer",
+  "--service": "service",
+  "--shape": "shape"
+};
+var isValueFlag = (flag) => Object.hasOwn(VALUE_FLAGS, flag);
+var parseFlags10 = (rest) => {
+  const flags = {
+    action: false,
+    data: null,
+    dryRun: false,
+    group: null,
+    i18n: false,
+    json: false,
+    layer: null,
+    loader: false,
+    service: null,
+    shape: null
+  };
+  for (let index = 0; index < rest.length; index += 1) {
+    const flag = rest[index] ?? "";
+    if (isValueFlag(flag)) {
+      const value = rest.at(index + 1);
+      if (value === void 0) return null;
+      flags[VALUE_FLAGS[flag]] = value;
+      index += 1;
+    } else if (flag === "--loader") {
+      flags.loader = true;
+    } else if (flag === "--action") {
+      flags.action = true;
+    } else if (flag === "--i18n") {
+      flags.i18n = true;
+    } else if (flag === "--dry-run") {
+      flags.dryRun = true;
+    } else if (flag === "--json") {
+      flags.json = true;
+    } else {
+      return null;
+    }
+  }
+  return flags;
+};
+var templateDir = () => {
+  const here = fileURLToPath5(import.meta.url);
+  return path40.join(path40.dirname(here), "templates", "route");
+};
+var routeTemplate = (fileName) => path40.join(templateDir(), fileName);
+var resolveNames = (kebabName, group) => {
+  const { i18nKey, pageName, routeFile, routeName } = resolveDataRouteNames(
+    kebabName,
+    group,
+    "list"
+  );
+  return { i18nKey, pageName, routeFile, routeName };
 };
 var buildRouteVars = (args) => {
   const { flags, name, names } = args;
@@ -25692,21 +26393,11 @@ var buildRouteVars = (args) => {
     hasLoaderNoI18n: flags.loader && !flags.i18n,
     i18nKey: names.i18nKey,
     needsRouteType: hasLoaderI18n || flags.action,
-    noLoader: !flags.loader,
     pageName: names.pageName,
     routeFile: names.routeFile,
     routeName: names.routeName,
     routeSlug: name
   };
-};
-var writeFile = (args) => {
-  const { absPath, contents, dryRun, result } = args;
-  const { written } = writeFileIfAbsent(absPath, contents, { dryRun });
-  if (written) {
-    result.written.push(absPath);
-  } else {
-    result.skipped.push(absPath);
-  }
 };
 var padLabel = (label) => label.padEnd(11);
 var printHumanReadable = (result, dryRun) => {
@@ -25730,99 +26421,228 @@ var printJson = (result) => {
   process.stdout.write(`${JSON.stringify(result)}
 `);
 };
-var writeLocaleFiles = (args) => {
-  const { dryRun, name, names, result, root, tmpls } = args;
-  const localeFile = path38.join(
-    root,
-    "app",
-    "languages",
-    "en",
-    "pages",
-    `${name}.ts`
-  );
-  const localeVars = {
-    i18nKey: names.i18nKey,
-    pageName: names.pageName,
-    routeName: name
-  };
-  writeFile({
-    absPath: localeFile,
-    contents: renderTemplate(tmpls.locale, localeVars),
-    dryRun,
-    result
-  });
-  const localeBarrel = path38.join(
-    root,
-    "app",
-    "languages",
-    "en",
-    "pages",
-    "index.ts"
-  );
-  const importName = names.i18nKey;
-  const status = insertIntoLocaleBarrel({
-    barrelPath: localeBarrel,
-    dryRun,
-    importName,
-    moduleName: name
-  });
-  if (status === "inserted") {
-    result.edited.push(localeBarrel);
-    return null;
+var writeTemplates = (writes, dryRun, result) => {
+  for (const { absPath, template, vars } of writes) {
+    writeAndRecordWith({
+      absPath,
+      contents: renderTemplate(routeTemplate(template), vars),
+      dryRun,
+      result
+    });
   }
-  if (status === "present") {
-    result.skipped.push(localeBarrel);
-    return null;
-  }
-  return userError2(
-    `locale barrel not found at ${localeBarrel}; the locale file was written but its import was not wired. Run from the repo root, or add "import ${importName} from './${name}';" to the barrel by hand.`
-  );
 };
 var emitRouteFiles = (args) => {
   const { flags, name, names, result, root } = args;
-  const { dryRun, i18n } = flags;
+  const { dryRun, i18n, loader: loader2 } = flags;
   const { i18nKey, pageName, routeFile, routeName } = names;
-  const tmpls = templatePaths();
-  const routeVars = buildRouteVars({ flags, name, names });
-  const routeAbs = path38.join(root, "app", "routes", `${routeFile}.tsx`);
-  writeFile({
-    absPath: routeAbs,
-    contents: renderTemplate(tmpls.route, routeVars),
-    dryRun,
-    result
-  });
-  const pageDir = path38.join(root, "app", "pages", name);
+  const pageDir = path40.join(root, "app", "pages", name);
   const pageVars = {
     hasI18n: i18n,
+    hasImports: i18n || loader2,
+    hasLoader: loader2,
+    headingText: i18n ? "{t('title')}" : pageName,
     i18nKey,
-    noI18n: !i18n,
+    noLoader: !loader2,
     pageName,
-    routeName
+    routeName,
+    routeSlug: name
   };
-  writeFile({
-    absPath: path38.join(pageDir, "page.tsx"),
-    contents: renderTemplate(tmpls.pageIndex, pageVars),
+  writeTemplates(
+    [
+      {
+        absPath: path40.join(root, "app", "routes", `${routeFile}.tsx`),
+        template: "route.tsx.tmpl",
+        vars: buildRouteVars({ flags, name, names })
+      },
+      {
+        absPath: path40.join(pageDir, "page.tsx"),
+        template: "page.index.tsx.tmpl",
+        vars: pageVars
+      },
+      {
+        absPath: path40.join(pageDir, "tests", "page.stories.tsx"),
+        template: "page.stories.tsx.tmpl",
+        vars: pageVars
+      },
+      ...loader2 ? [
+        {
+          absPath: path40.join(pageDir, "types.ts"),
+          template: "types.loader.ts.tmpl",
+          vars: {}
+        }
+      ] : []
+    ],
     dryRun,
     result
+  );
+  if (!i18n) return null;
+  return writeLocaleFiles({
+    contents: renderTemplate(routeTemplate("locale.ts.tmpl"), {
+      i18nKey,
+      pageName,
+      routeName: name
+    }),
+    dryRun,
+    importName: i18nKey,
+    moduleName: name,
+    result,
+    root
   });
-  writeFile({
-    absPath: path38.join(pageDir, "tests", "page.stories.tsx"),
-    contents: renderTemplate(tmpls.pageStories, pageVars),
+};
+var emitDataRouteFiles = (args) => {
+  const { context, dryRun, result, root } = args;
+  const { data, i18n } = context.flags;
+  const { names } = context;
+  const pageDir = path40.join(root, "app", "pages", ...names.pagePath.split("/"));
+  const fallbackDir = path40.join(pageDir, "hydrate-fallback");
+  writeTemplates(
+    [
+      {
+        absPath: path40.join(root, "app", "routes", `${names.routeFile}.tsx`),
+        template: `route.${data}.tsx.tmpl`,
+        vars: buildDataRouteVars(context)
+      },
+      {
+        absPath: path40.join(pageDir, "page.tsx"),
+        template: "page.data.tsx.tmpl",
+        vars: buildDataPageVars(context)
+      },
+      ...data === "query" ? [] : [
+        {
+          absPath: path40.join(pageDir, "types.ts"),
+          template: "types.data.ts.tmpl",
+          vars: buildLoaderDataVars(context)
+        }
+      ],
+      ...data === "server" ? [] : [
+        {
+          absPath: path40.join(fallbackDir, "index.tsx"),
+          template: "hydrate-fallback.tsx.tmpl",
+          vars: buildFallbackVars(context)
+        },
+        {
+          absPath: path40.join(fallbackDir, "tests", "index.stories.tsx"),
+          template: "hydrate-fallback.stories.tsx.tmpl",
+          vars: buildFallbackVars(context)
+        }
+      ],
+      {
+        absPath: path40.join(pageDir, "tests", "page.stories.tsx"),
+        template: "page.data.stories.tsx.tmpl",
+        vars: buildDataStoryVars(context)
+      }
+    ],
     dryRun,
     result
+  );
+  if (!i18n) return null;
+  return writeLocaleFiles({
+    contents: renderTemplate(
+      routeTemplate("locale.data.ts.tmpl"),
+      buildDataLocaleVars(context)
+    ),
+    dryRun,
+    importName: names.i18nKey,
+    moduleName: names.localeModule,
+    result,
+    root
   });
-  if (i18n) {
-    const failure = writeLocaleFiles({
-      dryRun,
-      name,
-      names,
-      result,
-      root,
-      tmpls
-    });
-    if (failure !== null) return failure;
+};
+var isOneOf = (allowed, value) => allowed.includes(value);
+var LOADER_WITH_DATA_MESSAGE = "--loader does not combine with --data: a clientLoader route has no server loader and renders its title and meta from HydrateFallback and the page, and a server data route's page renders them";
+var selectData = (flags) => {
+  const { data, layer, loader: loader2, service, shape } = flags;
+  if (data === null) {
+    return service === null && shape === null && layer === null ? { selection: null } : {
+      error: "--service, --shape, and --layer bind a data route; pass --data <server|client|query> with them"
+    };
   }
+  if (service === null || shape === null) {
+    return {
+      error: "--data needs --service <name> and --shape <list|detail>"
+    };
+  }
+  if (loader2) return { error: LOADER_WITH_DATA_MESSAGE };
+  if (!isOneOf(DATA_VARIANTS, data)) {
+    return {
+      error: `--data must be one of: ${DATA_VARIANTS.join(", ")} (got "${data}")`
+    };
+  }
+  if (!isOneOf(ROUTE_SHAPES, shape)) {
+    return {
+      error: `--shape must be one of: ${ROUTE_SHAPES.join(", ")} (got "${shape}")`
+    };
+  }
+  if (!KEBAB_PATTERN2.test(service)) {
+    return {
+      error: `--service must name a kebab-case service folder: got "${service}"`
+    };
+  }
+  return { selection: { data, layer: layer ?? void 0, service, shape } };
+};
+var prepareDataRoute = (args) => {
+  const { flags, group, name, packageDir, selection } = args;
+  if (selection.data === "query" && !hasTanstackQuery(packageDir)) {
+    return {
+      error: `--data query needs TanStack Query, which this project does not install; turn it on with \`${QUERY_ON_INIT_COMMAND}\` and run pnpm install`
+    };
+  }
+  const resolved = resolveLayer(packageDir, selection.layer);
+  if ("error" in resolved) return resolved;
+  const binding = readServiceBinding({
+    data: selection.data,
+    hasAction: flags.action,
+    layer: resolved.layer,
+    packageDir,
+    service: selection.service,
+    shape: selection.shape
+  });
+  if ("error" in binding) return binding;
+  const dataFlags = {
+    action: flags.action,
+    data: selection.data,
+    i18n: flags.i18n,
+    shape: selection.shape
+  };
+  return {
+    binding,
+    calls: deriveRouteCalls(selection.shape, binding.derived),
+    flags: dataFlags,
+    names: resolveDataRouteNames(name, group, selection.shape),
+    slug: name
+  };
+};
+var validateNameAndGroup = (name, group) => {
+  if (!KEBAB_PATTERN2.test(name)) {
+    return `route name must be kebab-case (lowercase letters, digits, hyphens): got "${name}"`;
+  }
+  if (RESERVED_PAGE_NAMES.has(name)) {
+    return `route name "${name}" is reserved: page folders use it for their own subfolders (reserved: ${RESERVED_PAGE_NAME_LIST.join(", ")})`;
+  }
+  if (group === null) return "--group is required (one of: _public, _session)";
+  if (!VALID_GROUPS.has(group)) return invalidGroupMessage(group);
   return null;
+};
+var emit = (args, result) => {
+  const { flags, group, name, root, selection } = args;
+  if (selection === null) {
+    return emitRouteFiles({
+      flags,
+      name,
+      names: resolveNames(name, group),
+      result,
+      root
+    });
+  }
+  const context = prepareDataRoute({
+    flags,
+    group,
+    name,
+    packageDir: root,
+    selection
+  });
+  if ("error" in context) return context.error;
+  return emitDataRouteFiles({ context, dryRun: flags.dryRun, result, root });
 };
 var run31 = (rest, options = {}) => {
   const first = rest.at(0);
@@ -25835,39 +26655,34 @@ var run31 = (rest, options = {}) => {
   if (flags === null) {
     return userError2("invalid or unknown flag (see --help)");
   }
-  if (!KEBAB_PATTERN2.test(name)) {
-    return userError2(
-      `route name must be kebab-case (lowercase letters, digits, hyphens): got "${name}"`
-    );
-  }
-  if (RESERVED_PAGE_NAMES.has(name)) {
-    return userError2(
-      `route name "${name}" is reserved: page folders use it for their own subfolders (reserved: ${RESERVED_PAGE_NAME_LIST.join(", ")})`
-    );
-  }
-  if (flags.group === null) {
-    return userError2("--group is required (one of: _public, _session)");
-  }
-  if (!VALID_GROUPS.has(flags.group)) {
-    return userError2(invalidGroupMessage(flags.group));
-  }
+  const invalid = validateNameAndGroup(name, flags.group);
+  if (invalid !== null) return userError2(invalid);
+  const group = flags.group ?? "";
+  const dataSelection = selectData(flags);
+  if ("error" in dataSelection) return userError2(dataSelection.error);
   const target = resolveScaffoldTarget(
     options.cwd ?? process.cwd(),
     "scaffold route"
   );
   if (target === void 0) return EXIT_CODES.CONFIG_INVALID;
-  const root = target.packageDir;
-  const { dryRun, group, json: json3 } = flags;
-  const names = resolveNames(name, group);
   const result = { edited: [], skipped: [], written: [] };
   try {
-    const failure = emitRouteFiles({ flags, name, names, result, root });
-    if (failure !== null) return failure;
+    const failure = emit(
+      {
+        flags,
+        group,
+        name,
+        root: target.packageDir,
+        selection: dataSelection.selection
+      },
+      result
+    );
+    if (failure !== null) return userError2(failure);
   } catch (error51) {
     return userError2(error51 instanceof Error ? error51.message : String(error51));
   }
-  if (json3) printJson(result);
-  else printHumanReadable(result, dryRun);
+  if (flags.json) printJson(result);
+  else printHumanReadable(result, flags.dryRun);
   return EXIT_CODES.OK;
 };
 
@@ -29026,8 +29841,8 @@ function requireDumper() {
           return state.quotingType === QUOTING_TYPE_DOUBLE ? '"' + string4 + '"' : "'" + string4 + "'";
         }
       }
-      const indent = state.indent * Math.max(1, level);
-      const lineWidth = state.lineWidth === -1 ? -1 : Math.max(Math.min(state.lineWidth, 40), state.lineWidth - indent);
+      const indent2 = state.indent * Math.max(1, level);
+      const lineWidth = state.lineWidth === -1 ? -1 : Math.max(Math.min(state.lineWidth, 40), state.lineWidth - indent2);
       const singleLineOnly = iskey || // No block styles in flow mode.
       state.flowLevel > -1 && level >= state.flowLevel;
       function testAmbiguity(string22) {
@@ -29048,9 +29863,9 @@ function requireDumper() {
         case STYLE_SINGLE:
           return "'" + string4.replace(/'/g, "''") + "'";
         case STYLE_LITERAL:
-          return "|" + blockHeader(string4, state.indent) + dropEndingNewline(indentString(string4, indent));
+          return "|" + blockHeader(string4, state.indent) + dropEndingNewline(indentString(string4, indent2));
         case STYLE_FOLDED:
-          return ">" + blockHeader(string4, state.indent) + dropEndingNewline(indentString(foldString(string4, lineWidth), indent));
+          return ">" + blockHeader(string4, state.indent) + dropEndingNewline(indentString(foldString(string4, lineWidth), indent2));
         case STYLE_DOUBLE:
           return '"' + escapeString(string4) + '"';
         default:
@@ -29276,16 +30091,16 @@ function requireDumper() {
     }
     return false;
   }
-  function writeNode(state, level, object2, block, compact, iskey, isblockseq) {
+  function writeNode(state, level, object2, block2, compact, iskey, isblockseq) {
     state.tag = null;
     state.dump = object2;
     if (!detectType(state, object2, false)) {
       detectType(state, object2, true);
     }
     const type2 = _toString.call(state.dump);
-    const inblock = block;
-    if (block) {
-      block = state.flowLevel < 0 || state.flowLevel > level;
+    const inblock = block2;
+    if (block2) {
+      block2 = state.flowLevel < 0 || state.flowLevel > level;
     }
     const objectOrArray = type2 === "[object Object]" || type2 === "[object Array]";
     let duplicateIndex;
@@ -29304,7 +30119,7 @@ function requireDumper() {
         state.usedDuplicates[duplicateIndex] = true;
       }
       if (type2 === "[object Object]") {
-        if (block && Object.keys(state.dump).length !== 0) {
+        if (block2 && Object.keys(state.dump).length !== 0) {
           writeBlockMapping(state, level, state.dump, compact);
           if (duplicate) {
             state.dump = "&ref_" + duplicateIndex + state.dump;
@@ -29316,7 +30131,7 @@ function requireDumper() {
           }
         }
       } else if (type2 === "[object Array]") {
-        if (block && state.dump.length !== 0) {
+        if (block2 && state.dump.length !== 0) {
           if (state.noArrayIndent && !isblockseq && level > 0) {
             writeBlockSequence(state, level - 1, state.dump, compact);
           } else {
@@ -29464,8 +30279,8 @@ var {
 } = yaml;
 
 // src/setup-ci/warn-existing-tools.ts
-import { existsSync as existsSync25, readFileSync as readFileSync30 } from "node:fs";
-import path39 from "node:path";
+import { existsSync as existsSync26, readFileSync as readFileSync31 } from "node:fs";
+import path41 from "node:path";
 var HELP_TEXT36 = `Usage: gaia setup-ci warn-existing-tools [--json]
 
   Detect Dependabot or Renovate config files in the repo. Read-only.
@@ -29483,7 +30298,7 @@ var RENOVATE_PATHS = [
 var classifyDependabotFile = (filePath) => {
   let parsed;
   try {
-    parsed = load(readFileSync30(filePath, "utf8"));
+    parsed = load(readFileSync31(filePath, "utf8"));
   } catch {
     return "unparseable";
   }
@@ -29536,14 +30351,14 @@ var run37 = (argv, options = {}) => {
   }
   const found = [];
   const dependabotStatuses = DEPENDABOT_PATHS.map(
-    (segments) => path39.join(repoRoot, ...segments)
-  ).filter((filePath) => existsSync25(filePath)).map((filePath) => classifyDependabotFile(filePath));
+    (segments) => path41.join(repoRoot, ...segments)
+  ).filter((filePath) => existsSync26(filePath)).map((filePath) => classifyDependabotFile(filePath));
   const dependabotUnparseable = dependabotStatuses.includes("unparseable");
   if (dependabotUnparseable || dependabotStatuses.includes("npm")) {
     found.push("dependabot");
   }
   const hasRenovate = RENOVATE_PATHS.some(
-    (segments) => existsSync25(path39.join(repoRoot, ...segments))
+    (segments) => existsSync26(path41.join(repoRoot, ...segments))
   );
   if (hasRenovate) found.push("renovate");
   if (json3) {
@@ -29673,15 +30488,15 @@ var run39 = async (argv) => {
 
 // src/setup/util/state-file.ts
 import {
-  existsSync as existsSync26,
+  existsSync as existsSync27,
   mkdirSync as mkdirSync13,
-  readFileSync as readFileSync31,
+  readFileSync as readFileSync32,
   renameSync as renameSync3,
   writeFileSync as writeFileSync4
 } from "node:fs";
-import path40 from "node:path";
+import path42 from "node:path";
 var STATE_FILENAME = "setup-state.json";
-var STATE_DIRECTORY_RELATIVE = path40.join(".gaia", "local");
+var STATE_DIRECTORY_RELATIVE = path42.join(".gaia", "local");
 var SETUP_STEPS = [
   "install-tools",
   "install-plugins",
@@ -29690,11 +30505,11 @@ var SETUP_STEPS = [
   "bootstrap-env"
 ];
 var isSetupStep = (value) => SETUP_STEPS.includes(value);
-var resolveStateFilePath = (repoRoot) => path40.join(repoRoot, STATE_DIRECTORY_RELATIVE, STATE_FILENAME);
+var resolveStateFilePath = (repoRoot) => path42.join(repoRoot, STATE_DIRECTORY_RELATIVE, STATE_FILENAME);
 var readStateFile = (repoRoot) => {
   const filePath = resolveStateFilePath(repoRoot);
-  if (!existsSync26(filePath)) return null;
-  const raw = readFileSync31(filePath, "utf8");
+  if (!existsSync27(filePath)) return null;
+  const raw = readFileSync32(filePath, "utf8");
   const parsed = JSON.parse(raw);
   if (parsed.version !== 1) {
     throw new Error(
@@ -29714,8 +30529,8 @@ var readStateFile = (repoRoot) => {
 };
 var writeStateFile = (repoRoot, state) => {
   const filePath = resolveStateFilePath(repoRoot);
-  const parent = path40.dirname(filePath);
-  if (!existsSync26(parent)) {
+  const parent = path42.dirname(filePath);
+  if (!existsSync27(parent)) {
     mkdirSync13(parent, { mode: 493, recursive: true });
   }
   const serialized = `${JSON.stringify(state, null, 2)}
@@ -30011,8 +30826,8 @@ var run43 = async (argv) => {
 
 // src/update-deps/advisories.ts
 var import_semver4 = __toESM(require_semver2(), 1);
-import { mkdirSync as mkdirSync16, readFileSync as readFileSync34 } from "node:fs";
-import path43 from "node:path";
+import { mkdirSync as mkdirSync16, readFileSync as readFileSync35 } from "node:fs";
+import path45 from "node:path";
 
 // src/update-deps/advisory-lockfile.ts
 var import_semver = __toESM(require_semver2(), 1);
@@ -30623,19 +31438,19 @@ var runPnpmAudit = (options) => {
 
 // src/update-deps/run.ts
 import { spawnSync as spawnSync4 } from "node:child_process";
-import { mkdirSync as mkdirSync15, readFileSync as readFileSync33, writeFileSync as writeFileSync6 } from "node:fs";
-import path42 from "node:path";
+import { mkdirSync as mkdirSync15, readFileSync as readFileSync34, writeFileSync as writeFileSync6 } from "node:fs";
+import path44 from "node:path";
 
 // src/update-deps/declines.ts
-import { mkdirSync as mkdirSync14, readFileSync as readFileSync32, writeFileSync as writeFileSync5 } from "node:fs";
-import path41 from "node:path";
+import { mkdirSync as mkdirSync14, readFileSync as readFileSync33, writeFileSync as writeFileSync5 } from "node:fs";
+import path43 from "node:path";
 var MAX_SNOOZE_MS = 14 * 24 * 60 * 60 * 1e3;
-var LEDGER_RELATIVE_PATH = path41.join(
+var LEDGER_RELATIVE_PATH = path43.join(
   ".gaia",
   "local",
   "declined-updates.json"
 );
-var declinedLedgerPath = (cwd) => path41.join(cwd, LEDGER_RELATIVE_PATH);
+var declinedLedgerPath = (cwd) => path43.join(cwd, LEDGER_RELATIVE_PATH);
 var parseDeclinedRecord = (entry) => {
   if (entry === null || typeof entry !== "object") return null;
   const record2 = entry;
@@ -30655,7 +31470,7 @@ var parseDeclinedRecord = (entry) => {
 var loadDeclines = (cwd) => {
   let raw;
   try {
-    raw = readFileSync32(declinedLedgerPath(cwd), "utf8");
+    raw = readFileSync33(declinedLedgerPath(cwd), "utf8");
   } catch {
     return [];
   }
@@ -30678,7 +31493,7 @@ var loadDeclines = (cwd) => {
 var saveDeclines = (cwd, declined) => {
   const ledger = { declined, schema_version: 1 };
   const outPath = declinedLedgerPath(cwd);
-  mkdirSync14(path41.dirname(outPath), { recursive: true });
+  mkdirSync14(path43.dirname(outPath), { recursive: true });
   writeFileSync5(outPath, `${JSON.stringify(ledger, null, 2)}
 `, "utf8");
 };
@@ -30995,7 +31810,7 @@ var compareStrings3 = (a, b) => {
   return a > b ? 1 : 0;
 };
 var readPackageJson = (cwd) => {
-  const raw = readFileSync33(path42.join(cwd, "package.json"), "utf8");
+  const raw = readFileSync34(path44.join(cwd, "package.json"), "utf8");
   return JSON.parse(raw);
 };
 var readUpdateDepsHolds = (pkg) => {
@@ -31013,8 +31828,8 @@ var readUpdateDepsHolds = (pkg) => {
 };
 var readInstalledVersion = (cwd, name) => {
   try {
-    const raw = readFileSync33(
-      path42.join(cwd, "node_modules", name, "package.json"),
+    const raw = readFileSync34(
+      path44.join(cwd, "node_modules", name, "package.json"),
       "utf8"
     );
     const parsed = JSON.parse(raw);
@@ -31144,7 +31959,7 @@ var fetchLatestVersion = (name, cwd, pnpmRunner) => {
 var readMinimumReleaseAge = (cwd) => {
   let raw;
   try {
-    raw = readFileSync33(path42.join(cwd, "pnpm-workspace.yaml"), "utf8");
+    raw = readFileSync34(path44.join(cwd, "pnpm-workspace.yaml"), "utf8");
   } catch {
     return 0;
   }
@@ -31571,8 +32386,8 @@ var run44 = (argv, options = {}) => {
       pnpmRunner: options.pnpmRunner
     });
     const stamped = payload;
-    const outPath = path42.isAbsolute(parsed.emitUpdates) ? parsed.emitUpdates : path42.join(cwd, parsed.emitUpdates);
-    mkdirSync15(path42.dirname(outPath), { recursive: true });
+    const outPath = path44.isAbsolute(parsed.emitUpdates) ? parsed.emitUpdates : path44.join(cwd, parsed.emitUpdates);
+    mkdirSync15(path44.dirname(outPath), { recursive: true });
     writeFileSync6(outPath, `${JSON.stringify(stamped, null, 2)}
 `, "utf8");
     return EXIT_CODES.OK;
@@ -31615,7 +32430,7 @@ var ALWAYS_OWNED_MANIFESTS = /* @__PURE__ */ new Set([
   "pnpm-workspace.yaml"
 ]);
 var parseArgs9 = (argv) => {
-  let emit;
+  let emit2;
   let updates = null;
   let countOnly = false;
   let noAlerts = false;
@@ -31630,20 +32445,20 @@ var parseArgs9 = (argv) => {
       if (value === void 0 || value.length === 0 || value.startsWith("--")) {
         return { error: `${token} requires a path` };
       }
-      if (token === "--emit") emit = value;
+      if (token === "--emit") emit2 = value;
       else updates = value;
       index += 1;
     } else {
       return { error: `unknown flag: ${String(token)}` };
     }
   }
-  if (emit === void 0) return { error: "--emit is required" };
-  return { countOnly, emit, noAlerts, updates };
+  if (emit2 === void 0) return { error: "--emit is required" };
+  return { countOnly, emit: emit2, noAlerts, updates };
 };
 var isCiEnvironment = (env) => [env.CI, env.GITHUB_ACTIONS].some(
   (value) => value !== void 0 && value !== "" && value !== "false"
 );
-var resolveFrom = (cwd, target) => path43.isAbsolute(target) ? target : path43.join(cwd, target);
+var resolveFrom = (cwd, target) => path45.isAbsolute(target) ? target : path45.join(cwd, target);
 var isRecord4 = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 var asArray = (value) => Array.isArray(value) ? value : [];
 var namesOf = (entries) => entries.flatMap(
@@ -31653,7 +32468,7 @@ var readUpdateOffers = (filePath) => {
   if (filePath === null) return { waveA: /* @__PURE__ */ new Set(), waveB: /* @__PURE__ */ new Set() };
   let parsed;
   try {
-    parsed = JSON.parse(readFileSync34(filePath, "utf8"));
+    parsed = JSON.parse(readFileSync35(filePath, "utf8"));
   } catch {
     return null;
   }
@@ -31674,7 +32489,7 @@ var readBaselineIds = (repoRoot) => {
   let parsed;
   try {
     parsed = JSON.parse(
-      readFileSync34(path43.join(repoRoot, BASELINE_FILE), "utf8")
+      readFileSync35(path45.join(repoRoot, BASELINE_FILE), "utf8")
     );
   } catch {
     return ids;
@@ -31747,7 +32562,7 @@ var readAudit = (context) => {
 var readLockfileKeys = (repoRoot) => {
   try {
     return projectPackageKeys(
-      readFileSync34(path43.join(repoRoot, "pnpm-lock.yaml"), "utf8")
+      readFileSync35(path45.join(repoRoot, "pnpm-lock.yaml"), "utf8")
     );
   } catch {
     return [];
@@ -31904,7 +32719,7 @@ var run45 = async (argv, options = {}) => {
   const payload = await buildPayload(context, offers);
   const outPath = resolveFrom(cwd, args.emit);
   try {
-    mkdirSync16(path43.dirname(outPath), { recursive: true });
+    mkdirSync16(path45.dirname(outPath), { recursive: true });
     atomicWriteFileSync(outPath, `${JSON.stringify(payload, null, 2)}
 `);
   } catch {
@@ -31920,8 +32735,8 @@ var run45 = async (argv, options = {}) => {
 
 // src/update-deps/advisory-landed.ts
 var import_semver5 = __toESM(require_semver2(), 1);
-import { readFileSync as readFileSync35 } from "node:fs";
-import path44 from "node:path";
+import { readFileSync as readFileSync36 } from "node:fs";
+import path46 from "node:path";
 var HELP_TEXT45 = `Usage: gaia update-deps advisory-landed --package <name> --vulnerable-range <range>
 
   Report whether a security resolution landed: no installed version of
@@ -31971,7 +32786,7 @@ var readLockfile = (cwd) => {
     root = cwd;
   }
   try {
-    return readFileSync35(path44.join(root, "pnpm-lock.yaml"), "utf8");
+    return readFileSync36(path46.join(root, "pnpm-lock.yaml"), "utf8");
   } catch {
     return null;
   }
@@ -32105,8 +32920,8 @@ var run47 = (argv) => {
 };
 
 // src/update-deps/decline.ts
-import { readFileSync as readFileSync36 } from "node:fs";
-import path45 from "node:path";
+import { readFileSync as readFileSync37 } from "node:fs";
+import path47 from "node:path";
 var HELP_TEXT47 = `Usage: gaia update-deps decline [options]
 
   Snooze update groups so the statusline stops counting them until a newer
@@ -32169,10 +32984,10 @@ var parseArgs12 = (argv) => {
   return finalizeParsedArgs(clear, source, skipRaw);
 };
 var readPayload = (cwd, source) => {
-  const sourcePath = path45.isAbsolute(source) ? source : path45.join(cwd, source);
+  const sourcePath = path47.isAbsolute(source) ? source : path47.join(cwd, source);
   let parsed;
   try {
-    parsed = JSON.parse(readFileSync36(sourcePath, "utf8"));
+    parsed = JSON.parse(readFileSync37(sourcePath, "utf8"));
   } catch {
     return void 0;
   }
@@ -32449,13 +33264,13 @@ var run50 = (argv, options = {}) => {
 
 // src/update-deps/write-security-cache.ts
 import {
-  existsSync as existsSync27,
+  existsSync as existsSync28,
   mkdirSync as mkdirSync17,
-  readFileSync as readFileSync37,
+  readFileSync as readFileSync38,
   rmSync as rmSync3,
   writeFileSync as writeFileSync7
 } from "node:fs";
-import path46 from "node:path";
+import path48 from "node:path";
 var HELP_TEXT50 = `Usage: gaia update-deps write-security-cache --count <n> --source <dependabot|pnpm-audit> [--reason <tokens>]
 
   Rewrite securityCount, securitySource, securityUnavailableReason, and
@@ -32515,7 +33330,7 @@ var acquireLock = (lockDirectory, budgetMs) => {
   for (; ; ) {
     try {
       mkdirSync17(lockDirectory);
-      writeFileSync7(path46.join(lockDirectory, "owner"), `${process.pid}
+      writeFileSync7(path48.join(lockDirectory, "owner"), `${process.pid}
 `);
       return true;
     } catch {
@@ -32526,7 +33341,7 @@ var acquireLock = (lockDirectory, budgetMs) => {
 };
 var releaseLock = (lockDirectory) => {
   try {
-    const owner = readFileSync37(path46.join(lockDirectory, "owner"), "utf8");
+    const owner = readFileSync38(path48.join(lockDirectory, "owner"), "utf8");
     if (owner.trim() === String(process.pid)) {
       rmSync3(lockDirectory, { force: true, recursive: true });
     }
@@ -32535,7 +33350,7 @@ var releaseLock = (lockDirectory) => {
 };
 var readCache = (cacheFile) => {
   try {
-    const parsed = JSON.parse(readFileSync37(cacheFile, "utf8"));
+    const parsed = JSON.parse(readFileSync38(cacheFile, "utf8"));
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
       return null;
     }
@@ -32566,13 +33381,13 @@ var run51 = (argv, options = {}) => {
   } catch {
     root = cwd;
   }
-  const cacheDirectory = path46.join(root, ".gaia/local/cache/shared");
-  const cacheFile = path46.join(cacheDirectory, "update-check.json");
-  if (!existsSync27(cacheFile)) {
+  const cacheDirectory = path48.join(root, ".gaia/local/cache/shared");
+  const cacheFile = path48.join(cacheDirectory, "update-check.json");
+  if (!existsSync28(cacheFile)) {
     printResult4({ reason: "no-cache", written: false });
     return EXIT_CODES.OK;
   }
-  const lockDirectory = path46.join(cacheDirectory, ".update-check.lock");
+  const lockDirectory = path48.join(cacheDirectory, ".update-check.lock");
   if (!acquireLock(lockDirectory, options.lockWaitMs ?? DEFAULT_LOCK_WAIT_MS)) {
     printResult4({ reason: "lock-held", written: false });
     return EXIT_CODES.OK;
@@ -32660,8 +33475,8 @@ var run52 = async (argv) => {
 };
 
 // src/update/merge-audit-ci.ts
-import { existsSync as existsSync28, readFileSync as readFileSync38 } from "node:fs";
-import path47 from "node:path";
+import { existsSync as existsSync29, readFileSync as readFileSync39 } from "node:fs";
+import path49 from "node:path";
 
 // src/util/parse-value-flags.ts
 var applyToken3 = ({
@@ -32712,13 +33527,13 @@ var HELP_TEXT52 = `Usage: gaia update merge-audit-ci --baseline <file> --latest 
 `;
 var HELP_TOKENS50 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var ROSTER_SECTION = "auditors";
-var VALUE_FLAGS = {
+var VALUE_FLAGS2 = {
   "--baseline": "baseline",
   "--current": "current",
   "--latest": "latest"
 };
 var parseFlags11 = (argv) => {
-  const parsed = parseValueFlags(argv, VALUE_FLAGS);
+  const parsed = parseValueFlags(argv, VALUE_FLAGS2);
   if (!parsed.ok) return parsed;
   const {
     collected: { baseline, current, latest },
@@ -32870,7 +33685,7 @@ var printHuman5 = (report2) => {
 `);
 };
 var loadAuditCi = (absPath, role) => {
-  if (!existsSync28(absPath)) {
+  if (!existsSync29(absPath)) {
     return {
       code: "audit_ci_file_missing",
       message: `${role} audit-ci file not found: ${absPath}`,
@@ -32879,7 +33694,7 @@ var loadAuditCi = (absPath, role) => {
   }
   let parsed;
   try {
-    parsed = load(readFileSync38(absPath, "utf8"));
+    parsed = load(readFileSync39(absPath, "utf8"));
   } catch (error51) {
     return {
       code: "audit_ci_parse_failed",
@@ -32889,7 +33704,7 @@ var loadAuditCi = (absPath, role) => {
   }
   return { ok: true, root: asRecord(parsed) };
 };
-var resolvePath = (cwd, value) => path47.isAbsolute(value) ? value : path47.join(cwd, value);
+var resolvePath = (cwd, value) => path49.isAbsolute(value) ? value : path49.join(cwd, value);
 var run53 = (argv, options = {}) => {
   const [firstArgument] = argv;
   if (firstArgument !== void 0 && HELP_TOKENS50.has(firstArgument)) {
@@ -32936,8 +33751,8 @@ var run53 = (argv, options = {}) => {
 };
 
 // src/update/merge-region.ts
-import { existsSync as existsSync29, readFileSync as readFileSync39 } from "node:fs";
-import path48 from "node:path";
+import { existsSync as existsSync30, readFileSync as readFileSync40 } from "node:fs";
+import path50 from "node:path";
 
 // src/update/region-markers.ts
 var REGION_PLACEHOLDER = "<<<gaia:region>>>";
@@ -33005,7 +33820,7 @@ var HELP_TEXT53 = `Usage: gaia update merge-region --baseline <file> --latest <f
     1  user-correctable error (missing flag / file, empty marker, unreadable file)
 `;
 var HELP_TOKENS51 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
-var VALUE_FLAGS2 = {
+var VALUE_FLAGS3 = {
   "--baseline": "baseline",
   "--current": "current",
   "--end-marker": "endMarker",
@@ -33013,7 +33828,7 @@ var VALUE_FLAGS2 = {
   "--start-marker": "startMarker"
 };
 var parseFlags12 = (argv) => {
-  const parsed = parseValueFlags(argv, VALUE_FLAGS2);
+  const parsed = parseValueFlags(argv, VALUE_FLAGS3);
   if (!parsed.ok) return parsed;
   const {
     collected: { baseline, current, endMarker, latest, startMarker },
@@ -33090,7 +33905,7 @@ var printHuman6 = (report2) => {
 `);
 };
 var loadRegionFile = (absPath, role) => {
-  if (!existsSync29(absPath)) {
+  if (!existsSync30(absPath)) {
     return {
       code: "region_file_missing",
       message: `${role} file not found: ${absPath}`,
@@ -33098,7 +33913,7 @@ var loadRegionFile = (absPath, role) => {
     };
   }
   try {
-    return { content: readFileSync39(absPath, "utf8"), ok: true };
+    return { content: readFileSync40(absPath, "utf8"), ok: true };
   } catch (error51) {
     return {
       code: "region_read_failed",
@@ -33107,7 +33922,7 @@ var loadRegionFile = (absPath, role) => {
     };
   }
 };
-var resolvePath2 = (cwd, value) => path48.isAbsolute(value) ? value : path48.join(cwd, value);
+var resolvePath2 = (cwd, value) => path50.isAbsolute(value) ? value : path50.join(cwd, value);
 var run54 = (argv, options = {}) => {
   const [firstArgument] = argv;
   if (firstArgument !== void 0 && HELP_TOKENS51.has(firstArgument)) {
@@ -33160,8 +33975,8 @@ var run54 = (argv, options = {}) => {
 };
 
 // src/update/merge-workspace.ts
-import { existsSync as existsSync30, readFileSync as readFileSync40 } from "node:fs";
-import path49 from "node:path";
+import { existsSync as existsSync31, readFileSync as readFileSync41 } from "node:fs";
+import path51 from "node:path";
 var HELP_TEXT54 = `Usage: gaia update merge-workspace --baseline <file> --latest <file> --current <file> [--json]
 
   Field-aware three-way verdict for pnpm-workspace.yaml. Reads three YAML
@@ -33188,13 +34003,13 @@ var MANAGED_WHOLE_VALUE_KEYS = [
   "strictPeerDependencies"
 ];
 var SHARED_MAP_SECTIONS = ["overrides", "allowBuilds"];
-var VALUE_FLAGS3 = {
+var VALUE_FLAGS4 = {
   "--baseline": "baseline",
   "--current": "current",
   "--latest": "latest"
 };
 var parseFlags13 = (argv) => {
-  const parsed = parseValueFlags(argv, VALUE_FLAGS3);
+  const parsed = parseValueFlags(argv, VALUE_FLAGS4);
   if (!parsed.ok) return parsed;
   const {
     collected: { baseline, current, latest },
@@ -33336,7 +34151,7 @@ var printHuman7 = (report2) => {
 `);
 };
 var loadWorkspace = (absPath, role) => {
-  if (!existsSync30(absPath)) {
+  if (!existsSync31(absPath)) {
     return {
       code: "workspace_file_missing",
       message: `${role} workspace file not found: ${absPath}`,
@@ -33345,7 +34160,7 @@ var loadWorkspace = (absPath, role) => {
   }
   let parsed;
   try {
-    parsed = load(readFileSync40(absPath, "utf8"));
+    parsed = load(readFileSync41(absPath, "utf8"));
   } catch (error51) {
     return {
       code: "workspace_parse_failed",
@@ -33355,7 +34170,7 @@ var loadWorkspace = (absPath, role) => {
   }
   return { ok: true, root: asRecord2(parsed) };
 };
-var resolvePath3 = (cwd, value) => path49.isAbsolute(value) ? value : path49.join(cwd, value);
+var resolvePath3 = (cwd, value) => path51.isAbsolute(value) ? value : path51.join(cwd, value);
 var run55 = (argv, options = {}) => {
   const [firstArgument] = argv;
   if (firstArgument !== void 0 && HELP_TOKENS52.has(firstArgument)) {
@@ -33407,18 +34222,18 @@ import { createHash as createHash3 } from "node:crypto";
 import {
   chmodSync,
   copyFileSync as copyFileSync2,
-  existsSync as existsSync31,
+  existsSync as existsSync32,
   lstatSync as lstatSync2,
   mkdirSync as mkdirSync18,
   readdirSync as readdirSync3,
-  readFileSync as readFileSync41,
+  readFileSync as readFileSync42,
   readlinkSync,
   realpathSync as realpathSync2,
   rmSync as rmSync4,
   symlinkSync,
   writeFileSync as writeFileSync8
 } from "node:fs";
-import path50 from "node:path";
+import path52 from "node:path";
 
 // src/util/git-z.ts
 var gitZArgs = (verb, args = []) => ["-c", "core.quotepath=false", verb, "-z", ...args];
@@ -33470,7 +34285,7 @@ var HELP_TEXT55 = `Usage: gaia update regen-regions --manifest <path> --root <di
        --manifest / missing --root)
 `;
 var HELP_TOKENS53 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
-var VALUE_FLAGS4 = {
+var VALUE_FLAGS5 = {
   "--absent-path": (state, value) => {
     state.absentPaths.push(value);
   },
@@ -33500,7 +34315,7 @@ var applyToken4 = ({
     state.json = true;
     return { advance: 0, ok: true };
   }
-  const handler = lookupOwn(VALUE_FLAGS4, token);
+  const handler = lookupOwn(VALUE_FLAGS5, token);
   if (handler === void 0)
     return { message: `unknown flag: ${token}`, ok: false };
   const taken = takeValue(argv, index + 1, token);
@@ -33568,7 +34383,7 @@ var normalizeDeclaredPaths = (paths) => {
     const candidate = normalizeRepoPath(declPath);
     if (candidate.trim() === "")
       return { ok: false, reason: "paths carries an empty entry" };
-    if (path50.isAbsolute(candidate))
+    if (path52.isAbsolute(candidate))
       return {
         ok: false,
         reason: `paths carries an absolute path: ${candidate}`
@@ -33578,7 +34393,7 @@ var normalizeDeclaredPaths = (paths) => {
         ok: false,
         reason: `paths carries a parent-directory segment: ${candidate}`
       };
-    if (path50.posix.dirname(candidate) === ".")
+    if (path52.posix.dirname(candidate) === ".")
       return {
         ok: false,
         reason: `paths carries a path whose parent is the repository root: ${candidate}`
@@ -33674,23 +34489,23 @@ var computeSkipReason = (decl, inputs) => {
 var checkOperand = (decl, context) => {
   const { realRoot, root, shippedKeys } = context;
   const { interpreter, operand } = decl;
-  if (path50.isAbsolute(operand)) return "operand is an absolute path";
+  if (path52.isAbsolute(operand)) return "operand is an absolute path";
   if (operand.split("/").includes(".."))
     return "operand carries a parent-directory segment";
   if (!shippedKeys.has(normalizeRepoPath(operand)))
     return "operand is not a path this manifest ships";
   let resolvedReal;
   try {
-    resolvedReal = realpathSync2(path50.resolve(root, operand));
+    resolvedReal = realpathSync2(path52.resolve(root, operand));
   } catch {
     resolvedReal = void 0;
   }
   if (resolvedReal !== void 0) {
-    const insideRoot = resolvedReal === realRoot || resolvedReal.startsWith(`${realRoot}${path50.sep}`);
+    const insideRoot = resolvedReal === realRoot || resolvedReal.startsWith(`${realRoot}${path52.sep}`);
     if (!insideRoot)
       return "operand resolves through a symlink out of the repository";
   }
-  if (interpreter.trim() === "" || path50.isAbsolute(interpreter) || interpreter.includes("/") || interpreter.includes("\\"))
+  if (interpreter.trim() === "" || path52.isAbsolute(interpreter) || interpreter.includes("/") || interpreter.includes("\\"))
     return "interpreter is not a bare program name";
   return void 0;
 };
@@ -33699,12 +34514,12 @@ var performBackup = (inputs) => {
   if (backupDir === void 0) return [];
   const backedUp = [];
   paths.forEach((declPath) => {
-    const srcAbs = path50.resolve(root, declPath);
-    if (!existsSync31(srcAbs)) return;
-    const destinationAbs = path50.resolve(backupDir, declPath);
-    if (existsSync31(destinationAbs)) return;
+    const srcAbs = path52.resolve(root, declPath);
+    if (!existsSync32(srcAbs)) return;
+    const destinationAbs = path52.resolve(backupDir, declPath);
+    if (existsSync32(destinationAbs)) return;
     try {
-      mkdirSync18(path50.dirname(destinationAbs), { recursive: true });
+      mkdirSync18(path52.dirname(destinationAbs), { recursive: true });
       copyFileSync2(srcAbs, destinationAbs);
       backedUp.push(declPath);
     } catch (error51) {
@@ -33718,7 +34533,7 @@ var performBackup = (inputs) => {
   });
   return backedUp;
 };
-var scopeDirsFor = (paths) => new Set(paths.map((declPath) => path50.posix.dirname(declPath)));
+var scopeDirsFor = (paths) => new Set(paths.map((declPath) => path52.posix.dirname(declPath)));
 var isUntouched = (before, after) => {
   if (after === void 0) return false;
   if (before.kind === "symlink")
@@ -33729,8 +34544,8 @@ var permissionsOf = (mode) => mode % 4096;
 var collectScopeDigests = (root, scopeDirs) => {
   const digests = /* @__PURE__ */ new Map();
   scopeDirs.forEach((dir) => {
-    const absDir = path50.resolve(root, dir);
-    if (!existsSync31(absDir)) return;
+    const absDir = path52.resolve(root, dir);
+    if (!existsSync32(absDir)) return;
     let entries;
     try {
       entries = readdirSync3(absDir, { recursive: true });
@@ -33738,14 +34553,14 @@ var collectScopeDigests = (root, scopeDirs) => {
       return;
     }
     entries.forEach((rel) => {
-      const abs = path50.join(absDir, rel);
+      const abs = path52.join(absDir, rel);
       let stat;
       try {
         stat = lstatSync2(abs);
       } catch {
         return;
       }
-      const repoRelative = path50.relative(root, abs).split(path50.sep).join("/");
+      const repoRelative = path52.relative(root, abs).split(path52.sep).join("/");
       if (stat.isSymbolicLink()) {
         try {
           digests.set(repoRelative, {
@@ -33759,7 +34574,7 @@ var collectScopeDigests = (root, scopeDirs) => {
       if (!stat.isFile()) return;
       let content;
       try {
-        content = readFileSync41(abs);
+        content = readFileSync42(abs);
       } catch {
         return;
       }
@@ -33783,7 +34598,7 @@ var sweepScope = (inputs) => {
     if (afterEntry === void 0) return;
     if (isUntouched(beforeEntry, afterEntry)) return;
     try {
-      const abs = path50.resolve(root, relPath);
+      const abs = path52.resolve(root, relPath);
       rmSync4(abs, { force: true });
       if (beforeEntry.kind === "symlink") {
         symlinkSync(beforeEntry.target, abs);
@@ -33800,7 +34615,7 @@ var sweepScope = (inputs) => {
   [...after.keys()].forEach((relPath) => {
     if (declaredSet.has(relPath) || before.has(relPath)) return;
     try {
-      rmSync4(path50.resolve(root, relPath), { force: true });
+      rmSync4(path52.resolve(root, relPath), { force: true });
       confined.push({ action: "removed", path: relPath, regionId });
     } catch {
       confined.push({ action: "reported", path: relPath, regionId });
@@ -33854,7 +34669,7 @@ var trySpawn = (decl, root) => {
   try {
     execFileSync5(
       decl.interpreter,
-      [path50.resolve(root, decl.operand), ...decl.args],
+      [path52.resolve(root, decl.operand), ...decl.args],
       {
         cwd: root,
         encoding: "utf8",
@@ -34012,12 +34827,12 @@ var processRegion = (raw, index, context) => {
   }
   runRegeneration(decl, commandArgv, context);
 };
-var resolvePath4 = (cwd, value) => path50.isAbsolute(value) ? value : path50.join(cwd, value);
+var resolvePath4 = (cwd, value) => path52.isAbsolute(value) ? value : path52.join(cwd, value);
 var loadRunInputs = (cwd, flags) => {
   const manifestPath = resolvePath4(cwd, flags.manifest);
   const root = resolvePath4(cwd, flags.root);
   const backupDir = flags.backupDir === void 0 ? void 0 : resolvePath4(cwd, flags.backupDir);
-  if (!existsSync31(manifestPath)) {
+  if (!existsSync32(manifestPath)) {
     structuredError({
       code: "manifest_not_found",
       message: `manifest not found: ${manifestPath}`,
@@ -34027,7 +34842,7 @@ var loadRunInputs = (cwd, flags) => {
   }
   let manifestRaw;
   try {
-    manifestRaw = readFileSync41(manifestPath, "utf8");
+    manifestRaw = readFileSync42(manifestPath, "utf8");
   } catch (error51) {
     structuredError({
       code: "manifest_read_failed",
@@ -34047,7 +34862,7 @@ var loadRunInputs = (cwd, flags) => {
     });
     return { ok: false };
   }
-  if (!existsSync31(root)) {
+  if (!existsSync32(root)) {
     structuredError({
       code: "root_not_found",
       message: `root directory not found: ${root}`,
@@ -34443,9 +35258,9 @@ var commitDetails = (sinceSha, cwd) => {
 };
 
 // src/wiki/util/statusline-cache.ts
-import { existsSync as existsSync32, readFileSync as readFileSync42 } from "node:fs";
-import path51 from "node:path";
-var CACHE_RELATIVE_PATH = path51.join(
+import { existsSync as existsSync33, readFileSync as readFileSync43 } from "node:fs";
+import path53 from "node:path";
+var CACHE_RELATIVE_PATH = path53.join(
   ".gaia",
   "local",
   "cache",
@@ -34454,12 +35269,12 @@ var CACHE_RELATIVE_PATH = path51.join(
 );
 var invalidateStatuslineCache = (repoRoot) => {
   try {
-    const cachePath = path51.join(
+    const cachePath = path53.join(
       resolveMainWorktreeRoot(repoRoot),
       CACHE_RELATIVE_PATH
     );
-    if (!existsSync32(cachePath)) return;
-    const parsed = JSON.parse(readFileSync42(cachePath, "utf8"));
+    if (!existsSync33(cachePath)) return;
+    const parsed = JSON.parse(readFileSync43(cachePath, "utf8"));
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
       return;
     atomicWriteFileSync(
@@ -35064,8 +35879,8 @@ var parseConventionalCommitHeader = (subject) => {
 var isCommitType = (type2) => COMMIT_TYPES.includes(type2);
 
 // src/wiki/classify-paths.ts
-import { existsSync as existsSync33, readFileSync as readFileSync43 } from "node:fs";
-import path52 from "node:path";
+import { existsSync as existsSync34, readFileSync as readFileSync44 } from "node:fs";
+import path54 from "node:path";
 var defaultClassifyPaths = (repoRoot) => {
   const loaded = loadPackages(repoRoot);
   if (!loaded.ok) {
@@ -35099,11 +35914,11 @@ var PackageJsonSchema = external_exports.object({
 });
 var readClassifyPaths = (repoRoot) => {
   const defaults = defaultClassifyPaths(repoRoot);
-  const target = path52.join(repoRoot, "package.json");
-  if (!existsSync33(target)) return defaults;
+  const target = path54.join(repoRoot, "package.json");
+  if (!existsSync34(target)) return defaults;
   let parsed;
   try {
-    parsed = JSON.parse(readFileSync43(target, "utf8"));
+    parsed = JSON.parse(readFileSync44(target, "utf8"));
   } catch {
     return defaults;
   }
@@ -35416,25 +36231,25 @@ var run59 = (argv, options = {}) => {
 };
 
 // src/wiki/dead-paths.ts
-import { readFileSync as readFileSync44, statSync as statSync5 } from "node:fs";
-import path55 from "node:path";
+import { readFileSync as readFileSync45, statSync as statSync5 } from "node:fs";
+import path57 from "node:path";
 
 // src/wiki/util/markdown-corpus.ts
 import { statSync as statSync4 } from "node:fs";
-import path54 from "node:path";
+import path56 from "node:path";
 
 // src/util/tree-walk.ts
 import { readdirSync as readdirSync4 } from "node:fs";
-import path53 from "node:path";
+import path55 from "node:path";
 var EVERY_EXTENSION = "every-extension";
 var normalizeEntry = (entry, separator) => entry.split(separator).join("/");
 var collectTreeFiles = (root, extensions) => {
   const walk = (directory) => readdirSync4(directory, { withFileTypes: true }).flatMap((entry) => {
-    const absolute = path53.join(directory, entry.name);
+    const absolute = path55.join(directory, entry.name);
     if (entry.isDirectory()) {
       return walk(absolute);
     }
-    return entry.isFile() && (extensions === EVERY_EXTENSION || extensions.has(path53.extname(entry.name).toLowerCase())) ? [normalizeEntry(path53.relative(root, absolute), path53.sep)] : [];
+    return entry.isFile() && (extensions === EVERY_EXTENSION || extensions.has(path55.extname(entry.name).toLowerCase())) ? [normalizeEntry(path55.relative(root, absolute), path55.sep)] : [];
   });
   return walk(root).toSorted((a, b) => a.localeCompare(b));
 };
@@ -35450,14 +36265,14 @@ var GENERATED_CONTENT_EXEMPT_PATHS = /* @__PURE__ */ new Set([
 var isWikiScanExempt = (relativePath) => WIKI_SCAN_EXEMPT_PREFIXES.some((prefix) => relativePath.startsWith(prefix));
 var isGeneratedContentExempt = (relativePath) => GENERATED_CONTENT_EXEMPT_PATHS.has(relativePath);
 var collectWikiMarkdown = (cwd) => {
-  const wikiDir = path54.join(cwd, WIKI_DIR);
+  const wikiDir = path56.join(cwd, WIKI_DIR);
   try {
     statSync4(wikiDir);
   } catch {
     return [];
   }
   return collectTreeFiles(wikiDir, MARKDOWN_EXTENSIONS).map(
-    (relativePath) => path54.posix.join(WIKI_DIR, relativePath)
+    (relativePath) => path56.posix.join(WIKI_DIR, relativePath)
   );
 };
 
@@ -35508,7 +36323,7 @@ var isTrackedPath = (token, prefixes) => {
 var shouldSkipFile = (relPath) => isWikiScanExempt(relPath) || isGeneratedContentExempt(relPath) || relPath.startsWith(LOCAL_EXEMPT_PREFIX);
 var pathExists = (root, candidate) => {
   try {
-    statSync5(path55.join(root, candidate));
+    statSync5(path57.join(root, candidate));
     return true;
   } catch {
     return false;
@@ -35524,7 +36339,7 @@ var collectFindingsInLine = (ctx, lineNumber, line) => {
   return { dead };
 };
 var collectFindingsInFile = (ctx) => {
-  const content = readFileSync44(path55.join(ctx.cwd, ctx.filePath), "utf8");
+  const content = readFileSync45(path57.join(ctx.cwd, ctx.filePath), "utf8");
   const lines = content.split("\n");
   const perLine = lines.map(
     (line, index) => collectFindingsInLine(ctx, index + 1, line)
@@ -35582,8 +36397,8 @@ var run60 = (argv, options = {}) => {
 };
 
 // src/wiki/empty-sections.ts
-import { readFileSync as readFileSync45 } from "node:fs";
-import path56 from "node:path";
+import { readFileSync as readFileSync46 } from "node:fs";
+import path58 from "node:path";
 
 // src/wiki/util/frontmatter.ts
 var FRONTMATTER_FENCE = "---";
@@ -35708,7 +36523,7 @@ var findInBody = (body, bodyLineOffset, relPath) => {
   });
 };
 var findEmptySections = (cwd) => collectWikiMarkdown(cwd).filter((filePath) => !shouldSkipFile2(filePath)).flatMap((filePath) => {
-  const content = readFileSync45(path56.join(cwd, filePath), "utf8");
+  const content = readFileSync46(path58.join(cwd, filePath), "utf8");
   const { body } = parseFrontmatter(content);
   const offset = content.split("\n").length - body.split("\n").length;
   return findInBody(body, offset, filePath);
@@ -35760,8 +36575,8 @@ var run61 = (argv, options = {}) => {
 };
 
 // src/wiki/frontmatter.ts
-import { readFileSync as readFileSync46 } from "node:fs";
-import path57 from "node:path";
+import { readFileSync as readFileSync47 } from "node:fs";
+import path59 from "node:path";
 var HELP_TEXT61 = `Usage: gaia wiki frontmatter [--json]
 
   Scan wiki/**/*.md (excluding wiki/meta/**) for pages missing required
@@ -35776,7 +36591,7 @@ var findFrontmatterGaps = (cwd) => {
   const gaps = [];
   for (const filePath of collectWikiMarkdown(cwd)) {
     if (!isWikiScanExempt(filePath)) {
-      const content = readFileSync46(path57.join(cwd, filePath), "utf8");
+      const content = readFileSync47(path59.join(cwd, filePath), "utf8");
       const { frontmatter } = parseFrontmatter(content);
       const missing = REQUIRED_FIELDS.filter(
         (field2) => !hasField(frontmatter, field2)
@@ -35835,8 +36650,8 @@ var run62 = (argv, options = {}) => {
 };
 
 // src/wiki/log-prepend.ts
-import { existsSync as existsSync34, readFileSync as readFileSync47, renameSync as renameSync4, writeFileSync as writeFileSync9 } from "node:fs";
-import path58 from "node:path";
+import { existsSync as existsSync35, readFileSync as readFileSync48, renameSync as renameSync4, writeFileSync as writeFileSync9 } from "node:fs";
+import path60 from "node:path";
 var HELP_TEXT62 = `Usage: gaia wiki log-prepend --sha <h> --decision <WORTHY|SKIP|RE_ANCHOR> --reason "..."
 
   Prepends one canonical line to wiki/log.md after the frontmatter.
@@ -35937,8 +36752,8 @@ var run63 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const logPath = path58.join(repoRoot, "wiki", "log.md");
-  if (!existsSync34(logPath)) {
+  const logPath = path60.join(repoRoot, "wiki", "log.md");
+  if (!existsSync35(logPath)) {
     structuredError({
       code: "log_missing",
       message: "wiki/log.md does not exist",
@@ -35946,7 +36761,7 @@ var run63 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const raw = readFileSync47(logPath, "utf8");
+  const raw = readFileSync48(logPath, "utf8");
   const lines = raw.split("\n");
   const scan = scanFrontmatter(lines);
   if (scan.kind === "missing" || scan.kind === "malformed") {
@@ -35972,8 +36787,8 @@ var run63 = (argv, options = {}) => {
 };
 
 // src/wiki/near-collisions.ts
-import { existsSync as existsSync35, readdirSync as readdirSync5, statSync as statSync6 } from "node:fs";
-import path59 from "node:path";
+import { existsSync as existsSync36, readdirSync as readdirSync5, statSync as statSync6 } from "node:fs";
+import path61 from "node:path";
 var HELP_TEXT63 = `Usage: gaia wiki near-collisions [--max-distance 3]
 
   Per-domain Levenshtein over slugs. Emits tab-separated rows:
@@ -36019,8 +36834,8 @@ var levenshtein = (a, b) => {
 };
 var isCollectibleSlugFile = (entry) => entry.isFile() && entry.name.endsWith(".md") && !SKIPPED_FILES.has(entry.name) && !entry.name.startsWith("_");
 var collectDomainSlugs = (wikiRoot) => DOMAIN_DIRS.flatMap((domain2) => {
-  const domainDir = path59.join(wikiRoot, domain2);
-  if (!existsSync35(domainDir) || !statSync6(domainDir).isDirectory()) {
+  const domainDir = path61.join(wikiRoot, domain2);
+  if (!existsSync36(domainDir) || !statSync6(domainDir).isDirectory()) {
     return [];
   }
   const entries = readdirSync5(domainDir, { withFileTypes: true });
@@ -36106,7 +36921,7 @@ var run64 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const wikiRoot = path59.join(repoRoot, "wiki");
+  const wikiRoot = path61.join(repoRoot, "wiki");
   const domainGroups = collectDomainSlugs(wikiRoot);
   const collisions = findCollisions(domainGroups, parsed.flags.maxDistance);
   if (collisions.length === 0) return EXIT_CODES.OK;
@@ -36119,8 +36934,8 @@ var run64 = (argv, options = {}) => {
 };
 
 // src/wiki/page-index.ts
-import { existsSync as existsSync36, readdirSync as readdirSync6, readFileSync as readFileSync48, statSync as statSync7 } from "node:fs";
-import path60 from "node:path";
+import { existsSync as existsSync37, readdirSync as readdirSync6, readFileSync as readFileSync49, statSync as statSync7 } from "node:fs";
+import path62 from "node:path";
 
 // src/wiki/util/wikilinks.ts
 var WIKILINK_PATTERN = /\[\[([^\][]+)\]\]/gu;
@@ -36158,7 +36973,7 @@ var DOMAIN_DIRS2 = [
 ];
 var SKIPPED_FILES2 = /* @__PURE__ */ new Set(["_index.md", "README.md"]);
 var ROOT_LINK_SOURCES = ["index.md", "overview.md", "hot.md"];
-var slugFromPath = (filePath) => path60.basename(filePath, ".md");
+var slugFromPath = (filePath) => path62.basename(filePath, ".md");
 var extractTitle = (body, fallback) => {
   const lines = body.split("\n");
   for (const line of lines) {
@@ -36183,8 +36998,8 @@ var arrayOfStrings = (value) => {
 };
 var isIndexablePage = (entry) => entry.isFile() && entry.name.endsWith(".md") && !SKIPPED_FILES2.has(entry.name) && !entry.name.startsWith("_");
 var readPageRecord = (domainDir, domain2, entry) => {
-  const absPath = path60.join(domainDir, entry.name);
-  const raw = readFileSync48(absPath, "utf8");
+  const absPath = path62.join(domainDir, entry.name);
+  const raw = readFileSync49(absPath, "utf8");
   const { body, frontmatter } = parseFrontmatter(raw);
   const slug = slugFromPath(entry.name);
   const title = extractTitle(body, slug);
@@ -36193,7 +37008,7 @@ var readPageRecord = (domainDir, domain2, entry) => {
     body,
     domain: domain2,
     outboundTargets: targets,
-    relativePath: path60.posix.join("wiki", domain2, entry.name),
+    relativePath: path62.posix.join("wiki", domain2, entry.name),
     slug,
     status: stringValue(frontmatter.status),
     tags: arrayOfStrings(frontmatter.tags),
@@ -36202,16 +37017,16 @@ var readPageRecord = (domainDir, domain2, entry) => {
   };
 };
 var collectDomainPages = (wikiRoot, domain2) => {
-  const domainDir = path60.join(wikiRoot, domain2);
-  if (!existsSync36(domainDir) || !statSync7(domainDir).isDirectory()) return [];
+  const domainDir = path62.join(wikiRoot, domain2);
+  if (!existsSync37(domainDir) || !statSync7(domainDir).isDirectory()) return [];
   const entries = readdirSync6(domainDir, { withFileTypes: true });
   return entries.filter((entry) => isIndexablePage(entry)).map((entry) => readPageRecord(domainDir, domain2, entry));
 };
 var collectPages = (wikiRoot) => DOMAIN_DIRS2.flatMap((domain2) => collectDomainPages(wikiRoot, domain2));
 var collectRootLinkSources = (wikiRoot) => ROOT_LINK_SOURCES.filter(
-  (filename) => existsSync36(path60.join(wikiRoot, filename))
+  (filename) => existsSync37(path62.join(wikiRoot, filename))
 ).map((filename) => {
-  const raw = readFileSync48(path60.join(wikiRoot, filename), "utf8");
+  const raw = readFileSync49(path62.join(wikiRoot, filename), "utf8");
   const { body } = parseFrontmatter(raw);
   return extractWikilinks(body);
 });
@@ -36262,7 +37077,7 @@ var printHuman10 = (index) => {
 };
 var computePageIndex = (cwd) => {
   const repoRoot = resolveRepoRoot(cwd);
-  const wikiRoot = path60.join(repoRoot, "wiki");
+  const wikiRoot = path62.join(repoRoot, "wiki");
   const pages = collectPages(wikiRoot);
   const rootSources = collectRootLinkSources(wikiRoot);
   return buildIndex(pages, rootSources);
@@ -36296,7 +37111,7 @@ var run65 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const wikiRoot = path60.join(repoRoot, "wiki");
+  const wikiRoot = path62.join(repoRoot, "wiki");
   const pages = collectPages(wikiRoot);
   const rootSources = collectRootLinkSources(wikiRoot);
   const index = buildIndex(pages, rootSources);
@@ -36317,7 +37132,7 @@ var HELP_TEXT65 = `Usage: gaia wiki orphans [--json]
   title, domain } ] }.
 `;
 var HELP_TOKENS63 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
-var isMaintainerOnly = (path64) => path64.startsWith("wiki/meta/") || path64.startsWith("wiki/entities/");
+var isMaintainerOnly = (path66) => path66.startsWith("wiki/meta/") || path66.startsWith("wiki/entities/");
 var run66 = (argv, options = {}) => {
   let json3 = false;
   for (const token of argv) {
@@ -36373,8 +37188,8 @@ var run66 = (argv, options = {}) => {
 };
 
 // src/wiki/state-bump.ts
-import { existsSync as existsSync37, readFileSync as readFileSync49 } from "node:fs";
-import path61 from "node:path";
+import { existsSync as existsSync38, readFileSync as readFileSync50 } from "node:fs";
+import path63 from "node:path";
 var HELP_TEXT66 = `Usage: gaia wiki state-bump <field> <value>
 
   Updates a single field in wiki/.state.json. Sibling fields and key order
@@ -36445,8 +37260,8 @@ var run67 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const statePath = path61.join(repoRoot, "wiki", ".state.json");
-  if (!existsSync37(statePath)) {
+  const statePath = path63.join(repoRoot, "wiki", ".state.json");
+  if (!existsSync38(statePath)) {
     structuredError({
       code: "state_missing",
       message: "wiki/.state.json does not exist",
@@ -36454,7 +37269,7 @@ var run67 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const raw = readFileSync49(statePath, "utf8");
+  const raw = readFileSync50(statePath, "utf8");
   let parsed;
   try {
     parsed = JSON.parse(raw);
@@ -36484,8 +37299,8 @@ var run67 = (argv, options = {}) => {
 
 // src/wiki/state-init.ts
 import { execFileSync as execFileSync7 } from "node:child_process";
-import { existsSync as existsSync38, mkdirSync as mkdirSync19 } from "node:fs";
-import path62 from "node:path";
+import { existsSync as existsSync39, mkdirSync as mkdirSync19 } from "node:fs";
+import path64 from "node:path";
 var HELP_TEXT67 = `Usage: gaia wiki state-init <sha>
 
   Create wiki/.state.json with {version: 1, last_evaluated_sha,
@@ -36562,9 +37377,9 @@ var run68 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const wikiDir = path62.join(repoRoot, "wiki");
-  const statePath = path62.join(wikiDir, ".state.json");
-  if (existsSync38(statePath)) {
+  const wikiDir = path64.join(repoRoot, "wiki");
+  const statePath = path64.join(wikiDir, ".state.json");
+  if (existsSync39(statePath)) {
     structuredError({
       code: "state_already_exists",
       message: "wiki/.state.json already exists; use `gaia wiki state-bump` to update fields",
@@ -36587,8 +37402,8 @@ var run68 = (argv, options = {}) => {
 };
 
 // src/wiki/state.ts
-import { existsSync as existsSync39, readdirSync as readdirSync7, readFileSync as readFileSync50, statSync as statSync8 } from "node:fs";
-import path63 from "node:path";
+import { existsSync as existsSync40, readdirSync as readdirSync7, readFileSync as readFileSync51, statSync as statSync8 } from "node:fs";
+import path65 from "node:path";
 var HELP_TEXT68 = `Usage: gaia wiki state [--json]
 `;
 var ALL_ZERO_SHA = "0".repeat(40);
@@ -36612,8 +37427,8 @@ var DOMAIN_DIRS3 = [
 var countDomainPages = (wikiRoot) => {
   const counts = {};
   for (const domain2 of DOMAIN_DIRS3) {
-    const domainDir = path63.join(wikiRoot, domain2);
-    if (!existsSync39(domainDir) || !statSync8(domainDir).isDirectory()) {
+    const domainDir = path65.join(wikiRoot, domain2);
+    if (!existsSync40(domainDir) || !statSync8(domainDir).isDirectory()) {
       counts[domain2] = 0;
     } else {
       const entries = readdirSync7(domainDir, { withFileTypes: true });
@@ -36629,8 +37444,8 @@ var countDomainPages = (wikiRoot) => {
   return counts;
 };
 var readStateFile2 = (statePath) => {
-  if (!existsSync39(statePath)) return null;
-  const raw = readFileSync50(statePath, "utf8");
+  if (!existsSync40(statePath)) return null;
+  const raw = readFileSync51(statePath, "utf8");
   try {
     return JSON.parse(raw);
   } catch {
@@ -36701,8 +37516,8 @@ var run69 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const wikiRoot = path63.join(repoRoot, "wiki");
-  const statePath = path63.join(wikiRoot, ".state.json");
+  const wikiRoot = path65.join(repoRoot, "wiki");
+  const statePath = path65.join(wikiRoot, ".state.json");
   const stateFile = readStateFile2(statePath);
   const stateSha = stateFile?.last_evaluated_sha ?? "";
   const stateAt = stateFile?.last_evaluated_at ?? "";

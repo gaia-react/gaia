@@ -24,7 +24,9 @@ Testing has **four layers**, all sharing a common [[MSW Handlers|MSW]] mocking l
 - E2E: [[Playwright]] in `frontend/.playwright/e2e/*.spec.ts`
 - Visual regression: [[Chromatic]] (CI only), driven by the same stories
 
-A story is the component test and the visual-regression input, so both share one source of truth. See [[Stories as Tests]] and [[Component Testing]].
+A story is the component test and the visual-regression input, so both share one source of truth. A route's test is its page story, which mounts the route's exports through `stubs.reactRouter` and drives MSW handlers. See [[Stories as Tests]] and [[Component Testing]].
+
+Server-side tests (the QueryClient accessor, `attempt`, base-URL resolution) run in the `node` Vitest project against the MSW node server.
 
 ## Vitest
 

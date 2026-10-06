@@ -34,12 +34,18 @@ type ReactRouterDecoratorOptions = {
 };
 
 type RouteBinding = {
-  action?: RouteObject['action'];
-  clientAction?: RouteObject['action'];
-  clientLoader?: RouteObject['loader'];
+  action?: RouteDataFunction;
+  clientAction?: RouteDataFunction;
+  clientLoader?: RouteDataFunction;
   HydrateFallback?: RouteObject['HydrateFallback'];
-  loader?: RouteObject['loader'];
+  loader?: RouteDataFunction;
 };
+
+// A route module types its data functions with its generated args (typed
+// params, a clientLoader's `serverLoader`), which the stub route's generic args
+// do not satisfy, so a binding typed as `RouteObject['loader']` rejects every
+// route with a param or a client function. The stub only forwards them.
+type RouteDataFunction = (args: never) => unknown;
 
 type Routes = {path: string; storyId: string}[];
 
@@ -127,9 +133,9 @@ const bindRoute = (
   }
 
   return {
-    action: route.action ?? route.clientAction,
+    action: (route.action ?? route.clientAction) as RouteObject['action'],
     HydrateFallback: route.HydrateFallback,
-    loader: route.loader ?? route.clientLoader,
+    loader: (route.loader ?? route.clientLoader) as RouteObject['loader'],
   };
 };
 

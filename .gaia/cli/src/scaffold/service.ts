@@ -37,7 +37,7 @@ import {
   missingQueryGetters,
   QUERY_ON_INIT_COMMAND,
 } from './data-layer.js';
-import {ensureDir, writeFileIfAbsent} from './fs.js';
+import {ensureDir, writeAndRecord} from './fs.js';
 import {resolveLayer} from './layer.js';
 import {resolveScaffoldTarget} from './resolve-target.js';
 import {renderTemplate} from './template.js';
@@ -343,7 +343,8 @@ type DerivedNames = {
   singular: string;
 };
 
-const toPascal = (kebab: string): string =>
+/** kebab → PascalCase. `user-settings` → `UserSettings`. */
+export const toPascal = (kebab: string): string =>
   kebab
     .split('-')
     .flatMap((part) =>
@@ -351,7 +352,8 @@ const toPascal = (kebab: string): string =>
     )
     .join('');
 
-const toCamel = (kebab: string): string => {
+/** kebab → camelCase. `user-settings` → `userSettings`. */
+export const toCamel = (kebab: string): string => {
   const pascal = toPascal(kebab);
 
   return pascal.charAt(0).toLowerCase() + pascal.slice(1);
@@ -404,7 +406,8 @@ export const deriveNames = (name: string): DerivedNames => {
 
 // Field rendering
 
-const camelToSnake = (camel: string): string =>
+/** A camelCase field name as the snake_case key the server sees on the wire. */
+export const camelToSnake = (camel: string): string =>
   camel.replaceAll(/[A-Z]/gu, (match) => `_${match.toLowerCase()}`);
 
 const renderClientFields = (fields: SchemaField[]): string[] =>
@@ -679,26 +682,12 @@ const baseTemplateVars = (derived: DerivedNames): TemplateVars => ({
   singular: derived.singular,
 });
 
-const writeRendered = (
-  absPath: string,
-  contents: string,
-  result: ScaffoldResult
-): void => {
-  const {written} = writeFileIfAbsent(absPath, contents);
-
-  if (written) {
-    result.written.push(absPath);
-  } else {
-    result.skipped.push(absPath);
-  }
-};
-
 const writeQueries = (
   serviceDir: string,
   baseVars: TemplateVars,
   result: ScaffoldResult
 ): void => {
-  writeRendered(
+  writeAndRecord(
     path.join(serviceDir, 'queries.ts'),
     renderServiceTemplate('service/queries.ts.tmpl', baseVars),
     result
@@ -762,10 +751,10 @@ const emitServiceFiles = (
         `${derived.singular}Schema.omit({id: true})`
       : `${derived.singular}Schema`,
   });
-  writeRendered(path.join(serviceDir, 'parsers.ts'), parsersBody, result);
+  writeAndRecord(path.join(serviceDir, 'parsers.ts'), parsersBody, result);
 
   const typesBody = renderServiceTemplate('service/types.ts.tmpl', baseVars);
-  writeRendered(path.join(serviceDir, 'types.ts'), typesBody, result);
+  writeAndRecord(path.join(serviceDir, 'types.ts'), typesBody, result);
 
   const requestsBody = renderServiceTemplate('service/requests.ts.tmpl', {
     ...baseVars,
@@ -775,13 +764,13 @@ const emitServiceFiles = (
     hasPut: endpoints.has('put'),
     importLines: composeRequestsImports(derived, endpoints),
   });
-  writeRendered(path.join(serviceDir, 'requests.ts'), requestsBody, result);
+  writeAndRecord(path.join(serviceDir, 'requests.ts'), requestsBody, result);
 
   const urlsBody = renderServiceTemplate('service/urls.ts.tmpl', baseVars);
-  writeRendered(path.join(serviceDir, 'urls.ts'), urlsBody, result);
+  writeAndRecord(path.join(serviceDir, 'urls.ts'), urlsBody, result);
 
   const indexBody = renderServiceTemplate('service/index.ts.tmpl', baseVars);
-  writeRendered(path.join(serviceDir, 'index.ts'), indexBody, result);
+  writeAndRecord(path.join(serviceDir, 'index.ts'), indexBody, result);
 
   if (endpoints.has('get') && hasTanstackQuery(repoRoot)) {
     writeQueries(serviceDir, baseVars, result);
@@ -799,10 +788,10 @@ const emitMockFiles = (context: EmitContext, result: ScaffoldResult): void => {
     ...baseVars,
     serverFields: renderServerFields(fields),
   });
-  writeRendered(path.join(mockDir, 'data.ts'), dataBody, result);
+  writeAndRecord(path.join(mockDir, 'data.ts'), dataBody, result);
 
   if (endpoints.has('get')) {
-    writeRendered(
+    writeAndRecord(
       path.join(mockDir, 'get.ts'),
       renderServiceTemplate('service/mock.get.ts.tmpl', baseVars),
       result
@@ -810,7 +799,7 @@ const emitMockFiles = (context: EmitContext, result: ScaffoldResult): void => {
   }
 
   if (endpoints.has('post')) {
-    writeRendered(
+    writeAndRecord(
       path.join(mockDir, 'post.ts'),
       renderServiceTemplate('service/mock.post.ts.tmpl', baseVars),
       result
@@ -818,7 +807,7 @@ const emitMockFiles = (context: EmitContext, result: ScaffoldResult): void => {
   }
 
   if (endpoints.has('put')) {
-    writeRendered(
+    writeAndRecord(
       path.join(mockDir, 'put.ts'),
       renderServiceTemplate('service/mock.put.ts.tmpl', baseVars),
       result
@@ -826,7 +815,7 @@ const emitMockFiles = (context: EmitContext, result: ScaffoldResult): void => {
   }
 
   if (endpoints.has('delete')) {
-    writeRendered(
+    writeAndRecord(
       path.join(mockDir, 'delete.ts'),
       renderServiceTemplate('service/mock.delete.ts.tmpl', baseVars),
       result
@@ -837,7 +826,7 @@ const emitMockFiles = (context: EmitContext, result: ScaffoldResult): void => {
     ...baseVars,
     ...composeMockBarrel(endpoints),
   });
-  writeRendered(path.join(mockDir, 'index.ts'), barrelBody, result);
+  writeAndRecord(path.join(mockDir, 'index.ts'), barrelBody, result);
 
   // Edit the database barrel; only when --mocks, otherwise no edit.
   const databasePath = path.join(repoRoot, 'test', 'mocks', 'database.ts');

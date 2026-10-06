@@ -32,7 +32,7 @@
  * props, so comma-bearing types (`Record<K, V>`, `(a, b) => void`, tuples) are
  * supported within a single entry.
  *
- * The handler uses the shared scaffold utilities (`writeFileIfAbsent`,
+ * The handler uses the shared scaffold utilities (`writeAndRecord`,
  * `loadTemplate`, `renderTemplate`) so behavior matches the other
  * scaffolders shipped in Phase 2.
  */
@@ -43,7 +43,7 @@ import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {takeNonFlagValue} from '../util/argv.js';
 import {toPackageRelative} from '../util/package-target.js';
-import {writeFileIfAbsent} from './fs.js';
+import {writeAndRecord} from './fs.js';
 import {resolveScaffoldTarget} from './resolve-target.js';
 import {renderTemplate} from './template.js';
 import type {ScaffoldResult} from './types.js';
@@ -553,20 +553,6 @@ const resolveTemplatesRoot = (): string => {
   return path.join(path.dirname(here), 'templates');
 };
 
-const writeOne = (
-  absPath: string,
-  contents: string,
-  result: ScaffoldResult
-): void => {
-  const {written} = writeFileIfAbsent(absPath, contents);
-
-  if (written) {
-    result.written.push(absPath);
-  } else {
-    result.skipped.push(absPath);
-  }
-};
-
 const printHumanResult = (
   result: ScaffoldResult,
   componentName: string
@@ -667,8 +653,8 @@ export const run = (
   };
 
   try {
-    writeOne(indexPath, renderComponentFile(renderOptions), result);
-    writeOne(storyPath, renderStoryFile(renderOptions), result);
+    writeAndRecord(indexPath, renderComponentFile(renderOptions), result);
+    writeAndRecord(storyPath, renderStoryFile(renderOptions), result);
   } catch (error) {
     structuredError({
       code: 'write_failed',

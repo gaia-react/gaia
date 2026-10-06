@@ -12,8 +12,16 @@ const meta: Meta = {
         <Story />
       </Layout>
     ),
-    stubs.reactRouter(),
-  ],
+{{#hasLoader}}    // Serves the loader data the page reads. The route's own loader can read
+    // request context, such as the i18next instance, that a story lacks.
+    stubs.reactRouter({
+      loader: async () => ({
+        description: 'Description of the {{routeSlug}} page',
+        title: '{{pageName}}',
+      }),
+    }),
+{{/hasLoader}}{{#noLoader}}    stubs.reactRouter(),
+{{/noLoader}}  ],
   parameters: {
     controls: {hideNoControlsWarning: true},
   },
@@ -31,6 +39,8 @@ export const Renders: StoryFn = () => <{{pageName}} />;
 Renders.play = async ({canvasElement}) => {
   const canvas = within(canvasElement);
 
-  await expect(canvas.getAllByRole('heading', {level: 1})).toHaveLength(1);
+  const headings = await canvas.findAllByRole('heading', {level: 1});
+
+  await expect(headings).toHaveLength(1);
   await expect(canvas.getAllByRole('main')).toHaveLength(1);
 };

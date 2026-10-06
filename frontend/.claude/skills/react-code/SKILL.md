@@ -126,7 +126,7 @@ const nonce = use(NonceContext); // not useContext(NonceContext)
 | `useActionState`, `<form action={fn}>` | route `action` + `useActionData`                                                              |
 | `useFormStatus`                        | `useNavigation().state` / `fetcher.state`                                                     |
 | `useOptimistic`                        | fetcher-based optimism (`useOptimisticThemeMode` in `use-theme.ts`)                           |
-| `use(promise)` for route data          | loader + `useLoaderData` (`use(promise)` only for non-route promises inside `<Suspense>`)     |
+| `use(promise)` for route data          | the route's data-loading variant (`## Data Loading`); `use(promise)` only for non-route promises inside `<Suspense>` |
 
 Metadata is the mirror case: render `<title>`/`<meta>` as JSX (React 19 hoisting), not a React Router route `meta`/`links` export. Keep it that way; adding a route `meta` export to a page that already renders `<title>` in JSX produces duplicate tags.
 
@@ -183,13 +183,26 @@ Extract when a section meets **all** criteria:
 
 How: Create `ParentComponent/NewSection/index.tsx`, move exclusive types/state/handlers/JSX, define minimal `Props` type.
 
+## Data Loading
+
+Pick the variant by who owns the data:
+
+- **URL-owned data** (no cross-route reuse, no polling): a server `loader` + `useLoaderData` by default, for first-paint, public, or SEO-relevant content. A `clientLoader` + `HydrateFallback` + `useLoaderData` only for browser-only or post-interaction data where an empty first paint is acceptable: the server renders only the `HydrateFallback`, so content waits on HTML, JS, hydration, then the fetch.
+- **Component-owned data**: `useQuery`, or `useSuspenseQuery(` only inside a `clientLoader` route, whose component never renders on the server. With Query off, run `./.gaia/cli/gaia init configure-data-layer --query true`; never a hand-rolled fetch cache or effect-based fetching.
+- **Both** (URL-owned and cached): the `clientLoader` awaits `queryClient.query(options)` (via `getQueryClient()`) and returns nothing, the page reads `useSuspenseQuery(options)`, and the `clientAction` mutates then awaits `invalidateQueries` before redirecting.
+- Server-rendered data comes from a server loader; Query is for client-owned data. Never `ensureQueryData`, `fetchQuery`, or `prefetchQuery` (lint enforces it).
+- Any identity change (logout, login, account switch) calls `queryClient.clear()` or does a full document navigation, so one user's cache never reaches the next.
+- `clientLoader` and Query variants suit unauthenticated or cookie-authenticated APIs; tokens and secrets never enter the root-loader `ENV`.
+
+Worked example and rationale: `wiki/concepts/Data Loading.md`. Scaffolds: the `new-route` and `new-service` skills.
+
 ## Route-Page Architecture
 
 ### Route files (`app/routes/`)
 
 Thin shell only:
 
-- `loader` / `action` functions
+- `loader`, `clientLoader`, `action`, `clientAction`, and `HydrateFallback` exports, as the data-loading variant needs
 - Zod schemas for the action
 - One-line default export: `const MyRoute = () => <MyPage />;`
 
@@ -204,7 +217,7 @@ app/pages/<route path>/tests/page.*.tsx  # the page's tests and stories
 
 The folder is derived from the route file name; the full layout rule (derivation, colocation, hooks) lives in `frontend/.claude/rules/coding-guidelines-react.md`.
 
-For loader data: use `useLoaderData<typeof loader>()` (import the `loader` type from the route file) or `useLoaderData<LoaderData>()` (import `LoaderData` from a sibling `types.ts`). Never define the type inline in the page component file itself.
+For loader data: use `useLoaderData<LoaderData>()` with `LoaderData` exported from a sibling `types.ts` in the page folder, and annotate the route module's loader return with that type. A page never imports from `app/routes/**` (type-only included; `import-x/no-restricted-paths` forbids it), so it never reads the `loader` type from the route file. Never define the type inline in the page component file itself.
 
 Page content goes in colocated `<kebab>/index.tsx` folders inside the page folder. Tests and stories go in the page folder's `tests/`.
 

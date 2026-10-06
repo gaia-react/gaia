@@ -87,7 +87,7 @@ await things.update((q) => q.where({id: 'abc'}), {
 afterEach(resetTestData);
 ```
 
-Stories and browser-project tests run neither the MSW node server nor this reset. They read seed data from the `@msw/data` collections directly, so they treat those collections as read-only.
+Stories and browser-project tests run neither the MSW node server nor this reset. Stories mock the API through the wired `msw-storybook-addon`: a story passes handlers in `parameters.msw.handlers`, and a handler that serves a mutation reads the typed JSON body with `request.json()` (never `formData`) and answers `{data}`. Stories read seed data from the `@msw/data` collections directly, so they treat those collections as read-only.
 
 > [!warning] `resetHandlers` ≠ `resetTestData`
 > `frontend/test/test.server.ts` calls `server.resetHandlers()` in its own `afterEach`; this resets runtime handler overrides but **not** the database. The database reset is the separate `resetTestData()` wired into `frontend/test/setup.ts`.

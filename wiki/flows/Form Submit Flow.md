@@ -20,12 +20,12 @@ The end-to-end path of a form submission in the app.
    const submission = parseWithZod(formData, {schema});
    if (submission.status !== 'success') return submission.reply();
    ```
-5. On success, action does the work (call API via `frontend/app/services/`), then either:
+5. On success, action does the work (call a mutation request function in `frontend/app/services/`, passing only `submission.value`; the request sends it as typed JSON), then either:
    - Returns `redirect(...)` for a navigation
    - Returns `dataWithToast(...)` from `remix-toast` for an inline toast
 6. Conform binds errors back to fields automatically.
 
-This is the recommended template pattern. No shipped route action implements it; the live working example is the composed form fixture and its story under `frontend/app/components/form/tests/`. The shipped route actions (`frontend/app/routes/actions.set-language.ts`, `frontend/app/routes/resources.theme-switch.tsx`) validate with plain `z.safeParse` rather than `parseWithZod`/`submission.reply()`.
+This is the pattern every scaffolded data route action follows (`gaia scaffold route --data <variant> --action`; see [[Data Loading]]). A `clientAction` (Query variant) runs the same validation in the browser, then awaits `invalidateQueries` before it redirects. The live working form example is the composed form fixture and its story under `frontend/app/components/form/tests/`. The two small no-UI endpoints (`frontend/app/routes/actions.set-language.ts`, `frontend/app/routes/resources.theme-switch.tsx`) take a single field and validate it with a plain Zod schema rather than `parseWithZod`/`submission.reply()`.
 
 ## Stateful custom inputs
 
