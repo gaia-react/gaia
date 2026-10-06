@@ -256,8 +256,10 @@ FilledSubmit.play = async ({args, canvasElement}) => {
     ]);
   });
 
+  // The stub calls onSubmit before the action returns, so the button can still
+  // read "Please wait..." here; find waits for it to settle back to Submit.
   await waitForSettledOpacity(
-    canvas.getByRole('button', {name: 'Submit'}),
+    await canvas.findByRole('button', {name: 'Submit'}),
     '1'
   );
 };
