@@ -63,7 +63,7 @@
     "@axe-core/playwright": "4.13.0",
     "@babel/core": "7.29.7",
     "@faker-js/faker": "10.6.0",
-    "@gaia-react/lint": "3.0.0-rc.2",
+    "@gaia-react/lint": "3.0.0-rc.3",
     "@msw/data": "1.1.8",
     "@playwright/test": "1.63.0",
     "@react-router/dev": "8.4.0",

@@ -30,8 +30,6 @@ describe('React Compiler canary', () => {
     };
 
     await render(<Parent />);
-    // `page` is Vitest browser mode's own locator API, not a Testing Library render result.
-    // eslint-disable-next-line testing-library/prefer-screen-queries
     const counterButton = page.getByRole('button');
     await userEvent.click(counterButton);
 
