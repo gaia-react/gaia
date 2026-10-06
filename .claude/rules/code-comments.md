@@ -8,7 +8,6 @@ paths:
   - '.gaia/**/*.sh'
   - '.claude/hooks/**/*.sh'
   - '.github/**/*.sh'
-  - '.specify/extensions/gaia/lib/**/*.sh'
   - '**/*.bats'
 ---
 

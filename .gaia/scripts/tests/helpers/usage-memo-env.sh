@@ -57,14 +57,14 @@ umemo_verify_baseline() {
 # working tree, laid out as in a real checkout so the lock lib resolves.
 _umemo_build_tree() {
   local root="$1" script_file
-  mkdir -p "$root/.gaia/scripts" "$root/.specify/extensions/gaia/lib"
+  mkdir -p "$root/.gaia/scripts" "$root/.gaia/scripts/spec"
   for script_file in "$UM_SOURCE_ROOT"/.gaia/scripts/usage*.sh "$UM_SOURCE_ROOT"/.gaia/scripts/token-pricing-lib.sh \
     "$UM_SOURCE_ROOT"/.gaia/scripts/token-rates-local-lib.sh "$UM_SOURCE_ROOT"/.gaia/scripts/token-rates-feed-lib.sh \
     "$UM_SOURCE_ROOT"/.gaia/scripts/ledger-path-lib.sh "$UM_SOURCE_ROOT"/.gaia/scripts/main-root-lib.sh \
     "$UM_SOURCE_ROOT"/.gaia/scripts/branch-name-lib.sh "$UM_SOURCE_ROOT"/.gaia/scripts/token-rollup.sh; do
     cp "$script_file" "$root/.gaia/scripts/" || return 1
   done
-  cp "$UM_SOURCE_ROOT/.specify/extensions/gaia/lib/with-ledger-lock.sh" "$root/.specify/extensions/gaia/lib/" || return 1
+  cp "$UM_SOURCE_ROOT/.gaia/scripts/spec/with-ledger-lock.sh" "$root/.gaia/scripts/spec/" || return 1
   cat >"$root/.gaia/scripts/token-rates.json" <<'EOF'
 {
   "cache_multipliers": { "read": 0.1, "write_5m": 1.25, "write_1h": 2.0 },
@@ -91,6 +91,9 @@ umemo_setup() {
   for pinned_file in $UMEMO_PINNED; do
     cp "$UM_BASELINE_DIRECTORY/$pinned_file" "$UM_OLD/.gaia/scripts/$pinned_file" || return 1
   done
+  # The frozen baseline loads the ledger lock only from its old relative path.
+  mkdir -p "$UM_OLD/.specify/extensions/gaia/lib" || return 1
+  cp "$UM_SOURCE_ROOT/.gaia/scripts/spec/with-ledger-lock.sh" "$UM_OLD/.specify/extensions/gaia/lib/" || return 1
   UM_MAIN="$UM_TEMPORARY_DIRECTORY/main"
   UM_TELEMETRY_DIRECTORY="$UM_MAIN/.gaia/local/telemetry"
   UM_PROJECTS_DIRECTORY="$UM_TEMPORARY_DIRECTORY/projects"

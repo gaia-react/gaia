@@ -9,11 +9,11 @@
 # the `ok` field in the JSON.
 #
 # Precedence (longest-prefix wins):
-#   1. Exact-file allowlist match (e.g. `.gaia/manifest.json`).
-#   2. Longest matching directory prefix wins. Because
-#      `.specify/extensions/gaia/templates/` (denylist) is longer than
-#      `.specify/extensions/gaia/` (allowlist), a path under templates/
-#      correctly resolves to denylist.
+#   1. Exact-file match, allow or deny (e.g. `.gaia/manifest.json`).
+#   2. Longest matching directory prefix wins. Because the file-level denylist
+#      entry `.claude/skills/gaia/references/spec/spec-template.md` is longer
+#      than the `.claude/skills/` allowlist prefix, that one file correctly
+#      resolves to denylist while its siblings stay allowed.
 #   3. No match → `default-deny-unenumerated`.
 #
 # POSIX bash only. No jq, no yq, no python.
@@ -35,7 +35,7 @@ dir|allow|.claude/skills/
 dir|allow|.claude/commands/
 dir|allow|.claude/agents/
 dir|allow|.gaia/statusline/
-dir|allow|.specify/extensions/gaia/
+dir|allow|.gaia/scripts/spec/
 file|allow|.gaia/manifest.json
 dir|deny|frontend/app/
 dir|deny|wiki/
@@ -44,7 +44,10 @@ dir|deny|website/
 dir|deny|.specify/specs/
 dir|deny|.specify/memory/
 dir|deny|.gaia/local/specs/
-dir|deny|.specify/extensions/gaia/templates/
+dir|deny|.gaia/templates/spec/
+file|deny|.claude/skills/gaia/references/spec/clarify-prompts.md
+file|deny|.claude/skills/gaia/references/spec/system-prompt.md
+file|deny|.claude/skills/gaia/references/spec/spec-template.md
 dir|deny|.github/workflows/
 "
 

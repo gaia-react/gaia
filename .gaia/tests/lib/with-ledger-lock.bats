@@ -7,7 +7,7 @@
 setup() {
   HELPERS="$BATS_TEST_DIRNAME/helpers"
   REPO="$("$HELPERS/tmp-spec-repo.sh")"
-  LOCK_HELPER="$REPO/.specify/extensions/gaia/lib/with-ledger-lock.sh"
+  LOCK_HELPER="$REPO/.gaia/scripts/spec/with-ledger-lock.sh"
   LOCK_DIRECTORY="$REPO/.gaia/local/specs"
 }
 

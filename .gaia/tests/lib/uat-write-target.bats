@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 #
-# .specify/extensions/gaia/lib/uat-write.sh: where the rendered Playwright specs
+# .gaia/scripts/spec/uat-write.sh: where the rendered Playwright specs
 # land. The target is the package named `frontend` (the registry, or the
 # built-in default `frontend/`), and the JSON `spec_dir` reports the
 # repo-relative directory the specs were written to.
@@ -9,7 +9,7 @@
 
 setup() {
   REPO_ROOT_REAL="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
-  SCRIPT="$REPO_ROOT_REAL/.specify/extensions/gaia/lib/uat-write.sh"
+  SCRIPT="$REPO_ROOT_REAL/.gaia/scripts/spec/uat-write.sh"
   WORK="$BATS_TEST_TMPDIR/work"
   mkdir -p "$WORK/.gaia"
   SPEC="$WORK/SPEC.md"
@@ -129,10 +129,11 @@ run_uat_write() {
 }
 
 @test "a copy of the renderer with no package library beside it exits non-zero and writes nothing" {
-  mkdir -p "$BATS_TEST_TMPDIR/bare/.specify/extensions"
-  cp -R "$REPO_ROOT_REAL/.specify/extensions/gaia" "$BATS_TEST_TMPDIR/bare/.specify/extensions/gaia"
+  mkdir -p "$BATS_TEST_TMPDIR/bare/.gaia/scripts" "$BATS_TEST_TMPDIR/bare/.gaia/templates"
+  cp -R "$REPO_ROOT_REAL/.gaia/scripts/spec" "$BATS_TEST_TMPDIR/bare/.gaia/scripts/spec"
+  cp -R "$REPO_ROOT_REAL/.gaia/templates/spec" "$BATS_TEST_TMPDIR/bare/.gaia/templates/spec"
 
-  run bash -c "cd '$WORK' && bash '$BATS_TEST_TMPDIR/bare/.specify/extensions/gaia/lib/uat-write.sh' '$SPEC'"
+  run bash -c "cd '$WORK' && bash '$BATS_TEST_TMPDIR/bare/.gaia/scripts/spec/uat-write.sh' '$SPEC'"
   [ "$status" -ne 0 ]
   grep -qF -- "package library missing" <<<"$output" || return 1
   [ ! -e "$WORK/frontend" ] || return 1

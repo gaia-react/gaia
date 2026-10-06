@@ -19,5 +19,4 @@ export const SCAN_GLOBS = [
   '.claude/hooks',
   '.github/actions',
   '.github/audit',
-  '.specify/extensions/gaia/lib',
 ] as const;

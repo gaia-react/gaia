@@ -37,7 +37,7 @@ Test for `.gaia/local/cache/wiki-promote/<plan_id>.json`.
 
 1. Read the cache. Run `gh pr list --head "$branch" --state merged --json number,mergedAt,url,body --limit 1`.
 2. If still unmerged: report `<plan_id>: PR for branch <branch> not yet merged. Re-run after merge.` and exit. Do not delete the cache. Do not proceed to Step 4, the plan is not closed yet.
-3. If merged: read `.specify/extensions/gaia/commands/wiki-promote.md` and follow it, with the plan id and the exact literal string `drained: true` stated in the instruction. Wiki-promote's Step 3 detects the merged PR, runs Steps 4-7, and deletes the cache. **Wiki-promote's Step 8 chain-back is suppressed by that literal token** (this command handles the ledger reconcile and reap itself, in Step 4 below), emit it verbatim, see wiki-promote Step 8 for the guard.
+3. If merged: read `.claude/skills/gaia/references/spec/wiki-promote.md` and follow it, with the plan id and the exact literal string `drained: true` stated in the instruction. Wiki-promote's Step 3 detects the merged PR, runs Steps 4-7, and deletes the cache. **Wiki-promote's Step 8 chain-back is suppressed by that literal token** (this command handles the ledger reconcile and reap itself, in Step 4 below), emit it verbatim, see wiki-promote Step 8 for the guard.
 
 **If no cache exists**, there is nothing to drain (never offered, offered-and-declined on a prior run, or this is the first run): proceed to Step 3.
 
@@ -55,10 +55,10 @@ Present the promotion offer via `AskUserQuestion`:
 
 No default-on and no size heuristic, every plan close asks.
 
-**On accept:** read `.specify/extensions/gaia/commands/wiki-promote.md` and follow it, with `<plan_id>` and the exact literal string `drained: true` stated in the instruction (this command always handles the ledger reconcile and reap itself in Step 4, so wiki-promote's Step 8 chain-back is suppressed here too, the same guard as Step 2's drain).
+**On accept:** read `.claude/skills/gaia/references/spec/wiki-promote.md` and follow it, with `<plan_id>` and the exact literal string `drained: true` stated in the instruction (this command always handles the ledger reconcile and reap itself in Step 4, so wiki-promote's Step 8 chain-back is suppressed here too, the same guard as Step 2's drain).
 
 - If wiki-promote completes a full run (PR already merged): pages are written and committed; proceed to Step 4 in this same run.
-- If wiki-promote defers (PR not yet merged): it writes the drain cache and exits. Report `<plan_id>: promotion accepted; awaiting PR merge for branch <branch>. Re-run `.specify/extensions/gaia/commands/plan-close.md` with `<plan_id>` after merge.` and exit. Do not proceed to Step 4, the plan is not closed yet.
+- If wiki-promote defers (PR not yet merged): it writes the drain cache and exits. Report `<plan_id>: promotion accepted; awaiting PR merge for branch <branch>. Re-run `.claude/skills/gaia/references/spec/plan-close.md` with `<plan_id>` after merge.` and exit. Do not proceed to Step 4, the plan is not closed yet.
 
 **On decline:** no wiki page is written. The plan counts as **drained**, there is nothing left pending; proceed directly to Step 4.
 
@@ -69,7 +69,7 @@ Resolve the plan folder: `.gaia/local/plans/<plan_id>/` (canonical source is the
 Reconcile the `.gaia/local/plans/ledger.json` row to record the merge, via the guarded chokepoint:
 
 ```bash
-bash .specify/extensions/gaia/lib/plan-reconcile.sh "$PWD" "$PLAN_ID" \
+bash .gaia/scripts/spec/plan-reconcile.sh "$PWD" "$PLAN_ID" \
   || echo "plan-reconcile skipped (row missing or lock timeout), non-blocking" >&2
 ```
 
@@ -97,7 +97,7 @@ If a well-formed `SUMMARY.md` already exists (the common case, `plan-archive.sh`
 **Reap.** Delegate to the single-id sweep with `--close` for early-reap (bypasses only the retention-window age gate; cost representation, the drain-cache check, and the consolidation gate still apply):
 
 ```bash
-bash .specify/extensions/gaia/lib/plan-archive-merged.sh "$PWD" "$PLAN_ID" --close || true
+bash .gaia/scripts/spec/plan-archive-merged.sh "$PWD" "$PLAN_ID" --close || true
 ```
 
 Read the delegate's output to set `disposition` for Step 6:

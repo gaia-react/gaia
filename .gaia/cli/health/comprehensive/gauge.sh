@@ -53,7 +53,7 @@ if [ -n "$TAG" ]; then
   while IFS= read -r changed_file; do
     [ -n "$changed_file" ] && changed_files+=("$changed_file")
   done < <(git diff --name-only -z "$TAG"..HEAD -M -- \
-    .claude .gaia .specify/extensions/gaia \
+    .claude .gaia \
     ':!.gaia/manifest.json' ':!.gaia/local' | tr '\0' '\n')
   churn_files=${#changed_files[@]}
 fi
@@ -63,7 +63,7 @@ classify_lens() {
   case "$1" in
     .claude/commands/health-audit.md|.gaia/cli/health/*) echo "SELF" ;;
     .claude/*) echo "FEAT" ;;
-    .gaia/cli/*|.gaia/scripts/*|.specify/extensions/gaia/*) echo "DIST" ;;
+    .gaia/cli/*|.gaia/scripts/*) echo "DIST" ;;
     .gaia/*) echo "TIDY" ;;
     *) echo "" ;;
   esac

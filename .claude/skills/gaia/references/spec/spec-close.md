@@ -36,7 +36,7 @@ Test for `.gaia/local/cache/wiki-promote/<spec_id>.json`.
 
 1. Read the cache. Run `gh pr list --head "$branch" --state merged --json number,mergedAt,url,body --limit 1`.
 2. If still unmerged: report `<spec_id>: PR for branch <branch> not yet merged. Re-run after merge.` and exit. Do not delete the cache. Do not proceed to disposition, the SPEC is not closed yet.
-3. If merged: read `.specify/extensions/gaia/commands/wiki-promote.md` and follow it, with the SPEC id and the exact literal string `drained: true` stated in the instruction. Wiki-promote's Step 3 detects the merged PR, runs Steps 4–7, and deletes the cache. **Wiki-promote's Step 8 chain is suppressed in this drain context** to avoid re-entering spec-close: its Step 8 suppression guard matches that literal `drained: true` token in the instruction, so emit it verbatim, not a paraphrase, and do not rely on the surrounding conversation to convey it (see wiki-promote Step 8 for the guard).
+3. If merged: read `.claude/skills/gaia/references/spec/wiki-promote.md` and follow it, with the SPEC id and the exact literal string `drained: true` stated in the instruction. Wiki-promote's Step 3 detects the merged PR, runs Steps 4–7, and deletes the cache. **Wiki-promote's Step 8 chain is suppressed in this drain context** to avoid re-entering spec-close: its Step 8 suppression guard matches that literal `drained: true` token in the instruction, so emit it verbatim, not a paraphrase, and do not rely on the surrounding conversation to convey it (see wiki-promote Step 8 for the guard).
 
 **If no cache exists** (immediate-merge or never-promoted path): skip drain. Proceed to Step 3.
 
@@ -53,7 +53,7 @@ Run using the Bash tool:
 ```bash
 PATCH=$(jq -nc --arg ts "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
   '{status: "merged", merged_at: $ts}')
-bash .specify/extensions/gaia/lib/ledger-update.sh "$PWD" "$SPEC_ID" "$PATCH" \
+bash .gaia/scripts/spec/ledger-update.sh "$PWD" "$SPEC_ID" "$PATCH" \
   || echo "ledger-update skipped (row missing), non-blocking" >&2
 ```
 
@@ -81,7 +81,7 @@ If a well-formed `SUMMARY.md` already exists (the common case, the warm orchestr
 **Reap.** Delegate to the single-id sweep with `--close` for early-reap (bypasses only the retention-window age gate; cost representation, the drain-cache check, and the consolidation gate still apply). It purges the SPEC's cache keyset, all in one place:
 
 ```bash
-bash .specify/extensions/gaia/lib/spec-archive-merged.sh "$PWD" "$SPEC_ID" --close || true
+bash .gaia/scripts/spec/spec-archive-merged.sh "$PWD" "$SPEC_ID" --close || true
 ```
 
 Read the delegate's output to set `disposition` for Step 5:

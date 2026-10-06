@@ -1,7 +1,7 @@
 # shellcheck shell=bash
 # GAIA shared main-checkout ledger-path lib (single-sourced).
 # Sourced by token-tally.sh, token-rollup.sh, token-rollup-merge.sh, and the
-# SPEC/plan ledger libraries under .specify/extensions/gaia/lib/. Defines the
+# SPEC/plan ledger libraries under .gaia/scripts/spec/. Defines the
 # main-checkout ledger-path derivations so each path lives in a single place:
 # renaming one later changes one definition, not a dozen.
 # No side effects at source time; defines functions only.

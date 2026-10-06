@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# Tests for `.specify/extensions/gaia/lib/plan-ledger-update.sh`, the plans-side
+# Tests for `.gaia/scripts/spec/plan-ledger-update.sh`, the plans-side
 # mirror of `ledger-update.sh` (U3, plan-ledger-chokepoint). Single guarded
 # mutation chokepoint for `.gaia/local/plans/ledger.json` rows after the
 # initial `plan-allocator.sh` allocation.
@@ -19,7 +19,7 @@ setup() {
   REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"
   # snapshot_file + assert_files_identical: byte identity without `$(cat …)`.
   . "$REPO_ROOT/.gaia/tests/helpers/files.sh"
-  SOURCE_LIBRARY_DIRECTORY="$REPO_ROOT/.specify/extensions/gaia/lib"
+  SOURCE_LIBRARY_DIRECTORY="$REPO_ROOT/.gaia/scripts/spec"
   SOURCE_SCRIPTS_DIRECTORY="$REPO_ROOT/.gaia/scripts"
   [ -x "$SOURCE_LIBRARY_DIRECTORY/plan-ledger-update.sh" ] || skip "plan-ledger-update.sh not executable"
 
@@ -28,9 +28,9 @@ setup() {
 
   git -C "$SANDBOX" init --quiet --initial-branch=main
 
-  mkdir -p "$SANDBOX/.specify/extensions/gaia/lib"
-  cp "$SOURCE_LIBRARY_DIRECTORY/plan-ledger-update.sh" "$SANDBOX/.specify/extensions/gaia/lib/plan-ledger-update.sh"
-  cp "$SOURCE_LIBRARY_DIRECTORY/with-ledger-lock.sh" "$SANDBOX/.specify/extensions/gaia/lib/with-ledger-lock.sh"
+  mkdir -p "$SANDBOX/.gaia/scripts/spec"
+  cp "$SOURCE_LIBRARY_DIRECTORY/plan-ledger-update.sh" "$SANDBOX/.gaia/scripts/spec/plan-ledger-update.sh"
+  cp "$SOURCE_LIBRARY_DIRECTORY/with-ledger-lock.sh" "$SANDBOX/.gaia/scripts/spec/with-ledger-lock.sh"
 
   mkdir -p "$SANDBOX/.gaia/scripts"
   cp "$SOURCE_SCRIPTS_DIRECTORY/ledger-path-lib.sh" "$SANDBOX/.gaia/scripts/ledger-path-lib.sh"
@@ -62,7 +62,7 @@ teardown() {
 LEDGER_RELATIVE_PATH=".gaia/local/plans/ledger.json"
 
 _update() {
-  bash "$SANDBOX/.specify/extensions/gaia/lib/plan-ledger-update.sh" "$SANDBOX" "$@"
+  bash "$SANDBOX/.gaia/scripts/spec/plan-ledger-update.sh" "$SANDBOX" "$@"
 }
 
 _row_field() {
@@ -126,6 +126,6 @@ _row_field() {
 }
 
 @test "7: wrong arg count exits 2" {
-  run bash "$SANDBOX/.specify/extensions/gaia/lib/plan-ledger-update.sh" "$SANDBOX" PLAN-001
+  run bash "$SANDBOX/.gaia/scripts/spec/plan-ledger-update.sh" "$SANDBOX" PLAN-001
   [ "$status" -eq 2 ]
 }

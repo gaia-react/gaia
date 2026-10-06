@@ -24,8 +24,7 @@ by another lens:
 
 - **NOT yours (SELF):** `.gaia/cli/health/**`.
 - **NOT yours (DIST):** `.gaia/cli/**` (all other), `.gaia/scripts/**` itself
-  as CLI-distribution surface, `.specify/extensions/gaia/**` as
-  distribution surface, and the esbuild bundling config
+  (including `.gaia/scripts/spec/**`) as CLI-distribution surface, and the esbuild bundling config
   (`.gaia/cli/package.json` `bundle:*` scripts).
 - **Yours:** `.gaia/local/**` (the state registry, `.gaia/state-registry.json`,
   is the authoritative inventory of what lives there — every directory it
@@ -37,7 +36,7 @@ by another lens:
   find stale/absent entries — not as the distribution-integrity angle DIST
   covers), and `.gaia/audit-ci.yml`.
 
-You may **read** `.gaia/scripts/*.sh` and `.specify/extensions/gaia/lib/*.sh`
+You may **read** `.gaia/scripts/*.sh` and `.gaia/scripts/spec/*.sh`
 filenames and headers to assess the ownership-split finding below (that is
 about layout, not about auditing script correctness, which is DIST's job).
 Do not raise findings about script logic, bugs, or bundling in those two
@@ -76,11 +75,11 @@ classes above are a floor, not a checklist to copy verbatim.
   retention question.
 - `.gaia/local/specs/` and `.gaia/local/plans/` including their `archived/`
   subtrees, for growth and layout-consistency questions.
-- `.gaia/scripts/` directory listing vs. `.specify/extensions/gaia/lib/`
+- `.gaia/scripts/` directory listing vs. `.gaia/scripts/spec/`
   directory listing, for the split-brain question.
 - `.gaia/manifest.json`, cross-checked against the live filesystem, for
   stale references.
-- `.gaia/scripts/plan-archive.sh` and the `.specify/extensions/gaia/lib/*-archive-*.sh`
+- `.gaia/scripts/plan-archive.sh` and the `.gaia/scripts/spec/*-archive-*.sh`
   scripts for what is and isn't covered by existing cleanup automation (don't
   re-flag what they already handle).
 

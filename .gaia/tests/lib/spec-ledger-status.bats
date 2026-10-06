@@ -41,11 +41,11 @@ teardown() {
 }
 
 _ledger_update() {
-  bash "$REPO/.specify/extensions/gaia/lib/ledger-update.sh" "$@"
+  bash "$REPO/.gaia/scripts/spec/ledger-update.sh" "$@"
 }
 
 _reconcile() {
-  bash "$REPO/.specify/extensions/gaia/lib/spec-reconcile.sh" "$@"
+  bash "$REPO/.gaia/scripts/spec/spec-reconcile.sh" "$@"
 }
 
 # Raw-write a status onto a row, bypassing the guard. Used to plant a
@@ -170,7 +170,7 @@ EOF
 
 @test "8: lint.sh accepts status in-progress and rejects status ready (bad_status)" {
   root="$(git -C "$BATS_TEST_DIRNAME" rev-parse --show-toplevel)"
-  lint="$root/.specify/extensions/gaia/lib/lint.sh"
+  lint="$root/.gaia/scripts/spec/lint.sh"
   fixture="$(mktemp)"
 
   _lint_fixture "in-progress" > "$fixture"

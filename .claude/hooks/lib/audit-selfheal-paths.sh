@@ -136,7 +136,7 @@ AUDIT_SELFHEAL_REFUSE_ERE=''
 # shellcheck disable=SC2034 # both variables are read by whoever sources this file
 _audit_selfheal_build() {
   local root_arms status=0 package_arm
-  root_arms='^(\.claude|\.specify|wiki|\.github)/|^\.gaia/(local[^/]|loca[^l]|loc[^a]|lo[^c]|l[^o]|[^l])|^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$|^tsconfig[^/]*\.json$|^[^/]*\.config\.(ts|mts|mjs|cjs|js)$|^(\.npmrc|\.prettierignore|\.nvmrc|\.node-version)$|^\.gaia/packages\.json$'
+  root_arms='^(\.claude|wiki|\.github)/|^\.gaia/(local[^/]|loca[^l]|loc[^a]|lo[^c]|l[^o]|[^l])|^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$|^tsconfig[^/]*\.json$|^[^/]*\.config\.(ts|mts|mjs|cjs|js)$|^(\.npmrc|\.prettierignore|\.nvmrc|\.node-version)$|^\.gaia/packages\.json$'
   AUDIT_SELFHEAL_PACKAGES_ERROR=''
   gaia_packages_load "$(cd "$_audit_selfheal_dir/../../.." && pwd)" || status=$?
   if [ "$status" -ne 0 ]; then

@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# Tests for `.specify/extensions/gaia/lib/spec-renumber.sh`'s best-effort
+# Tests for `.gaia/scripts/spec/spec-renumber.sh`'s best-effort
 # `.lock` re-key: a SPEC renumbered while its liveness lock is live must have
 # the lock follow the id, not strand under the old one (a stranded lock would
 # make `status <new_id>` read dormant even though the session is still
@@ -13,7 +13,7 @@
 
 setup() {
   HELPERS="$BATS_TEST_DIRNAME/helpers"
-  RENUMBER=".specify/extensions/gaia/lib/spec-renumber.sh"
+  RENUMBER=".gaia/scripts/spec/spec-renumber.sh"
   CACHE=".gaia/local/cache"
 }
 

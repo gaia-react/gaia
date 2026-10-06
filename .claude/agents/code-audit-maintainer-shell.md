@@ -15,7 +15,6 @@ You also own the declarative half of that same subsystem: the roster your own di
 - `.gaia/**/*.sh`
 - `.gaia/**/*.bats`
 - `.claude/hooks/**/*.sh`
-- `.specify/extensions/gaia/lib/*.sh`
 - `.github/**/*.sh`
 - `.github/**/*.bats`
 - `.githooks/**`
@@ -111,7 +110,7 @@ When a changed file is under `.claude/hooks/**/*.sh`, additionally check:
 - **Permission-decision output shape.** A hook that returns a permission decision emits `{"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "allow"|"deny"|"ask", "permissionDecisionReason": "..."}}`, built via `jq -n --arg` (never raw string interpolation of a dynamic reason into the JSON template, that is an injection risk into the emitted JSON). Flag a malformed or hand-built JSON string in place of `jq -n`.
 - **Never-brick-the-session fail-open.** A hook must not abort the session on its own internal error: missing `jq`/`gh`, an unexpected input shape, or a failed lookup should degrade to exiting 0 (a no-op) rather than propagating a non-zero exit or an uncaught `set -e` failure that could break the tool call pipeline. Flag any code path in a hook where an unexpected condition could exit non-zero without an explicit, deliberate reason to block.
 
-This lens activates only for hook scripts; it does not apply to `.gaia/`, `.specify/extensions/gaia/lib/`, or `.github/` scripts.
+This lens activates only for hook scripts; it does not apply to `.gaia/` or `.github/` scripts.
 
 ## Conditional bats-suite lens
 

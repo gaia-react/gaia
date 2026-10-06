@@ -10,9 +10,8 @@
  *
  * Walks shipped shell scripts under `.gaia/statusline/`,
  * `.gaia/cli/templates/`, `.gaia/scripts/`, `.claude/hooks/`,
- * `.github/actions/`, `.github/audit/`, and
- * `.specify/extensions/gaia/lib/` (recursing into nested directories) and
- * extracts their repo-relative path constants.
+ * `.github/actions/`, and `.github/audit/` (recursing into nested
+ * directories) and extracts their repo-relative path constants.
  *
  * The scan surface depends on the mode. A bare run walks the repo root, which
  * also holds release-excluded scripts, so it scans only the files carrying a
@@ -101,7 +100,7 @@ const RUNTIME_PREFIXES: readonly string[] = [
   '.claude/audit',
 ];
 
-const PATH_PREFIXES = ['.gaia/', '.claude/', '.specify/', '.github/'] as const;
+const PATH_PREFIXES = ['.gaia/', '.claude/', '.github/'] as const;
 
 /**
  * Path tokens referenced inside shipped scripts that are NOT runtime

@@ -1,7 +1,7 @@
 # SPEC-ledger lib harness
 
 Maintainer-only bats suite for the SPEC ledger machinery:
-`.specify/extensions/gaia/lib/spec-allocator.sh`, `ledger-update.sh`, and the
+`.gaia/scripts/spec/spec-allocator.sh`, `ledger-update.sh`, and the
 shared `with-ledger-lock.sh` mutex. Excluded from the release bundle via
 `.gaia/release-exclude` (category `.gaia/tests/`). Every test is hermetic
 each spins up its own tmp git repo via `helpers/tmp-spec-repo.sh` and tears it

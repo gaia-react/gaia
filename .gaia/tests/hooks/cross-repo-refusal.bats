@@ -119,7 +119,7 @@ ask_with_stub() {
   [ "$status" -eq 0 ]
   grep -qF -- 'This pull request comes from a fork (cross-repository).' <<<"$output"
   grep -qF -- "would run the fork's own harness code with your credentials" <<<"$output"
-  grep -qF -- 'review the harness diff by hand (.claude/, .gaia/, .github/, .specify/)' <<<"$output"
+  grep -qF -- 'review the harness diff by hand (.claude/, .gaia/, .github/)' <<<"$output"
   grep -qF -- 'push the branch to origin so it becomes a same-repo pull request' <<<"$output"
   grep -qF -- 'run the PR Merge Workflow on that.' <<<"$output"
 }

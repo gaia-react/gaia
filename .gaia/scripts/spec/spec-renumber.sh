@@ -25,7 +25,7 @@ fi
 repo_root="$1"
 old_id="$2"
 new_id="$3"
-allocator="${repo_root%/}/.specify/extensions/gaia/lib/spec-allocator.sh"
+allocator="${repo_root%/}/.gaia/scripts/spec/spec-allocator.sh"
 
 # Source the shared ledger-path lib from this script's own directory, never
 # through repo_root: repo_root is the value whose trustworthiness is in
@@ -41,13 +41,13 @@ _library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # write all leave exactly that state on disk. No probe of its own here, because
 # the gaia_resolve_specs_directory call below already refuses when the function is
 # absent, which is the degrade this load owes.
-# shellcheck source=../../../../.gaia/scripts/ledger-path-lib.sh
-set +e; [ -f "${_library_directory}/../../../../.gaia/scripts/ledger-path-lib.sh" ] && . "${_library_directory}/../../../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null; set -e
+# shellcheck source=../ledger-path-lib.sh
+set +e; [ -f "${_library_directory}/../ledger-path-lib.sh" ] && . "${_library_directory}/../ledger-path-lib.sh" 2>/dev/null; set -e
 # The branch-naming library reads a SPEC number back out of a plan branch in
 # every spelling GAIA mints, the worktree one included. Loaded the same
 # bracketed way as the ledger-path lib above, for the same reason.
-# shellcheck source=../../../../.gaia/scripts/branch-name-lib.sh
-set +e; [ -f "${_library_directory}/../../../../.gaia/scripts/branch-name-lib.sh" ] && . "${_library_directory}/../../../../.gaia/scripts/branch-name-lib.sh" 2>/dev/null; set -e
+# shellcheck source=../branch-name-lib.sh
+set +e; [ -f "${_library_directory}/../branch-name-lib.sh" ] && . "${_library_directory}/../branch-name-lib.sh" 2>/dev/null; set -e
 if ! type gaia_branch_spec_number >/dev/null 2>&1; then
   echo "spec-renumber: the branch-naming library is unusable, so SPEC numbers held only on a branch cannot be read; refuse to renumber" >&2
   exit 4

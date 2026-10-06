@@ -30,7 +30,7 @@
 
 # shellcheck disable=SC2034 # GAIA_CROSS_REPO_GH_ERROR is read by the sourcing hook
 if [ -z "${GAIA_CROSS_REPO_REFUSAL_MESSAGE+set}" ]; then
-  readonly GAIA_CROSS_REPO_REFUSAL_MESSAGE='This pull request comes from a fork (cross-repository). GAIA never audits or merges a fork PR locally, because doing so would run the fork'"'"'s own harness code with your credentials. Manual path: review the harness diff by hand (.claude/, .gaia/, .github/, .specify/), then push the branch to origin so it becomes a same-repo pull request, and run the PR Merge Workflow on that.'
+  readonly GAIA_CROSS_REPO_REFUSAL_MESSAGE='This pull request comes from a fork (cross-repository). GAIA never audits or merges a fork PR locally, because doing so would run the fork'"'"'s own harness code with your credentials. Manual path: review the harness diff by hand (.claude/, .gaia/, .github/), then push the branch to origin so it becomes a same-repo pull request, and run the PR Merge Workflow on that.'
 fi
 
 GAIA_CROSS_REPO_GH_ERROR=''

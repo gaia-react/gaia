@@ -172,7 +172,7 @@ fi
 if [ "$kind" = "plans" ] && [ "$attribute_field" = "plan_id" ]; then
   now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   patch="$(jq -nc --arg timestamp "$now" '{status: "merged", merged_at: $timestamp}')"
-  bash "$root/.specify/extensions/gaia/lib/plan-ledger-update.sh" "$root" "$slug" "$patch" \
+  bash "$root/.gaia/scripts/spec/plan-ledger-update.sh" "$root" "$slug" "$patch" \
     >/dev/null 2>&1 || true
 fi
 

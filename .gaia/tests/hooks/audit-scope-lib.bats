@@ -24,7 +24,7 @@ setup() {
   # invariant below is what stops a second copy of this set appearing in another
   # tracked script and drifting from this one, and an arm it does not name is an
   # arm that may be copied freely.
-  ALLOWLIST_LITERAL='wiki/*|.claude/*|.specify/*|.gaia/*|docs/*'
+  ALLOWLIST_LITERAL='wiki/*|.claude/*|.gaia/*|docs/*'
 }
 
 # Count real invocations of a symbol in a file. A presence probe -- `type X` or

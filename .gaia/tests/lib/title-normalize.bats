@@ -25,7 +25,7 @@ _normalize_title() {
 
 @test "1: short single-sentence input returns unchanged" {
   REPO="$("$HELPERS/tmp-spec-repo.sh")"
-  LIBRARY_PATH="$REPO/.specify/extensions/gaia/lib/title-normalize.sh"
+  LIBRARY_PATH="$REPO/.gaia/scripts/spec/title-normalize.sh"
   run _normalize_title "Add a widget."
   [ "$status" -eq 0 ]
   [ "$output" = "Add a widget." ]
@@ -33,7 +33,7 @@ _normalize_title() {
 
 @test "2: within-bound input with no terminator returns the collapsed line unchanged" {
   REPO="$("$HELPERS/tmp-spec-repo.sh")"
-  LIBRARY_PATH="$REPO/.specify/extensions/gaia/lib/title-normalize.sh"
+  LIBRARY_PATH="$REPO/.gaia/scripts/spec/title-normalize.sh"
   run _normalize_title "a short subject with no terminator"
   [ "$status" -eq 0 ]
   [ "$output" = "a short subject with no terminator" ]
@@ -41,7 +41,7 @@ _normalize_title() {
 
 @test "3: multi-line input collapses to one space-joined line" {
   REPO="$("$HELPERS/tmp-spec-repo.sh")"
-  LIBRARY_PATH="$REPO/.specify/extensions/gaia/lib/title-normalize.sh"
+  LIBRARY_PATH="$REPO/.gaia/scripts/spec/title-normalize.sh"
   raw="$(printf 'a\n  b\nc')"
   run _normalize_title "$raw"
   [ "$status" -eq 0 ]
@@ -50,7 +50,7 @@ _normalize_title() {
 
 @test "4: over-bound first sentence with interior spaces -> word-safe prefix ending in ..." {
   REPO="$("$HELPERS/tmp-spec-repo.sh")"
-  LIBRARY_PATH="$REPO/.specify/extensions/gaia/lib/title-normalize.sh"
+  LIBRARY_PATH="$REPO/.gaia/scripts/spec/title-normalize.sh"
   raw='The quick brown fox jumps over the lazy dog while the astonishingly persistent watchdog barks incessantly at the mail carrier every single morning without fail, causing considerable frustration.'
   run _normalize_title "$raw"
   [ "$status" -eq 0 ]
@@ -63,7 +63,7 @@ _normalize_title() {
 
 @test "5: single over-bound token with no interior space is hard-cut to 120 chars + ..." {
   REPO="$("$HELPERS/tmp-spec-repo.sh")"
-  LIBRARY_PATH="$REPO/.specify/extensions/gaia/lib/title-normalize.sh"
+  LIBRARY_PATH="$REPO/.gaia/scripts/spec/title-normalize.sh"
   token="$(printf 'a%.0s' $(seq 1 200))"
   run _normalize_title "$token"
   [ "$status" -eq 0 ]
@@ -75,7 +75,7 @@ _normalize_title() {
 
 @test "6: empty input yields empty output" {
   REPO="$("$HELPERS/tmp-spec-repo.sh")"
-  LIBRARY_PATH="$REPO/.specify/extensions/gaia/lib/title-normalize.sh"
+  LIBRARY_PATH="$REPO/.gaia/scripts/spec/title-normalize.sh"
   run _normalize_title ""
   [ "$status" -eq 0 ]
   [ -z "$output" ]
@@ -83,7 +83,7 @@ _normalize_title() {
 
 @test "7: the real SPEC-003 first sentence normalizes to a word-safe prefix, not the defect string" {
   REPO="$("$HELPERS/tmp-spec-repo.sh")"
-  LIBRARY_PATH="$REPO/.specify/extensions/gaia/lib/title-normalize.sh"
+  LIBRARY_PATH="$REPO/.gaia/scripts/spec/title-normalize.sh"
   # Literal copy of the archived SPEC-003 intent block's opening lines (a
   # multi-line YAML block scalar in the live, gitignored specs ledger data);
   # embedded here so the suite is hermetic and does not depend on that local,
@@ -104,7 +104,7 @@ _normalize_title() {
 
 @test "8: idempotency on source; the same raw over-bound source twice yields identical output" {
   REPO="$("$HELPERS/tmp-spec-repo.sh")"
-  LIBRARY_PATH="$REPO/.specify/extensions/gaia/lib/title-normalize.sh"
+  LIBRARY_PATH="$REPO/.gaia/scripts/spec/title-normalize.sh"
   raw='The quick brown fox jumps over the lazy dog while the astonishingly persistent watchdog barks incessantly at the mail carrier every single morning without fail, causing considerable frustration.'
   first_output="$(_normalize_title "$raw")"
   second_output="$(_normalize_title "$raw")"
@@ -113,7 +113,7 @@ _normalize_title() {
 
 @test "9: filter mode matches the sourced function for the same raw input" {
   REPO="$("$HELPERS/tmp-spec-repo.sh")"
-  LIBRARY_PATH="$REPO/.specify/extensions/gaia/lib/title-normalize.sh"
+  LIBRARY_PATH="$REPO/.gaia/scripts/spec/title-normalize.sh"
   raw='The quick brown fox jumps over the lazy dog while the astonishingly persistent watchdog barks incessantly at the mail carrier every single morning without fail, causing considerable frustration.'
   sourced_output="$(_normalize_title "$raw")"
   filter_output="$(printf '%s' "$raw" | bash "$LIBRARY_PATH")"
@@ -122,7 +122,7 @@ _normalize_title() {
 
 @test "10: output idempotency; an already-...-suffixed over-bound title is a fixed point" {
   REPO="$("$HELPERS/tmp-spec-repo.sh")"
-  LIBRARY_PATH="$REPO/.specify/extensions/gaia/lib/title-normalize.sh"
+  LIBRARY_PATH="$REPO/.gaia/scripts/spec/title-normalize.sh"
   raw='The quick brown fox jumps over the lazy dog while the astonishingly persistent watchdog barks incessantly at the mail carrier every single morning without fail, causing considerable frustration.'
   first_output="$(_normalize_title "$raw")"
   second_output="$(_normalize_title "$first_output")"
@@ -131,7 +131,7 @@ _normalize_title() {
 
 @test "11: sourcing is a silent no-op even with a non-empty positional \$1" {
   REPO="$("$HELPERS/tmp-spec-repo.sh")"
-  LIBRARY_PATH="$REPO/.specify/extensions/gaia/lib/title-normalize.sh"
+  LIBRARY_PATH="$REPO/.gaia/scripts/spec/title-normalize.sh"
   run bash -c 'library="$1"; set -- next; . "$library"' _ "$LIBRARY_PATH"
   [ "$status" -eq 0 ]
   [ -z "$output" ]

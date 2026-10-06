@@ -55,7 +55,7 @@
 #   5. Out-of-scope bypass (legacy gate only, a non-empty dispatched set means
 #      an in-scope file exists so this never applies there): every file the PR
 #      changes lives on a surface outside audit scope, wiki, instruction files
-#      (.claude / .specify), .gaia metadata, prose docs, and root-level
+#      (.claude), .gaia metadata, prose docs, and root-level
 #      markdown. Evaluated fail-closed: any in-scope path (frontend/app/, frontend/test/,
 #      configs, .github/workflows/) makes the marker mandatory again. An
 #      in-scope-but-ownerless path (a root Makefile, public/**) is folded into

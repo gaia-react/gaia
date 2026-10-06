@@ -21,7 +21,7 @@
 
 setup() {
   HELPERS="$BATS_TEST_DIRNAME/helpers"
-  ARCHIVE=".specify/extensions/gaia/lib/spec-archive-abandoned.sh"
+  ARCHIVE=".gaia/scripts/spec/spec-archive-abandoned.sh"
   SPECS=".gaia/local/specs"
   COST_LEDGER=".gaia/local/telemetry/cost.jsonl"
   # --seed-abandoned-folder stamps a fixed abandoned_at

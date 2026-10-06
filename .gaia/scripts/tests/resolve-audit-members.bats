@@ -82,7 +82,7 @@ auditors:
       - ".gaia/**/*.sh"
       - ".gaia/**/*.bats"
       - ".claude/hooks/**/*.sh"
-      - ".specify/extensions/gaia/lib/*.sh"
+      - "tools/lib/*.sh"
       - ".github/**/*.sh"
       - ".github/**/*.bats"
     audience: maintainer
@@ -282,13 +282,14 @@ code-audit-maintainer-shell"
   [ "$output" = "code-audit-maintainer-shell" ]
 }
 
-# 11. .specify/extensions/gaia/lib/*.sh matches direct children only
+# 11. tools/lib/*.sh matches direct children only (a directory no other
+#     fixture glob reaches, so the nested file can only match through this one)
 
-@test ".specify lib glob matches a direct-child shell file but not a nested one" {
+@test "single-star shell glob matches a direct-child shell file but not a nested one" {
   write_full_roster
   # Only the direct child matches the single-* glob; the nested file has no
   # owner and is out of the auditable-base set, so the sole member is shell.
-  stage .specify/extensions/gaia/lib/foo.sh .specify/extensions/gaia/lib/sub/bar.sh
+  stage tools/lib/foo.sh tools/lib/sub/bar.sh
   commit "chore"
   run run_resolver
   [ "$status" -eq 0 ]

@@ -26,7 +26,7 @@ findings purposes beyond the cross-references named below). Concretely:
   *registration* lives here even though the hook *scripts* live in
   `.claude/hooks/`; both halves are FEAT surface)
 
-Do not audit `.gaia/**`, `.specify/**`, or `wiki/**` content itself (other
+Do not audit `.gaia/**` or `wiki/**` content itself (other
 lenses own those trees or they are out of scope for this phase) — you may
 *cite* a wiki page or `.gaia` file as the other half of a cross-reference
 finding whose defect lives on your surface, but the defect location itself

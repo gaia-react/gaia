@@ -150,7 +150,7 @@ Closed-set `AskUserQuestion` calls during the clarify loop append a fifth option
 
     { label: "Save partial and resume later", description: "Write the draft to cache and stop; re-invoke /gaia-spec to continue." }
 
-Selection triggers: write draft cache (above), **Release the session lock (save-partial escape)** (`bash .specify/extensions/gaia/lib/spec-session-lock.sh release "$PWD" "$SPEC_ID" || true`), print one-line resume hint (`SPEC-NNN saved as draft. Re-invoke /gaia-spec to resume.`), and exit gracefully.
+Selection triggers: write draft cache (above), **Release the session lock (save-partial escape)** (`bash .gaia/scripts/spec/spec-session-lock.sh release "$PWD" "$SPEC_ID" || true`), print one-line resume hint (`SPEC-NNN saved as draft. Re-invoke /gaia-spec to resume.`), and exit gracefully.
 
 The session-shape cache is NOT deleted on the `Save partial and resume later` path, a future resume reads it and continues counting questions against the same `start_at`. (Cache deletion happens only on canonical save at step 9, or on the `Discard SPEC-NNN draft cache` branch in step 2, see step 2 for the discard handler, or on an abandoned-exit branch other than this one, see below.) The session lock, by contrast, IS released on this path; see the Session-lock primitive's **Save-partial asymmetry** note above for why the two caches are released on different schedules by design.
 
@@ -162,7 +162,7 @@ For any branch that exits the wrapper without reaching step 9, other than the `S
 rm -f .gaia/local/cache/spec-session-${SPEC_ID}.json
 # Release the session lock (abandoned exit): the holder drops its own lock so
 # an aborted-but-surviving-host session never leaves a false-live marker.
-bash .specify/extensions/gaia/lib/spec-session-lock.sh release "$PWD" "$SPEC_ID" || true
+bash .gaia/scripts/spec/spec-session-lock.sh release "$PWD" "$SPEC_ID" || true
 ```
 
 ### Per-topic revisit counter
@@ -184,7 +184,7 @@ The interactive Socratic loop asks **at most 10 substantive questions**. Auto mo
 
 There is exactly one counter and it needs no new storage: `question_count` in the session-shape cache (`.gaia/local/cache/spec-session-<spec_id>.json`, see above) already counts substantive questions and already survives a pause and resume. The ceiling is therefore enforced against the **total across all sittings** of a session; a resumed session does not get a fresh budget.
 
-**The ceiling is a bound, not a goal.** The loop's normal termination is the coverage scan in `.specify/extensions/gaia/templates/clarify-prompts.md` (Rule 8): ask until no topic is Partial or Missing, then stop. On a simple feature that fires after 2 to 4 questions and the ceiling is never felt. Do not pad toward it, and do not treat an unspent budget as work left undone.
+**The ceiling is a bound, not a goal.** The loop's normal termination is the coverage scan in `.claude/skills/gaia/references/spec/clarify-prompts.md` (Rule 8): ask until no topic is Partial or Missing, then stop. On a simple feature that fires after 2 to 4 questions and the ceiling is never felt. Do not pad toward it, and do not treat an unspent budget as work left undone.
 
 **When the ceiling is reached with coverage incomplete**, the loop stops asking. Every topic still marked Partial or Missing is written to `clarifications.deferred[]` with a rationale naming it as ceiling-truncated (for example: `"Ceiling-truncated: 10 substantive questions asked; <topic> remained Partial."`). The loop does not push past the ceiling, and it does not advance to gate 2 as though coverage were complete.
 
@@ -196,7 +196,7 @@ Once a Q&A pair has been folded into the draft's `clarifications.answered[]` (st
 
 ### Lazy template loading
 
-Read `.specify/extensions/gaia/templates/clarify-prompts.md` and `system-prompt.md` only at step 5's first invocation, not earlier. They are reference templates, not preamble.
+Read `.claude/skills/gaia/references/spec/clarify-prompts.md` and `system-prompt.md` only at step 5's first invocation, not earlier. They are reference templates, not preamble.
 
 ## Steps
 
@@ -228,7 +228,7 @@ Otherwise, ask: **"What do you want to spec?"** and wait for the response before
 First, best-effort reconcile any finalized-but-open SPEC against git, so a SPEC whose implementing PR has already merged is recorded as `merged` rather than lingering. This never blocks and is a no-op when nothing is reconcilable (no `gh` call unless the ledger holds a finalized-unmerged row).
 
 ```bash
-bash .specify/extensions/gaia/lib/spec-reconcile.sh "$PWD" 2>/dev/null || true
+bash .gaia/scripts/spec/spec-reconcile.sh "$PWD" 2>/dev/null || true
 ```
 
 Then, for any merged row whose folder still holds `SPEC.md` or `AUDIT.md` with no well-formed consolidated `SUMMARY.md`, an out-of-band merge that never ran the close flow's consolidation, cold-consolidate it before the delete sweep below runs. This pass is the producer for `spec-archive-merged.sh`'s consolidation gate, which keeps any folder still holding unconsolidated layers; without this pass those folders would never clear that gate. Identify candidates:
@@ -254,9 +254,9 @@ For each candidate id, let `SPEC_FOLDER="${MAIN_ROOT}/.gaia/local/specs/<id>"` (
 Then delete any merged SPEC folder that is past the retention window (`GAIA_SPEC_RETENTION_DAYS`, default 30 days), whose layers are consolidated (the pass above), and whose cost is fully represented in `cost.jsonl`, the safety net for a PR that merged out-of-band or a close that never ran (an unparseable or unrepresented cost sidecar phase blocks that folder's deletion rather than risking an unrecoverable loss; a folder still within the window is kept regardless of representation). Delete any SPEC folder already at `abandoned` status past the same retention window and cost-represented too, no consolidation gate applies since nothing about an abandoned draft is ever promoted. Then sweep any never-authored draft older than the guard age to the terminal `abandoned` status, so a ghost allocation (no SPEC.md, no draft cache, no gate-1 snapshot) stops re-surfacing on this very prompt. All three passes are best-effort and fail-open:
 
 ```bash
-bash .specify/extensions/gaia/lib/spec-archive-merged.sh "$PWD" 2>/dev/null || true
-bash .specify/extensions/gaia/lib/spec-archive-abandoned.sh "$PWD" 2>/dev/null || true
-bash .specify/extensions/gaia/lib/spec-abandon-empty.sh "$PWD" 2>/dev/null || true
+bash .gaia/scripts/spec/spec-archive-merged.sh "$PWD" 2>/dev/null || true
+bash .gaia/scripts/spec/spec-archive-abandoned.sh "$PWD" 2>/dev/null || true
+bash .gaia/scripts/spec/spec-abandon-empty.sh "$PWD" 2>/dev/null || true
 # Best-effort sweep of stale audit caches left by "Start new" or abandoned exits.
 # An audit-<id>/ cache is short-lived (created at 6a, deleted at the step-7 fallback, step 9
 # save, or the step-2 discard); one untouched for over a day is orphaned. Fail-open,
@@ -265,7 +265,7 @@ find .gaia/local/cache -maxdepth 1 -type d -name 'audit-*' -mtime +1 \
   -exec rm -rf {} + 2>/dev/null || true
 ```
 
-Then run `bash .specify/extensions/gaia/lib/spec-allocator.sh in_progress "$PWD"`. If the output is a `SPEC-NNN` id (not `none`), an unfinalized **draft** SPEC already exists, a prior authoring session that never reached the canonical save (step 9). The allocator reports only drafts; a finalized SPEC (`ready`/`merged`) is never surfaced here, because you resume a draft, not a frozen artifact.
+Then run `bash .gaia/scripts/spec/spec-allocator.sh in_progress "$PWD"`. If the output is a `SPEC-NNN` id (not `none`), an unfinalized **draft** SPEC already exists, a prior authoring session that never reached the canonical save (step 9). The allocator reports only drafts; a finalized SPEC (`ready`/`merged`) is never surfaced here, because you resume a draft, not a frozen artifact.
 
 The id may name a **draft-phase** session, a SPEC allocated in another terminal whose interactive loop has not yet reached the canonical save (step 9), so `.gaia/local/specs/SPEC-NNN/SPEC.md` may not exist yet and the live draft is at `.gaia/local/cache/draft-SPEC-NNN.md`. The `WORKING`-selection below resolves this correctly, preferring the draft cache when the canonical file is absent or older.
 
@@ -290,7 +290,7 @@ The two halves of that comparison live in different trees on purpose: the canoni
 Before presenting the resume choice, check whether the draft is being authored live in another session right now (interactive only; auto mode already skips this entire resume prompt per the exception above, so it never computes `LOCK_STATUS`):
 
 ```bash
-LOCK_STATUS="$(bash .specify/extensions/gaia/lib/spec-session-lock.sh status "$PWD" "$SPEC_ID" 2>/dev/null || echo dormant)"
+LOCK_STATUS="$(bash .gaia/scripts/spec/spec-session-lock.sh status "$PWD" "$SPEC_ID" 2>/dev/null || echo dormant)"
 ```
 
 `LOCK_STATUS` branches the pre-flight prompt three ways:
@@ -303,7 +303,7 @@ LOCK_STATUS="$(bash .specify/extensions/gaia/lib/spec-session-lock.sh status "$P
     - `{ label: "Override: resume SPEC-NNN anyway", description: "This draft is being authored in another session; proceeding may clobber or delete live work. Force-reclaims the lock and resumes." }`
     - `{ label: "Override: discard SPEC-NNN anyway", description: "This draft is being authored in another session; proceeding may clobber or delete live work. Releases the lock and deletes the draft cache." }`
 
-  Resume and Discard are not offered as unguarded actions for a live draft; the human must explicitly pick a guarded override to touch it. On `Override: resume SPEC-NNN anyway`, run `bash .specify/extensions/gaia/lib/spec-session-lock.sh acquire --override "$PWD" "$SPEC_ID" || true` (force-reclaims the live foreign lock for this human-consented session), then proceed straight into the Resume flow below, **skipping** its TOCTOU re-verify (that guard exists for the default dormant Resume and would bounce this override straight back to Start new, making it a dead button). On `Override: discard SPEC-NNN anyway`, run the discard handler below (which releases the lock) and continue exactly as that handler does.
+  Resume and Discard are not offered as unguarded actions for a live draft; the human must explicitly pick a guarded override to touch it. On `Override: resume SPEC-NNN anyway`, run `bash .gaia/scripts/spec/spec-session-lock.sh acquire --override "$PWD" "$SPEC_ID" || true` (force-reclaims the live foreign lock for this human-consented session), then proceed straight into the Resume flow below, **skipping** its TOCTOU re-verify (that guard exists for the default dormant Resume and would bounce this override straight back to Start new, making it a dead button). On `Override: discard SPEC-NNN anyway`, run the discard handler below (which releases the lock) and continue exactly as that handler does.
 - **`error`.** The lock could not be read (missing `jq`, invalid JSON, or another lock-subsystem error) and may in fact belong to a live session. Present the existing three-option prompt, Resume / Start new / Discard, but with **Start new as the recommended default** and a warning, in place of the dormant branch's Resume-first default:
   - question: `"SPEC-NNN's session lock could not be read and may belong to a live session. Start new is recommended; resume or discard only if you know it's safe."`
   - header: `"Existing SPEC"`
@@ -336,9 +336,9 @@ Honor the user's choice. Never silently overwrite, never silently start new.
   Before continuing, re-verify the lock: a live foreign lock may have appeared in the window between the pre-flight `status` check above and this Resume selection.
 
   ```bash
-  RECHECK_STATUS="$(bash .specify/extensions/gaia/lib/spec-session-lock.sh status "$PWD" "$SPEC_ID" 2>/dev/null || echo dormant)"
+  RECHECK_STATUS="$(bash .gaia/scripts/spec/spec-session-lock.sh status "$PWD" "$SPEC_ID" 2>/dev/null || echo dormant)"
   if [ "$RECHECK_STATUS" != "live" ]; then
-    bash .specify/extensions/gaia/lib/spec-session-lock.sh acquire "$PWD" "$SPEC_ID"
+    bash .gaia/scripts/spec/spec-session-lock.sh acquire "$PWD" "$SPEC_ID"
     ACQUIRE_STATUS=$?
   else
     ACQUIRE_STATUS=3
@@ -358,7 +358,7 @@ Step 3 allocates the SPEC id, creates the main-anchored SPEC folder, and writes 
 **Allocate.** Run the allocator and capture its stdout `SPEC-NNN` token as `SPEC_ID`:
 
 ```bash
-bash .specify/extensions/gaia/lib/spec-allocator.sh next "$PWD" "<subject>"
+bash .gaia/scripts/spec/spec-allocator.sh next "$PWD" "<subject>"
 ```
 
 On any non-zero exit, surface the allocator's stderr verbatim and halt the session: no folder, no draft, no lock. `GAIA_SPEC_FORCE_OFFLINE=1` makes the allocator skip remote reservation, which is useful for throwaway runs.
@@ -374,7 +374,7 @@ fi
 mkdir -p "${MAIN_ROOT}/.gaia/local/specs/${SPEC_ID}"
 ```
 
-**Write the draft.** Read `.specify/extensions/gaia/templates/spec-template.md`, substitute every `SPEC-NNN` with `SPEC_ID`, and stamp the GAIA frontmatter keys `spec_id`, `type`, `status`, `immutable`, `wiki_promote_default`, `chain_trigger`, `created`, and `updated` (the template carries them; `created` and `updated` become today's ISO date). Write the result with one `Write` to the working-draft checkpoint named in Operational primitives, `.gaia/local/cache/draft-<spec_id>.md`: the per-tree draft cache, not the SPEC folder. Step 9 owns the canonical save. Cache that draft path; you will read and re-render it across the rest of these steps.
+**Write the draft.** Read `.claude/skills/gaia/references/spec/spec-template.md`, substitute every `SPEC-NNN` with `SPEC_ID`, and stamp the GAIA frontmatter keys `spec_id`, `type`, `status`, `immutable`, `wiki_promote_default`, `chain_trigger`, `created`, and `updated` (the template carries them; `created` and `updated` become today's ISO date). Write the result with one `Write` to the working-draft checkpoint named in Operational primitives, `.gaia/local/cache/draft-<spec_id>.md`: the per-tree draft cache, not the SPEC folder. Step 9 owns the canonical save. Cache that draft path; you will read and re-render it across the rest of these steps.
 
 Initialize the session-shape cache for the just-allocated SPEC id (no-op if it already exists from a resume):
 
@@ -389,7 +389,7 @@ fi
 Acquire the session lock, right alongside the cache-init block above:
 
 ```bash
-bash .specify/extensions/gaia/lib/spec-session-lock.sh acquire "$PWD" "$SPEC_ID" || true
+bash .gaia/scripts/spec/spec-session-lock.sh acquire "$PWD" "$SPEC_ID" || true
 ```
 
 Both interactive and auto mode acquire at fresh allocation, satisfying auto-mode acquire.
@@ -424,11 +424,11 @@ Only after gate-1 confirmation may you proceed to step 5.
 
 ### 5. Socratic loop
 
-This is GAIA's own loop. Read the templates at `.specify/extensions/gaia/templates/clarify-prompts.md` and `system-prompt.md` only on entering this step (lazy-load, see operational primitives); they carry the coach-tone persona, the Q&A copy, the topic bank, and the coverage scan.
+This is GAIA's own loop. Read the templates at `.claude/skills/gaia/references/spec/clarify-prompts.md` and `system-prompt.md` only on entering this step (lazy-load, see operational primitives); they carry the coach-tone persona, the Q&A copy, the topic bank, and the coverage scan.
 
 Run sequential, coverage-based questioning over the draft. One question per turn. The mechanics are 5a through 5e below: `AskUserQuestion` mediation for closed-set questions with the recommended option first, plain prompts for open-ended ones, the Discuss-this escape, the per-topic exhaustion checkpoint, and research-subagent dispatch.
 
-**The stop rule is the coverage scan, not the ceiling.** Maintain the scan defined in `.specify/extensions/gaia/templates/clarify-prompts.md` (Rule 8) over the topic bank: mark every topic Clear, Partial, or Missing, and prioritize what remains. Ask until no topic is Partial or Missing, then stop. That is the normal termination condition, and on a simple feature it fires after 2 to 4 questions.
+**The stop rule is the coverage scan, not the ceiling.** Maintain the scan defined in `.claude/skills/gaia/references/spec/clarify-prompts.md` (Rule 8) over the topic bank: mark every topic Clear, Partial, or Missing, and prioritize what remains. Ask until no topic is Partial or Missing, then stop. That is the normal termination condition, and on a simple feature it fires after 2 to 4 questions.
 
 **The ceiling bounds the loop:** at most 10 substantive questions (see "The question ceiling" in operational primitives, which also defines what happens if the loop reaches it with topics still uncovered).
 
@@ -465,7 +465,7 @@ For genuinely open-ended questions (no clean discrete option set), use a plain p
 
 #### 5d. Per-topic exhaustion checkpoint
 
-When the loop is about to leave the current topic, whether because its coverage mark has reached **Clear** or because the coverage scan's prioritization now ranks a different topic above it (see the coverage scan, Rule 8, in `.specify/extensions/gaia/templates/clarify-prompts.md`), announce explicitly via `AskUserQuestion`:
+When the loop is about to leave the current topic, whether because its coverage mark has reached **Clear** or because the coverage scan's prioritization now ranks a different topic above it (see the coverage scan, Rule 8, in `.claude/skills/gaia/references/spec/clarify-prompts.md`), announce explicitly via `AskUserQuestion`:
 
 - question: `"Out of questions on <topic>. Move to <next topic>, or push deeper?"`
 - header: `"Topic"`
@@ -516,7 +516,7 @@ rm -f .gaia/local/cache/audit-${SPEC_ID}/findings/self-review.json
 
 Spawn a `general-purpose` Agent with this prompt (interpolate `<DRAFT_PATH>` and `<spec_id>`):
 
-> Run the self-review audit defined in `.specify/extensions/gaia/commands/self-review.md` over the draft at `<DRAFT_PATH>` against the gate-1 snapshot at `.gaia/local/cache/gate1-<spec_id>.json`.
+> Run the self-review audit defined in `.claude/skills/gaia/references/spec/self-review.md` over the draft at `<DRAFT_PATH>` against the gate-1 snapshot at `.gaia/local/cache/gate1-<spec_id>.json`.
 >
 > Lead with a tool call, not prose: your first action is a Read of the artifact under audit, and you emit your structured result before any prose. Read `<DRAFT_PATH>` first, before any other action.
 >
@@ -884,14 +884,14 @@ INTENT_RAW=$(awk '
   }
 ' "$SPEC_PATH" 2>/dev/null || echo "")
 INTENT=$(printf '%s' "$INTENT_RAW" \
-  | bash .specify/extensions/gaia/lib/title-normalize.sh 2>/dev/null || echo "")
+  | bash .gaia/scripts/spec/title-normalize.sh 2>/dev/null || echo "")
 PATCH=$(jq -nc --arg intent "$INTENT" \
   '{status: "ready"} + (if $intent == "" then {} else {intent: $intent} end)')
-bash .specify/extensions/gaia/lib/ledger-update.sh "$PWD" "$SPEC_ID" "$PATCH" \
+bash .gaia/scripts/spec/ledger-update.sh "$PWD" "$SPEC_ID" "$PATCH" \
   || echo "ledger-update skipped (row missing or jq failure), non-blocking" >&2
 ```
 
-3. **Delete the session-shape cache:** `rm -f .gaia/local/cache/spec-session-${SPEC_ID}.json`. The cache's job, tracking `question_count` against the ceiling across a pause and resume, ends once the SPEC is saved. **Release the session lock (canonical save):** `bash .specify/extensions/gaia/lib/spec-session-lock.sh release "$PWD" "$SPEC_ID" || true`. The canonical save is the holder's own graceful exit, so it drops its own lock here, alongside the session-shape cache.
+3. **Delete the session-shape cache:** `rm -f .gaia/local/cache/spec-session-${SPEC_ID}.json`. The cache's job, tracking `question_count` against the ceiling across a pause and resume, ends once the SPEC is saved. **Release the session lock (canonical save):** `bash .gaia/scripts/spec/spec-session-lock.sh release "$PWD" "$SPEC_ID" || true`. The canonical save is the holder's own graceful exit, so it drops its own lock here, alongside the session-shape cache.
 4. **Token tally (never blocks):** tally the session's ground-truth token cost and record it. `${SPEC_ID}`'s folder already exists from the canonical save, so the `cost.json` sidecar (the `spec` record) lands beside `SPEC.md`. This call never blocks or fails the save; on unreadable input it degrades to a partial figure with a marker, never a fabricated number.
 
 ```bash
@@ -921,7 +921,7 @@ A wrong path prints a `no SPEC file` line to stderr even behind `|| true`. A SPE
 
 ### 10. Immutability lint
 
-After the step-9 save, run `bash .specify/extensions/gaia/lib/lint.sh <spec-path>` yourself against `${SPEC_FOLDER}/SPEC.md`, the file step 9 saved. Re-resolve `SPEC_FOLDER` through `bash .gaia/scripts/main-root-lib.sh`, since shell state does not persist between calls. This is an explicit agent step, not an event. The lint prints JSON (`{"ok":true,"findings":[]}` on pass); handle the result with the cycle rules below.
+After the step-9 save, run `bash .gaia/scripts/spec/lint.sh <spec-path>` yourself against `${SPEC_FOLDER}/SPEC.md`, the file step 9 saved. Re-resolve `SPEC_FOLDER` through `bash .gaia/scripts/main-root-lib.sh`, since shell state does not persist between calls. This is an explicit agent step, not an event. The lint prints JSON (`{"ok":true,"findings":[]}` on pass); handle the result with the cycle rules below.
 
 Track `lint_cycle = <count>` in working memory (initialize to 1 on the first attempt).
 

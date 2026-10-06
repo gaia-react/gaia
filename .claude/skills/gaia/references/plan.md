@@ -101,7 +101,7 @@ else
   # The allocator's union counts existing folders, so it always returns a fresh
   # number; no collision-suffix loop needed.
   DESCRIPTION="<feature description from step 1>"
-  PLAN_ID="$(bash .specify/extensions/gaia/lib/plan-allocator.sh next "$ROOT" "$DESCRIPTION")"
+  PLAN_ID="$(bash .gaia/scripts/spec/plan-allocator.sh next "$ROOT" "$DESCRIPTION")"
   PLAN_DIR="${ROOT}/.gaia/local/plans/${PLAN_ID}"
   mkdir -p "$PLAN_DIR"
 fi
@@ -304,7 +304,7 @@ Then write the following files directly to `{PLAN_DIR}/`:
          ```
 
          In a feature-branch run the resolver returns the current checkout, so `main_root` equals `$PWD` and the same call is correct in both modes.
-      3. A spec-colocated plan on a `<type>/spec-NNN-*` branch (legacy `plan/spec-NNN-*`) runs `bash .specify/extensions/gaia/lib/spec-reconcile.sh "$main_root" || true` (flips the SPEC's `specs/ledger.json` row `ready` → `merged`, the unified vocabulary); a spec-less `PLAN-NNN` plan runs `bash .specify/extensions/gaia/lib/plan-reconcile.sh "$main_root" "$PLAN_ID" || true` (flips the `plans/ledger.json` row → `merged`, stamping `merged_at`). Both are best-effort and never block.
+      3. A spec-colocated plan on a `<type>/spec-NNN-*` branch (legacy `plan/spec-NNN-*`) runs `bash .gaia/scripts/spec/spec-reconcile.sh "$main_root" || true` (flips the SPEC's `specs/ledger.json` row `ready` → `merged`, the unified vocabulary); a spec-less `PLAN-NNN` plan runs `bash .gaia/scripts/spec/plan-reconcile.sh "$main_root" "$PLAN_ID" || true` (flips the `plans/ledger.json` row → `merged`, stamping `merged_at`). Both are best-effort and never block.
       4. Backstops remain: `spec-reconcile.sh` still runs in the `/gaia-spec` pre-flight sweep (spec arm); `plan-archive.sh`'s pre-gate stamp remains the plan-arm backstop (now stamping `merged` + `merged_at`), so the ledger still converges if the orchestrator is interrupted mid-cleanup. `plan-close` (the spec-less mirror of `spec-close`) is the plan-side manual close path for when this automated step did not run.
 
       Sequenced BEFORE the worktree-discard handoff / isolation-context stop below, so an isolated worktree run reconciles before it stops to emit its continuation prompt.

@@ -44,7 +44,7 @@ now_ms() { perl -MTime::HiRes=time -e 'printf "%d", time*1000'; }
 encode_project_path() { printf '%s' "$1" | LC_ALL=C sed 's/[^A-Za-z0-9]/-/g'; }
 
 mk_repo() {
-  mkdir -p "$REPO/.claude/hooks" "$REPO/.gaia/scripts" "$REPO/.specify/extensions/gaia/lib"
+  mkdir -p "$REPO/.claude/hooks" "$REPO/.gaia/scripts" "$REPO/.gaia/scripts/spec"
   git -C "$REPO" init -q -b main
   git -C "$REPO" -c user.email=t@example.com -c user.name=T -c commit.gpgsign=false \
     commit -q --allow-empty -m init
@@ -71,7 +71,7 @@ real_repo() {
   for script_name in usage-flush.sh usage-parse-lib.sh usage-lib.sh main-root-lib.sh branch-name-lib.sh ledger-path-lib.sh; do
     cp "$REPO_ROOT/.gaia/scripts/$script_name" "$REPO/.gaia/scripts/"
   done
-  cp "$REPO_ROOT/.specify/extensions/gaia/lib/with-ledger-lock.sh" "$REPO/.specify/extensions/gaia/lib/"
+  cp "$REPO_ROOT/.gaia/scripts/spec/with-ledger-lock.sh" "$REPO/.gaia/scripts/spec/"
 }
 
 # payload <event> <sid> [transcript_path] [stop_hook_active]

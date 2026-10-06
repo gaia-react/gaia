@@ -42,7 +42,6 @@ transforms:
     paths:
       - "wiki/**/*.md"
       - ".claude/**/*.md"
-      - ".specify/extensions/gaia/**/*.md"
     start: "<!-- gaia:maintainer-only:start -->"
     end: "<!-- gaia:maintainer-only:end -->"
 
@@ -115,7 +114,7 @@ transforms:
   # it as "", would ship a silently invalid registry. Rewriting keeps the
   # field non-empty and still meaningful ("SPEC-061 §shared" → "§shared")
   # while the identifier, which resolves only inside the maintainer's
-  # release-excluded `.specify/specs/` tree or on this project's tracker,
+  # release-excluded `.gaia/local/specs/` tree or on this project's tracker,
   # leaves the bundle.
   # Maintainer-side provenance in the repo is untouched.
   - type: json-field-rewrite
@@ -432,7 +431,7 @@ transforms:
           # ending in `/home/bar.` Prefix-only is the narrower, so it is kept.
           - "/(Users/(you|username)|home/bar)/"
           # The elided-middle placeholder, e.g. the shell-wrapper levels
-          # `.specify/extensions/gaia/lib/spec-session-lock.sh` documents in a
+          # `.gaia/scripts/spec/spec-session-lock.sh` documents in a
           # comment. A real machine path never contains a literal `/.../`, so
           # exempting the line keeps that live script guarded everywhere else.
           - "/Users/\\.\\.\\./"
@@ -525,7 +524,7 @@ transforms:
       # quote-anchored (`[...'"!`) so a stray `[!` in a run-step string
       # does not false-positive.
       # Prior occurrences: chromatic.yml + tests.yml denylists missed
-      # `.gaia/`, `.specify/`, `studio/` (a8a4b75, c6eeecc).
+      # `.gaia/` and `studio/` (a8a4b75, c6eeecc).
       - id: workflow-denylist
         description: "Workflow paths-ignore or inverted !pattern entries: denylists fail quiet"
         pattern: "^\\s*paths-ignore\\s*:|^\\s*-\\s*['\"]?!|\\[[^\\]]*['\"]!"

@@ -20,7 +20,7 @@
 setup() {
   THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"
-  SOURCE_LIBRARY_DIRECTORY="$REPO_ROOT/.specify/extensions/gaia/lib"
+  SOURCE_LIBRARY_DIRECTORY="$REPO_ROOT/.gaia/scripts/spec"
   ARCHIVE_SOURCE="$SOURCE_LIBRARY_DIRECTORY/plan-archive-merged.sh"
   [ -x "$ARCHIVE_SOURCE" ] || skip "plan-archive-merged.sh not executable"
 
@@ -28,12 +28,12 @@ setup() {
   SANDBOX="$(cd "$SANDBOX_RAW" && pwd -P)"
   git -C "$SANDBOX" init --quiet
 
-  mkdir -p "$SANDBOX/.specify/extensions/gaia/lib" "$SANDBOX/.gaia/scripts" \
+  mkdir -p "$SANDBOX/.gaia/scripts/spec" "$SANDBOX/.gaia/scripts" \
     "$SANDBOX/.gaia/local/plans" "$SANDBOX/.gaia/local/telemetry" \
     "$SANDBOX/.gaia/local/cache/wiki-promote"
 
-  cp "$ARCHIVE_SOURCE" "$SANDBOX/.specify/extensions/gaia/lib/plan-archive-merged.sh"
-  chmod +x "$SANDBOX/.specify/extensions/gaia/lib/plan-archive-merged.sh"
+  cp "$ARCHIVE_SOURCE" "$SANDBOX/.gaia/scripts/spec/plan-archive-merged.sh"
+  chmod +x "$SANDBOX/.gaia/scripts/spec/plan-archive-merged.sh"
   # Representation gate deps, copied so the gate resolves against this
   # sandbox's own cost ledger instead of the real repo's.
   cp "$REPO_ROOT/.gaia/scripts/cost-represented.sh" "$SANDBOX/.gaia/scripts/cost-represented.sh"
@@ -60,7 +60,7 @@ teardown() {
 }
 
 _archive() {
-  bash "$SANDBOX/.specify/extensions/gaia/lib/plan-archive-merged.sh" "$@"
+  bash "$SANDBOX/.gaia/scripts/spec/plan-archive-merged.sh" "$@"
 }
 
 assert_contains() {

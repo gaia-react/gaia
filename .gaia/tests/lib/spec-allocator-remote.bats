@@ -12,7 +12,7 @@
 
 setup() {
   HELPERS="$BATS_TEST_DIRNAME/helpers"
-  ALLOCATOR=".specify/extensions/gaia/lib/spec-allocator.sh"
+  ALLOCATOR=".gaia/scripts/spec/spec-allocator.sh"
   CLEANUP_EXTRA=()
 }
 

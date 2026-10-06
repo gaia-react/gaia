@@ -33,11 +33,11 @@ setup() {
   # resolves against the sandbox's own cost ledger instead of no-op'ing.
   # ledger-path-lib.sh now sources its own sibling main-root-lib.sh by
   # on-disk location, so that sibling is copied alongside it too.
-  mkdir -p "$SANDBOX/.specify/extensions/gaia/lib"
-  cp "$REPO_ROOT/.specify/extensions/gaia/lib/plan-ledger-update.sh" \
-    "$SANDBOX/.specify/extensions/gaia/lib/plan-ledger-update.sh"
-  cp "$REPO_ROOT/.specify/extensions/gaia/lib/with-ledger-lock.sh" \
-    "$SANDBOX/.specify/extensions/gaia/lib/with-ledger-lock.sh"
+  mkdir -p "$SANDBOX/.gaia/scripts/spec"
+  cp "$REPO_ROOT/.gaia/scripts/spec/plan-ledger-update.sh" \
+    "$SANDBOX/.gaia/scripts/spec/plan-ledger-update.sh"
+  cp "$REPO_ROOT/.gaia/scripts/spec/with-ledger-lock.sh" \
+    "$SANDBOX/.gaia/scripts/spec/with-ledger-lock.sh"
   mkdir -p "$SANDBOX/.gaia/scripts"
   cp "$REPO_ROOT/.gaia/scripts/cost-represented.sh" \
     "$SANDBOX/.gaia/scripts/cost-represented.sh"

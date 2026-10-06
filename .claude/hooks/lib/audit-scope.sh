@@ -43,7 +43,7 @@
 # wins (a non-empty dispatched set means the legacy branch is never reached).
 #
 # Exit 0 iff the path is out-of-scope-allowlisted: wiki/, .claude/,
-# .specify/, .gaia/, docs/, or a root-level (no slash) *.md file.
+# .gaia/, docs/, or a root-level (no slash) *.md file.
 #
 # This is NOT a general implementation of `.gaia/audit-ci.yml`'s `unowned:`
 # block, and must not be grown into one by reading entries across from it. That
@@ -71,7 +71,7 @@
 
 audit_out_of_scope_allowlisted() {
   case "$1" in
-    wiki/*|.claude/*|.specify/*|.gaia/*|docs/*) return 0 ;;
+    wiki/*|.claude/*|.gaia/*|docs/*) return 0 ;;
     */*) return 1 ;;
     *.md) return 0 ;;
     *) return 1 ;;

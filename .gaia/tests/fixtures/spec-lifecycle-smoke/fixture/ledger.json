@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "specs": [
+    {"id": "SPEC-001", "allocated_at": "2026-01-01T00:00:00Z", "source": "allocated", "status": "ready"},
+    {"id": "SPEC-002", "allocated_at": "2026-01-01T00:00:00Z", "source": "allocated", "status": "draft"},
+    {"id": "SPEC-004", "allocated_at": "2026-01-01T00:00:00Z", "source": "allocated", "status": "draft"}
+  ]
+}

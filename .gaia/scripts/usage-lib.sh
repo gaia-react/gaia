@@ -250,7 +250,7 @@ gaia_usage_append() {
   local telemetry_directory="$1" target="$2" rows="$3" exit_status=0
   case "$target" in usage.jsonl | links.jsonl) ;; *) return 2 ;; esac
   [ -f "$rows" ] || return 2
-  _gaia_usage_load with_ledger_lock ../../.specify/extensions/gaia/lib/with-ledger-lock.sh || return 1
+  _gaia_usage_load with_ledger_lock spec/with-ledger-lock.sh || return 1
   mkdir -p "$telemetry_directory" || return 1
   with_ledger_lock "$telemetry_directory" _gaia_usage_append_write "$rows" "$telemetry_directory/$target" || exit_status=$?
   return "$exit_status"

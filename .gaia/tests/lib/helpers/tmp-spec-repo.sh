@@ -6,7 +6,7 @@
 # Inside the tmp repo:
 #   - git init (main), test identity, commit.gpgsign false
 #   - .gaia/local/specs, .gaia/local/cache, .gaia/local/telemetry,
-#     .specify/extensions/gaia/lib, .gaia/scripts dirs
+#     .gaia/scripts/spec, .gaia/scripts dirs
 #   - a minimal valid ledger .gaia/local/specs/ledger.json: { "version": 1, "specs": [] }
 #   - copies (NOT symlinks) of the scripts under test from the real repo so
 #     ${BASH_SOURCE[0]}-relative sourcing inside the scripts resolves to the
@@ -89,7 +89,7 @@ EMPTY_TREE="4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 # .gaia/tests/lib/helpers/ inside the real repo working tree.
 _helper_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 real_repo="$(git -C "$_helper_directory" rev-parse --show-toplevel)"
-real_library_directory="${real_repo}/.specify/extensions/gaia/lib"
+real_library_directory="${real_repo}/.gaia/scripts/spec"
 real_scripts="${real_repo}/.gaia/scripts"
 
 repository_directory="$(mktemp -d -t gaia-spec-lib-test-XXXXXX)"
@@ -101,7 +101,7 @@ git config user.name "Test"
 git config commit.gpgsign false
 
 mkdir -p .gaia/local/specs .gaia/local/cache .gaia/local/telemetry \
-  .specify/extensions/gaia/lib .gaia/scripts
+  .gaia/scripts/spec .gaia/scripts
 
 printf '{\n  "version": 1,\n  "specs": []\n}\n' > .gaia/local/specs/ledger.json
 
@@ -110,8 +110,8 @@ printf '{\n  "version": 1,\n  "specs": []\n}\n' > .gaia/local/specs/ledger.json
 for library_name in spec-allocator.sh plan-allocator.sh ledger-update.sh with-ledger-lock.sh \
          spec-renumber.sh spec-reconcile.sh \
          spec-archive-merged.sh spec-archive-abandoned.sh title-normalize.sh; do
-  cp "${real_library_directory}/${library_name}" ".specify/extensions/gaia/lib/${library_name}"
-  chmod +x ".specify/extensions/gaia/lib/${library_name}"
+  cp "${real_library_directory}/${library_name}" ".gaia/scripts/spec/${library_name}"
+  chmod +x ".gaia/scripts/spec/${library_name}"
 done
 
 # Copy the cost-representation gate + ledger-path resolver so
