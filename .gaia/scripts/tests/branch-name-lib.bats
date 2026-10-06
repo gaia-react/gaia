@@ -761,6 +761,15 @@ expect_invalid() {
   grep -qF 'branch -m' <<<"$stderr"
 }
 
+@test "validate never suggests a prefix-less rename for a worktree spelling: it asks for a <type>/ prefix" {
+  expect_invalid worktree-camelcase-default-casing
+  grep -qF 'branch -m worktree-camelcase-default-casing <type>/camelcase-default-casing' <<<"$stderr"
+  grep -qF 'fix/camelcase-default-casing' <<<"$stderr"
+  grep -qF 'branch -m worktree-camelcase-default-casing camelcase-default-casing' <<<"$stderr" && return 1
+  # Every concrete name the message offers must pass the validator itself.
+  expect_valid fix/camelcase-default-casing
+}
+
 @test "validate accepts debt/<n>-slug though debt is not a commit type" {
   jq -e '.types | index("debt") | not' "$REPO_ROOT/.gaia/conventional-commits.json" >/dev/null
   expect_valid debt/2159-slug
