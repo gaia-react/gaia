@@ -131,7 +131,8 @@
 #   `.gaia/conventional-commits.json` unreadable, found relative to this file,
 #   never the working directory). Rules: `dependabot/*` is always valid; a
 #   `worktree-*` name is invalid and the message names the canonical name and
-#   `git branch -m`; otherwise at most 64 bytes, lowercase [a-z0-9./-] (a
+#   `git branch -m`, or, when the stripped name has no `<type>/` part, a
+#   `<type>/<stripped name>` form to rename to; otherwise at most 64 bytes, lowercase [a-z0-9./-] (a
 #   `release/` or `update/` version may keep its case), exactly one `/`, a
 #   remainder that is non-empty with no leading or trailing `-`, a valid ref
 #   name, and a prefix that is a workflow kind in the table or a `types`
@@ -558,8 +559,19 @@ gaia_branch_validate() {
     worktree-*)
       _gaia_branch_set_normalized "$branch"
       normalized="$_gaia_branch_normalized_name"
-      printf 'gaia_branch_validate: %s is a worktree spelling; rename it with: git branch -m %s %s, then push %s\n' \
-        "$branch" "$branch" "$normalized" "$normalized" >&2
+      # A worktree requested without a `<type>/` part strips to a name the
+      # rule below refuses, so suggesting it verbatim would send the reader
+      # through a second rename, and renaming a pull request's head closes it.
+      case "$normalized" in
+        */*)
+          printf 'gaia_branch_validate: %s is a worktree spelling; rename it with: git branch -m %s %s, then push %s\n' \
+            "$branch" "$branch" "$normalized" "$normalized" >&2
+          ;;
+        *)
+          printf 'gaia_branch_validate: %s is a worktree spelling with no <type>/ part; rename it with: git branch -m %s <type>/%s, for example fix/%s, then push it\n' \
+            "$branch" "$branch" "$normalized" "$normalized" >&2
+          ;;
+      esac
       return 1
       ;;
   esac
