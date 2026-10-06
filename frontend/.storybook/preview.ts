@@ -1,7 +1,7 @@
 import type {Preview} from '@storybook/react-vite';
 import {mswLoader} from 'msw-storybook-addon/csf3';
 import {themes} from 'storybook/theming';
-import {AXE_WCAG_TAGS} from '../test/axe-tags';
+import a11y from './a11y';
 import {decorators} from './chromatic';
 import i18n from './i18next';
 import {allModes} from './modes';
@@ -28,19 +28,7 @@ const preview: Preview = {
   },
   loaders: [mswLoader()],
   parameters: {
-    // Any impact fails here, where the Playwright scan fails only critical and
-    // serious. `region` is off because a
-    // story renders a fragment outside the page landmarks.
-    a11y: {
-      config: {rules: [{enabled: false, id: 'region'}]},
-      options: {
-        runOnly: {
-          type: 'tag',
-          values: AXE_WCAG_TAGS,
-        },
-      },
-      test: 'error',
-    },
+    a11y,
     chromatic: {modes: allModes},
     controls: {
       expanded: false,

@@ -1,6 +1,7 @@
 import {defineConfig, devices} from '@playwright/test';
 import {config} from 'dotenv';
 import {fileURLToPath} from 'node:url';
+import {LANGUAGES} from './app/languages';
 import {requireDevPorts, resolveSiteUrl} from './dev-ports';
 import {decideServerReuse} from './dev-ports-reuse';
 
@@ -85,6 +86,10 @@ export default defineConfig({
   // of being masked. CI keeps retries as general flake insurance.
   retries: process.env.CI ? 2 : 0,
   testDir: './.playwright/e2e',
+  // The language switcher renders only with two or more languages, so its spec
+  // is excluded until a second language is added to LANGUAGES.
+  testIgnore:
+    LANGUAGES.length < 2 ? ['**/language-switch-a11y.spec.ts'] : undefined,
   testMatch: '**/*.spec.ts',
 
   use: {

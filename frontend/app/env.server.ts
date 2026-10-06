@@ -13,9 +13,14 @@ const schema = z.object({
   SITE_URL: z.string(),
 });
 
-const clientSchema = schema.omit({
-  SESSION_SECRET: true,
-  SITE_URL: true,
+// An allowlist, so a variable added to `schema` stays server-only until it is
+// exposed here on purpose: `envClient` is serialized into every page's HTML.
+const clientSchema = schema.pick({
+  API_URL: true,
+  COMMIT_SHA: true,
+  MSW_ENABLED: true,
+  NODE_ENV: true,
+  npm_package_version: true,
 });
 
 export const env = schema.parse(process.env);

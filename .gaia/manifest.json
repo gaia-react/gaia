@@ -376,6 +376,7 @@
     "frontend/.playwright/theme.ts": "owned",
     "frontend/.playwright/utils.ts": "owned",
     "frontend/.prettierignore": "owned",
+    "frontend/.storybook/a11y.ts": "owned",
     "frontend/.storybook/chromatic/decorator.tsx": "owned",
     "frontend/.storybook/chromatic/index.ts": "owned",
     "frontend/.storybook/decorators/ToastDecorator.tsx": "owned",
@@ -555,6 +556,7 @@
     "frontend/test/routes-plus-folder-guard.test.ts": "owned",
     "frontend/test/setup.browser.ts": "owned",
     "frontend/test/setup.ts": "owned",
+    "frontend/test/story-a11y-opt-out.test.tsx": "owned",
     "frontend/test/stubs/index.ts": "owned",
     "frontend/test/stubs/react-router-stub.tsx": "owned",
     "frontend/test/stubs/state-stub.tsx": "owned",
@@ -700,7 +702,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-10-06T03:31:19.320Z",
+  "generated": "2026-10-06T05:00:08.465Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

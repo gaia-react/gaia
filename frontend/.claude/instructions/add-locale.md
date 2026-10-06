@@ -131,7 +131,7 @@ Check whether `frontend/.playwright/e2e/language-switch-a11y.spec.ts` exists.
   4. Assert the `cta` text changes to the `{{LOCALE_CODE}}` translation from `frontend/app/languages/{{LOCALE_CODE}}/pages/_index.ts`.
   5. Switch back to English and assert the English `cta` text is restored.
 
-**If the file already exists**, append a new `test.describe` block for the new locale following the same shape as the existing blocks. Do not modify existing blocks.
+**If the file already exists**, append a new `test.describe` block for the new locale following the same shape as the existing blocks. Do not modify existing blocks, with one exception: if the shipped `language switcher has no serious a11y violations` test still calls `switcher.selectOption('en')`, change `'en'` to `'{{LOCALE_CODE}}'` so its after-switch scan checks a switched page rather than re-selecting the current language.
 
 ---
 

@@ -296,6 +296,25 @@ setLanguage: '/actions/set-language',
 
 `frontend/test/action-paths.test.ts` iterates `Object.entries(ACTION_PATHS)`, so it needs no edit.
 
+### D4. `frontend/playwright.config.ts`
+
+Remove the import of the deleted `languages` module:
+
+```ts
+import {LANGUAGES} from './app/languages';
+```
+
+Remove the `testIgnore` property with its comment:
+
+```ts
+// The language switcher renders only with two or more languages, so its spec
+// is excluded until a second language is added to LANGUAGES.
+testIgnore:
+  LANGUAGES.length < 2 ? ['**/language-switch-a11y.spec.ts'] : undefined,
+```
+
+The spec the property gated is deleted in Section C.
+
 ---
 
 ## Section E, package.json
