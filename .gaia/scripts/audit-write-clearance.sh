@@ -755,7 +755,7 @@ if [ "${GITHUB_ACTIONS:-}" != "true" ] && [ -n "$audit_key" ]; then
   # cannot be read must refuse here, never read as "nothing open".
   if [ "$capture_reason" = "member-refusal" ] && [ "$current_ledger" = "null" ]; then
     error "open-finding accounting failed: this round's review scope was resolved on member-refusal, but the re-run ledger at '$ledger' is absent, unreadable, or stale, so the findings that refusal left open cannot be accounted for."
-    error "Recovery: release the capture with audit-scope-digest.sh --release, re-run the scope resolver (it now resolves full scope), review, and write again."
+    error "Recovery: release the capture with audit-scope-digest.sh --release, re-run the scope resolver (it no longer anchors on the refusal, so it resolves an earlier base: the whole-team signal if one precedes the refusal, else full scope), review, and write again."
     error "$accounting_protocol_pointer"
     exit 3
   fi
