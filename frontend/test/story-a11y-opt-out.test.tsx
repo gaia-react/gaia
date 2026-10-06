@@ -1,15 +1,17 @@
 import {composeStories} from '@storybook/react-vite';
+import {isEqual} from 'lodash-es';
 import {describe, expect, test} from 'vitest';
 import a11y from '../.storybook/a11y';
 
-type A11yRule = {enabled?: boolean; id?: string};
 type ComposedStoryA11y = {
   globals?: {a11y?: {manual?: boolean}};
   id: string;
   parameters: {
     a11y: {
-      config?: {rules?: A11yRule[]};
+      config?: unknown;
+      context?: unknown;
       disable?: boolean;
+      options?: unknown;
       test?: string;
     };
   };
@@ -18,49 +20,54 @@ type ComposedStoryA11y = {
 type StoryModule = Parameters<typeof composeStories>[0];
 
 // A story's light-theme axe check runs only in the Vitest storybook project,
-// under addon-a11y; the Playwright scan covers dark. A story that resolves
-// `a11y.test` to 'todo' or 'off', sets `a11y.disable`, turns on the
-// `a11y.manual` global, loses the `test` tag to a `!test` tag, or disables a
-// rule beyond the shared config therefore has no full light check. An opt-out
-// needs its story id and a reason in this map.
+// under addon-a11y; the Playwright scan covers dark. addon-a11y hands axe three
+// per-story inputs: `a11y.context`, `a11y.config` and `a11y.options`. A story
+// is opted out when any of them differs from the shared defaults in
+// `.storybook/a11y.ts` (a narrower scope, a disabled rule, a different tag
+// set), when `a11y.test` is not 'error', when `a11y.disable` is set, when the
+// `a11y.manual` global is on, or when the `test` tag is lost to a `!test` tag.
+// An opt-out needs its story id and a reason in this map.
 const A11Y_OPT_OUT_REASONS: Record<string, string> = {};
 
 const storyModules = import.meta.glob<StoryModule>('../app/**/*.stories.tsx', {
   eager: true,
 });
 
-const sharedRules: A11yRule[] = a11y.config.rules;
-const sharedDisabledRuleIds = new Set(
-  sharedRules.filter(({enabled}) => enabled === false).map(({id}) => id)
-);
+const hasA11yOptOut = (story: ComposedStoryA11y) => {
+  const {
+    config,
+    context,
+    disable,
+    options,
+    test: testMode,
+  } = story.parameters.a11y;
 
-const isOptedOut = (story: ComposedStoryA11y) =>
-  story.parameters.a11y.test !== 'error' ||
-  story.parameters.a11y.disable === true ||
-  story.globals?.a11y?.manual === true ||
-  !story.tags.includes('test') ||
-  Boolean(
-    story.parameters.a11y.config?.rules?.some(
-      ({enabled, id}) =>
-        enabled === false && !(id && sharedDisabledRuleIds.has(id))
-    )
+  return (
+    testMode !== 'error' ||
+    disable === true ||
+    story.globals?.a11y?.manual === true ||
+    !story.tags.includes('test') ||
+    context !== undefined ||
+    !isEqual(config, a11y.config) ||
+    !isEqual(options, a11y.options)
   );
+};
 
 const resolveStoryA11yOptOuts = () =>
   Object.values(storyModules).flatMap((storyModule) =>
     Object.values<ComposedStoryA11y>(
       composeStories(storyModule, {parameters: {a11y}})
-    ).map((story) => ({id: story.id, optedOut: isOptedOut(story)}))
+    ).map((story) => ({id: story.id, isOptedOut: hasA11yOptOut(story)}))
   );
 
 describe('story a11y opt-outs', () => {
   test('every story fails on an axe violation unless its opt-out is recorded', () => {
-    const resolved = resolveStoryA11yOptOuts();
+    const storyOptOuts = resolveStoryA11yOptOuts();
 
-    expect(resolved).not.toHaveLength(0);
+    expect(storyOptOuts).not.toHaveLength(0);
 
-    const unrecorded = resolved.filter(
-      ({id, optedOut}) => optedOut && !(id in A11Y_OPT_OUT_REASONS)
+    const unrecorded = storyOptOuts.filter(
+      ({id, isOptedOut}) => isOptedOut && !(id in A11Y_OPT_OUT_REASONS)
     );
 
     expect(unrecorded).toEqual([]);
