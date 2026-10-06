@@ -17,26 +17,32 @@ const BANNED_METHODS = [
   'prefetchInfiniteQuery',
 ];
 
-const errorContaining = (method: string) => ({
+const buildExpectedError = (method: string) => ({
   message: new RegExp(
     String.raw`${method}.*queryClient\.(query|infiniteQuery)`
   ),
 });
 
 const invalid = BANNED_METHODS.flatMap((method) => [
-  {code: `queryClient.${method}(options);`, errors: [errorContaining(method)]},
+  {
+    code: `queryClient.${method}(options);`,
+    errors: [buildExpectedError(method)],
+  },
   {
     code: `useQueryClient().${method}(options);`,
-    errors: [errorContaining(method)],
+    errors: [buildExpectedError(method)],
   },
-  {code: `queryClient?.${method}(options);`, errors: [errorContaining(method)]},
+  {
+    code: `queryClient?.${method}(options);`,
+    errors: [buildExpectedError(method)],
+  },
   {
     code: `queryClient['${method}'](options);`,
-    errors: [errorContaining(method)],
+    errors: [buildExpectedError(method)],
   },
   {
     code: `this.client.${method}(options);`,
-    errors: [errorContaining(method)],
+    errors: [buildExpectedError(method)],
   },
 ]);
 
@@ -65,14 +71,14 @@ describe(
     const filePath = path.join(frontendDirectory, 'app/root.tsx');
     const eslint = new ESLint({cwd: frontendDirectory});
 
-    const ruleIdsFor = async (code: string) => {
-      const [result] = await eslint.lintText(code, {filePath});
+    const collectRuleIdsFor = async (code: string) => {
+      const [lintResult] = await eslint.lintText(code, {filePath});
 
-      return result.messages.map((message) => message.ruleId);
+      return lintResult.messages.map((message) => message.ruleId);
     };
 
     test('reports an imperative fetch', async () => {
-      const ruleIds = await ruleIdsFor(
+      const ruleIds = await collectRuleIdsFor(
         'export const load = (queryClient: {fetchQuery: (o: unknown) => unknown}) => queryClient.fetchQuery({});\n'
       );
 
@@ -80,7 +86,7 @@ describe(
     });
 
     test('keeps the inherited no-restricted-properties entries', async () => {
-      const ruleIds = await ruleIdsFor(
+      const ruleIds = await collectRuleIdsFor(
         'export const value = Math.pow(2, 3);\n'
       );
 
@@ -88,7 +94,7 @@ describe(
     });
 
     test('keeps the inherited no-restricted-syntax selectors', async () => {
-      const ruleIds = await ruleIdsFor(
+      const ruleIds = await collectRuleIdsFor(
         'export default function Example() {\n  return 1;\n}\n'
       );
 
