@@ -6,9 +6,9 @@ import {attempt} from '../helpers';
 
 describe('attempt', () => {
   test('success: resolves to [undefined, result]', async () => {
-    const result = await attempt(async () => 'ok');
+    const attemptOutcome = await attempt(async () => 'ok');
 
-    expect(result).toEqual([undefined, 'ok']);
+    expect(attemptOutcome).toEqual([undefined, 'ok']);
   });
 
   test('HTTPError: resolves to [{status, statusText}, undefined]', async () => {
@@ -16,11 +16,14 @@ describe('attempt', () => {
     const request = new Request('https://example.test');
     const httpError = new HTTPError(response, request, {} as never);
 
-    const result = await attempt(async () => {
+    const attemptOutcome = await attempt(async () => {
       throw httpError;
     });
 
-    expect(result).toEqual([{status: 404, statusText: 'Not Found'}, undefined]);
+    expect(attemptOutcome).toEqual([
+      {status: 404, statusText: 'Not Found'},
+      undefined,
+    ]);
   });
 
   test('ZodError: resolves to [{status: 500, statusText: error.message}, undefined]', async () => {
@@ -32,11 +35,11 @@ describe('attempt', () => {
       zodError = error as ZodError;
     }
 
-    const result = await attempt(async () => {
+    const attemptOutcome = await attempt(async () => {
       throw zodError!;
     });
 
-    expect(result).toEqual([
+    expect(attemptOutcome).toEqual([
       {status: 500, statusText: zodError!.message},
       undefined,
     ]);
@@ -47,11 +50,11 @@ describe('attempt', () => {
       {message: 'secret detail', path: ['a']},
     ]);
 
-    const result = await attempt(async () => {
+    const attemptOutcome = await attempt(async () => {
       throw schemaError;
     });
 
-    expect(result).toEqual([
+    expect(attemptOutcome).toEqual([
       {status: 500, statusText: 'Response failed schema validation'},
       undefined,
     ]);
@@ -66,11 +69,11 @@ describe('attempt', () => {
   });
 
   test('unknown non-Error throw: resolves to [{status: 500, statusText: "Unknown error"}, undefined]', async () => {
-    const result = await attempt(async () => {
+    const attemptOutcome = await attempt(async () => {
       throw 'something unexpected';
     });
 
-    expect(result).toEqual([
+    expect(attemptOutcome).toEqual([
       {status: 500, statusText: 'Unknown error'},
       undefined,
     ]);

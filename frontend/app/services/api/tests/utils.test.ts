@@ -76,6 +76,25 @@ describe('api utils', () => {
     }
   );
 
+  test('setPathParams rejects an empty segment', () => {
+    expect(() => setPathParams('items/:id', {id: ''})).toThrow(
+      'Path param cannot be empty'
+    );
+  });
+
+  test('setPathParams does not let a key rewrite a longer placeholder it prefixes', () => {
+    expect(
+      setPathParams('/users/:userId/items/:user', {user: 'a', userId: 'b'})
+    ).toBe('/users/b/items/a');
+    expect(setPathParams('/users/:userId/items/:user', {user: 'a'})).toBe(
+      '/users/:userId/items/a'
+    );
+  });
+
+  test('setPathParams replaces every occurrence of a repeated placeholder', () => {
+    expect(setPathParams('/:id/copy/:id', {id: 7})).toBe('/7/copy/7');
+  });
+
   test('setPathParams keeps a dot inside a longer segment', () => {
     expect(setPathParams('items/:id', {id: 'a.b'})).toBe('items/a.b');
     expect(setPathParams('items/:id', {id: '...'})).toBe('items/...');
@@ -101,16 +120,20 @@ describe('api utils', () => {
   });
 
   test('requestToSnakeCase converts a JSON body to snake_case', async () => {
-    const result = await runRequestToSnakeCase(JSON.stringify({helloWorld: 1}));
+    const convertedRequest = await runRequestToSnakeCase(
+      JSON.stringify({helloWorld: 1})
+    );
 
-    expect(result).toBeInstanceOf(Request);
-    expect(await (result as Request).text()).toBe('{"hello_world":1}');
+    expect(convertedRequest).toBeInstanceOf(Request);
+    expect(await (convertedRequest as Request).text()).toBe(
+      '{"hello_world":1}'
+    );
   });
 
   test('requestToSnakeCase forwards a non-JSON body unchanged', async () => {
-    const result = await runRequestToSnakeCase('plain text body');
+    const convertedRequest = await runRequestToSnakeCase('plain text body');
 
-    expect(result).toBeUndefined();
+    expect(convertedRequest).toBeUndefined();
   });
 
   test('buildRequestHeaders applies per-request token and language', () => {

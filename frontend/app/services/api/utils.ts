@@ -76,10 +76,15 @@ export const appendSearchParams = (
   return `${uri}${search}`;
 };
 
-// URL parsing resolves `.` and `..` segments, percent-encoded or not, so a
-// param equal to either would send the request to a different path.
+// Each rejected value sends the request to a different path: URL parsing
+// resolves `.` and `..` segments, percent-encoded or not, and an empty
+// segment collapses `items/:id` into the collection path `items/`.
 const encodePathParam = (value: number | string): string => {
   const segment = String(value);
+
+  if (segment === '') {
+    throw new TypeError('Path param cannot be empty');
+  }
 
   if (segment === '.' || segment === '..') {
     throw new TypeError(`Path param cannot be a dot segment: "${segment}"`);
@@ -88,14 +93,17 @@ const encodePathParam = (value: number | string): string => {
   return encodeURIComponent(segment);
 };
 
+// One pass over the placeholders, so a key that prefixes another (`:user`
+// and `:userId`) cannot rewrite part of the longer one.
 export const setPathParams = (
   url: string,
   pathParams?: Record<string, number | string>
 ): string =>
   pathParams ?
-    Object.entries(pathParams).reduce(
-      (path, [key, value]) => path.replace(`:${key}`, encodePathParam(value)),
-      url
+    url.replaceAll(/:(\w+)/g, (placeholder, key: string) =>
+      Object.hasOwn(pathParams, key) ?
+        encodePathParam(pathParams[key])
+      : placeholder
     )
   : url;
 
@@ -116,12 +124,11 @@ export const getBaseUrl = (): string => {
   // server api call; API_URL is validated at startup in env.server
   if (typeof window === 'undefined') return process.env.API_URL ?? '';
 
-  // client api call; read through globalThis because window.process is
-  // injected by the root loader and absent in some browser contexts
-  return (
-    (globalThis as {process?: {env?: {API_URL?: string}}}).process?.env
-      ?.API_URL ?? ''
-  );
+  // client api call; window.process is injected by the root loader and absent
+  // in some browser contexts, though the global Window type declares it
+  const injectedProcess = (window as Partial<Pick<Window, 'process'>>).process;
+
+  return injectedProcess?.env.API_URL ?? '';
 };
 
 // Merges per-request auth/language onto caller-supplied headers; never stored module-side to prevent SSR token cross-contamination.

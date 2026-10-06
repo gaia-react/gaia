@@ -28,10 +28,10 @@ describe('create', () => {
     );
 
     const request = create();
-    const result = await request('items', {schema: envelopeSchema});
+    const parsedEnvelope = await request('items', {schema: envelopeSchema});
 
-    expect(result).toEqual({data: {displayName: 'x'}});
-    expectTypeOf(result).toEqualTypeOf<{data: {displayName: string}}>();
+    expect(parsedEnvelope).toEqual({data: {displayName: 'x'}});
+    expectTypeOf(parsedEnvelope).toEqualTypeOf<{data: {displayName: string}}>();
   });
 
   test('a 200 body that violates the schema resolves through attempt as a 500', async () => {
@@ -41,11 +41,11 @@ describe('create', () => {
     );
 
     const request = create();
-    const result = await attempt(async () =>
+    const attemptOutcome = await attempt(async () =>
       request('items', {schema: envelopeSchema})
     );
 
-    expect(result).toEqual([
+    expect(attemptOutcome).toEqual([
       {status: 500, statusText: 'Response failed schema validation'},
       undefined,
     ]);
@@ -90,14 +90,14 @@ describe('create', () => {
     );
 
     const request = create();
-    const result = await request('items', {
+    const parsedEnvelope = await request('items', {
       json: {displayName: 'x'},
       method: 'post',
       schema: envelopeSchema,
     });
 
     expect(received).toEqual({display_name: 'x'});
-    expect(result.data.displayName).toBe('x');
+    expect(parsedEnvelope.data.displayName).toBe('x');
   });
 
   test('useSnakeCase false leaves the body and response keys unchanged', async () => {
@@ -112,14 +112,14 @@ describe('create', () => {
     );
 
     const request = create({useSnakeCase: false});
-    const result = await request('items', {
+    const parsedEnvelope = await request('items', {
       json: {displayName: 'x'},
       method: 'post',
       schema: envelopeSchema,
     });
 
     expect(received).toEqual({displayName: 'x'});
-    expect(result.data.displayName).toBe('x');
+    expect(parsedEnvelope.data.displayName).toBe('x');
   });
 
   test('resolves the base URL on every request', async () => {
