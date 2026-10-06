@@ -47,7 +47,7 @@ GAIA's skills split into three groups: shared `gaia/references/` playbooks consu
 
 | Skill                | Triggers on                                                                                                  |
 | -------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `eslint-fixes`       | ESLint failures, autofix conflicts (no-void, Testing Library and jest-dom rules in story plays, you-dont-need-lodash) |
+| `eslint-fixes`       | ESLint failures, autofix conflicts (no-void, unawaited interactions and jest-dom rules in story plays, you-dont-need-lodash) |
 | `naming-conventions` | Naming or renaming identifiers in any language; vague names, abbreviations, redundant type noise             |
 | `playwright-cli`     | Browser automation tasks (navigation, form fill, screenshots, data extraction); Microsoft's skill vendored verbatim, see [[playwright-cli]] |
 | `react-code`         | Writing/reviewing React components, hooks, event handlers, extraction decisions                              |

@@ -1,4 +1,3 @@
-/* eslint-disable testing-library/prefer-screen-queries -- vitest-browser-react's render result holds Vitest browser locators, not Testing Library queries */
 import type {ActionFunction, LoaderFunction} from 'react-router';
 import {createRoutesStub, Outlet, useNavigation} from 'react-router';
 import {QueryClientProvider, useIsFetching} from '@tanstack/react-query';
