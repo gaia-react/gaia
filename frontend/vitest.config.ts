@@ -123,6 +123,7 @@ export default defineConfig({
             'msw-storybook-addon',
             'msw-storybook-addon/csf3',
             'msw/browser',
+            'msw/http',
             'query-string',
             'storybook/theming',
           ],

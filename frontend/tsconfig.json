@@ -19,7 +19,7 @@
     "stableTypeOrdering": true,
     "strict": true,
     "target": "ES2022",
-    "types": ["@react-router/node", "vite/client"]
+    "types": ["@react-router/node", "vite/client", "msw/vite/client"]
   },
   "include": [
     "**/*.ts",

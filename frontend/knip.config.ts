@@ -35,6 +35,6 @@ export default {
     'tailwindcss',
     'tw-animate-css',
   ],
-  ignoreUnresolved: [/\/\+types\//],
+  ignoreUnresolved: [/\/\+types\//, /^virtual:/],
   project: ['app/**/*.{ts,tsx}', 'test/**/*.{ts,tsx}'],
 } satisfies KnipConfig;
