@@ -1,4 +1,5 @@
-import {http, passthrough} from 'msw';
+import {http} from 'msw/http';
+import {passthrough} from 'msw/utils/passthrough';
 
 // Used for Remix development with MSW
 const REMIX_DEV_PING = new URL(

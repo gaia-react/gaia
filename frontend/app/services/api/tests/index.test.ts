@@ -1,4 +1,4 @@
-import {http, HttpResponse} from 'msw';
+import {http, HttpResponse} from 'msw/http';
 import {afterEach, describe, expect, expectTypeOf, test} from 'vitest';
 import {z} from 'zod';
 import {create} from '..';

@@ -192,7 +192,8 @@ describe.each(CASES)('scaffold route --data: $data $shape', (dataCase) => {
       'page.stories.tsx'
     );
 
-    expect(story).toContain("from 'msw'");
+    expect(story).toContain("from 'msw/http'");
+    expect(story).not.toContain("from 'msw';");
     expect(story).toContain('handlers: [');
     expect(story).toContain('stubs.reactRouter({');
     expect(story).toContain("destinations: ['/items'],");

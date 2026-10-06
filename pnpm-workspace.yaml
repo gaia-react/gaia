@@ -105,5 +105,5 @@ overrides: {}
 allowBuilds:
   core-js-pure: true
   esbuild: true
-  msw: true
+  msw: false
   unrs-resolver: true

@@ -95,11 +95,11 @@ beforeAll(async () => {
     if (pathname === '/items') counts.list += 1;
     if (pathname === '/items/1') counts.detail += 1;
   });
-  await worker.start({onUnhandledRequest: 'error', quiet: true});
+  await worker.start({onUnhandledFrame: 'error', quiet: true});
 });
 
-afterAll(() => {
-  worker.stop();
+afterAll(async () => {
+  await worker.stop();
   (globalThis as ProcessHolder).process = originalProcess;
 });
 

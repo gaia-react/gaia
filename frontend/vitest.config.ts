@@ -93,6 +93,9 @@ export default defineConfig({
       },
       {
         plugins: [react(), tailwindcss(), reactCompiler],
+        // The root's `module-sync` condition replaces Vite's default client
+        // conditions, so without `browser` msw resolves its Node interceptors.
+        resolve: {conditions: ['browser']},
         test: {
           browser: createBrowserOptions('browser'),
           globals: true,

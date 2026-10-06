@@ -5,7 +5,7 @@ import handlers from './mocks';
 export const server = setupServer(...handlers);
 
 beforeAll(() => {
-  server.listen({onUnhandledRequest: 'bypass'});
+  server.listen({onUnhandledFrame: 'bypass'});
 });
 
 afterEach(() => {

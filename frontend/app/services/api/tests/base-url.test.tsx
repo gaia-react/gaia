@@ -1,5 +1,5 @@
-import {http, HttpResponse} from 'msw';
 import type {SetupWorker} from 'msw/browser';
+import {http, HttpResponse} from 'msw/http';
 import {afterAll, beforeAll, describe, expect, test} from 'vitest';
 import {z} from 'zod';
 import {create} from '..';
@@ -19,11 +19,11 @@ beforeAll(async () => {
   // browser has no process until the root loader injects one.
   (globalThis as ProcessHolder).process = {env: {API_URL: INJECTED_ORIGIN}};
   ({worker} = await import('../../../../test/worker'));
-  await worker.start({onUnhandledRequest: 'error', quiet: true});
+  await worker.start({onUnhandledFrame: 'error', quiet: true});
 });
 
-afterAll(() => {
-  worker.stop();
+afterAll(async () => {
+  await worker.stop();
   (globalThis as ProcessHolder).process = originalProcess;
 });
 
