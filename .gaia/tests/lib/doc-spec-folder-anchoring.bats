@@ -10,7 +10,7 @@
 # of a main-only directory. A relative `.gaia/local/specs/...` write issued
 # from a worktree therefore does not reach main -- it forks a second specs
 # tree inside the worktree. Three sites write the SPEC folder and must each
-# resolve main first: the preset's step-2 item 3 (mkdir + first SPEC.md copy),
+# resolve main first: spec.md step 3's folder creation (the mkdir fence),
 # and spec.md's 7d (AUDIT.md write) and 7c (where the AUDIT.md path the
 # applier's report lands at is built).
 #
@@ -48,8 +48,9 @@
 # Assertion style: .claude/rules/bats-assertions.md.
 #
 # WHAT EACH TEST CATCHES. Test 1 catches a bare-relative folder creation in
-# the preset: run with cwd=worktree it creates the folder IN the worktree, not
-# main. Test 2 catches an AUDIT.md path that 7d either never builds in shell
+# step 3: run with cwd=worktree it creates the folder IN the worktree, not
+# main, and it also runs the fence with the resolver failing to prove the
+# fail-closed branch creates nothing. Test 2 catches an AUDIT.md path that 7d either never builds in shell
 # (named only in inline prose, so there is nothing to execute) or builds
 # without the resolver, so it lands in the acting worktree. Test 3 catches the
 # bare relative `.gaia/local/specs/` literal returning to any of the three
@@ -67,7 +68,6 @@
 
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
-  PRESET_MD="$REPO_ROOT/.specify/presets/gaia/commands/speckit.specify.md"
   SPEC_MD="$REPO_ROOT/.claude/skills/gaia/references/spec.md"
 
   MAIN="$BATS_TEST_TMPDIR/main"
@@ -125,34 +125,32 @@ range_between() {
   sed -n "${start_line},$((end_line - 1))p" "$file"
 }
 
-@test "S1: the preset's step-2 item-3 mkdir literal executes into main, not the worktree" {
-  block="$(range_between "$PRESET_MD" '3. Create the SPEC folder' '4. Stamp GAIA frontmatter')"
+@test "S1: spec.md step 3's folder-creation fence executes into main, not the worktree" {
+  block="$(range_between "$SPEC_MD" '### 3. Initial draft' '### 4. Gate 1')"
 
-  # Run the fragment's real literal, rather than re-typing it, so this test
-  # executes the artifact instead of a paraphrase of it. Item 3 can carry the
-  # folder creation in either of two forms -- a ```bash fence (which resolves
-  # the main checkout first, so one resolver call serves both the folder and
-  # the copy) or a bare inline `mkdir -p` literal. Prefer the fence when one
-  # is present and fall back to the inline literal, so the extraction stays
-  # agnostic to the form and the assertions below judge only WHERE the folder
-  # lands.
-  create_literal="$(printf '%s\n' "$block" | awk '/^[[:space:]]*```bash/{inside_fence=1;next} /^[[:space:]]*```[[:space:]]*$/{inside_fence=0} inside_fence')"
-  if [ -z "$create_literal" ]; then
-    create_literal="$(printf '%s\n' "$block" | grep -oE '`mkdir -p [^`]*`' | head -1 | sed -E 's/^`//; s/`$//')"
-  fi
-  if [ -z "$create_literal" ]; then
-    printf 'no shell fence and no `mkdir -p` literal found in the preset step-2 item 3\n' >&2
+  # Select ONLY the bash fence that creates the folder (the one carrying
+  # `mkdir -p`), so the allocator fence beside it is never executed here.
+  fence="$(printf '%s\n' "$block" | awk '
+    /^```bash/ { inside_fence = 1; fence_text = ""; next }
+    /^```[[:space:]]*$/ { if (inside_fence && fence_text ~ /mkdir -p/) { printf "%s", fence_text; exit } inside_fence = 0; next }
+    inside_fence { fence_text = fence_text $0 "\n" }
+  ')"
+  if [ -z "$fence" ]; then
+    printf 'no bash fence containing `mkdir -p` found in spec.md step 3\n' >&2
     return 1
   fi
 
-  mkdir_command="${create_literal//<SPEC-NNN>/SPEC-999}"
+  # Run the fence's real literal, rather than re-typing it, so this test
+  # executes the artifact instead of a paraphrase of it.
+  script="$BATS_TEST_TMPDIR/step3-create-folder.sh"
+  printf '%s\n' "$fence" > "$script"
 
-  run bash -c "cd '$WORKTREE' && $mkdir_command"
+  run bash -c "cd '$WORKTREE' && SPEC_ID=SPEC-999 bash '$script'"
   [ "$status" -eq 0 ]
 
   # (a) main must have received the folder.
   if [ ! -d "$MAIN_PHYSICAL_PATH/.gaia/local/specs/SPEC-999" ]; then
-    printf 'main never received .gaia/local/specs/SPEC-999 (ran: %s)\n' "$mkdir_command" >&2
+    printf 'main never received .gaia/local/specs/SPEC-999 (ran: %s)\n' "$fence" >&2
     return 1
   fi
 
@@ -162,6 +160,30 @@ range_between() {
   # THERE, which this assertion catches even when (a) above happens to hold.
   if [ -d "$WORKTREE_PHYSICAL_PATH/.gaia/local/specs" ]; then
     printf 'a forked .gaia/local/specs tree exists in the worktree: %s\n' "$WORKTREE_PHYSICAL_PATH/.gaia/local/specs" >&2
+    return 1
+  fi
+
+  # (c) Fail-closed branch: with a resolver that prints nothing and exits
+  # non-zero, the fence must refuse with its own message, exit non-zero, and
+  # create no specs tree anywhere under the fixture. Without the empty-MAIN_ROOT
+  # guard it would attempt `mkdir -p /.gaia/local/specs/...` at the filesystem root.
+  broken="$BATS_TEST_TMPDIR/broken-resolver"
+  mkdir -p "$broken/.gaia/scripts"
+  printf '#!/usr/bin/env bash\nexit 1\n' > "$broken/.gaia/scripts/main-root-lib.sh"
+
+  run bash -c "cd '$broken' && SPEC_ID=SPEC-998 bash '$script'"
+  if [ "$status" -eq 0 ]; then
+    printf 'the fence exited 0 although the main checkout could not be resolved\n' >&2
+    return 1
+  fi
+  # The refusal message is what proves the guard, not a later mkdir failure
+  # at a read-only filesystem root, ran.
+  if ! printf '%s\n' "$output" | grep -qF 'refusing to create the SPEC folder'; then
+    printf 'the fence failed without its own refusal message (output: "%s")\n' "$output" >&2
+    return 1
+  fi
+  if find "$broken" -type d -name specs | grep -q .; then
+    printf 'the fence created a specs tree under the fixture despite an unresolved main checkout\n' >&2
     return 1
   fi
   true
@@ -351,7 +373,7 @@ seed_decoy() {
 }
 
 @test "negative space: no bare relative .gaia/local/specs/ write survives at the converted sites" {
-  preset_range="$(range_between "$PRESET_MD" '3. Create the SPEC folder' '4. Stamp GAIA frontmatter')"
+  step3_range="$(range_between "$SPEC_MD" '### 3. Initial draft' '### 4. Gate 1')"
   # routing_range (7c) is where the AUDIT.md path is actually constructed, so it is the
   # range this negative check earns its keep on; the positive assertion in S2
   # anchors there too. persist_range (7d) is retained as a genuine no-regression range:
@@ -362,12 +384,12 @@ seed_decoy() {
   routing_range="$(range_between "$SPEC_MD" '#### 7c. Disposition routing + apply' '#### 7d. Persist AUDIT.md')"
 
   # Scoped tightly to the write sites (not repo-wide): design section 2e
-  # notes that display prose elsewhere (spec.md:840, :916, :920, the preset's
+  # notes that display prose elsewhere (spec.md:840, :916, :920, step 3's
   # confirmation line) names the generic path for a human to read and is
   # deliberately not converted. Those lines sit outside all three ranges
   # above, so this check never has to special-case them.
   bad=""
-  for site in "$preset_range" "$persist_range" "$routing_range"; do
+  for site in "$step3_range" "$persist_range" "$routing_range"; do
     hit="$(printf '%s\n' "$site" | grep -F '.gaia/local/specs/' | grep -v -E 'MAIN_ROOT|SPEC_DIR' || true)"
     if [ -n "$hit" ]; then
       bad="${bad}${hit}

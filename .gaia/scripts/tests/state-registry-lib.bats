@@ -431,7 +431,6 @@ run_in_registry_repo() {
     "cache/wiki-promote/SPEC-042.json:ephemeral"
     "cache/uat-write/SPEC-042.json:ephemeral"
     "cache/some-run/renders.json:ephemeral"
-    "cache/version-check.lock:ephemeral"
     "audit/KNOWLEDGE-2026-07-23.md:ephemeral"
     "audit/issue-body-abc.md:ephemeral"
     "audit/comprehensive/gauge.json:ephemeral"

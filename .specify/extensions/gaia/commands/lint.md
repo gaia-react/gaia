@@ -1,24 +1,29 @@
 ---
-description: 'GAIA after_specify hook: immutability lint over the just-written SPEC artifact.'
+description: 'Manual runbook: immutability lint over a SPEC artifact, wrapping lib/lint.sh.'
 ---
 
 # Immutability lint pass
 
-Fired automatically by spec-kit on the `after_specify` event (mandatory hook). The agent reads this skill and audits the SPEC that `/speckit-specify` (or the GAIA preset's wrap) just produced.
+**Status:** no automatic trigger. Run it by hand: read this file and follow it with a SPEC path or id, or run `bash .specify/extensions/gaia/lib/lint.sh <spec-path>`. `/gaia-spec` step 10 calls `lib/lint.sh` directly.
+
+The agent audits one SPEC artifact against the immutability contract.
 
 ## Locate the artifact
 
-The lint target is the SPEC artifact written by the preceding `/speckit-specify` invocation. In a GAIA project the preset redirects writes into `.gaia/local/specs/SPEC-NNN/SPEC.md`; in a bare spec-kit project the artifact lives at `specs/<NNN>-<slug>/spec.md`.
+The lint target is an explicit SPEC path, or a SPEC id resolved to the main-anchored `.gaia/local/specs/<id>/SPEC.md`:
+
+```bash
+MAIN_ROOT="$(bash .gaia/scripts/main-root-lib.sh)"
+```
 
 Resolve the path in this order:
 
 1. If `$ARGUMENTS` carries an explicit path, use it.
-2. Otherwise inspect `.gaia/local/specs/SPEC-*/SPEC.md` for a SPEC file modified within the last five minutes (the just-written artifact).
-3. Otherwise fall back to `.specify/feature.json` (spec-kit's pointer to the active feature directory) and resolve `<feature-dir>/spec.md`.
+2. Otherwise, if it carries a SPEC id, use `${MAIN_ROOT}/.gaia/local/specs/<id>/SPEC.md`.
 
-If no candidate resolves, surface:
+If neither resolves to an existing file, surface:
 
-> `after_specify` lint skipped: no SPEC artifact found at expected paths.
+> lint skipped: no SPEC artifact found at the given path or id.
 
 ## Run the lint helper
 
@@ -34,13 +39,13 @@ The helper emits a JSON result on stdout: `{"ok": true, "findings": []}` on pass
 
 - **Pass.** Emit:
 
-  > `after_specify` lint passed: <path>
+  > lint passed: <path>
 
 - **Fail.** Emit each finding's `code`, `message`, and `where` field on its own line. Then announce:
 
-  > `after_specify` lint failed: <N> finding(s). Fix the SPEC and re-run, or invoke `/gaia-spec` again to amend before save.
+  > lint failed: <N> finding(s). Fix the SPEC and re-run.
 
-- **Usage error (exit 2).** Treat as a tooling problem, not a SPEC problem; report the stderr message and skip the lint without blocking the lifecycle.
+- **Usage error (exit 2).** Treat as a tooling problem, not a SPEC problem; report the stderr message and skip the lint.
 
 ## What the helper checks (reference; helper is the source of truth)
 
@@ -55,7 +60,5 @@ The helper emits a JSON result on stdout: `{"ok": true, "findings": []}` on pass
 
 ## Notes
 
-- This hook is read-only. Its only action is to emit the helper's findings and stop, it never edits, deletes, moves, or auto-fixes the SPEC. Fixing the SPEC is the `/gaia-spec` wrapper's job (looping back to the user); lint only reports.
-- "Block save" semantics: a failing lint surfaces the findings to the agent driving `/gaia-spec`; that agent is responsible for halting before the on-disk save and looping back to the user.
-- The helper is pure: same SPEC in, same JSON out. Any mutation logic belongs in `/gaia-spec` (the wrapper command), never here.
-- On completion (pass, fail, or skip) this hook returns control to the running `/gaia-spec` (or `/speckit-specify`) wrapper; it performs no further action and calls no further tool itself.
+- This runbook is read-only. Its only action is to emit the helper's findings and stop, it never edits, deletes, moves, or auto-fixes the SPEC. Fixing the SPEC is the author's job; lint only reports.
+- The helper is pure: same SPEC in, same JSON out. Any mutation logic belongs in `/gaia-spec`, never here.

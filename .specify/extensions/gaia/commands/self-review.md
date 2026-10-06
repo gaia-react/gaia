@@ -4,7 +4,7 @@ description: 'GAIA self-review: pre-gate-2 review pass on the in-progress SPEC d
 
 # Self-review pass before gate 2
 
-The `/gaia-spec` wrapper dispatches this directly at step 6 as a `general-purpose` Agent, after the Socratic clarify loop and before the GAIA wrapper presents the rendered artifact for gate-2 confirmation. The extension also declares it on spec-kit's `after_clarify` event, so a bare `/speckit-clarify` invocation fires it too.
+The `/gaia-spec` wrapper dispatches this directly at step 6 as a `general-purpose` Agent, after the Socratic clarify loop and before the GAIA wrapper presents the rendered artifact for gate-2 confirmation.
 
 ## Inputs
 

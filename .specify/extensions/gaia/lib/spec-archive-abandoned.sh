@@ -153,7 +153,7 @@ while IFS= read -r spec_id; do
   # Reap the abandoned SPEC's cache keyset (gate1/draft/session/lock/audit),
   # plus any wiki-promote defer flag. An abandoned SPEC's authoring session
   # is over, so its lock is stale by definition, same as the merged path. A
-  # defer flag means /speckit-implement ran before the row was abandoned (a
+  # defer flag means a hand-run wiki-promote deferred before the row was abandoned (a
   # finalized SPEC's PR was open, then dropped for cause) and left
   # .gaia/local/cache/wiki-promote/<id>.json awaiting a merge that will now
   # never happen: unlike the merged path, which GUARDS on this flag

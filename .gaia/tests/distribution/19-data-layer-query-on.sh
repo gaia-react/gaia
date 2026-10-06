@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # 19-data-layer-query-on.sh
+# distribution-runner: exclusive
 #
 # Adopter-flow regression for the opt-in TanStack Query data layer. The
 # template ships without Query and without any example service or route, so

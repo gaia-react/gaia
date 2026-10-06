@@ -5,7 +5,7 @@ description: Single post-init onboarding command; detects situation, runs only o
 
 Run this once after `/gaia-init`, and re-run it any time. `/setup-gaia` is the single onboarding command for a GAIA project. It detects the situation and runs only the phases this clone actually owes:
 
-- **Per-machine work** every clone needs (tool installs, plugins, spec-kit runtime, statusline bit, `.env`, the sandbox decision, and, for a developer with a global statusline, which statusline draws the left side).
+- **Per-machine work** every clone needs (tool installs, plugins, statusline bit, `.env`, the sandbox decision, and, for a developer with a global statusline, which statusline draws the left side).
 - **GitHub repository provisioning** (create / adopt / manual, private by default), plus branch protection, the `GAIA-Audit` required-check registration, and squash-only merge settings when the runner is a repo admin.
 - **Team settings** a repo admin records once in `.gaia/project.json`: the git isolation policy.
 
@@ -118,7 +118,7 @@ The classification only routes the phases below; each phase re-checks its own co
 
 ## Phase 2: Per-machine setup (skip if setup-state finalized)
 
-If `setup status --json` reports a non-null `completed_at`, this whole phase no-ops **except for the sandbox decision below** (a first adopter finished per-machine work inside `/gaia-init`, so the repo prompt in Phase 3 is their first real interaction, with no tool-install log lines before it, and the recorded per-machine steps are unchanged). Otherwise run Steps 1–5 below in order. Each records itself via `.gaia/cli/gaia setup mark-step <step>` and is skipped when already in `completed_steps`.
+If `setup status --json` reports a non-null `completed_at`, this whole phase no-ops **except for the sandbox decision below** (a first adopter finished per-machine work inside `/gaia-init`, so the repo prompt in Phase 3 is their first real interaction, with no tool-install log lines before it, and the recorded per-machine steps are unchanged). Otherwise run Steps 1–4 below in order. Each records itself via `.gaia/cli/gaia setup mark-step <step>` and is skipped when already in `completed_steps`.
 
 **Sandbox decision (runs even when `completed_at` is non-null).** This clause surfaces the OS-level Bash sandbox enablement decision whenever no per-machine resolution has been recorded. It runs even when `completed_at` is non-null because Phase 2 otherwise short-circuits once per-machine setup is complete and would skip the decision. So before falling through to Phase 3, always evaluate this:
 
@@ -289,39 +289,7 @@ If any fail, surface the error and halt. Already-installed plugins are a no-op. 
 .gaia/cli/gaia setup mark-step install-plugins
 ```
 
-### Step 3: init-speckit
-
-Skip if `init-speckit` is in `completed_steps`.
-
-The GAIA `/gaia-spec` Socratic discovery workflow runs on top of [spec-kit](https://github.com/github/spec-kit). The repo already ships the GAIA extension at `.specify/extensions/gaia/` and the GAIA preset at `.specify/presets/gaia/`; they need spec-kit's runtime registered.
-
-Pin spec-kit at the version declared in `.specify/extensions/gaia/extension.yml` `requires.speckit_version` floor.
-
-```bash
-SPECKIT_PIN="v0.8.5"
-PROJECT_ROOT="$(git rev-parse --show-toplevel)"
-uvx --from "git+https://github.com/github/spec-kit.git@${SPECKIT_PIN}" specify init --here --ai claude --force
-# specify extension/preset add --dev consumes its source dir when source == install
-# dest (.specify/extensions|presets/gaia in PROJECT_ROOT). Stage a throwaway copy in a
-# unique in-project temp dir so source != dest and the originals in .specify/ survive.
-# A trap removes the staging dir on exit (repo-relative rm; absolute /tmp rm is sandbox-blocked).
-SPECKIT_STAGE="$(mktemp -d "${PROJECT_ROOT}/.gaia-speckit-stage.XXXXXX")"
-trap 'rm -rf "${SPECKIT_STAGE}"' EXIT
-cp -r "${PROJECT_ROOT}/.specify/extensions/gaia" "${SPECKIT_STAGE}/extension"
-yes | uvx --from "git+https://github.com/github/spec-kit.git@${SPECKIT_PIN}" specify extension add --dev "${SPECKIT_STAGE}/extension"
-cp -r "${PROJECT_ROOT}/.specify/presets/gaia" "${SPECKIT_STAGE}/preset"
-yes | uvx --from "git+https://github.com/github/spec-kit.git@${SPECKIT_PIN}" specify preset add --dev "${SPECKIT_STAGE}/preset"
-rm -rf "${SPECKIT_STAGE}"
-trap - EXIT
-```
-
-If any step fails, surface verbatim and halt. After all succeed:
-
-```bash
-.gaia/cli/gaia setup mark-step init-speckit
-```
-
-### Step 4: chmod-statusline
+### Step 3: chmod-statusline
 
 Skip if `chmod-statusline` is in `completed_steps`.
 
@@ -332,7 +300,7 @@ chmod +x .gaia/statusline/*.sh
 .gaia/cli/gaia setup mark-step chmod-statusline
 ```
 
-### Step 5: bootstrap-env
+### Step 4: bootstrap-env
 
 Skip if `bootstrap-env` is in `completed_steps`.
 

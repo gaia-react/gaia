@@ -1,58 +1,28 @@
 ---
 type: dependency
-status: active
+status: superseded
 package: spec-kit
 role: spec-authoring-engine
 created: 2026-05-06
-updated: 2026-10-03
+updated: 2026-10-06
 tags: [dependency, spec-kit, claude]
 ---
 
 # spec-kit
 
-[GitHub spec-kit](https://github.com/github/spec-kit) is the SPEC-authoring engine that backs GAIA's `/gaia-spec` workflow. GAIA wraps it with a Socratic discovery loop, GAIA-shaped frontmatter, and a `/gaia-plan` handoff.
+> Superseded. GAIA no longer installs spec-kit; `/gaia-spec` runs on GAIA's own scripts and templates, see [[GAIA Spec]].
 
-## Pin
+[GitHub spec-kit](https://github.com/github/spec-kit) is a spec-driven-development toolkit that GAIA once layered under `/gaia-spec`. GAIA does not depend on it, for these reasons:
 
-- Version: `v0.8.5` exactly (installed via `uvx --from git+https://github.com/github/spec-kit.git@v0.8.5`).
-- Compatible range declared in extension + preset: `>=0.8.5,<0.10.0`. Drift detection at runtime via `.specify/extensions/gaia/lib/version-check.sh`, fired from the `before_specify` constitution-check hook. It caches a pass for the calendar day at `.gaia/local/cache/version-check.lock` and exits 1 (surfacing stderr verbatim, then halting) when the runtime version drifts below the floor or at-or-above the ceiling.
-- Scope: project (registered via `specify init --here` during `/gaia-init`).
-- Runtime: requires `uv` (Astral Python toolchain runner).
+- Every real step of `/gaia-spec` (allocation, drafting, ledger, locking, self-review, lint) is GAIA's own bash and prose, so core supplies no capability GAIA consumes; it only added an overridden prompt body, a replaced template, an unwanted feature branch, a potential stray `specs/` tree, a CLAUDE.md block, and rendered skills.
+- The hook bus does not run its documented checks: the constitution check passes on an unfilled stock constitution, the post-specify lint fires on the step-3 skeleton rather than the saved SPEC, and the post-clarify hook never fires on the `/gaia-spec` path.
+- The implement hooks fire only from core's own implement command, which nothing in GAIA runs, so uat-write and wiki-promote were never triggered.
+- Rendered skills go stale on update, because `/update-gaia` never re-runs the extension or preset registration.
+- Past v0.10.0 upstream churns (the install flag GAIA used was removed and 1.0.0 disclaims stability), so tracking it is a recurring migration with nothing gained.
 
-## Install
-
-`/gaia-init` Step 8 registers spec-kit's runtime around the template-shipped extension and preset. All three `specify` invocations are pinned via `uvx --from git+https://github.com/github/spec-kit.git@v0.8.5`:
-
-```bash
-uvx --from "git+https://github.com/github/spec-kit.git@v0.8.5" specify init --here --ai claude --force
-uvx --from "git+https://github.com/github/spec-kit.git@v0.8.5" specify extension add --dev "${SPECKIT_STAGE}/extension"
-uvx --from "git+https://github.com/github/spec-kit.git@v0.8.5" specify preset add --dev "${SPECKIT_STAGE}/preset"
-```
-
-`specify init` populates `.specify/` with core skills. The two `add --dev` calls register GAIA's local extension and preset against that core install. `extension add --dev` and `preset add --dev` consume their source directory when source equals install dest, so the install first stages throwaway copies of `.specify/extensions/gaia` and `.specify/presets/gaia` into a unique in-project temp dir (`SPECKIT_STAGE`) and points the `--dev` adds at those copies, leaving the originals in `.specify/` intact.
-
-## When to use
-
-- `/gaia-spec`: Socratic discovery wrapper (see [[GAIA Spec]]). The user-facing entry point.
-- `/speckit.specify`: invoked by the wrapper. Direct invocation also works in a GAIA project; the GAIA preset still produces GAIA-shaped artifacts.
-- `/speckit.clarify`: replaced outright by the GAIA preset (`strategy: replace`), so a direct invocation redirects into `/gaia-spec`, which runs GAIA's own Socratic clarify loop.
-
-## Architecture
-
-GAIA distributes a spec-kit **extension** at `.specify/extensions/gaia/` (see `extension.yml` for the full command list) and a **preset** at `.specify/presets/gaia/` (see `preset.yml` for what it replaces). Both are GAIA-internal: not published to spec-kit's catalog; distribution is via the GAIA template.
-
-The extension also automates the implement half of the SPEC lifecycle: the `before_implement` hook (`uat-write`) renders the active SPEC's PO-authored UATs into Playwright e2e specs at `frontend/.playwright/e2e/spec-NNN/` before `/speckit-implement` edits source, and the `after_implement` hook (`wiki-promote`) promotes merged SPEC content into the wiki on `/speckit-implement` completion. The unhooked `spec-close` command closes a SPEC after its PR merges, optionally draining a deferred wiki-promote, then prompting to archive, delete, or keep the local SPEC artifact.
-
-Full contract details: [[spec-kit Extension Strategy]].
-
-## Limits
-
-- Hook events cover `before_specify`, `after_clarify`, `after_specify`, `before_implement`, and `after_implement`. There is no `on_save`, so the spec-to-plan handoff lives inline in the wrapper rather than in a hook.
-- `/gaia-spec` does not route its self-review through the `after_clarify` hook; it dispatches a `general-purpose` Agent directly, so the hook bus is exercised only on the specify and lint events.
-- Hooks fire as slash commands (`EXECUTE_COMMAND` directive), not shell scripts. Hook bodies are markdown skill files.
-- Default `strategy: replace` silently leaves `{CORE_TEMPLATE}` unsubstituted in command preset replacements. Use `strategy: wrap` when replacing a command preset.
+The original design record is [[spec-kit Extension Strategy]].
 
 ## Related
 
-- [[GAIA Spec]]: the workflow built on top.
-- [[spec-kit Extension Strategy]]: architectural decision and contract invariants.
+- [[GAIA Spec]]: the workflow that runs without spec-kit.
+- [[spec-kit Extension Strategy]]: the superseded design record.

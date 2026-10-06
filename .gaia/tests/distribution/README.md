@@ -21,7 +21,9 @@ Maintainer-only validation of the post-scrub GAIA tarball. Excluded from the rel
 bash .gaia/tests/distribution/run-all.sh
 ```
 
-Walks `*.sh` (excluding `run-all.sh` and anything under `lib/`) in lexicographic order, prints PASS/FAIL per scenario, exits non-zero on any failure.
+Walks `*.sh` (excluding `run-all.sh` and anything under `lib/`) in lexicographic order, each scenario's output captured to a log. Scenarios run in two phases: first every scenario concurrently, up to `DISTRIBUTION_JOBS` at a time (the host's CPU count by default; `1` runs them serially), then each scenario whose header carries the line `# distribution-runner: exclusive`, one at a time with the host to itself. It prints a progress line as each scenario finishes, then every log in scenario order, then the PASS/FAIL summary, and exits non-zero on any failure.
+
+Mark a scenario exclusive when it runs the scaffold's own test suite: Vitest already uses every core, and its per-test timeouts fail under a second suite or the concurrent phase running beside it. A scenario that only installs or runs the CLI stays concurrent. Scenarios share no state beyond the pnpm store and the Playwright browser cache, both safe under concurrent installs, so a new scenario keeps its scratch files in its own `mktemp` directories.
 
 Individual scenarios are runnable directly:
 
