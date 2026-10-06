@@ -70,8 +70,8 @@ export const appendSearchParams = (
     : searchParams;
 
   const safeParams = queryString.stringify(casedParams, {arrayFormat});
-  const q = uri.includes('?') ? '&' : '?';
-  const search = safeParams ? `${q}${safeParams}` : '';
+  const searchSeparator = uri.includes('?') ? '&' : '?';
+  const search = safeParams ? `${searchSeparator}${safeParams}` : '';
 
   return `${uri}${search}`;
 };
@@ -82,8 +82,8 @@ export const setPathParams = (
 ): string =>
   pathParams ?
     Object.entries(pathParams).reduce(
-      (acc, [key, value]) =>
-        acc.replace(`:${key}`, encodeURIComponent(String(value))),
+      (path, [key, value]) =>
+        path.replace(`:${key}`, encodeURIComponent(String(value))),
       url
     )
   : url;

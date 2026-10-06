@@ -52,11 +52,14 @@ describe('create', () => {
   });
 
   test('a plain Error thrown by the request function rejects through attempt', async () => {
+    process.env.API_URL = ORIGIN_A;
+    server.use(http.get(`${ORIGIN_A}/items`, () => HttpResponse.error()));
+
+    const request = create();
+
     await expect(
-      attempt(async () => {
-        throw new Error('boom');
-      })
-    ).rejects.toThrow('boom');
+      attempt(async () => request('items', {schema: envelopeSchema}))
+    ).rejects.toThrow('Request failed due to a network error');
   });
 
   test('a 204 without a schema resolves undefined', async () => {

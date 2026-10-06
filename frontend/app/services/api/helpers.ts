@@ -62,9 +62,9 @@ type AttemptResult<T> = AttemptError | AttemptSuccess<T>;
 type AttemptSuccess<T> = [error: undefined, result: T];
 
 export const attempt = async <T>(
-  fn: () => Promise<T>
+  operation: () => Promise<T>
 ): Promise<AttemptResult<T>> => {
-  const [error, result] = await tryCatch(fn);
+  const [error, result] = await tryCatch(operation);
 
   if (error) {
     return [handleResponseError(error), undefined];
