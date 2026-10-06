@@ -1,15 +1,17 @@
 ---
 type: decision
 title: spec-kit Extension Strategy
-status: active
+status: superseded
 priority: 1
 date: 2026-05-06
 created: 2026-05-06
-updated: 2026-07-20
+updated: 2026-10-06
 tags: [decision, claude, spec-kit, architecture]
 ---
 
 # spec-kit Extension Strategy
+
+> Superseded. See [[GAIA Spec]]. GAIA no longer installs spec-kit, and none of the hooks, the preset, or the version pin described below run in GAIA; the body is kept as the record of the original design. Core contributes no capability `/gaia-spec` consumes: every real step (allocation, drafting, ledger, locking, self-review, lint) is GAIA's own bash under `.specify/extensions/gaia/lib/` and GAIA's own prose, while core added an overridden prompt body, a replaced template, an unwanted feature branch from its bundled git extension, a potential stray `specs/` tree, a CLAUDE.md block, and rendered `speckit-*` skills. The hook bus does not run its documented checks: the constitution check passes on an unfilled stock constitution, the post-specify lint fires on the step-3 skeleton rather than the saved SPEC, and the post-clarify hook never fires on the `/gaia-spec` path. The implement hooks never fire, because `before_implement` and `after_implement` fire only from `/speckit-implement`, which nothing in GAIA runs, so uat-write and wiki-promote were never triggered. Rendered skills go stale on update, because `/update-gaia` never re-runs `specify extension add` or `preset add`, so adopters' skills stay frozen at install time. Upgrades past v0.10.0 churn, because v0.10.0 removed the `--ai` flag GAIA's install used and 1.0.0 disclaims stability, so tracking upstream is a recurring migration with nothing gained.
 
 GAIA's `/gaia-spec` workflow runs on top of [GitHub spec-kit](https://github.com/github/spec-kit) v0.8.5. This page records the load-bearing contract decisions for that integration.
 
@@ -20,7 +22,7 @@ GAIA distributes a spec-kit **extension** at `.specify/extensions/gaia/` and a s
 **Extension** declares slash commands and lifecycle hooks. **Preset** replaces core templates. Both are needed:
 
 - The extension owns `speckit.gaia.spec` (the wrapper command) plus five hook-target commands: `constitution-check` (`before_specify`), `self-review` (`after_clarify`), `lint` (`after_specify`), `uat-write` (`before_implement`), and `wiki-promote` (`after_implement`). It also ships the unhooked `spec-close` command.
-- The preset replaces `speckit.specify` and `spec-template` so a bare `/speckit-specify` invocation in a GAIA project still produces GAIA-shaped artifacts at `.gaia/local/specs/SPEC-NNN/SPEC.md`. Without the preset, the core path bypasses GAIA entirely.
+- The preset replaces `speckit.specify` and `spec-template` so a bare `/speckit-specify` invocation in a GAIA project still produces GAIA-shaped artifacts in the main-anchored SPEC folder. Without the preset, the core path bypasses GAIA entirely.
 
 ## Contract invariants
 
@@ -54,7 +56,7 @@ Neither is published to spec-kit's public extension/preset catalog. Distribution
 
 ### 6. The canonical artifact layout is a folder, not a flat file
 
-Each SPEC lives in its own `.gaia/local/specs/SPEC-NNN/` folder containing `SPEC.md` plus any sibling notes (e.g. `IMPLEMENTATION-NOTES.md`). The folder is the archival unit.
+Each SPEC lives in its own main-anchored SPEC folder containing `SPEC.md` plus any sibling notes (e.g. `IMPLEMENTATION-NOTES.md`). The folder is the archival unit.
 
 ### 7. /gaia-spec runs its own clarify loop
 

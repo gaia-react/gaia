@@ -1,13 +1,12 @@
-# GAIA spec-kit extension
+# GAIA spec lifecycle
 
-GAIA-tailored Socratic discovery layer over [spec-kit](https://github.com/github/spec-kit). Adds coach-tone prompting, `AskUserQuestion`-driven multiple choice with recommended-first ordering, per-topic exhaustion checkpoints, two-gate ceremony, immutability lint on saved SPECs, and a terminal `/gaia-plan` handoff the human runs in a fresh session (never chained in-session; a guard enforces it).
+GAIA's own spec-lifecycle scripts, templates, and manual runbooks. `/gaia-spec` and the plan tooling call these directly: Socratic discovery with coach-tone prompting, `AskUserQuestion`-driven multiple choice with recommended-first ordering, per-topic exhaustion checkpoints, a two-gate ceremony, an immutability lint on saved SPECs, and a terminal `/gaia-plan` handoff the human runs in a fresh session (never chained in-session; a guard enforces it).
 
-This extension is registered with spec-kit via `specify extension add gaia` and pinned to spec-kit `v0.8.5`. The pin is duplicated in the GAIA-side manifest at `.gaia/extension.yml` so version drift between GAIA releases and spec-kit is detectable before discovery starts.
+The folder keeps its historical `.specify/` location for now.
 
-The extension layout follows spec-kit's documented extension API:
+Layout:
 
-- `extension.yml`: manifest (schema_version `"1.0"`).
-- `commands/`: slash-command implementations fired via `EXECUTE_COMMAND` directives at spec-kit's `before_specify` / `after_clarify` / `after_specify` events. `/gaia-spec` dispatches its self-review directly as an Agent rather than through the `after_clarify` hook.
-- `templates/`: `spec-template.md` is a preset override; the clarify prompts and the system prompt are templates the `/gaia-spec` wrapper lazy-loads directly at step 5.
-- `lib/`: shared shell utilities invoked by the slash-command bodies (spec allocation, lint, UAT rendering).
-- `rules/`: supporting rules referenced by the commands.
+- `commands/`: manual runbooks with no automatic trigger. A person runs one by reading the file and following it. `self-review.md` is the exception in kind: `/gaia-spec` step 6 dispatches it as an Agent.
+- `templates/`: the SPEC skeleton, the clarify prompts, the system prompt, and the UAT render templates.
+- `lib/`: shell utilities called directly by skills, hooks, and scripts (spec allocation, lint, UAT rendering, ledger and archive helpers).
+- `rules/`: supporting rules the runbooks and generated files reference.

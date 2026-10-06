@@ -66,12 +66,10 @@ section is the cognitive scaffold for the autonomous downstream
 pipeline that consumes this SPEC, the clearer this is, the cleaner
 the resulting plan and tasks.>
 
-## Constitution / preconditions
+## Preconditions
 
 <Anything that must be true about the project, environment, or other
-specs before this feature can be invoked. List explicitly. Each
-precondition should map to a `before_*` hook check or an obvious
-bootstrap step.>
+specs before this feature can be invoked. List explicitly.>
 
 ## Out of scope (for this SPEC)
 

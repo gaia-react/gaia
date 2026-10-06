@@ -45,7 +45,7 @@
 # The prose-legibility member's own reassignment (`.claude/skills/**/*.md`,
 # `.claude/agents/*/**`, `.claude/commands/**`, `.claude/instructions/**`,
 # `.claude/agents/worthiness-evaluator.md`, `.gaia/cli/health/**/*.md`, the
-# two `.github/forensics/` prompts, `.specify/presets/**/*.md`, and the
+# two `.github/forensics/` prompts, and the
 # `commands/`/`rules/`/`templates/` directories under
 # `.specify/extensions/gaia/`) is gone with the member (harness triage
 # P3-09): it carries no arm above because `before` was already `-` for all
