@@ -56,13 +56,22 @@ const requireIndex = () => {
   if (indexError) throw indexError;
 };
 
+// React Router's createRoutesStub writes this placeholder into its manifest,
+// so `<Scripts/>` in a stubbed story modulepreloads a file no build serves.
+// Once the MSW service worker is in the request path, Chromium logs that 404
+// as a console error.
+const ROUTES_STUB_MODULE_PATH = '/build/stub-path-to-module.js';
+
 // Collects page and console errors from the moment it is called.
 const collectProblems = (page: Page): string[] => {
   const problems: string[] = [];
 
   page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`));
   page.on('console', (message) => {
-    if (message.type() === 'error') {
+    if (
+      message.type() === 'error' &&
+      !message.location().url.endsWith(ROUTES_STUB_MODULE_PATH)
+    ) {
       problems.push(
         `console error: ${message.text()} (${message.location().url})`
       );

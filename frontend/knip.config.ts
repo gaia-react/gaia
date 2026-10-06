@@ -25,7 +25,6 @@ export default {
     '@storybook/addon-docs',
     '@tailwindcss/typography',
     'lru-cache',
-    'msw-storybook-addon',
     'nanoid',
     // shadcn and tw-animate-css are imported only from CSS (tailwind.css), so knip cannot see them.
     'shadcn',

@@ -1,0 +1,40 @@
+import type {ReactNode} from 'react';
+import {useState} from 'react';
+import type {ReactRenderer} from '@storybook/react-vite';
+import {QueryClientProvider} from '@tanstack/react-query';
+import type {DecoratorFunction} from 'storybook/internal/types';
+import {
+  createQueryClient,
+  QUERY_DEFAULT_OPTIONS,
+  setBrowserQueryClient,
+} from '~/query-client';
+
+type FreshQueryClientProps = {
+  children: ReactNode;
+};
+
+// One client per story, so no story reads another's cache. Registering it as
+// the browser client lets a clientLoader run by the story's router stub fill
+// the same cache the page's useSuspenseQuery reads. Retries are off so a
+// failing handler shows its error state at once instead of after backoff.
+const FreshQueryClient = ({children}: FreshQueryClientProps) => {
+  const [client] = useState(() => {
+    const storyClient = createQueryClient({
+      ...QUERY_DEFAULT_OPTIONS,
+      queries: {...QUERY_DEFAULT_OPTIONS.queries, retry: false},
+    });
+
+    setBrowserQueryClient(storyClient);
+
+    return storyClient;
+  });
+
+  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+};
+
+const QueryClientDecorator: DecoratorFunction<ReactRenderer> = (
+  storyFn,
+  {id}
+) => <FreshQueryClient key={id}>{storyFn()}</FreshQueryClient>;
+
+export default QueryClientDecorator;

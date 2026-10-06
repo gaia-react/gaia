@@ -13,6 +13,7 @@ const config: StorybookConfig = {
     '@storybook/addon-vitest',
     'storybook-react-i18next',
     '@vueless/storybook-dark-mode',
+    'msw-storybook-addon',
   ],
 
   docs: {},
@@ -31,6 +32,10 @@ const config: StorybookConfig = {
       },
     },
   },
+
+  // `mockServiceWorker.js` lives in `public/`; a built Storybook only serves it
+  // when the folder is a static dir.
+  staticDirs: ['../public'],
 
   stories: ['../app/**/*.stories.tsx'],
 };

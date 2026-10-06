@@ -1,10 +1,25 @@
 import ky from 'ky';
-import type {Options} from 'ky';
+import type {Options, StandardSchemaV1, StandardSchemaV1InferOutput} from 'ky';
 import type {StringifyOptions} from 'query-string';
 import {buildRequestHeaders, getBaseUrl, getHooks, getUri} from './utils';
 
-type CreateOptions = Options & {
+export type RequestFunction = {
+  <S extends StandardSchemaV1>(
+    uri: string,
+    options: RequestOptions & {schema: S}
+  ): Promise<StandardSchemaV1InferOutput<S>>;
+  (uri: string, options?: RequestOptions & {schema?: undefined}): Promise<void>;
+};
+
+type CreateOptions = Omit<Options, 'prefix'> & {
   arrayFormat?: NonNullable<StringifyOptions['arrayFormat']>;
+  /** Base URL; resolved per request from getBaseUrl() when omitted. */
+  prefix?: string;
+  /**
+   * Converts incoming response keys to camelCase and outgoing JSON bodies and
+   * search params to snake_case. Defaults to true; pass false when the API
+   * already speaks camelCase.
+   */
   useSnakeCase?: boolean;
 };
 
@@ -15,28 +30,45 @@ type RequestOptions = Options & {
   token?: string;
 };
 
-export const create = <ApiResponseType>({
+export const create = ({
   arrayFormat = 'comma',
   hooks,
-  prefix = getBaseUrl(),
+  prefix,
   useSnakeCase = true,
   ...apiOptions
-}: CreateOptions = {}) => {
+}: CreateOptions = {}): RequestFunction => {
   const kyInstance = ky.create({
     hooks: getHooks(useSnakeCase, hooks),
-    prefix,
     ...apiOptions,
   });
 
-  return async (
+  const request = async (
     uri: string,
-    {language, pathParams, searchParams, token, ...options}: RequestOptions = {}
-  ): Promise<ApiResponseType> =>
-    kyInstance<ApiResponseType>(
+    {
+      language,
+      pathParams,
+      schema,
+      searchParams,
+      token,
+      ...options
+    }: RequestOptions & {schema?: StandardSchemaV1} = {}
+  ): Promise<unknown> => {
+    const response = kyInstance(
       getUri(uri, {arrayFormat, pathParams, searchParams, useSnakeCase}),
       {
         ...options,
         headers: buildRequestHeaders(options.headers, token, language),
+        // Resolved per request: the base URL is unknown at module import.
+        prefix: prefix ?? (getBaseUrl() || '/'),
       }
-    ).json();
+    );
+
+    if (schema) {
+      return response.json(schema);
+    }
+
+    await response;
+  };
+
+  return request as RequestFunction;
 };

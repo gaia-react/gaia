@@ -1,17 +1,17 @@
-import {HTTPError} from 'ky';
+import {HTTPError, SchemaValidationError} from 'ky';
 import {describe, expect, test} from 'vitest';
 import type {ZodError} from 'zod';
 import {z} from 'zod';
 import {attempt} from '../helpers';
 
 describe('attempt', () => {
-  test('success — resolves to [undefined, result]', async () => {
+  test('success: resolves to [undefined, result]', async () => {
     const result = await attempt(async () => 'ok');
 
     expect(result).toEqual([undefined, 'ok']);
   });
 
-  test('HTTPError — resolves to [{status, statusText}, undefined]', async () => {
+  test('HTTPError: resolves to [{status, statusText}, undefined]', async () => {
     const response = new Response('', {status: 404, statusText: 'Not Found'});
     const request = new Request('https://example.test');
     const httpError = new HTTPError(response, request, {} as never);
@@ -23,7 +23,7 @@ describe('attempt', () => {
     expect(result).toEqual([{status: 404, statusText: 'Not Found'}, undefined]);
   });
 
-  test('ZodError — resolves to [{status: 500, statusText: error.message}, undefined]', async () => {
+  test('ZodError: resolves to [{status: 500, statusText: error.message}, undefined]', async () => {
     let zodError: ZodError;
 
     try {
@@ -42,7 +42,22 @@ describe('attempt', () => {
     ]);
   });
 
-  test('plain Error — rejects (re-thrown)', async () => {
+  test('SchemaValidationError: resolves to a constant statusText with no issues in it', async () => {
+    const schemaError = new SchemaValidationError([
+      {message: 'secret detail', path: ['a']},
+    ]);
+
+    const result = await attempt(async () => {
+      throw schemaError;
+    });
+
+    expect(result).toEqual([
+      {status: 500, statusText: 'Response failed schema validation'},
+      undefined,
+    ]);
+  });
+
+  test('plain Error: rejects (re-thrown)', async () => {
     await expect(
       attempt(async () => {
         throw new Error('boom');
@@ -50,7 +65,7 @@ describe('attempt', () => {
     ).rejects.toThrow('boom');
   });
 
-  test('unknown non-Error throw — resolves to [{status: 500, statusText: "Unknown error"}, undefined]', async () => {
+  test('unknown non-Error throw: resolves to [{status: 500, statusText: "Unknown error"}, undefined]', async () => {
     const result = await attempt(async () => {
       throw 'something unexpected';
     });

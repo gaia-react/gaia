@@ -1,4 +1,5 @@
 import type {Preview} from '@storybook/react-vite';
+import {mswLoader} from 'msw-storybook-addon/csf3';
 import {themes} from 'storybook/theming';
 import {AXE_WCAG_TAGS} from '../test/axe-tags';
 import {decorators} from './chromatic';
@@ -25,6 +26,7 @@ const preview: Preview = {
     // the dark mode into a second light snapshot.
     theme: 'light',
   },
+  loaders: [mswLoader()],
   parameters: {
     // Any impact fails here, where the Playwright scan fails only critical and
     // serious. `region` is off because a

@@ -1,8 +1,8 @@
+import {z} from 'zod';
 import {create} from '../api';
 
-type GaiaServerResponse = {
-  data: unknown;
-  error?: Error;
-};
+export const api = create();
 
-export const api = create<GaiaServerResponse>();
+export const envelope = <T extends z.ZodType>(
+  schema: T
+): z.ZodObject<{data: T}> => z.object({data: schema});
