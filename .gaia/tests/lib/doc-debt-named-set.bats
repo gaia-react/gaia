@@ -109,11 +109,24 @@ named_set_section() {
   section="$(extract_section '## Argument parsing')"
   [ -n "$section" ]
   grep -qF -- '- `top`' <<<"$section"
-  grep -qF -- '- `list`' <<<"$section"
-  grep -qF -- '- `why <N>`' <<<"$section"
   grep -qF -- '- `numbers <N>`' <<<"$section"
   grep -qF -- '- `numbers <N1> <N2> ...`' <<<"$section"
   grep -qF -- '- `unrecognized <token>`' <<<"$section"
+}
+
+@test "argument parsing maps no removed list or why output" {
+  section="$(extract_section '## Argument parsing')"
+  [ -n "$section" ]
+  grep -qF -- '- `list`' <<<"$section" && return 1
+  grep -qF -- '- `why <N>`' <<<"$section" && return 1
+  grep -qF -- 'bare `fix`' <<<"$section" && return 1
+  grep -qF -- '/gaia-debt [<issue-number> ...] [[use] worktree|branch]' <<<"$section"
+}
+
+@test "the debt reference carries no list or why subcommand section" {
+  [ -s "$DEBT_MD" ]
+  grep -qE -- '^## (list|why) subcommand' "$DEBT_MD" && return 1
+  true
 }
 
 @test "argument parsing no longer falls an unparsed first token through to the top of the backlog" {
@@ -406,10 +419,10 @@ cost_record_has() {
 
 # --- 10. the command surface ------------------------------------------------
 
-@test "the command's argument hint is the multi-number form" {
+@test "the command's argument hint is the multi-number form with the isolation suffix" {
   [ -s "$COMMAND_MD" ]
   hint="$(grep -E '^argument-hint:' "$COMMAND_MD")"
-  [ "$hint" = 'argument-hint: [fix|list|why <issue-number>|<issue-number>...]' ]
+  [ "$hint" = 'argument-hint: [<issue-number>...] [[use] worktree|branch]' ]
 }
 
 @test "the command's description and dispatch line name the multi-number form" {
@@ -418,7 +431,8 @@ cost_record_has() {
   grep -qiF -- 'several issue numbers' <<<"$description"
   dispatch="$(grep -E '^Read `\.claude/skills/gaia/references/debt\.md`' "$COMMAND_MD")"
   [ -n "$dispatch" ]
-  grep -qiF -- 'one or more issue numbers' <<<"$dispatch"
+  grep -qiF -- 'zero or more issue numbers' <<<"$dispatch"
+  grep -qiF -- 'several name your own batch' <<<"$dispatch"
   grep -qiF -- 'argument parser' <<<"$dispatch"
   grep -qiF -- 'unrecognized argument stops' <<<"$dispatch"
 }

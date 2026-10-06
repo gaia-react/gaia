@@ -25,6 +25,20 @@ restates it: take the name the caller resolved.
 
 Walk the arms top to bottom and stop at the first one that matches. The order is load-bearing.
 
+### The caller requires the feature branch
+
+Runs only when the caller passes a **required** feature-branch answer: the work itself cannot run in a
+linked worktree, which is a correctness rule of the work and not the operator's preference, so it runs ahead
+of every arm below, policy and question included. A stated answer (below) is a preference and never reaches
+this arm.
+
+Each of the two arms below that forces a worktree contradicts the requirement, so check both conditions
+here. When the session is already inside a linked worktree (`bash .gaia/scripts/main-root-lib.sh
+--is-worktree` exits 0), or HEAD is not on `main`/`master`, create nothing: set `RESOLVED_MODE=blocked`, say
+in one line which condition holds, and hand back to the caller, which owns the stop. Otherwise cut the branch
+of the caller's name from HEAD in the current checkout, set `RESOLVED_MODE=feature-branch`, say in one line
+that the work requires a branch, and skip every arm below.
+
 ### Already inside a linked worktree
 
 Ask the shared resolver, the one definition of "which checkout am I in", correct in every checkout
@@ -98,6 +112,13 @@ HEAD is on `main`/`master`. This fires when `POLICY` is not `always-worktree`, a
 when `POLICY` is `always-worktree` and its worktree creation just failed (the fallback above). Ask it with
 `AskUserQuestion`, using the literals below verbatim (after slot substitution). Do not silently default: the
 prompt is the decision point.
+
+**A stated answer replaces the prompt.** When the caller passes an answer the operator already gave
+(`/gaia-debt` does, when its arguments ended in `worktree` or `branch`), do not ask: take that answer exactly as
+if it had been picked below, and say which mode is running in one line. A stated answer only answers this
+question; every arm above still runs first and wins, and when one of them overrides a stated answer, say so
+in one line: a stated `branch` off `main`/`master` becomes a worktree, and a required feature branch beats a
+stated `worktree`.
 
 If the user picks **Other** with custom text, treat it as a request for an alternative isolation mode and
 surface a clarifying question rather than guessing. Feature-branch and worktree are the two supported modes.
@@ -192,7 +213,8 @@ the next time a session works in them. Nothing here needs a manual repair step.
 
 This reference exports two values.
 
-`RESOLVED_MODE` is the isolation mode it resolved, with exactly two values:
+`RESOLVED_MODE` is the isolation mode it resolved, with exactly two values, or `blocked` when a required
+feature-branch answer could not be honoured (no branch or worktree exists, and the caller stops):
 
 | `RESOLVED_MODE` | Meaning |
 |---|---|
