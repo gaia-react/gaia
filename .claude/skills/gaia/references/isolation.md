@@ -99,6 +99,12 @@ when `POLICY` is `always-worktree` and its worktree creation just failed (the fa
 `AskUserQuestion`, using the literals below verbatim (after slot substitution). Do not silently default: the
 prompt is the decision point.
 
+**A stated answer replaces the prompt.** When the caller passes an answer the operator already gave
+(`/gaia-debt` does, when its arguments named `worktree` or `branch`), do not ask: take that answer exactly as
+if it had been picked below, and say which mode is running in one line. A stated answer only answers this
+question; the forced-worktree and `always-worktree` arms above still run first and win, and when one of them
+overrides a stated `branch`, say so in one line.
+
 If the user picks **Other** with custom text, treat it as a request for an alternative isolation mode and
 surface a clarifying question rather than guessing. Feature-branch and worktree are the two supported modes.
 

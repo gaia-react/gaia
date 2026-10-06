@@ -124,6 +124,53 @@ run_unrecognized() {
   [ "$UNRECOGNIZED_ROW_COUNT" -ge 19 ]
 }
 
+# isolation_rows: one "stdin|stdout" row per line, stdout's newline written as
+# `;`. A keyword makes the string phrasing: filler words drop, and exactly one
+# keyword adds the isolation line to a top or numbers result.
+isolation_rows() {
+  cat <<'EOF'
+worktree|top;isolation worktree
+branch|top;isolation branch
+please use a worktree|top;isolation worktree
+do it on a branch|top;isolation branch
+WORKTREE|top;isolation worktree
+fix on a Branch|top;isolation branch
+12 34 worktree|numbers 12 34;isolation worktree
+fix #12, 34 on a branch|numbers 12 34;isolation branch
+please fix 12 in worktrees|numbers 12;isolation worktree
+use worktree, 12|numbers 12;isolation worktree
+not a branch, a worktree|top
+12 not a branch, a worktree|numbers 12
+list worktree|list
+why 12 on a branch|why 12
+EOF
+}
+
+@test "an isolation keyword turns the string into phrasing and names the mode" {
+  local row_count=0 row stdin_text expected
+  while IFS= read -r row; do
+    stdin_text="${row%%|*}"
+    expected="$(printf '%s' "${row#*|}" | tr ';' '\n')"
+    row_count=$((row_count + 1))
+    parse bash "$stdin_text"
+    if [ "$status" -ne 0 ] || [ "$output" != "$expected" ]; then
+      echo "row '$row': status=$status output='$output'" >&2
+      return 1
+    fi
+  done < <(isolation_rows)
+  [ "$row_count" -eq "$(isolation_rows | wc -l | tr -d ' ')" ]
+  [ "$row_count" -ge 14 ]
+}
+
+@test "under phrasing a token with a digit is still refused, never dropped as filler" {
+  parse bash "12x worktree"
+  [ "$status" -eq 2 ]
+  [ "$output" = "unrecognized 12x" ]
+  parse bash "list 12 worktree"
+  [ "$status" -eq 2 ]
+  [ "$output" = "unrecognized 12" ]
+}
+
 @test "a lone newline is the empty argument" {
   run --separate-stderr bash "$SCRIPT" <<<""
   [ "$status" -eq 0 ]

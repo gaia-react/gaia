@@ -22,7 +22,7 @@ bash .gaia/scripts/debt-parse-args.sh <<'GAIA_DEBT_ARGUMENTS'
 GAIA_DEBT_ARGUMENTS
 ```
 
-The accepted forms are `fix`, `list`, `why <issue-number>`, and one or more issue numbers, each with an optional leading `#`, after an optional leading `fix`, separated by spaces or commas; a repeated number counts once. The parser's header owns the grammar. It prints exactly one line; map it:
+The accepted forms are `fix`, `list`, `why <issue-number>`, and one or more issue numbers, each with an optional leading `#`, after an optional leading `fix`, separated by spaces or commas; a repeated number counts once. The operator may also name the isolation mode anywhere in the string, in their own words: any word containing `worktree` or `branch` (`12 34 worktree`, `please use a worktree`, `do it on a branch`) makes the parser skip the surrounding filler words instead of refusing them. The parser's header owns the grammar. Its first stdout line is the result; map it:
 
 - `top` (empty `$ARGUMENTS`, or a bare `fix`) → the full interactive flow, recommending the top-of-backlog candidate. This is the default the statusline nudge (`Run /gaia-debt (N issues)`) points at, and these two forms are the only ones that run it.
 - `list` → `## list subcommand`: print the ordered backlog and stop. No branch, no PR, no prompts. (Run ends here; see `## Cost record (run end)`.)
@@ -30,6 +30,8 @@ The accepted forms are `fix`, `list`, `why <issue-number>`, and one or more issu
 - `numbers <N>` (one number) → `## Validate named numbers`, then `## Fix a specific issue (direct-number path)` for `#<N>`.
 - `numbers <N1> <N2> ...` (two or more numbers) → `## Validate named numbers`, then `## Fix a named set (two or more numbers)`.
 - `unrecognized <token>` (the parser refused the argument) → relay its two stderr lines verbatim (the unrecognized token, then the accepted forms), claim nothing, run no backend probe and no reconcile, and end the run. (Run ends here; see `## Cost record (run end)`.)
+
+A `top` or `numbers` result may carry a second line, `isolation worktree` or `isolation branch`: the operator already chose the isolation mode. Carry it to `## Pre-flight isolation (branch vs worktree)` below as the **stated mode** and run everything else unchanged. No second line means no mode was stated (none was named, or both were and the choice is ambiguous), and the isolation question asks as usual. Never relay the keyword as unrecognized: the parser has already accepted it.
 
 If the parser reports that it was misused or could not read its input (no stdout line, one `debt-parse-args:` stderr line), report that line and end the run the same way: nothing claimed, no probe. (Run ends here; see `## Cost record (run end)`.)
 
@@ -462,7 +464,7 @@ Then isolate the fix:
 
 > Read `.claude/skills/gaia/references/isolation.md` and apply it now, with `{{SUBJECT}}` = "this debt fix", `{{WORKER}}` = "the fix", `{{OWNER}}` = "this fix", `{{SIBLING}}` = "another task".
 
-The reference owns the decision order, the prompt, and the worktree-creation call; take the branch name it needs from the naming rule above. In worktree mode every later step, implementing the fix(es), the Quality Gate, commit, push, `gh pr create`, the Code Audit Team marker gate, and the merge, runs from inside the worktree.
+When `## Argument parsing` carried a stated mode, pass it as the reference's stated answer (`worktree` → the worktree answer, `branch` → the feature-branch answer): it answers the isolation question without asking, and the arms that precede the question still win. The reference owns the decision order, the prompt, and the worktree-creation call; take the branch name it needs from the naming rule above. In worktree mode every later step, implementing the fix(es), the Quality Gate, commit, push, `gh pr create`, the Code Audit Team marker gate, and the merge, runs from inside the worktree.
 
 ## Resolve the selected unit
 
