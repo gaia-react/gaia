@@ -22,7 +22,7 @@ bash .gaia/scripts/debt-parse-args.sh <<'GAIA_DEBT_ARGUMENTS'
 GAIA_DEBT_ARGUMENTS
 ```
 
-The accepted forms are `fix`, `list`, `why <issue-number>`, and one or more issue numbers, each with an optional leading `#`, after an optional leading `fix`, separated by spaces or commas; a repeated number counts once. The operator may also name the isolation mode anywhere in the string, in their own words: any word containing `worktree` or `branch` (`12 34 worktree`, `please use a worktree`, `do it on a branch`) makes the parser skip the surrounding filler words instead of refusing them. The parser's header owns the grammar. Its first stdout line is the result; map it:
+The accepted forms are `fix`, `list`, `why <issue-number>`, and one or more issue numbers, each with an optional leading `#`, after an optional leading `fix`, separated by spaces or commas; a repeated number counts once. The operator may also name the isolation mode anywhere in the string: any word containing `worktree` or `branch` (`12 34 worktree`, `please use a worktree`, `do it on a branch`) makes the parser skip a small closed set of stopwords (`a`, `the`, `on`, `use`, `please` and similar) instead of refusing them. Every other word still refuses, so `not 12 on a branch` stops the run. The parser's header owns the grammar. Its first stdout line is the result; map it:
 
 - `top` (empty `$ARGUMENTS`, or a bare `fix`) → the full interactive flow, recommending the top-of-backlog candidate. This is the default the statusline nudge (`Run /gaia-debt (N issues)`) points at, and these two forms are the only ones that run it.
 - `list` → `## list subcommand`: print the ordered backlog and stop. No branch, no PR, no prompts. (Run ends here; see `## Cost record (run end)`.)

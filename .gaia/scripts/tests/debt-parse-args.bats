@@ -75,6 +75,11 @@ fix fix|fix
 12 fix|fix
 FIX|FIX
 ,|,
+not 12, just 34 on a branch|not
+12 not a branch, a worktree|not
+not a branch, a worktree|not
+LIST worktree|LIST
+explain 12 on a branch|explain
 EOF
 }
 
@@ -121,12 +126,13 @@ run_unrecognized() {
 @test "every unrecognized form exits 2 naming the first offending token" {
   run_unrecognized bash
   [ "$UNRECOGNIZED_ROW_COUNT" -eq "$(unrecognized_rows | wc -l | tr -d ' ')" ]
-  [ "$UNRECOGNIZED_ROW_COUNT" -ge 19 ]
+  [ "$UNRECOGNIZED_ROW_COUNT" -ge 23 ]
 }
 
 # isolation_rows: one "stdin|stdout" row per line, stdout's newline written as
 # `;`. A keyword makes the string phrasing: filler words drop, and exactly one
-# keyword adds the isolation line to a top or numbers result.
+# keyword adds the isolation line to a top or numbers result. Only the closed
+# stopword set drops; any other word refuses (unrecognized_rows).
 isolation_rows() {
   cat <<'EOF'
 worktree|top;isolation worktree
@@ -139,8 +145,6 @@ fix on a Branch|top;isolation branch
 fix #12, 34 on a branch|numbers 12 34;isolation branch
 please fix 12 in worktrees|numbers 12;isolation worktree
 use worktree, 12|numbers 12;isolation worktree
-not a branch, a worktree|top
-12 not a branch, a worktree|numbers 12
 list worktree|list
 why 12 on a branch|why 12
 EOF
@@ -159,7 +163,7 @@ EOF
     fi
   done < <(isolation_rows)
   [ "$row_count" -eq "$(isolation_rows | wc -l | tr -d ' ')" ]
-  [ "$row_count" -ge 14 ]
+  [ "$row_count" -ge 12 ]
 }
 
 @test "under phrasing a token with a digit is still refused, never dropped as filler" {

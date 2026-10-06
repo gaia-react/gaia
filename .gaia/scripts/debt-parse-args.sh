@@ -29,10 +29,11 @@
 # Isolation keyword. An operator may name the isolation mode in the same
 # argument string ("12 34 worktree", "do it on a branch"). When any token
 # contains `worktree` or `branch`, in any case, the string is read as phrasing:
-# every token holding a keyword, and every word token with no digit that is not
-# a subcommand word, is skipped as filler, and the grammar above runs on what is
-# left. A token with a digit is never filler, so a mistyped number (`12x`) is
-# still refused rather than dropped. When exactly one of the two keywords
+# every token holding a keyword, and every token in the closed stopword set
+# named in is_filler below, is skipped as filler, and the grammar above runs on
+# what is left. Any other word is not filler, so an unknown or negating word
+# (`not`, `explain`, `LIST`) still refuses, and so does a token with a digit
+# (`12x`). When exactly one of the two keywords
 # appears, a `top` or `numbers` result gains a second stdout line,
 # `isolation worktree` or `isolation branch`; when both appear the mode is
 # ambiguous and no second line is printed. `list` and `why` never isolate, so
@@ -107,15 +108,16 @@ elif [ "$saw_branch" -eq 1 ] && [ "$saw_worktree" -eq 0 ]; then
   isolation_mode="branch"
 fi
 
-# is_filler <token>: under phrasing, true for a keyword token and for a word
-# with no digit that is not a subcommand word.
+# is_filler <token>: under phrasing, true for a keyword token and for a word in
+# the closed stopword set. The set is closed on purpose: an open-ended filler arm
+# would erase a negation or an unknown first word and fall through to a drain.
 is_filler() {
   [ "$phrasing" -gt 0 ] || return 1
   # shellcheck disable=SC2254
   case "$1" in
     $worktree_pattern | $branch_pattern) return 0 ;;
-    fix | list | why | *[0-9]*) return 1 ;;
-    *) return 0 ;;
+    a | an | the | on | in | into | use | using | please | do | it | with | new | separate) return 0 ;;
+    *) return 1 ;;
   esac
 }
 
