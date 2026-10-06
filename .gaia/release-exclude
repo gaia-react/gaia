@@ -116,6 +116,8 @@
 .gaia/retired-paths-allowlist.tsv
 # Derives the bats suites a change must re-run before an audit dispatch and in each audit round. Every caller sits inside a maintainer-only block the bundle-time scrub removes, and the suites it selects are release-excluded, so an adopter clone would carry a helper nothing invokes.
 .gaia/scripts/bats-suites-for-change.sh
+# Appends light-review routing events to a local log and tallies it. Adopters record nothing, and the tally reads a log only the maintainer repo ever writes, so an adopter clone would carry a script nothing invokes. Its shipped callers sit inside maintainer-only blocks the bundle-time scrub removes.
+.gaia/scripts/audit-light-telemetry.sh
 # Shared report, handshake and sidecar protocol read only by the two maintainer-only code-audit-maintainer-* members, which this category already withholds
 .claude/hooks/lib/audit-member-protocol.md
 

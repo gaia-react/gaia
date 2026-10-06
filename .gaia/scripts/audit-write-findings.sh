@@ -19,9 +19,9 @@
 #   audit-write-findings.sh --root <path> --member <name> --base <sha>
 #                           --findings <file>|-
 #                           [--review-base <sha> --base-reason <token>]
-#                           [--anchor-tree <tree>] [--help|-h]
+#                           [--anchor-tree <tree>] [--review light] [--help|-h]
 #
-#     --root      REQUIRED. The audited working root. The sidecar lands under
+#     --root     REQUIRED. The audited working root. The sidecar lands under
 #                 <root>/.gaia/local/audit/, and the audit key's branch half is
 #                 read from THIS tree (never the caller's CWD).
 #     --member    REQUIRED. The Code Audit Team member writing the sidecar.
@@ -41,6 +41,11 @@
 #                 the per-member base, or an empty value on every path where no
 #                 clearance anchored it. Independent of the pairing rule: valid
 #                 present or absent regardless of --review-base/--base-reason.
+#     --review    OPTIONAL. Only `light` is accepted (anything else is exit 2). It
+#                 writes the sidecar of a light review to its own path (see
+#                 Path) with one additive body key, so it never clobbers the
+#                 full round's sidecar, and readers that select the full
+#                 sidecar by name never match it.
 #     --help | -h Usage, exit 0.
 #
 #   The pairing rule for --review-base/--base-reason is on flag PRESENCE, not
@@ -53,7 +58,9 @@
 # Path (frozen; the key gaia_audit_key computes)
 #   <root>/.gaia/local/audit/<base-sha>.<branch-slug>.<member>.findings.json
 #   A base sha alone collides between two worktrees cut from the same main tip,
-#   so the acting tree's own branch is the discriminator.
+#   so the acting tree's own branch is the discriminator. With --review light the
+#   member segment is followed by `.light`:
+#   <root>/.gaia/local/audit/<base-sha>.<branch-slug>.<member>.light.findings.json
 #
 # Per-finding shape (every field REQUIRED unless noted)
 #   finding_class  non-empty string. The closed vocabulary the finding_class
@@ -125,9 +132,10 @@ usage() {
 usage: audit-write-findings.sh --root <path> --member <name> --base <sha>
                                --findings <file>|-
                                [--review-base <sha> --base-reason <token>]
-                               [--anchor-tree <tree>] [--help|-h]
+                               [--anchor-tree <tree>] [--review light]
+                               [--help|-h]
 
-  --root        the audited working root (the sidecar lands under it).
+  --root       the audited working root (the sidecar lands under it).
   --member      the Code Audit Team member writing the sidecar.
   --base        the incremental audit base sha (keyed with this tree's branch).
   --findings    a JSON array of finding objects, or `-` for stdin. `[]` is valid.
@@ -136,6 +144,7 @@ usage: audit-write-findings.sh --root <path> --member <name> --base <sha>
   --base-reason the resolver's reason token for --review-base.
   --anchor-tree the clearance tree that anchored --review-base. Independently
                 optional; never part of the pairing rule.
+  --review      only `light`: writes the light sidecar path and body key.
 
 Each finding requires finding_class, severity (error|warning|suggestion), path,
 line, title, failure_mode, verified_by, and suggested_fix. area_tags is
@@ -159,6 +168,10 @@ BASE_REASON=""
 BASE_REASON_SET=0
 ANCHOR_TREE=""
 ANCHOR_TREE_SET=0
+# Only `light` is a valid value; REVIEW_SET keeps an empty value a usage error
+# rather than an absent flag.
+REVIEW=""
+REVIEW_SET=0
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -193,6 +206,11 @@ while [ "$#" -gt 0 ]; do
       ANCHOR_TREE_SET=1
       shift 2 2>/dev/null || shift
       ;;
+    --review)
+      REVIEW_SET=1
+      REVIEW="${2:-}"
+      shift 2 2>/dev/null || shift
+      ;;
     --help|-h)
       usage
       exit 0
@@ -224,6 +242,12 @@ if [ "$REVIEW_BASE_SET" -ne "$BASE_REASON_SET" ]; then
   else
     error "--review-base is required when --base-reason is present"
   fi
+  usage
+  exit 2
+fi
+
+if [ "$REVIEW_SET" -eq 1 ] && [ "$REVIEW" != "light" ]; then
+  error "invalid --review '$REVIEW' (only light is accepted)"
   usage
   exit 2
 fi
@@ -320,7 +344,11 @@ if [ -z "$AUDIT_KEY" ]; then
 fi
 
 audit_directory="${ROOT}/.gaia/local/audit"
-target="${audit_directory}/${AUDIT_KEY}.${MEMBER}.findings.json"
+if [ "$REVIEW" = "light" ]; then
+  target="${audit_directory}/${AUDIT_KEY}.${MEMBER}.light.findings.json"
+else
+  target="${audit_directory}/${AUDIT_KEY}.${MEMBER}.findings.json"
+fi
 
 mkdir -p "$audit_directory" || {
   error "cannot create audit directory '$audit_directory'"
@@ -365,8 +393,10 @@ if ! printf '%s' "$raw" | jq -c \
   --arg review_base "$REVIEW_BASE" \
   --arg base_reason "$BASE_REASON" \
   --arg anchor_tree "$ANCHOR_TREE" \
-  '{schema: 1, member: $member,
-    findings: [.[]
+  --arg review "$REVIEW" \
+  '{schema: 1, member: $member}
+   + (if $review == "light" then {review: "light"} else {} end)
+   + {findings: [.[]
       | . + {area_tags: (.area_tags
              // [(if (.path | test("/")) then (.path | sub("/[^/]*$"; "")) else "." end)])}]}
    + (if $has_review_base

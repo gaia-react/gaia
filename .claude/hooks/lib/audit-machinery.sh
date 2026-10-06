@@ -42,6 +42,12 @@ AUDIT_MACHINERY_PATHS="$(cat <<'EOF'
 .claude/hooks/audit-stamp-trailer.sh
 .claude/hooks/lib/**
 .gaia/scripts/audit-noop-detect.sh
+# The light-review router, the light-marker script and the reviewer definition
+# decide whether a clearance is written without the member having run, so a
+# change to any of them changes whether a clearance is believed.
+.gaia/scripts/audit-light-route.sh
+.gaia/scripts/audit-light-mark.sh
+.claude/agents/audit-light-reviewer.md
 .gaia/scripts/link-worktree.sh
 .github/audit/**
 .claude/agents/code-audit-frontend.md

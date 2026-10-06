@@ -9,6 +9,8 @@
 #                            [--base <sha>] \
 #                            [--scope-digest <64-hex>] \
 #                            [--supersede-refusal <reason>] \
+#                            [--review full|light] \
+#                            [--route-record <path>] \
 #                            [--help|-h]
 #
 #   --root         REQUIRED, and validated: it must be a checkout ROOT, not a
@@ -61,6 +63,22 @@
 #                  publishing a marker keyed to unread content. A malformed
 #                  value (not exactly 64 lowercase hex) is a usage error, not a
 #                  staleness refusal.
+#   --review full|light
+#                  OPTIONAL, valid ONLY with --provenance earned. Earned bodies
+#                  always carry `review`; absent the flag it is `full`, so every
+#                  existing call site is unchanged. A refused body carries no
+#                  `review` key. `light` is the cheap clearance a fresh router
+#                  decision licenses, and it is never an incremental-scope anchor.
+#                  It requires --route-record and refuses (exit 2, nothing
+#                  written, no sibling touched) unless the record parses, says
+#                  route light for this member, and names the digest and HEAD tree
+#                  this script derives fresh from --root. It is a usage error
+#                  with --supersede-refusal, and it refuses when a same-digest
+#                  refusal sibling exists: a light clearance never supersedes or
+#                  retires a refusal. It still passes the --scope-digest gate.
+#   --route-record <path>
+#                  Required with --review light, a usage error otherwise: the
+#                  router's decision record.
 #
 # Behavior (all contract):
 #   - Creates <root>/.gaia/local/audit/ if absent.
@@ -130,6 +148,8 @@ usage: audit-write-clearance.sh --root <path> --member <name>
                                 [--base <sha>]
                                 [--scope-digest <64-hex>]
                                 [--supersede-refusal <reason>]
+                                [--review full|light]
+                                [--route-record <path>]
                                 [--help|-h]
 
   --base <sha>                  the incremental audit base sha; maintains the
@@ -141,6 +161,10 @@ usage: audit-write-clearance.sh --root <path> --member <name>
   --supersede-refusal <reason>  valid only with --provenance earned; records a
                                 reasoned reversal of this member's own prior
                                 same-digest refusal and removes it.
+  --review full|light           valid only with --provenance earned; default
+                                full. light also needs --route-record.
+  --route-record <path>         the router decision record a light review
+                                requires; a usage error otherwise.
 EOF
 }
 
@@ -184,6 +208,12 @@ SUPERSEDE_REASON=""
 # absent" and slip past the staleness gate silently.
 SCOPE_DIGEST_SEEN=0
 SCOPE_DIGEST=""
+# REVIEW_SEEN mirrors SUPERSEDE_SEEN: an empty value must fail validation
+# rather than read as an absent flag.
+REVIEW_SEEN=0
+REVIEW="full"
+ROUTE_RECORD_SEEN=0
+ROUTE_RECORD=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -211,6 +241,16 @@ while [ "$#" -gt 0 ]; do
     --supersede-refusal)
       SUPERSEDE_SEEN=1
       SUPERSEDE_REASON="${2:-}"
+      shift 2 2>/dev/null || shift
+      ;;
+    --review)
+      REVIEW_SEEN=1
+      REVIEW="${2:-}"
+      shift 2 2>/dev/null || shift
+      ;;
+    --route-record)
+      ROUTE_RECORD_SEEN=1
+      ROUTE_RECORD="${2:-}"
       shift 2 2>/dev/null || shift
       ;;
     --help|-h)
@@ -268,6 +308,38 @@ case "$PROVENANCE" in
     exit 2
     ;;
 esac
+
+if [ "$REVIEW_SEEN" -eq 1 ]; then
+  case "$REVIEW" in
+    full|light) ;;
+    *)
+      error "invalid --review '$REVIEW' (want full|light)"
+      usage
+      exit 2
+      ;;
+  esac
+  if [ "$PROVENANCE" != "earned" ]; then
+    error "--review is valid only with --provenance earned"
+    usage
+    exit 2
+  fi
+fi
+if [ "$REVIEW" = "light" ]; then
+  if [ "$ROUTE_RECORD_SEEN" -ne 1 ] || [ -z "$ROUTE_RECORD" ]; then
+    error "--review light requires --route-record"
+    usage
+    exit 2
+  fi
+  if [ "$SUPERSEDE_SEEN" -eq 1 ]; then
+    error "--review light cannot be combined with --supersede-refusal"
+    usage
+    exit 2
+  fi
+elif [ "$ROUTE_RECORD_SEEN" -eq 1 ]; then
+  error "--route-record is valid only with --review light"
+  usage
+  exit 2
+fi
 
 # --supersede-refusal is a reasoned reversal of an EARNED write only. Reject it
 # on a refusal (a refusal supersedes nothing) and reject an empty/whitespace
@@ -399,6 +471,39 @@ if [ "$SUPERSEDE_SEEN" -eq 1 ] && [ -f "$refused_path" ]; then
   supersede_retires_refusal=1
 fi
 
+# A light clearance is licensed by a fresh router decision and by nothing else.
+# Every check refuses before anything is written or touched, so a refused light
+# attempt leaves the audit directory exactly as it found it.
+if [ "$REVIEW" = "light" ]; then
+  command -v jq >/dev/null 2>&1 || {
+    error "jq is required to write a clearance marker"
+    exit 2
+  }
+  if [ ! -r "$ROUTE_RECORD" ] || ! jq -e 'type == "object"' "$ROUTE_RECORD" >/dev/null 2>&1; then
+    error "route record '$ROUTE_RECORD' is unreadable or not a JSON object"
+    exit 2
+  fi
+  _light_head_tree="$(git -C "$ROOT" rev-parse "HEAD^{tree}" 2>/dev/null || true)"
+  if [ -z "$_light_head_tree" ]; then
+    error "cannot resolve HEAD tree for --root '$ROOT'"
+    exit 2
+  fi
+  _light_refusal="$(jq -r --arg member "$MEMBER" --arg digest "$digest" --arg tree "$_light_head_tree" '
+    if .route != "light" then "route is not light"
+    elif .member != $member then "route record names a different member"
+    elif .digest != $digest then "route record digest is stale"
+    elif .tree != $tree then "route record tree is stale"
+    else "" end' "$ROUTE_RECORD" 2>/dev/null || echo "route record cannot be evaluated")"
+  if [ -n "$_light_refusal" ]; then
+    error "--review light refused: $_light_refusal"
+    exit 2
+  fi
+  if [ -f "$refused_path" ]; then
+    error "--review light refused: a same-digest refusal exists; a light clearance never supersedes a refusal"
+    exit 2
+  fi
+fi
+
 # Scope-digest staleness gate. Gated on a PLAIN earned write, a category
 # that includes a --supersede-refusal write with no sibling refusal on disk:
 # the flag exists so a member can retire its OWN prior same-digest refusal,
@@ -527,11 +632,13 @@ jq -cn \
   --arg sha "$sha" \
   --arg audited_at "$audited_at" \
   --argjson sidecar "$sidecar" \
+  --arg review "$REVIEW" \
   --argjson do_supersede "$do_supersede" \
   --arg supersede_reason "$SUPERSEDE_REASON" \
   '{version: $version, schema: $schema, member: $member,
     provenance: $provenance, digest: $digest, tree: $tree, sha: $sha,
     audited_at: $audited_at, sidecar: $sidecar}
+   + (if $provenance == "earned" then {review: $review} else {} end)
    + (if $do_supersede
       then {supersedes: {provenance: "refused", reason: $supersede_reason,
                          superseded_at: $audited_at}}

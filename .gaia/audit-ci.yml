@@ -19,6 +19,15 @@
 # Entries with `audience: maintainer` are wrapped in the marker comments
 # below and stripped from the adopter bundle at release time, so an adopter
 # clone audits only adopter-audience surfaces.
+#
+# Light review is opt-in per member through three optional keys placed after
+# `globs:`: `light_review: true` lets small post-clearance re-audits route to a
+# cheaper reviewer; `light_line_cap` is the changed-line budget for that route
+# (a positive integer, never above 50, the ceiling the router clamps to); and
+# `light_hard_full` lists the member's own globs that always route to a full
+# review. Keys are snake_case so the roster readers end the `globs:` list on
+# them and never take a `light_hard_full` item for an ownership glob. Every
+# `light_hard_full` glob must sit inside the member's own `globs:`.
 auditors:
   - name: code-audit-frontend
     globs:
@@ -84,6 +93,56 @@ auditors:
       # scope, so a member must read them.
       - "frontend/.claude/**"
       - "frontend/CLAUDE.md"
+    light_review: true
+    light_line_cap: 50
+    # Every owned glob that is not ordinary app source routes to a full review
+    # whatever the diff size: it either changes what the gates run or check, or
+    # is test and tooling code a small reviewer has no remit to vouch for.
+    light_hard_full:
+      # The package's own harness: its rules and skills steer the app's
+      # sessions, so even a one-line edit changes behavior.
+      - "frontend/.claude/**"
+      - "frontend/CLAUDE.md"
+      # Install policy, version pins and the editor-independent tooling files
+      # that decide what the gates and the image build run.
+      - ".npmrc"
+      - ".prettierignore"
+      - ".nvmrc"
+      - ".node-version"
+      - "frontend/Dockerfile"
+      - "frontend/Dockerfile.dockerignore"
+      - "frontend/.env.example"
+      - "frontend/.lintstagedrc.json"
+      - "frontend/.prettierignore"
+      - "frontend/components.json"
+      # Manifests and lockfiles: dependency and script changes are never small.
+      - "frontend/gaia.package.json"
+      - "frontend/package.json"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      # Build, lint and compiler configuration, at the package and the root.
+      - "frontend/tsconfig*.json"
+      - "frontend/*.config.ts"
+      - "frontend/*.config.mts"
+      - "frontend/*.config.mjs"
+      - "frontend/*.config.cjs"
+      - "frontend/*.config.js"
+      - "*.config.ts"
+      - "*.config.mts"
+      - "*.config.mjs"
+      - "*.config.cjs"
+      - "*.config.js"
+      - "frontend/dev-ports*.ts"
+      # CI workflows execute with repository secrets and permissions.
+      - ".github/workflows/**"
+      # Test and tooling trees: executed test code a weakened assertion can
+      # hollow out without changing a line of app source.
+      - "frontend/test/**"
+      - "frontend/.storybook/**"
+      - "frontend/.playwright/**"
+      - "frontend/app/**/tests/**"
+      - "frontend/app/**/*.stories.tsx"
     audience: adopter
     push_fixes: true
     default: true
@@ -162,6 +221,10 @@ auditors:
       # The off-thread audit orchestrator the main thread dispatches: it runs the
       # rounds the members gate, so a change to it changes what the gate trusts.
       - ".claude/agents/audit-loop-unit.md"
+      # The light reviewer whose verdict the light-marker script turns into a
+      # clearance: a change to it changes what a light review is trusted to
+      # vouch for.
+      - ".claude/agents/audit-light-reviewer.md"
       # The two maintainer members' shared report, handshake and sidecar
       # protocol.
       # It sits under the `.claude/hooks/lib/**` machinery prefix, so every

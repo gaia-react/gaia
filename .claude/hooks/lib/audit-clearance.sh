@@ -132,7 +132,23 @@ clearance_member_refused() {
   clearance_refusal_acceptable "$refused_path" "$member" "$digest"
 }
 
-# clearance_scan <root> <member> <provenance> -> "<tree>\t<version>\t<sha>\t<path>" lines
+# clearance_review_kind <path> -> "full", "light", or "-"
+#   The body's `review` value when it is exactly full or light, else "-"
+#   (legacy markers, refusals, unknown values). jq absent prints "-", exit 0.
+clearance_review_kind() {
+  local review
+  review="$(clearance_field "$1" review)"
+  case "$review" in
+    full|light) printf '%s\n' "$review" ;;
+    *) printf '%s\n' "-" ;;
+  esac
+  return 0
+}
+
+# clearance_scan <root> <member> <provenance> -> "<tree>\t<version>\t<sha>\t<review>\t<path>" lines
+# <review> is full, light, or "-" (see clearance_review_kind). Only "full" is
+# ever an incremental-scope anchor; a caller choosing an anchor must skip the
+# rest.
 # The enumerating counterpart to the digest-keyed predicates above: a caller
 # that holds a member and a provenance but no digest (the per-member base
 # resolver, choosing among this member's own history) cannot ask
@@ -182,7 +198,7 @@ clearance_scan() {
     [ -n "$tree" ] || continue
     version="$(clearance_field "$file" version)"
     sha="$(clearance_field "$file" sha)"
-    printf '%s\t%s\t%s\t%s\n' "$tree" "$version" "$sha" "$file"
+    printf '%s\t%s\t%s\t%s\t%s\n' "$tree" "$version" "$sha" "$(clearance_review_kind "$file")" "$file"
     any=0
   done
   return "$any"

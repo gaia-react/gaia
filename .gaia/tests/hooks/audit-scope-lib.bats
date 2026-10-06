@@ -755,3 +755,256 @@ EOF
   run grep -n "gaia-packages\|packages\.json\|gaia\.package" "$SCOPE_LIBRARY"
   [ "$status" -eq 1 ]
 }
+
+# ---------------------------------------------------------------------------
+# Light-review roster keys and the public glob matcher.
+# ---------------------------------------------------------------------------
+
+# Writes a one-member roster fixture to <directory>/.gaia/audit-ci.yml; the
+# member body (everything after `globs:`' list) comes from the second argument.
+write_light_roster() {
+  local directory="$1" body="$2"
+  mkdir -p "$directory/.gaia"
+  printf '%s\n' "$body" > "$directory/.gaia/audit-ci.yml"
+}
+
+LIGHT_ROSTER_WITH_KEYS='auditors:
+  - name: code-audit-light
+    globs:
+      - "owned/**"
+    light_review: true
+    light_line_cap: 50   # inline comment is stripped
+    light_hard_full:
+      - "owned/tests/**"
+      # a comment between items never ends the list
+      - "*.config.ts"
+    audience: adopter
+    push_fixes: true
+    default: true
+  - name: code-audit-plain
+    globs:
+      - "plain/**"
+    audience: adopter
+    push_fixes: false'
+
+@test "audit_roster_light_config: opted member yields true, the cap, and one HARDFULL line per item in order" {
+  local fixture
+  fixture="$(mktemp -d -t audit-light-roster-XXXXXX)"
+  write_light_roster "$fixture" "$LIGHT_ROSTER_WITH_KEYS"
+  # shellcheck source=/dev/null
+  . "$SCOPE_LIBRARY"
+  run audit_roster_light_config "$fixture" code-audit-light
+  rm -rf "$fixture"
+  [ "$status" -eq 0 ]
+  [ "${#lines[@]}" -eq 3 ]
+  [ "${lines[0]}" = "$(printf 'true\t50')" ]
+  [ "${lines[1]}" = "$(printf 'HARDFULL\towned/tests/**')" ]
+  [ "${lines[2]}" = "$(printf 'HARDFULL\t*.config.ts')" ]
+}
+
+@test "audit_roster_light_config: a member without the keys, and an unknown member, answer false and no cap" {
+  local fixture
+  fixture="$(mktemp -d -t audit-light-roster-XXXXXX)"
+  write_light_roster "$fixture" "$LIGHT_ROSTER_WITH_KEYS"
+  # shellcheck source=/dev/null
+  . "$SCOPE_LIBRARY"
+  run audit_roster_light_config "$fixture" code-audit-plain
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(printf 'false\t-')" ]
+  run audit_roster_light_config "$fixture" code-audit-no-such-member
+  rm -rf "$fixture"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(printf 'false\t-')" ]
+}
+
+@test "audit_roster_light_config: only the literal true opts in, and the cap comes back raw" {
+  local fixture value
+  fixture="$(mktemp -d -t audit-light-roster-XXXXXX)"
+  # shellcheck source=/dev/null
+  . "$SCOPE_LIBRARY"
+  for value in yes '"true"' True 1 ''; do
+    write_light_roster "$fixture" "auditors:
+  - name: code-audit-light
+    globs:
+      - \"owned/**\"
+    light_review: $value
+    light_line_cap: abc
+    audience: adopter"
+    run audit_roster_light_config "$fixture" code-audit-light
+    [ "$status" -eq 0 ] || { rm -rf "$fixture"; return 1; }
+    [ "$output" = "$(printf 'false\tabc')" ] || { rm -rf "$fixture"; echo "value '$value' gave: $output" >&2; return 1; }
+  done
+  rm -rf "$fixture"
+}
+
+@test "audit_roster_light_config: a roster that cannot be read exits 1 with nothing on stdout" {
+  # shellcheck source=/dev/null
+  . "$SCOPE_LIBRARY"
+  run audit_roster_light_config "$BATS_TEST_TMPDIR/no-such-root" code-audit-light
+  [ "$status" -eq 1 ]
+  [ -z "$output" ]
+}
+
+@test "light_hard_full items never reach ownership, and the ownership parser's output is unchanged by the keys" {
+  local fixture bare
+  fixture="$(mktemp -d -t audit-light-roster-XXXXXX)"
+  write_light_roster "$fixture" "$LIGHT_ROSTER_WITH_KEYS"
+  # shellcheck source=/dev/null
+  . "$SCOPE_LIBRARY"
+  audit_scope_init "$fixture"
+  # `*.config.ts` is a hard-Full item only; no member owns a root config file.
+  run audit_owners_for_paths <<<"vite.config.ts"
+  [ "$output" = "$(printf 'vite.config.ts\t-')" ]
+  # `owned/tests/x.ts` is owned through `owned/**` and by nothing the list adds.
+  run audit_owners_for_paths <<<"owned/tests/x.ts"
+  [ "$output" = "$(printf 'owned/tests/x.ts\tcode-audit-light')" ]
+  # The ownership records are byte-identical with the three keys stripped.
+  bare="$(printf '%s\n' "$LIGHT_ROSTER_WITH_KEYS" | grep -v -e 'light_' -e 'owned/tests/\*\*' -e '\*\.config\.ts' -e 'a comment between items')"
+  [ "$(_audit_scope_parse_auditors <<<"$LIGHT_ROSTER_WITH_KEYS")" = "$(_audit_scope_parse_auditors <<<"$bare")" ]
+  rm -rf "$fixture"
+}
+
+@test "a hyphenated key is the leak the snake_case rule prevents: its items become owned globs" {
+  local fixture
+  fixture="$(mktemp -d -t audit-light-roster-XXXXXX)"
+  # shellcheck source=/dev/null
+  . "$SCOPE_LIBRARY"
+
+  # Hyphenated spelling: the ownership parser's key pattern is [A-Za-z_]+, so
+  # `light-hard-full:` does not end `globs:` and `leaked/**` is read as an
+  # owned glob. The light reader sees no list at all.
+  write_light_roster "$fixture" 'auditors:
+  - name: code-audit-light
+    globs:
+      - "owned/**"
+    light-hard-full:
+      - "leaked/**"
+    audience: adopter'
+  audit_scope_init "$fixture"
+  run audit_owners_for_paths <<<"leaked/x.ts"
+  [ "$output" = "$(printf 'leaked/x.ts\tcode-audit-light')" ]
+  run audit_roster_light_config "$fixture" code-audit-light
+  [ "$output" = "$(printf 'false\t-')" ]
+
+  # Snake_case spelling of the same roster: the item reaches no ownership.
+  write_light_roster "$fixture" 'auditors:
+  - name: code-audit-light
+    globs:
+      - "owned/**"
+    light_hard_full:
+      - "leaked/**"
+    audience: adopter'
+  audit_scope_init "$fixture"
+  run audit_owners_for_paths <<<"leaked/x.ts"
+  [ "$output" = "$(printf 'leaked/x.ts\t-')" ]
+  run audit_roster_light_config "$fixture" code-audit-light
+  rm -rf "$fixture"
+  [ "${lines[1]}" = "$(printf 'HARDFULL\tleaked/**')" ]
+}
+
+# glob, path, expected. Tab-separated; every glob is also given to a roster so
+# ownership has to agree with the matcher, pair by pair.
+GLOB_MATCH_TABLE=$'**/x\tx\tmatch
+**/x\ta/b/x\tmatch
+**/x\ta/b/xy\tnomatch
+*.config.ts\tvite.config.ts\tmatch
+*.config.ts\tfrontend/vite.config.ts\tnomatch
+*.config.ts\tviteXconfigXts\tnomatch
+frontend/*.config.ts\tfrontend/vite.config.ts\tmatch
+frontend/*.config.ts\tfrontend/sub/vite.config.ts\tnomatch
+frontend/app/**/tests/**\tfrontend/app/a/tests/b.ts\tmatch
+frontend/app/**/tests/**\tfrontend/app/a/b.ts\tnomatch
+frontend/.claude/**\tfrontend/.claude/rules/a.md\tmatch
+frontend/.claude/**\tfrontend/CLAUDE.md\tnomatch
+.github/workflows/**\t.github/workflows/ci.yml\tmatch
+tsconfig*.json\ttsconfig.app.json\tmatch
+tsconfig*.json\tfrontend/tsconfig.json\tnomatch
+package.json\tfrontend/package.json\tnomatch
+.npmrc\tXnpmrc\tnomatch
+frontend/**\tfrontend/a/b/c.ts\tmatch'
+
+# Prints one line per pair on which the matcher in <library> disagrees with the
+# table or with the ownership classifier in the same library. Empty means they
+# agree everywhere.
+glob_matcher_disagreements() {
+  local library="$1"
+  GLOB_MATCH_TABLE="$GLOB_MATCH_TABLE" LIBRARY="$library" bash -c '
+    . "$LIBRARY"
+    fixture="$(mktemp -d)"
+    mkdir -p "$fixture/.gaia"
+    while IFS=$'"'"'\t'"'"' read -r glob path expected; do
+      printf "auditors:\n  - name: code-audit-parity\n    globs:\n      - \"%s\"\n    audience: adopter\n" "$glob" > "$fixture/.gaia/audit-ci.yml"
+      audit_scope_init "$fixture"
+      owner="$(audit_owner_for_path "$path")"
+      audit_glob_matches "$glob" "$path"
+      matcher_status=$?
+      if [ "$matcher_status" -eq 0 ]; then matcher_says=match; elif [ "$matcher_status" -eq 1 ]; then matcher_says=nomatch; else matcher_says=error; fi
+      if [ -n "$owner" ]; then owner_says=match; else owner_says=nomatch; fi
+      if [ "$matcher_says" != "$expected" ] || [ "$owner_says" != "$matcher_says" ]; then
+        printf "%s | %s | table=%s matcher=%s ownership=%s\n" "$glob" "$path" "$expected" "$matcher_says" "$owner_says"
+      fi
+    done <<<"$GLOB_MATCH_TABLE"
+    rm -rf "$fixture"
+  '
+}
+
+@test "audit_glob_matches: every table pair matches as stated and agrees with ownership" {
+  [ "$(printf '%s\n' "$GLOB_MATCH_TABLE" | grep -c .)" -ge 18 ]
+  run glob_matcher_disagreements "$SCOPE_LIBRARY"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ] || { printf '%s\n' "$output" >&2; return 1; }
+}
+
+@test "audit_glob_matches: a matcher with a hand-rolled regex is caught by the ownership parity case" {
+  # Scratch copy of the library whose matcher is redefined with its own regex
+  # (`**` compiled like a single `*`) instead of the shared compiler. The
+  # parity case must go red on it; on the real library it is green (test above).
+  local scratch_library="$BATS_TEST_TMPDIR/audit-scope-handrolled.sh"
+  cat "$SCOPE_LIBRARY" > "$scratch_library"
+  cat >> "$scratch_library" <<'MUTANT'
+
+audit_glob_matches() {
+  local pattern="${1//./\\.}"
+  pattern="${pattern//\*\*/@@}"
+  pattern="${pattern//\*/[^/]*}"
+  pattern="${pattern//@@/[^/]*}"
+  [[ "$2" =~ ^${pattern}$ ]]
+}
+MUTANT
+  run glob_matcher_disagreements "$scratch_library"
+  [ "$status" -eq 0 ]
+  [ -n "$output" ]
+  grep -qF '**/x | x |' <<<"$output"
+}
+
+@test "audit_glob_matches: a missing or empty argument exits 2 and prints nothing" {
+  # shellcheck source=/dev/null
+  . "$SCOPE_LIBRARY"
+  run audit_glob_matches
+  [ "$status" -eq 2 ]
+  [ -z "$output" ]
+  run audit_glob_matches "**/x"
+  [ "$status" -eq 2 ]
+  [ -z "$output" ]
+  run audit_glob_matches "" "x"
+  [ "$status" -eq 2 ]
+  [ -z "$output" ]
+  run audit_glob_matches "**/x" ""
+  [ "$status" -eq 2 ]
+  [ -z "$output" ]
+}
+
+@test "audit_glob_matches: regex metacharacters and backslashes in a path are literal data" {
+  # shellcheck source=/dev/null
+  . "$SCOPE_LIBRARY"
+  run audit_glob_matches 'a.b' 'aXb'
+  [ "$status" -eq 1 ]
+  run audit_glob_matches 'a.b' 'a.b'
+  [ "$status" -eq 0 ]
+  # Passed through the environment, so a backslash stays a backslash.
+  run audit_glob_matches 'dir/*' 'dir/a\nb'
+  [ "$status" -eq 0 ]
+  run audit_glob_matches 'dir/*' 'dir/a"; system("echo pwned"); "'
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}

@@ -484,3 +484,37 @@ write_with_review_base() {
     [ ! -f "$EXPECTED" ]
   done
 }
+
+# --review light: a separate path and one additive body key, never a clobber of
+# the full round's sidecar.
+
+@test "review light: writes the light path with review light and leaves a full sidecar byte-identical" {
+  write "[$(complete_finding)]" >/dev/null
+  [ -f "$EXPECTED" ]
+  full_before="$(cat "$EXPECTED")"
+  light_path="$AUDIT_DIRECTORY/${BASE}.feat%2Fx.${MEMBER}.light.findings.json"
+  run bash -c 'printf "%s" "$1" | bash "$2" --root "$3" --member "$4" --base "$5" --findings - --review light' \
+    _ "[$(complete_finding)]" "$WRITER" "$ROOT" "$MEMBER" "$BASE"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$light_path" ]
+  [ "$(jq -r .review "$light_path")" = "light" ]
+  [ "$(jq -r .member "$light_path")" = "$MEMBER" ]
+  [ "$(jq -c '.findings | length' "$light_path")" = "1" ]
+  [ "$(cat "$EXPECTED")" = "$full_before" ]
+}
+
+@test "review light: absent the flag the body carries no review key" {
+  write "[$(complete_finding)]" >/dev/null
+  [ "$(jq -r 'has("review")' "$EXPECTED")" = "false" ]
+}
+
+@test "review: full and an unknown value each exit 2 and write nothing" {
+  for bad in full bogus ""; do
+    run bash -c 'printf "%s" "$1" | bash "$2" --root "$3" --member "$4" --base "$5" --findings - --review "$6"' \
+      _ "[$(complete_finding)]" "$WRITER" "$ROOT" "$MEMBER" "$BASE" "$bad"
+    [ "$status" -eq 2 ]
+    grep -qF "invalid --review" <<<"$output" || return 1
+  done
+  leftover="$(find "$AUDIT_DIRECTORY" -name '*.findings.json' 2>/dev/null || true)"
+  [ -z "$leftover" ]
+}

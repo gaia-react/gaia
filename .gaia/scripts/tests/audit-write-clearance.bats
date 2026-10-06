@@ -1317,3 +1317,188 @@ removal itself failed"
   leftover="$(find "$AUDIT_DIRECTORY" -name '*.ok' 2>/dev/null || true)"
   [ -z "$leftover" ]
 }
+
+# --review: earned bodies always carry the field; a light write is licensed by
+# a fresh router decision record and by nothing else.
+
+# write_route_record <path> <member> <route> <digest> <tree>
+write_route_record() {
+  jq -cn --arg member "$2" --arg route "$3" --arg digest "$4" --arg tree "$5" \
+    '{route:$route, member:$member, digest:$digest, tree:$tree}' > "$1"
+}
+
+# light_fixture: sets $light_member, $light_digest and a matching $light_record
+light_fixture() {
+  light_member="code-audit-frontend"
+  light_digest="$(member_digest "$ROOT" "$light_member")"
+  light_record="$BATS_TEST_TMPDIR/route.json"
+  write_route_record "$light_record" "$light_member" light "$light_digest" "$TREE"
+}
+
+@test "review: an earned write with no --review records review full" {
+  digest="$(member_digest "$ROOT" code-audit-frontend)"
+  written_path="$(bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned --scope-digest "$digest")"
+  [ "$(jq -r .review "$written_path")" = "full" ]
+}
+
+@test "review: an explicit --review full records review full" {
+  digest="$(member_digest "$ROOT" code-audit-frontend)"
+  written_path="$(bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned --review full --scope-digest "$digest")"
+  [ "$(jq -r .review "$written_path")" = "full" ]
+}
+
+@test "review: a refused body carries no review key" {
+  written_path="$(bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance refused)"
+  [ "$(jq -r 'has("review")' "$written_path")" = "false" ]
+}
+
+@test "review: --review full with --provenance refused exits 2 and writes nothing" {
+  run bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance refused --review full
+  [ "$status" -eq 2 ]
+  leftover="$(find "$AUDIT_DIRECTORY" \( -name '*.refused' -o -name '*.ok' \) 2>/dev/null || true)"
+  [ -z "$leftover" ]
+}
+
+@test "review: an unknown --review value exits 2 and writes nothing" {
+  digest="$(member_digest "$ROOT" code-audit-frontend)"
+  run bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned --review bogus --scope-digest "$digest"
+  [ "$status" -eq 2 ]
+  [ ! -f "$AUDIT_DIRECTORY/${digest}.ok" ]
+}
+
+@test "review: --route-record without --review light is a usage error" {
+  light_fixture
+  run bash "$WRITER" --root "$ROOT" --member "$light_member" --provenance earned \
+    --route-record "$light_record" --scope-digest "$light_digest"
+  [ "$status" -eq 2 ]
+  [ ! -f "$AUDIT_DIRECTORY/${light_digest}.ok" ]
+}
+
+@test "light: a matching route record and scope digest write a marker carrying review light" {
+  light_fixture
+  written_path="$(bash "$WRITER" --root "$ROOT" --member "$light_member" --provenance earned \
+    --review light --route-record "$light_record" --scope-digest "$light_digest")"
+  [ "$written_path" = "$AUDIT_DIRECTORY/${light_digest}.ok" ]
+  [ "$(jq -r .review "$written_path")" = "light" ]
+  [ "$(jq -r .provenance "$written_path")" = "earned" ]
+  [ "$(jq -r .schema "$written_path")" = "4" ]
+}
+
+@test "light: the marker still satisfies the merge gate's acceptance predicate" {
+  light_fixture
+  written_path="$(bash "$WRITER" --root "$ROOT" --member "$light_member" --provenance earned \
+    --review light --route-record "$light_record" --scope-digest "$light_digest")"
+  run bash -c '. "$1"; clearance_member_cleared "$2" "$3" "$4"' _ "$READER" "$ROOT" "$light_digest" "$light_member"
+  [ "$status" -eq 0 ]
+  [ "$(bash -c '. "$1"; clearance_review_kind "$2"' _ "$READER" "$written_path")" = "light" ]
+}
+
+@test "light: a missing --route-record exits 2 and writes no marker" {
+  light_fixture
+  run bash "$WRITER" --root "$ROOT" --member "$light_member" --provenance earned \
+    --review light --scope-digest "$light_digest"
+  [ "$status" -eq 2 ]
+  [ ! -f "$AUDIT_DIRECTORY/${light_digest}.ok" ]
+}
+
+@test "light: an absent route record file exits 2 and writes no marker" {
+  light_fixture
+  run bash "$WRITER" --root "$ROOT" --member "$light_member" --provenance earned \
+    --review light --route-record "$BATS_TEST_TMPDIR/no-such-record.json" --scope-digest "$light_digest"
+  [ "$status" -eq 2 ]
+  [ ! -f "$AUDIT_DIRECTORY/${light_digest}.ok" ]
+}
+
+@test "light: a route record that is not JSON exits 2 and writes no marker" {
+  light_fixture
+  printf 'not json {' > "$light_record"
+  run bash "$WRITER" --root "$ROOT" --member "$light_member" --provenance earned \
+    --review light --route-record "$light_record" --scope-digest "$light_digest"
+  [ "$status" -eq 2 ]
+  [ ! -f "$AUDIT_DIRECTORY/${light_digest}.ok" ]
+}
+
+@test "light: a route record deciding full exits 2 and writes no marker" {
+  light_fixture
+  write_route_record "$light_record" "$light_member" full "$light_digest" "$TREE"
+  run bash "$WRITER" --root "$ROOT" --member "$light_member" --provenance earned \
+    --review light --route-record "$light_record" --scope-digest "$light_digest"
+  [ "$status" -eq 2 ]
+  grep -qF "route is not light" <<<"$output" || return 1
+  [ ! -f "$AUDIT_DIRECTORY/${light_digest}.ok" ]
+}
+
+@test "light: a route record naming another member exits 2 and writes no marker" {
+  light_fixture
+  write_route_record "$light_record" code-audit-maintainer-shell light "$light_digest" "$TREE"
+  run bash "$WRITER" --root "$ROOT" --member "$light_member" --provenance earned \
+    --review light --route-record "$light_record" --scope-digest "$light_digest"
+  [ "$status" -eq 2 ]
+  grep -qF "different member" <<<"$output" || return 1
+  [ ! -f "$AUDIT_DIRECTORY/${light_digest}.ok" ]
+}
+
+@test "light: a route record with a stale digest exits 2 and writes no marker" {
+  light_fixture
+  printf '1.6.2\n' > "$ROOT/.gaia/VERSION"
+  git -C "$ROOT" add .gaia/VERSION
+  git -C "$ROOT" commit --quiet -m "rotate"
+  new_digest="$(member_digest "$ROOT" "$light_member")"
+  [ "$light_digest" != "$new_digest" ]
+  # Both the record and the scope digest are the pre-rotation digest, so only
+  # the record check can be what refuses.
+  run bash "$WRITER" --root "$ROOT" --member "$light_member" --provenance earned \
+    --review light --route-record "$light_record" --scope-digest "$light_digest"
+  [ "$status" -eq 2 ]
+  grep -qF "digest is stale" <<<"$output" || return 1
+  [ ! -f "$AUDIT_DIRECTORY/${light_digest}.ok" ]
+  [ ! -f "$AUDIT_DIRECTORY/${new_digest}.ok" ]
+}
+
+@test "light: a route record with a stale tree exits 2 and writes no marker" {
+  light_fixture
+  echo "more" >> "$ROOT/README.md"
+  git -C "$ROOT" add README.md
+  git -C "$ROOT" commit --quiet -m "out of glob"
+  [ "$(member_digest "$ROOT" "$light_member")" = "$light_digest" ]
+  [ "$(git -C "$ROOT" rev-parse 'HEAD^{tree}')" != "$TREE" ]
+  run bash "$WRITER" --root "$ROOT" --member "$light_member" --provenance earned \
+    --review light --route-record "$light_record" --scope-digest "$light_digest"
+  [ "$status" -eq 2 ]
+  grep -qF "tree is stale" <<<"$output" || return 1
+  [ ! -f "$AUDIT_DIRECTORY/${light_digest}.ok" ]
+}
+
+@test "light: --supersede-refusal together with --review light exits 2 and writes no marker" {
+  light_fixture
+  run bash "$WRITER" --root "$ROOT" --member "$light_member" --provenance earned \
+    --review light --route-record "$light_record" --scope-digest "$light_digest" \
+    --supersede-refusal "a stated reason"
+  [ "$status" -eq 2 ]
+  [ ! -f "$AUDIT_DIRECTORY/${light_digest}.ok" ]
+}
+
+@test "light: a same-digest refusal sibling exits 2, writes no marker, and leaves the refusal in place" {
+  light_fixture
+  refused="$AUDIT_DIRECTORY/${light_digest}.refused"
+  bash "$WRITER" --root "$ROOT" --member "$light_member" --provenance refused >/dev/null
+  [ -f "$refused" ]
+  before="$(cat "$refused")"
+  run bash "$WRITER" --root "$ROOT" --member "$light_member" --provenance earned \
+    --review light --route-record "$light_record" --scope-digest "$light_digest"
+  [ "$status" -eq 2 ]
+  grep -qF "refusal exists" <<<"$output" || return 1
+  [ ! -f "$AUDIT_DIRECTORY/${light_digest}.ok" ]
+  [ -f "$refused" ]
+  [ "$(cat "$refused")" = "$before" ]
+}
+
+@test "light: a mismatched --scope-digest still refuses through the staleness gate" {
+  light_fixture
+  stale="ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+  run bash "$WRITER" --root "$ROOT" --member "$light_member" --provenance earned \
+    --review light --route-record "$light_record" --scope-digest "$stale"
+  [ "$status" -eq 2 ]
+  grep -qF "review scope superseded" <<<"$output" || return 1
+  [ ! -f "$AUDIT_DIRECTORY/${light_digest}.ok" ]
+}

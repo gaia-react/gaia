@@ -90,6 +90,20 @@ const argv = (sandbox: Sandbox): string[] => [
   '--json',
 ];
 
+const rosterWithCap = (cap: number): string =>
+  [
+    'auditors:',
+    '  - name: code-audit-frontend',
+    '    globs:',
+    '      - "app/**"',
+    '    light_review: true',
+    `    light_line_cap: ${cap}`,
+    '    audience: adopter',
+    '    push_fixes: true',
+    '    default: true',
+    '',
+  ].join('\n');
+
 describe('update merge-audit-ci', () => {
   let sandbox: Sandbox;
   let stdio: ReturnType<typeof captureStdio>;
@@ -331,6 +345,76 @@ describe('update merge-audit-ci', () => {
     expect(report.conflicts[0]).toMatchObject({
       key: 'code-audit-frontend',
       kind: 'entry',
+      section: 'auditors',
+    });
+  });
+
+  test('latest adding the light-review keys to an unedited roster member lands in applied[] with the keys', () => {
+    const withoutLightKeys = [
+      'auditors:',
+      '  - name: code-audit-frontend',
+      '    globs:',
+      '      - "app/**"',
+      '    audience: adopter',
+      '    push_fixes: true',
+      '    default: true',
+      '',
+    ].join('\n');
+    const withLightKeys = [
+      'auditors:',
+      '  - name: code-audit-frontend',
+      '    globs:',
+      '      - "app/**"',
+      '    light_review: true',
+      '    light_line_cap: 50',
+      '    light_hard_full:',
+      '      - "app/routes/**"',
+      '    audience: adopter',
+      '    push_fixes: true',
+      '    default: true',
+      '',
+    ].join('\n');
+
+    sandbox.write('baseline', withoutLightKeys);
+    sandbox.write('latest', withLightKeys);
+    sandbox.write('current', withoutLightKeys);
+
+    const exit = run(argv(sandbox));
+    expect(exit).toBe(0);
+
+    const report = parseJson(stdio.outputs);
+    expect(report.conflicts).toEqual([]);
+    expect(report.suggestions).toEqual([]);
+    expect(report.applied).toHaveLength(1);
+    expect(report.applied[0]).toMatchObject({
+      key: 'code-audit-frontend',
+      kind: 'entry',
+      latest: {
+        light_hard_full: ['app/routes/**'],
+        light_line_cap: 50,
+        light_review: true,
+      },
+      section: 'auditors',
+    });
+  });
+
+  test('an adopter-changed light_line_cap that upstream also changed lands in conflicts[]', () => {
+    sandbox.write('baseline', rosterWithCap(50));
+    sandbox.write('latest', rosterWithCap(40));
+    sandbox.write('current', rosterWithCap(20));
+
+    const exit = run(argv(sandbox));
+    expect(exit).toBe(0);
+
+    const report = parseJson(stdio.outputs);
+    expect(report.applied).toEqual([]);
+    expect(report.suggestions).toEqual([]);
+    expect(report.conflicts).toHaveLength(1);
+    expect(report.conflicts[0]).toMatchObject({
+      adopter: {light_line_cap: 20},
+      key: 'code-audit-frontend',
+      kind: 'entry',
+      latest: {light_line_cap: 40},
       section: 'auditors',
     });
   });
