@@ -87,7 +87,7 @@ scan() {
   scan "$ROOT" code-audit-frontend earned
   [ "$status" -eq 0 ]
   [ "$(printf '%s\n' "$output" | grep -c .)" -eq 1 ]
-  printf '%s\n' "$output" | grep -qF "$(printf 'treeA\t\t\t')$AUDIT_DIRECTORY/aaa111.ok" || return 1
+  printf '%s\n' "$output" | grep -qF "$(printf 'treeA\t\t\t-\t')$AUDIT_DIRECTORY/aaa111.ok" || return 1
 }
 
 @test "clearance_scan emits exactly the acceptable specialist record, with version/sha carried through" {
@@ -101,7 +101,65 @@ scan() {
   scan "$ROOT" code-audit-maintainer-shell earned
   [ "$status" -eq 0 ]
   [ "$(printf '%s\n' "$output" | grep -c .)" -eq 1 ]
-  [ "$output" = "$(printf 'treeB\tv1.2.3\tshaB\t')$AUDIT_DIRECTORY/bbb222.code-audit-maintainer-shell.ok" ] || return 1
+  [ "$output" = "$(printf 'treeB\tv1.2.3\tshaB\t-\t')$AUDIT_DIRECTORY/bbb222.code-audit-maintainer-shell.ok" ] || return 1
+}
+
+# ---------------------------------------------------------------------------
+# The review column: full, light, or "-" for a body without the field.
+# ---------------------------------------------------------------------------
+
+@test "clearance_scan emits five fields with the review value of each marker" {
+  ROOT="$BATS_TEST_TMPDIR/review"
+  AUDIT_DIRECTORY="$ROOT/.gaia/local/audit"
+  mkdir -p "$AUDIT_DIRECTORY"
+  write_marker "$AUDIT_DIRECTORY/full111.ok" code-audit-frontend earned full111 treeF
+  jq -c '. + {review:"full"}' "$AUDIT_DIRECTORY/full111.ok" > "$AUDIT_DIRECTORY/full111.tmp"
+  mv "$AUDIT_DIRECTORY/full111.tmp" "$AUDIT_DIRECTORY/full111.ok"
+  write_marker "$AUDIT_DIRECTORY/light22.ok" code-audit-frontend earned light22 treeL
+  jq -c '. + {review:"light"}' "$AUDIT_DIRECTORY/light22.ok" > "$AUDIT_DIRECTORY/light22.tmp"
+  mv "$AUDIT_DIRECTORY/light22.tmp" "$AUDIT_DIRECTORY/light22.ok"
+  # Legacy body without the field, and a body whose value is neither full nor light.
+  write_marker "$AUDIT_DIRECTORY/legacy3.ok" code-audit-frontend earned legacy3 treeG
+  write_marker "$AUDIT_DIRECTORY/odd444.ok" code-audit-frontend earned odd444 treeO
+  jq -c '. + {review:"medium"}' "$AUDIT_DIRECTORY/odd444.ok" > "$AUDIT_DIRECTORY/odd444.tmp"
+  mv "$AUDIT_DIRECTORY/odd444.tmp" "$AUDIT_DIRECTORY/odd444.ok"
+
+  scan "$ROOT" code-audit-frontend earned
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s\n' "$output" | grep -c .)" -eq 4 ]
+  printf '%s\n' "$output" | grep -qF "$(printf 'treeF\t\t\tfull\t')$AUDIT_DIRECTORY/full111.ok" || return 1
+  printf '%s\n' "$output" | grep -qF "$(printf 'treeL\t\t\tlight\t')$AUDIT_DIRECTORY/light22.ok" || return 1
+  printf '%s\n' "$output" | grep -qF "$(printf 'treeG\t\t\t-\t')$AUDIT_DIRECTORY/legacy3.ok" || return 1
+  printf '%s\n' "$output" | grep -qF "$(printf 'treeO\t\t\t-\t')$AUDIT_DIRECTORY/odd444.ok" || return 1
+}
+
+@test "clearance_scan reports a refusal's review as a dash" {
+  ROOT="$BATS_TEST_TMPDIR/review-refused"
+  AUDIT_DIRECTORY="$ROOT/.gaia/local/audit"
+  mkdir -p "$AUDIT_DIRECTORY"
+  write_marker "$AUDIT_DIRECTORY/ref555.refused" code-audit-frontend refused ref555 treeR
+  scan "$ROOT" code-audit-frontend refused
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(printf 'treeR\t\t\t-\t')$AUDIT_DIRECTORY/ref555.refused" ] || return 1
+}
+
+@test "clearance_review_kind prints full, light, or a dash, and a dash without jq" {
+  marker="$BATS_TEST_TMPDIR/kind.ok"
+  for value in full light bogus; do
+    jq -cn --arg review "$value" '{review:$review}' > "$marker"
+    expected="$value"
+    [ "$value" = "bogus" ] && expected="-"
+    [ "$(bash -c '. "$1"; clearance_review_kind "$2"' _ "$CLEARANCE_LIBRARY" "$marker")" = "$expected" ] || return 1
+  done
+  jq -cn '{}' > "$marker"
+  [ "$(bash -c '. "$1"; clearance_review_kind "$2"' _ "$CLEARANCE_LIBRARY" "$marker")" = "-" ] || return 1
+
+  SHIM="$BATS_TEST_TMPDIR/no-jq-kind-bin"
+  mkdir -p "$SHIM"
+  jq -cn '{review:"light"}' > "$marker"
+  run bash -c 'PATH="$1"; . "$2"; clearance_review_kind "$3"' _ "$SHIM" "$CLEARANCE_LIBRARY" "$marker"
+  [ "$status" -eq 0 ]
+  [ "$output" = "-" ]
 }
 
 # ---------------------------------------------------------------------------

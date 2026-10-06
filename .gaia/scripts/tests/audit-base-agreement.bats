@@ -285,6 +285,12 @@ stamp_clean_round() {
   local repo="$1" digest tree
   digest="$(printf '%064d' 0)"
   tree="$(git -C "$repo" rev-parse 'HEAD^{tree}')"
+  # The team-signal arm anchors only when some member holds an earned
+  # review:full marker at the signal tree; a member no test here resolves as
+  # supplies it, so no resolving member's own clearance arm is affected.
+  mkdir -p "$repo/.gaia/local/audit"
+  printf '{"version":"2.0.0","schema":4,"member":"code-audit-maintainer-node","provenance":"earned","review":"full","digest":"%s","tree":"%s","sha":"x"}\n' \
+    "$tree" "$tree" > "$repo/.gaia/local/audit/${tree}.code-audit-maintainer-node.ok"
   git -C "$repo" commit -q --allow-empty -m "audit: stamp
 
 GAIA-Audit: 2.0.0 ${digest} ${tree}"

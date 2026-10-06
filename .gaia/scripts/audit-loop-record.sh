@@ -18,17 +18,21 @@
 #   <!-- gaia:audit-rounds:start -->
 #   ## Audit rounds
 #
-#   Total rounds: <int>; per member: <member> <int>, <member> <int>; human grants: <int>.
+#   Total rounds: <int>; per member: <member> <int>, <member> <int>; light reviews: <member> <int>, <member> <int>; human grants: <int>.
 #   <!-- gaia:audit-rounds:end -->
 #
 # The block is rewritten in place between the markers and appended after one
 # blank line when absent; every byte outside the markers is preserved. With no
-# member counts the per-member list reads `none`.
+# member counts the per-member list reads `none`. The `light reviews:` clause
+# lists each member's light reviews (a review that clears or escalates and
+# never counts as a round) and is left out whole when there are none.
 #
 # Values: `--values-json` takes {"total":n,"members":{"code-audit-x":n},
 # "grants":g} (the shape `audit-loop-eval.sh record-values` prints; `-` reads
-# stdin). Integers must be non-negative, member names `code-audit-[a-z0-9-]+`,
-# no extra keys.
+# stdin), plus an optional "light":{"code-audit-x":n} of per-member light review
+# counts. Integers must be non-negative, member names `code-audit-[a-z0-9-]+`
+# (light names included), no extra keys. Values without `light`, or with it
+# empty or all zero, render the line without the clause.
 #
 # The body is read with `gh pr view` and written with
 # `gh pr edit --body-file <temp>`; it never travels on a command line. The
@@ -120,12 +124,16 @@ fi
 if ! jq -e '
     def uint: type == "number" and . >= 0 and . == floor and . < 1000000000;
     type == "object"
-    and ((keys - ["total", "members", "grants"]) | length) == 0
+    and ((keys - ["total", "members", "grants", "light"]) | length) == 0
     and (.total | uint)
     and (.grants | uint)
     and (.members | type) == "object"
     and (.members | to_entries | all(.key | test("\\Acode-audit-[a-z0-9-]+\\z")))
     and (.members | to_entries | all(.value | uint))
+    and ((has("light") | not)
+      or ((.light | type) == "object"
+        and (.light | to_entries | all(.key | test("\\Acode-audit-[a-z0-9-]+\\z")))
+        and (.light | to_entries | all(.value | uint))))
   ' "$WORK/values.json" >/dev/null 2>&1; then
   die_usage "values JSON is invalid: need {total, members, grants} with non-negative integers and code-audit-* member names"
 fi
@@ -134,11 +142,14 @@ TOTAL="$(jq -r '.total' "$WORK/values.json")"
 GRANTS="$(jq -r '.grants' "$WORK/values.json")"
 MEMBERS="$(jq -r '.members | to_entries | sort_by(.key) | map("\(.key) \(.value)") | join(", ")' "$WORK/values.json")"
 [ -n "$MEMBERS" ] || MEMBERS="none"
+LIGHT_CLAUSE=""
+LIGHT="$(jq -r '(.light // {}) | to_entries | map(select(.value > 0)) | sort_by(.key) | map("\(.key) \(.value)") | join(", ")' "$WORK/values.json")"
+[ -z "$LIGHT" ] || LIGHT_CLAUSE=" light reviews: ${LIGHT};"
 
 printf '%s\n%s\n\n%s\n%s\n' \
   "$START_MARKER" \
   '## Audit rounds' \
-  "Total rounds: ${TOTAL}; per member: ${MEMBERS}; human grants: ${GRANTS}." \
+  "Total rounds: ${TOTAL}; per member: ${MEMBERS};${LIGHT_CLAUSE} human grants: ${GRANTS}." \
   "$END_MARKER" > "$WORK/section.md"
 
 # ---------------------------------------------------------------------------
@@ -217,12 +228,15 @@ fi
 
 # ---------------------------------------------------------------------------
 # Splice. head -n and tail -n keep the outside bytes exactly, including a
-# missing final newline.
+# missing final newline. BSD head rejects `-n 0` as an illegal line count, so
+# a section starting on line 1 skips head rather than asking it for nothing.
 # ---------------------------------------------------------------------------
 
 if [ "$START_MARKER_COUNT" -eq 1 ]; then
   {
-    head -n "$(( START_MARKER_LINE - 1 ))" "$WORK/body.md"
+    if [ "$START_MARKER_LINE" -gt 1 ]; then
+      head -n "$(( START_MARKER_LINE - 1 ))" "$WORK/body.md"
+    fi
     cat "$WORK/section.md"
     tail -n "+$(( END_MARKER_LINE + 1 ))" "$WORK/body.md"
   } > "$WORK/body.new"

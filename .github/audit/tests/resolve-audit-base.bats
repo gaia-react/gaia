@@ -88,6 +88,10 @@ setup() {
   cp "$REPO_ROOT/.claude/hooks/lib/audit-clearance.sh" "$SANDBOX/.claude/hooks/lib/audit-clearance.sh"
   cp "$REPO_ROOT/.claude/hooks/lib/gaia-version.sh" "$SANDBOX/.claude/hooks/lib/gaia-version.sh"
 
+  # The team-signal arm scans every roster member's markers, so the roster is
+  # provisioned too (uncommitted, like the libs).
+  cp "$REPO_ROOT/.gaia/audit-ci.yml" "$SANDBOX/.gaia/audit-ci.yml"
+
   # The trailer/status digest field (C3 field 2) is never compared by this
   # script (only the version, field 1, gates the base), so every fixture
   # uses this fixed 64-hex placeholder rather than a recomputed real digest.
@@ -99,8 +103,11 @@ setup() {
   DEFAULT_MEMBER="code-audit-frontend"
   OTHER_MEMBER="code-audit-maintainer-shell"
 
+  # A third roster member no fixture resolves as: it holds the full review a
+  # signal commit needs, without ever becoming a per-member anchor itself.
+  SUPPORT_MEMBER="code-audit-maintainer-node"
+
   MEMBER_OUTPUT_FILE="$BATS_TEST_TMPDIR/member.out"
-  CLEARANCE_COUNTER=0
 }
 
 # Run the script with cwd inside the sandbox so its
@@ -207,9 +214,12 @@ amend_head_with_trailer() {
 }
 
 # Stamp HEAD with a version-matching whole-team trailer and echo its sha: the
-# clean-round anchor most fixtures below build from.
+# clean-round anchor most fixtures below build from. It also records a full
+# review at that tree, as a real clean round does; `stamp_anchor bare` stamps
+# the trailer alone, the shape CI and a fresh clone see.
 stamp_anchor() {
   amend_head_with_trailer "GAIA-Audit: 1.2.3 ${DIGEST} $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')"
+  [ "${1:-}" = "bare" ] || support_signal_at HEAD
   sha_of HEAD
 }
 
@@ -237,14 +247,19 @@ main_sha() {
 # The digest is a per-call counter padded to the writer's 64-hex width: the
 # reader only requires the body's digest to equal the filename stem, so a
 # printf-built value keeps this off `shasum`, whose flags differ between BSD
-# and GNU. The recorded sha is deliberately whatever HEAD is at write time,
-# because the anchor is matched on the tree and never on the sha.
+# and GNU. The counter is the store's file count rather than a shell variable,
+# so a write made inside a command substitution still advances it. The recorded
+# sha is deliberately whatever HEAD is at write time, because the anchor is
+# matched on the tree and never on the sha.
+#   $5 review (full|light|none; default full; an earned marker only: `none`
+#      strips the field the way a legacy body lacks it)
 write_clearance() {
-  local member="$1" provenance="$2" tree="$3" version="$4" extension digest name directory
+  local member="$1" provenance="$2" tree="$3" version="$4" review="${5:-full}"
+  local extension digest name directory review_field="" existing_count
   directory="$SANDBOX/.gaia/local/audit"
   mkdir -p "$directory"
-  CLEARANCE_COUNTER=$(( CLEARANCE_COUNTER + 1 ))
-  digest="$(printf '%064d' "$CLEARANCE_COUNTER")"
+  existing_count="$(find "$directory" -type f | wc -l | tr -d ' ')"
+  digest="$(printf '%064d' "$(( existing_count + 1 ))")"
   case "$provenance" in
     earned) extension="ok" ;;
     *) extension="refused" ;;
@@ -254,10 +269,20 @@ write_clearance() {
   else
     name="${digest}.${member}.${extension}"
   fi
-  printf '{"version":"%s","schema":4,"member":"%s","provenance":"%s","digest":"%s","tree":"%s","sha":"%s","audited_at":"2026-01-01T00:00:00Z"}\n' \
-    "$version" "$member" "$provenance" "$digest" "$tree" "$(sha_of HEAD)" \
+  if [ "$provenance" = "earned" ] && [ "$review" != "none" ]; then
+    review_field="$(printf '"review":"%s",' "$review")"
+  fi
+  printf '{"version":"%s","schema":4,"member":"%s","provenance":"%s",%s"digest":"%s","tree":"%s","sha":"%s","audited_at":"2026-01-01T00:00:00Z"}\n' \
+    "$version" "$member" "$provenance" "$review_field" "$digest" "$tree" "$(sha_of HEAD)" \
     > "$directory/$name"
   printf '%s\n' "$directory/$name"
+}
+
+# Record that a full review stands at <sha>'s tree: the verification the
+# team-signal arm needs before it anchors on a signal there. Written as the
+# SUPPORT member so no fixture's resolving member gains a per-member anchor.
+support_signal_at() {
+  write_clearance "$SUPPORT_MEMBER" earned "$(tree_of "$1")" 1.2.3 full >/dev/null
 }
 
 # Install a fake `gh` keyed by the commit SHA in the requested API path.
@@ -850,6 +875,7 @@ assert_global_reset_for() {
   add_commit a
   base="$(sha_of HEAD)"
   base_tree="$(tree_of HEAD)"
+  support_signal_at "$base"
   install_gh_array_mock \
     "${base}=[{\"context\":\"GAIA-Audit\",\"state\":\"success\",\"description\":\"1.2.3 ${DIGEST} ${base_tree}\"}]"
   commit_append ".claude/rules/quality-gate.md"
@@ -867,6 +893,7 @@ assert_global_reset_for() {
   base="$(sha_of HEAD)"
   base_tree="$(tree_of HEAD)"
   add_commit b
+  support_signal_at "$base"
   install_gh_array_mock \
     "${base}=[{\"context\":\"GAIA-Audit\",\"state\":\"success\",\"description\":\"1.2.3 ${DIGEST} ${base_tree}\"}]"
 
@@ -1037,6 +1064,257 @@ assert_global_reset_for() {
 }
 
 # -----------------------------------------------------------------------------
+# Review depth. Only a marker carrying `review: full` anchors, in the member
+# arm and, through the store scan, in the team-signal arm: the trailer and the
+# status are light-blind, so the resolver itself refuses to anchor the team arm
+# past a non-full clearance of ANY member, or where no full review is on record.
+# -----------------------------------------------------------------------------
+
+@test "review depth: a light clearance after a full one never anchors" {
+  require_jq
+  add_commit a
+  full_sha="$(sha_of HEAD)"
+  full_tree="$(tree_of HEAD)"
+  write_clearance "$DEFAULT_MEMBER" earned "$full_tree" 1.2.3 full >/dev/null
+  add_commit b
+  light_tree="$(tree_of HEAD)"
+  write_clearance "$DEFAULT_MEMBER" earned "$light_tree" 1.2.3 light >/dev/null
+  add_commit c
+
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  [ "$status" -eq 0 ]
+  [ "$(member_base)" = "$full_sha" ]
+  [ "$(member_reason)" = "member-clearance" ]
+  [ "$(member_anchor_tree)" = "$full_tree" ]
+  [ "$(member_anchor_tree)" != "$light_tree" ]
+}
+
+@test "review depth: a marker lacking the review field is not an anchor" {
+  require_jq
+  add_commit a
+  full_sha="$(sha_of HEAD)"
+  full_tree="$(tree_of HEAD)"
+  write_clearance "$DEFAULT_MEMBER" earned "$full_tree" 1.2.3 full >/dev/null
+  add_commit b
+  write_clearance "$DEFAULT_MEMBER" earned "$(tree_of HEAD)" 1.2.3 none >/dev/null
+  add_commit c
+
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  [ "$status" -eq 0 ]
+  [ "$(member_base)" = "$full_sha" ]
+  [ "$(member_reason)" = "member-clearance" ]
+  [ "$(member_anchor_tree)" = "$full_tree" ]
+}
+
+@test "review depth: a trailer on a light-cleared commit does not anchor the team arm" {
+  require_jq
+  add_commit a
+  full_sha="$(sha_of HEAD)"
+  write_clearance "$DEFAULT_MEMBER" earned "$(tree_of HEAD)" 1.2.3 full >/dev/null
+  add_commit b
+  light_sha="$(stamp_anchor bare)"
+  write_clearance "$DEFAULT_MEMBER" earned "$(tree_of HEAD)" 1.2.3 light >/dev/null
+  add_commit c
+
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  [ "$status" -eq 0 ]
+  [ "$(member_base)" = "$full_sha" ]
+  [ "$(member_base)" != "$light_sha" ]
+  [ "$(member_reason)" = "member-clearance" ]
+  grep -qF "non-full clearance at ${light_sha}" <<<"$stderr"
+  # The shared floor keeps the signal: only the member's scope narrows less.
+  [ "$(member_shared_base)" = "$light_sha" ]
+}
+
+@test "review depth: the same trailer anchors when the clearance at it is full" {
+  require_jq
+  add_commit a
+  write_clearance "$DEFAULT_MEMBER" earned "$(tree_of HEAD)" 1.2.3 full >/dev/null
+  add_commit b
+  full_sha="$(stamp_anchor bare)"
+  write_clearance "$DEFAULT_MEMBER" earned "$(tree_of HEAD)" 1.2.3 full >/dev/null
+  add_commit c
+
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  [ "$status" -eq 0 ]
+  [ "$(member_base)" = "$full_sha" ]
+}
+
+# The scan covers every roster member. The resolving member's own stale-version
+# full marker at the signal tree satisfies the "a full review is on record"
+# half on its own, so only the OTHER member's light marker can disable the arm.
+@test "review depth: another member's light clearance at the signal disables the team arm" {
+  require_jq
+  add_commit a
+  full_sha="$(sha_of HEAD)"
+  write_clearance "$DEFAULT_MEMBER" earned "$(tree_of HEAD)" 1.2.3 full >/dev/null
+  add_commit b
+  signal_sha="$(stamp_anchor bare)"
+  write_clearance "$DEFAULT_MEMBER" earned "$(tree_of HEAD)" 0.0.1 full >/dev/null
+  write_clearance "$OTHER_MEMBER" earned "$(tree_of HEAD)" 1.2.3 light >/dev/null
+  add_commit c
+
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  [ "$status" -eq 0 ]
+  [ "$(member_base)" = "$full_sha" ]
+  [ "$(member_base)" != "$signal_sha" ]
+  [ "$(member_reason)" = "member-clearance" ]
+  grep -qF "${OTHER_MEMBER} holds a non-full clearance at ${signal_sha}" <<<"$stderr"
+}
+
+@test "review depth: a non-full marker outside the range leaves the verified signal as the base" {
+  require_jq
+  add_commit a
+  add_commit b
+  signal_sha="$(stamp_anchor bare)"
+  support_signal_at HEAD
+  write_clearance "$OTHER_MEMBER" earned "$(printf '%040d' 7)" 1.2.3 light >/dev/null
+  add_commit c
+
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  [ "$status" -eq 0 ]
+  [ "$(member_base)" = "$signal_sha" ]
+  [ "$(member_reason)" = "team-signal" ]
+}
+
+@test "review depth: the same signal anchors when the other member's clearance is full" {
+  require_jq
+  add_commit a
+  write_clearance "$DEFAULT_MEMBER" earned "$(tree_of HEAD)" 1.2.3 full >/dev/null
+  add_commit b
+  signal_sha="$(stamp_anchor bare)"
+  write_clearance "$DEFAULT_MEMBER" earned "$(tree_of HEAD)" 0.0.1 full >/dev/null
+  write_clearance "$OTHER_MEMBER" earned "$(tree_of HEAD)" 1.2.3 full >/dev/null
+  add_commit c
+
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  [ "$status" -eq 0 ]
+  [ "$(member_base)" = "$signal_sha" ]
+  [ "$(member_reason)" = "team-signal" ]
+}
+
+@test "review depth: a light-only history has no anchor" {
+  require_jq
+  add_commit a
+  write_clearance "$DEFAULT_MEMBER" earned "$(tree_of HEAD)" 1.2.3 light >/dev/null
+  add_commit b
+  stamp_anchor bare >/dev/null
+  write_clearance "$DEFAULT_MEMBER" earned "$(tree_of HEAD)" 1.2.3 light >/dev/null
+  add_commit c
+
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  [ "$status" -eq 0 ]
+  [ "$(member_base)" = "main" ]
+  [ "$(member_reason)" = "no-anchor" ]
+  [ -z "$(member_anchor_tree)" ]
+}
+
+@test "review depth: a signal with an empty marker store refuses to anchor" {
+  add_commit a
+  add_commit b
+  stamp_anchor bare >/dev/null
+  add_commit c
+  [ ! -d "$SANDBOX/.gaia/local/audit" ]
+
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  [ "$status" -eq 0 ]
+  [ "$(member_base)" = "main" ]
+  [ "$(member_reason)" = "no-anchor" ]
+  grep -qF "unverifiable" <<<"$stderr"
+}
+
+@test "review depth: a full review of another member at the signal tree lets the arm anchor" {
+  require_jq
+  add_commit a
+  add_commit b
+  signal_sha="$(stamp_anchor bare)"
+  write_clearance "$OTHER_MEMBER" earned "$(tree_of HEAD)" 1.2.3 full >/dev/null
+  add_commit c
+
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  [ "$status" -eq 0 ]
+  [ "$(member_base)" = "$signal_sha" ]
+  [ "$(member_reason)" = "team-signal" ]
+  [ -z "$(member_anchor_tree)" ]
+}
+
+@test "review depth: a marker the reader cannot parse at the signal tree is unverifiable" {
+  require_jq
+  add_commit a
+  add_commit b
+  stamp_anchor bare >/dev/null
+  marker_path="$(write_clearance "$OTHER_MEMBER" earned "$(tree_of HEAD)" 1.2.3 full)"
+  printf 'not json at all\n' > "$marker_path"
+  add_commit c
+
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  [ "$status" -eq 0 ]
+  [ "$(member_base)" = "main" ]
+  [ "$(member_reason)" = "no-anchor" ]
+  grep -qF "unverifiable" <<<"$stderr"
+}
+
+@test "review depth: an unreadable roster refuses the team arm" {
+  require_jq
+  add_commit a
+  stamp_anchor >/dev/null
+  add_commit b
+  rm -f "$SANDBOX/.gaia/audit-ci.yml"
+
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  [ "$status" -eq 0 ]
+  [ "$(member_base)" = "main" ]
+  [ "$(member_reason)" = "no-anchor" ]
+  grep -qF "roster is unreadable" <<<"$stderr"
+}
+
+# Records every clearance_scan call (member and provenance) into the file the
+# sandbox's reader copy appends to, so a test can see which stores were read.
+trace_clearance_scans() {
+  CLEARANCE_SCAN_TRACE="$BATS_TEST_TMPDIR/scan.trace"
+  export CLEARANCE_SCAN_TRACE
+  : > "$CLEARANCE_SCAN_TRACE"
+  local reader="$SANDBOX/.claude/hooks/lib/audit-clearance.sh"
+  awk '{ print } /^clearance_scan\(\) \{$/ { print "  printf \"%s %s\\n\" \"$2\" \"$3\" >>\"${CLEARANCE_SCAN_TRACE:-/dev/null}\"" }' "$reader" > "$reader.traced"
+  mv "$reader.traced" "$reader"
+  grep -qF 'CLEARANCE_SCAN_TRACE' "$reader"
+}
+
+@test "review depth: the roster scan is skipped when no whole-team signal is in range" {
+  require_jq
+  trace_clearance_scans
+  add_commit a
+  write_clearance "$OTHER_MEMBER" earned "$(tree_of HEAD)" 1.2.3 light >/dev/null
+  add_commit b
+  write_clearance "$SUPPORT_MEMBER" earned "$(tree_of HEAD)" 1.2.3 full >/dev/null
+  add_commit c
+
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  [ "$status" -eq 0 ]
+  [ "$(member_base)" = "main" ]
+  [ "$(member_reason)" = "no-anchor" ]
+  grep -qF "non-full clearance" <<<"$stderr" && return 1
+  [ "$(sort "$CLEARANCE_SCAN_TRACE" | tr '\n' ',')" = "${DEFAULT_MEMBER} earned,${DEFAULT_MEMBER} refused," ]
+}
+
+@test "review depth: a signal in range scans each roster member once and the resolving member only once" {
+  require_jq
+  trace_clearance_scans
+  add_commit a
+  add_commit b
+  signal_sha="$(stamp_anchor)"
+  add_commit c
+
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  [ "$status" -eq 0 ]
+  [ "$(member_base)" = "$signal_sha" ]
+  [ "$(grep -cxF "${DEFAULT_MEMBER} earned" "$CLEARANCE_SCAN_TRACE")" -eq 1 ]
+  grep -qxF "${OTHER_MEMBER} earned" "$CLEARANCE_SCAN_TRACE"
+  grep -qxF "${SUPPORT_MEMBER} earned" "$CLEARANCE_SCAN_TRACE"
+  [ -z "$(sort "$CLEARANCE_SCAN_TRACE" | uniq -d)" ]
+}
+
+# -----------------------------------------------------------------------------
 # Library availability. Four libs decide the answer and their absence resets
 # to full scope; the clearance reader's absence is the CONTRAST, because it is
 # the same condition as the empty store every continuous-integration run has.
@@ -1176,8 +1454,11 @@ assert_degraded_with_unparseable() {
 # absent one: it is the fourth lib in the same load block, so an unparseable
 # copy abandons the shell the same way, but its unavailability falls back to the
 # floor rather than degrading. Without this case the library block's fourth
-# member is the one load the unparseable arm never opens.
-@test "an unparseable clearance reader falls back to the floor rather than degrading" {
+# member is the one load the unparseable arm never opens. Its unavailability
+# does not degrade, but the team-signal arm cannot verify review depth without
+# it, so the member form refuses the signal and the argument-less form (which
+# reads no store) still anchors.
+@test "an unparseable clearance reader refuses the team signal rather than degrading" {
   [ -x /bin/bash ] || skip "no /bin/bash"
   add_commit a
   base="$(stamp_anchor)"
@@ -1186,13 +1467,14 @@ assert_degraded_with_unparseable() {
 
   run --separate-stderr run_member "$DEFAULT_MEMBER" /bin/bash
   [ "$status" -eq 0 ]
-  [ "$(member_base)" = "$base" ]
-  [ "$(member_reason)" = "team-signal" ]
+  [ "$(member_base)" = "main" ]
+  [ "$(member_reason)" = "no-anchor" ]
+  [ "$(member_shared_base)" = "$base" ]
   grep -qF "reason=degraded" <<<"$stderr" && return 1
-  return 0
+  grep -qF "clearance reader is unavailable" <<<"$stderr"
 }
 
-@test "an absent clearance reader falls back to the floor rather than degrading" {
+@test "an absent clearance reader refuses the team signal rather than degrading" {
   add_commit a
   base="$(stamp_anchor)"
   add_commit b
@@ -1200,23 +1482,26 @@ assert_degraded_with_unparseable() {
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(member_base)" = "$base" ]
-  [ "$(member_reason)" = "team-signal" ]
+  [ "$(member_base)" = "main" ]
+  [ "$(member_reason)" = "no-anchor" ]
+  [ "$(member_shared_base)" = "$base" ]
   grep -qF "reason=degraded" <<<"$stderr" && return 1
-  return 0
+  grep -qF "clearance reader is unavailable" <<<"$stderr"
 }
 
-@test "an empty clearance store resolves through the whole-team signal" {
+@test "an empty clearance store refuses the team signal and resolves the full-branch base" {
   add_commit a
-  base="$(stamp_anchor)"
+  base="$(stamp_anchor bare)"
   add_commit b
   [ ! -d "$SANDBOX/.gaia/local/audit" ]
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(member_base)" = "$base" ]
-  [ "$(member_reason)" = "team-signal" ]
+  [ "$(member_base)" = "main" ]
+  [ "$(member_reason)" = "no-anchor" ]
   [ -z "$(member_anchor_tree)" ]
+  [ "$(member_shared_base)" = "$base" ]
+  grep -qF "unverifiable" <<<"$stderr"
 }
 
 # -----------------------------------------------------------------------------

@@ -915,3 +915,162 @@ YAML
   grep -qF "ownerless-path" <<<"$output" && return 1
   return 0
 }
+
+# --- Light-review keys --------------------------------------------------------
+#
+# Fixture: one default member owning `app/**` and `cfg/*.ts`, carrying the three
+# keys. Arguments: <directory> <light_review value> <light_line_cap value, or
+# empty to omit the key> then one light_hard_full glob per remaining argument.
+light_root() {
+  local fixture_directory="$1" review_value="$2" cap_value="$3" hard_full_glob
+  shift 3
+  {
+    printf 'auditors:\n'
+    printf '  - name: code-audit-default\n'
+    printf '    globs:\n'
+    printf '      - "app/**"\n'
+    printf '      - "cfg/*.ts"\n'
+    printf '    light_review: %s\n' "$review_value"
+    if [ -n "$cap_value" ]; then printf '    light_line_cap: %s\n' "$cap_value"; fi
+    if [ "$#" -gt 0 ]; then
+      printf '    light_hard_full:\n'
+      for hard_full_glob in "$@"; do printf '      - "%s"\n' "$hard_full_glob"; done
+    fi
+    printf '    default: true\n'
+  } | scaffold_root "$fixture_directory"
+}
+
+@test "light keys: a well-formed member passes, so the failures below are not vacuous" {
+  light_root "$BATS_TEST_TMPDIR/light-ok" true 50 'app/tests/**' 'app/**' 'cfg/*.ts' 'cfg/exact.ts' 'app/**/x/*.ts'
+  run_root "$BATS_TEST_TMPDIR/light-ok"
+  [ "$status" -eq 0 ]
+  assert_contains "roster clean"
+}
+
+@test "light keys: light_review other than the literal true or false fails" {
+  local value
+  for value in yes '"true"' True 1 on; do
+    light_root "$BATS_TEST_TMPDIR/light-review" "$value" 50 'app/tests/**'
+    run_root "$BATS_TEST_TMPDIR/light-review"
+    [ "$status" -eq 1 ] || { echo "value '$value' passed" >&2; return 1; }
+    grep -qF "invalid-light-review" <<<"$output" || { echo "value '$value' not named: $output" >&2; return 1; }
+    grep -qF "$value" <<<"$output" || { echo "value '$value' not echoed" >&2; return 1; }
+  done
+  # The boolean spellings the router accepts stay clean.
+  for value in true false; do
+    light_root "$BATS_TEST_TMPDIR/light-review" "$value" 50 'app/tests/**'
+    run_root "$BATS_TEST_TMPDIR/light-review"
+    [ "$status" -eq 0 ] || { echo "value '$value' failed: $output" >&2; return 1; }
+  done
+}
+
+@test "light keys: light_line_cap that is not a positive integer no greater than the ceiling fails" {
+  local value
+  for value in 0 -3 abc 80 51 '"50"' 050 5.5 1000000000000; do
+    light_root "$BATS_TEST_TMPDIR/light-cap" true "$value" 'app/tests/**'
+    run_root "$BATS_TEST_TMPDIR/light-cap"
+    [ "$status" -eq 1 ] || { echo "cap '$value' passed" >&2; return 1; }
+    grep -qF "invalid-light-line-cap" <<<"$output" || { echo "cap '$value' not named: $output" >&2; return 1; }
+  done
+  # The edges that must stay clean: 1 and the ceiling itself.
+  for value in 1 50; do
+    light_root "$BATS_TEST_TMPDIR/light-cap" true "$value" 'app/tests/**'
+    run_root "$BATS_TEST_TMPDIR/light-cap"
+    [ "$status" -eq 0 ] || { echo "cap '$value' failed: $output" >&2; return 1; }
+  done
+}
+
+@test "light keys: a cap above the ceiling is reported as one the router would clamp" {
+  light_root "$BATS_TEST_TMPDIR/light-cap-high" true 80 'app/tests/**'
+  run_root "$BATS_TEST_TMPDIR/light-cap-high"
+  [ "$status" -eq 1 ]
+  assert_contains "above the ceiling"
+}
+
+@test "light keys: an absent light_line_cap is not a finding" {
+  light_root "$BATS_TEST_TMPDIR/light-no-cap" true '' 'app/tests/**'
+  run_root "$BATS_TEST_TMPDIR/light-no-cap"
+  [ "$status" -eq 0 ]
+}
+
+@test "light keys: a hard-Full glob outside the member's owned globs fails, wildcard or literal" {
+  local glob
+  for glob in 'docs/**' 'docs/*.md' 'docs/readme.md' 'cfg/**' 'app*/x.ts'; do
+    light_root "$BATS_TEST_TMPDIR/light-uncovered" true 50 'app/tests/**' "$glob"
+    run_root "$BATS_TEST_TMPDIR/light-uncovered"
+    [ "$status" -eq 1 ] || { echo "glob '$glob' passed" >&2; return 1; }
+    grep -qF "light-hard-full-glob-uncovered" <<<"$output" || { echo "glob '$glob' not named: $output" >&2; return 1; }
+    grep -qF "glob:    $glob" <<<"$output" || { echo "glob '$glob' not cited: $output" >&2; return 1; }
+  done
+}
+
+@test "light keys: a wildcard-free hard-Full path inside an owned glob is decided by the matcher and passes" {
+  light_root "$BATS_TEST_TMPDIR/light-literal" true 50 'cfg/exact.ts' 'app/deep/er/file.ts'
+  run_root "$BATS_TEST_TMPDIR/light-literal"
+  [ "$status" -eq 0 ]
+}
+
+@test "light keys: a hard-Full glob outside the classifier dialect fails as undecidable" {
+  local glob
+  for glob in 'app/[a-z].ts' 'app/{b,c}/x.ts' 'app/?.ts' 'app/**.ts' 'app/***/b'; do
+    light_root "$BATS_TEST_TMPDIR/light-undecidable" true 50 "$glob"
+    run_root "$BATS_TEST_TMPDIR/light-undecidable"
+    [ "$status" -eq 1 ] || { echo "glob '$glob' passed" >&2; return 1; }
+    grep -qF "undecidable-light-hard-full-glob" <<<"$output" || { echo "glob '$glob' not named: $output" >&2; return 1; }
+    grep -qF "reason:" <<<"$output" || return 1
+  done
+}
+
+@test "light keys: a matcher that fails with exit 2 is a finding, never a pass" {
+  # Scratch copy of the check and its library with the matcher replaced by one
+  # that always reports a usage failure. The wildcard-free hard-Full path is
+  # the one concrete test this invariant makes, so it must go red.
+  local scratch="$BATS_TEST_TMPDIR/matcher-failure-copy"
+  mkdir -p "$scratch/.gaia/scripts" "$scratch/.claude/hooks/lib"
+  cp "$SCRIPT" "$scratch/.gaia/scripts/verify-audit-roster.sh"
+  cp "$REPO_ROOT/.claude/hooks/lib/audit-scope.sh" "$scratch/.claude/hooks/lib/audit-scope.sh"
+  printf '\naudit_glob_matches() { return 2; }\n' >> "$scratch/.claude/hooks/lib/audit-scope.sh"
+  light_root "$BATS_TEST_TMPDIR/light-matcher-failure" true 50 'cfg/exact.ts'
+  run bash "$scratch/.gaia/scripts/verify-audit-roster.sh" --root "$BATS_TEST_TMPDIR/light-matcher-failure" --config "$BATS_TEST_TMPDIR/light-matcher-failure/.gaia/audit-ci.yml"
+  [ "$status" -eq 1 ]
+  assert_contains "light-hard-full-glob-uncovered"
+  assert_contains "exit 2"
+  # The same fixture with the real matcher is clean, so the finding is the
+  # matcher's doing and nothing else.
+  run_root "$BATS_TEST_TMPDIR/light-matcher-failure"
+  [ "$status" -eq 0 ]
+}
+
+@test "light keys: the committed roster's opted-in members carry only well-formed, owned hard-Full globs" {
+  local opted_members member config_lines hard_full_globs owned_globs glob checked=0
+  opted_members=""
+  for member in $(bash "$SCRIPT" --emit-roster | awk -F'\t' '$1 == "MEMBER" { print $2 }' | sort -u); do
+    config_lines="$(
+      . "$REPO_ROOT/.claude/hooks/lib/audit-scope.sh"
+      audit_roster_light_config "$REPO_ROOT" "$member"
+    )"
+    case "$config_lines" in
+      true*) opted_members="$opted_members $member" ;;
+      *) continue ;;
+    esac
+    hard_full_globs="$(printf '%s\n' "$config_lines" | awk -F'\t' '$1 == "HARDFULL" { print $2 }')"
+    [ -n "$hard_full_globs" ] || { echo "$member opted in with no hard-Full globs" >&2; return 1; }
+    owned_globs="$(bash "$SCRIPT" --emit-roster | awk -F'\t' -v member="$member" '$1 == "RAW" && $2 == member { print $3 }')"
+    while IFS= read -r glob; do
+      [ -n "$glob" ] || continue
+      checked=$((checked + 1))
+      # Parity for the committed roster, derived rather than restated: the
+      # glob is owned verbatim or sits under a literal owned `<prefix>/**`.
+      if grep -qxF -- "$glob" <<<"$owned_globs"; then continue; fi
+      found=0
+      while IFS= read -r owned; do
+        case "$owned" in
+          *"/**") case "$glob" in "${owned%\*\*}"*) found=1 ;; esac ;;
+        esac
+      done <<<"$owned_globs"
+      [ "$found" -eq 1 ] || { echo "$member: hard-Full glob not owned: $glob" >&2; return 1; }
+    done <<<"$hard_full_globs"
+  done
+  [ -n "$opted_members" ] || { echo "no member opts in: the roster no longer exercises light review" >&2; return 1; }
+  [ "$checked" -gt 0 ]
+}

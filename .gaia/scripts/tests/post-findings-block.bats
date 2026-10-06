@@ -689,3 +689,31 @@ write_sidecar_with_review_base() {
   entry="$(jq -c '.review_bases[0]' <<<"$payload")"
   [ "$(jq -r '[keys[]] | sort | join(",")' <<<"$entry")" = "anchor_tree,member,reason,sha" ]
 }
+
+# A light review's sidecar matches the branch-wide glob but is not a member's
+# findings, so it never renders in the block.
+
+@test "a light review sidecar is skipped and only the full sidecar renders" {
+  write_sidecar code-audit-frontend '[{"finding_class":"holistic/swallowed-error","severity":"warning","area_tags":["app/services"]}]'
+  printf '{"schema":1,"member":"code-audit-frontend","review":"light","findings":%s}\n' \
+    '[{"finding_class":"holistic/light-only-marker","severity":"error","area_tags":["app/light"]}]' \
+    > "$AUDIT_DIRECTORY/${AUDIT_KEY}.code-audit-frontend.light.findings.json"
+  [ -f "$AUDIT_DIRECTORY/${AUDIT_KEY}.code-audit-frontend.light.findings.json" ]
+  stub_gh '[]'
+  run run_script
+  [ "$status" -eq 0 ]
+  [ "$output" = "findings: posted 1 finding(s) from 1 member(s) to PR #42" ]
+  payload="$(extract_payload)"
+  [ "$(jq '.findings | length' <<<"$payload")" = "1" ]
+  grep -qF "light-only-marker" "$SANDBOX/posted_body.txt" && return 1
+  grep -qF "swallowed-error" "$SANDBOX/posted_body.txt" || return 1
+}
+
+@test "a branch holding only a light review sidecar declines as having no sidecars" {
+  printf '{"schema":1,"member":"code-audit-frontend","review":"light","findings":[]}\n' \
+    > "$AUDIT_DIRECTORY/${AUDIT_KEY}.code-audit-frontend.light.findings.json"
+  stub_gh '[]'
+  run run_script
+  [ "$status" -eq 0 ]
+  [ "$output" = "findings: declined: no sidecars" ]
+}

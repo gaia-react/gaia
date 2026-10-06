@@ -241,6 +241,11 @@ sidecars=()
 if [ -n "$BRANCH_SLUG" ]; then
   for sidecar_path in "${audit_directory}"/*."${BRANCH_SLUG}".*.findings.json; do
     [ -e "$sidecar_path" ] || continue
+    # The glob also matches a light review's sidecar, which is not a member's
+    # findings. A malformed one falls through to the validation below.
+    if jq -e '.review == "light"' "$sidecar_path" >/dev/null 2>&1; then
+      continue
+    fi
     sidecars+=("$sidecar_path")
   done
 fi

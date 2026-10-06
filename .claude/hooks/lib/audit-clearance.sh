@@ -132,7 +132,23 @@ clearance_member_refused() {
   clearance_refusal_acceptable "$refused_path" "$member" "$digest"
 }
 
-# clearance_scan <root> <member> <provenance> -> "<tree>\t<version>\t<sha>\t<path>" lines
+# clearance_review_kind <path> -> "full", "light", or "-"
+#   The body's `review` value when it is exactly full or light, else "-"
+#   (legacy markers, refusals, unknown values). jq absent prints "-", exit 0.
+clearance_review_kind() {
+  local review
+  review="$(clearance_field "$1" review)"
+  case "$review" in
+    full|light) printf '%s\n' "$review" ;;
+    *) printf '%s\n' "-" ;;
+  esac
+  return 0
+}
+
+# clearance_scan <root> <member> <provenance> -> "<tree>\t<version>\t<sha>\t<review>\t<path>" lines
+# <review> is full, light, or "-" (see clearance_review_kind). Only "full" is
+# ever an incremental-scope anchor; a caller choosing an anchor must skip the
+# rest.
 # The enumerating counterpart to the digest-keyed predicates above: a caller
 # that holds a member and a provenance but no digest (the per-member base
 # resolver, choosing among this member's own history) cannot ask
@@ -156,6 +172,8 @@ clearance_member_refused() {
 clearance_scan() {
   local root="$1" member="$2" provenance="$3"
   local audit_directory extension file base stem digest tree version sha any=1
+  local fields rest marker_member marker_provenance review tab
+  tab="$(printf '\t')"
   command -v jq >/dev/null 2>&1 || return 1
   case "$provenance" in
     earned) extension="ok" ;;
@@ -174,15 +192,32 @@ clearance_scan() {
         *) continue ;;
       esac
     fi
-    digest="$(clearance_field "$file" digest)"
+    # One jq read per marker: seven tab-separated fields, emitted in a fixed
+    # order and peeled with parameter expansion (not `read` under a tab IFS,
+    # which would collapse an empty version or sha and shift the later fields).
+    fields="$(jq -r '[.digest, .member, .provenance, .tree, .version, .sha, .review]
+      | map(if . == null then "" elif type == "string" then . else tojson end) | join("\t")' "$file" 2>/dev/null)" || continue
+    digest="${fields%%"$tab"*}"
+    rest="${fields#*"$tab"}"
+    marker_member="${rest%%"$tab"*}"
+    rest="${rest#*"$tab"}"
+    marker_provenance="${rest%%"$tab"*}"
+    rest="${rest#*"$tab"}"
+    tree="${rest%%"$tab"*}"
+    rest="${rest#*"$tab"}"
+    version="${rest%%"$tab"*}"
+    rest="${rest#*"$tab"}"
+    sha="${rest%%"$tab"*}"
+    review="${rest#*"$tab"}"
     [ -n "$digest" ] && [ "$digest" = "$stem" ] || continue
-    [ "$(clearance_field "$file" member)" = "$member" ] || continue
-    [ "$(clearance_field "$file" provenance)" = "$provenance" ] || continue
-    tree="$(clearance_field "$file" tree)"
+    [ "$marker_member" = "$member" ] || continue
+    [ "$marker_provenance" = "$provenance" ] || continue
     [ -n "$tree" ] || continue
-    version="$(clearance_field "$file" version)"
-    sha="$(clearance_field "$file" sha)"
-    printf '%s\t%s\t%s\t%s\n' "$tree" "$version" "$sha" "$file"
+    case "$review" in
+      full|light) ;;
+      *) review="-" ;;
+    esac
+    printf '%s\t%s\t%s\t%s\t%s\n' "$tree" "$version" "$sha" "$review" "$file"
     any=0
   done
   return "$any"

@@ -71,9 +71,13 @@ outside_equal() {
   original_start="$(byte_offset "$1" "$START")"
   result_start="$(byte_offset "$2" "$START")"
   [ "$original_start" = "$result_start" ] || return 1
-  head -c "$original_start" "$1" > "$TEMPORARY_DIRECTORY/o.pre"
-  head -c "$result_start" "$2" > "$TEMPORARY_DIRECTORY/r.pre"
-  cmp -s "$TEMPORARY_DIRECTORY/o.pre" "$TEMPORARY_DIRECTORY/r.pre" || return 1
+  # BSD head rejects `-c 0`, and both starts are equal here, so a section at
+  # byte 0 has no prefix to compare.
+  if [ "$original_start" -gt 0 ]; then
+    head -c "$original_start" "$1" > "$TEMPORARY_DIRECTORY/o.pre"
+    head -c "$result_start" "$2" > "$TEMPORARY_DIRECTORY/r.pre"
+    cmp -s "$TEMPORARY_DIRECTORY/o.pre" "$TEMPORARY_DIRECTORY/r.pre" || return 1
+  fi
   original_end="$(byte_offset "$1" "$END")"
   result_end="$(byte_offset "$2" "$END")"
   tail -c "+$(( original_end + ${#END} + 1 ))" "$1" > "$TEMPORARY_DIRECTORY/o.post"
@@ -150,6 +154,17 @@ record_offline() {
   record_offline "$TEMPORARY_DIRECTORY/once.md" "$TEMPORARY_DIRECTORY/twice.md"
   [ "$status" -eq 0 ]
   cmp -s "$TEMPORARY_DIRECTORY/once.md" "$TEMPORARY_DIRECTORY/twice.md"
+}
+
+@test "offline: a section starting on line 1 is replaced, the trailing bytes kept" {
+  values 2 '{"code-audit-frontend":2}' 0
+  printf '%s\nold\n%s\n\nafter line\n' "$START" "$END" > "$TEMPORARY_DIRECTORY/in.md"
+  record_offline "$TEMPORARY_DIRECTORY/in.md" "$TEMPORARY_DIRECTORY/out.md"
+  [ "$status" -eq 0 ]
+  [ "$(sed -n 1p "$TEMPORARY_DIRECTORY/out.md")" = "$START" ]
+  outside_equal "$TEMPORARY_DIRECTORY/in.md" "$TEMPORARY_DIRECTORY/out.md"
+  parse_section "$TEMPORARY_DIRECTORY/out.md" > "$TEMPORARY_DIRECTORY/parsed"
+  [ "$(cat "$TEMPORARY_DIRECTORY/parsed")" = "2 0 code-audit-frontend=2" ]
 }
 
 @test "offline: a hand-edited higher count or garbage text is replaced by the computed one" {
@@ -262,6 +277,62 @@ assert_refused() {
 }
 
 # ---------------------------------------------------------------------------
+# Light reviews clause
+# ---------------------------------------------------------------------------
+
+# values_with_light <light-json>: values with a fixed total and the given light object.
+values_with_light() {
+  printf '{"total":3,"members":{"code-audit-frontend":3},"grants":1,"light":%s}\n' "$1" > "$TEMPORARY_DIRECTORY/values.json"
+}
+
+@test "light: counts render as a clause sorted by member, between the members and the grants" {
+  values_with_light '{"code-audit-maintainer-shell":1,"code-audit-frontend":2}'
+  : > "$TEMPORARY_DIRECTORY/in.md"
+  record_offline "$TEMPORARY_DIRECTORY/in.md" "$TEMPORARY_DIRECTORY/out.md"
+  [ "$status" -eq 0 ]
+  grep -qxF 'Total rounds: 3; per member: code-audit-frontend 3; light reviews: code-audit-frontend 2, code-audit-maintainer-shell 1; human grants: 1.' "$TEMPORARY_DIRECTORY/out.md"
+}
+
+@test "light: an empty object and all-zero counts render exactly the line without the key" {
+  values 3 '{"code-audit-frontend":3}' 1
+  : > "$TEMPORARY_DIRECTORY/in.md"
+  record_offline "$TEMPORARY_DIRECTORY/in.md" "$TEMPORARY_DIRECTORY/without.md"
+  [ "$status" -eq 0 ]
+  values_with_light '{}'
+  record_offline "$TEMPORARY_DIRECTORY/in.md" "$TEMPORARY_DIRECTORY/empty.md"
+  [ "$status" -eq 0 ]
+  values_with_light '{"code-audit-frontend":0,"code-audit-maintainer-shell":0}'
+  record_offline "$TEMPORARY_DIRECTORY/in.md" "$TEMPORARY_DIRECTORY/zeros.md"
+  [ "$status" -eq 0 ]
+  cmp -s "$TEMPORARY_DIRECTORY/without.md" "$TEMPORARY_DIRECTORY/empty.md"
+  cmp -s "$TEMPORARY_DIRECTORY/without.md" "$TEMPORARY_DIRECTORY/zeros.md"
+  grep -qF 'light reviews' "$TEMPORARY_DIRECTORY/without.md" && return 1
+  grep -qxF 'Total rounds: 3; per member: code-audit-frontend 3; human grants: 1.' "$TEMPORARY_DIRECTORY/without.md"
+}
+
+@test "light: a body without the clause round-trips unchanged when the new values carry no light key" {
+  values 3 '{"code-audit-frontend":3}' 1
+  printf 'Intro\n\n%s\n## Audit rounds\n\nTotal rounds: 3; per member: code-audit-frontend 3; human grants: 1.\n%s\n\nTail\n' \
+    "$START" "$END" > "$TEMPORARY_DIRECTORY/in.md"
+  record_offline "$TEMPORARY_DIRECTORY/in.md" "$TEMPORARY_DIRECTORY/out.md"
+  [ "$status" -eq 0 ]
+  cmp -s "$TEMPORARY_DIRECTORY/in.md" "$TEMPORARY_DIRECTORY/out.md"
+}
+
+@test "light: a later write with no light counts drops a clause an earlier write rendered" {
+  printf 'Body\n' > "$TEMPORARY_DIRECTORY/in.md"
+  values_with_light '{"code-audit-frontend":2}'
+  record_offline "$TEMPORARY_DIRECTORY/in.md" "$TEMPORARY_DIRECTORY/once.md"
+  [ "$status" -eq 0 ]
+  grep -qF 'light reviews: code-audit-frontend 2;' "$TEMPORARY_DIRECTORY/once.md"
+  values 3 '{"code-audit-frontend":3}' 1
+  record_offline "$TEMPORARY_DIRECTORY/once.md" "$TEMPORARY_DIRECTORY/twice.md"
+  [ "$status" -eq 0 ] || { printf 'status %s: %s\n' "$status" "$output" >&2; return 1; }
+  grep -qF 'light reviews' "$TEMPORARY_DIRECTORY/twice.md" && return 1
+  true
+}
+
+# ---------------------------------------------------------------------------
 # Input validation: exit 2
 # ---------------------------------------------------------------------------
 
@@ -304,6 +375,16 @@ assert_usage() {
 @test "invalid: a missing key and an extra key" {
   assert_usage '{"total":1,"members":{"code-audit-frontend":1}}'
   assert_usage '{"total":1,"members":{},"grants":0,"extra":1}'
+}
+
+@test "invalid: a light key that is not a code-audit member, a negative count, a non-object, or a non-integer" {
+  assert_usage '{"total":1,"members":{},"grants":0,"light":{"rm -rf":1}}'
+  assert_usage '{"total":1,"members":{},"grants":0,"light":{"audit-light-reviewer":1}}'
+  assert_usage '{"total":1,"members":{},"grants":0,"light":{"code-audit-frontend":-1}}'
+  assert_usage '{"total":1,"members":{},"grants":0,"light":{"code-audit-frontend":1.5}}'
+  assert_usage '{"total":1,"members":{},"grants":0,"light":{"code-audit-a\nrm":1}}'
+  assert_usage '{"total":1,"members":{},"grants":0,"light":[1]}'
+  assert_usage '{"total":1,"members":{},"grants":0,"light":null}'
 }
 
 @test "invalid: not JSON at all" {

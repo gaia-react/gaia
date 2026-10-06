@@ -65,7 +65,9 @@
 # record; freeze the knobs and the line config when absent; evaluate the
 # previous round when its snapshot is missing; read the context; decide. On an
 # allowed unit the hook appends its window to `history.units`; on an allowed
-# member it records the round.
+# member it records the round. A light reviewer dispatch stops after the
+# audited root, the dirty check and the fork refusal: it allows there, before
+# any state is read.
 #
 # THE UNIT WINDOW. An admitted unit owns rounds start_round..through_round as
 # recorded in its `history.units` entry. A member dispatch the unit makes is
@@ -148,7 +150,7 @@
 # registration.
 #
 # SCOPE: only tool_input.subagent_type matching code-audit-* or naming
-# audit-loop-unit counts, checked before any git, filesystem, context or
+# audit-loop-unit or audit-light-reviewer counts, checked before any git, filesystem, context or
 # settings read because the overwhelming majority of dispatches are neither.
 # The roster does not pin the subagent_type a member's own internal fan-out
 # carries; the filter does not need that pin: a nested dispatch shares its
@@ -157,6 +159,16 @@
 # folding it into the scope would count a member's own nested dispatches as
 # top-level rounds; it is read only to tell a unit's member dispatch from a
 # main-thread one (IN-UNIT above).
+#
+# THE LIGHT REVIEWER. An `audit-light-reviewer` dispatch is checked but never
+# counted. It only clears or escalates and never leads to a fixer commit, so
+# it cannot drive a runaway loop and opens no round. It is still scoped in,
+# because its name sits outside the code-audit-* family and would otherwise
+# skip the dirty-checkout deny and the fork refusal every member dispatch
+# meets. It resolves the audited root, denies on uncommitted tracked changes
+# and on a fork or undeterminable fork, and then allows without touching the
+# state file, the lock, the window, the checkpoint, the rubric or the
+# dispositions check; the light reviews are counted from their own ledger.
 #
 # AUDITED ROOT. The dispatch prompt's `Working root:` path wins over the
 # payload cwd (the orchestrator audits a linked worktree from the main
@@ -189,7 +201,7 @@ if ! type gaia_require_jq >/dev/null 2>&1; then
   printf 'BLOCKED: audit-loop-bound.sh cannot load lib/jq-availability.sh, so this call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
   exit 2
 fi
-gaia_require_jq 'the audit loop checkpoint' "$payload" tool_input 'code-audit-' 'audit-loop-unit'
+gaia_require_jq 'the audit loop checkpoint' "$payload" tool_input 'code-audit-' 'audit-loop-unit' 'audit-light-reviewer'
 
 deny() {
   # A deny can fire while a killed job is still being reported on stderr
@@ -222,6 +234,7 @@ esac
 case "$member" in
   audit-loop-unit) kind=unit ;;
   code-audit-*) kind=member ;;
+  audit-light-reviewer) kind=light ;;
   *) exit 0 ;;
 esac
 
@@ -476,6 +489,22 @@ run_decision() {
       # shellcheck disable=SC2016 # the backticks are literal text in the message
       finish_deny 'BLOCKED: the audit loop checkpoint cannot resolve the audited checkout (no usable Working root: path in the dispatch prompt and no absolute cwd). Name the checkout in the prompt as `Working root: <absolute path>` and retry.' ;;
   esac
+  if [ "$kind" = light ]; then
+    dirty_exit_status=0
+    _gaia_loop_git -C "$root" diff --quiet HEAD -- 2>/dev/null || dirty_exit_status=$?
+    case "$dirty_exit_status" in
+      0) ;;
+      1) finish_deny "BLOCKED: the audited checkout $root has uncommitted tracked changes (modified or staged), so a light review of it would review work that is not in the commit. Commit the round first, then dispatch the next one." ;;
+      *) finish_deny "BLOCKED: the audit loop checkpoint could not check $root for uncommitted changes. Fail-loud, not fail-open: check the checkout and retry." ;;
+    esac
+    if fork_reason=$(gaia_cross_repo_deny_reason '' "$root" \
+      'BLOCKED: ' \
+      "BLOCKED: the audit loop checkpoint cannot tell whether the pull request for $root" \
+      'so it refuses the dispatch rather than audit one. Check gh (gh auth status, the network) and retry.'); then
+      finish_deny "$fork_reason"
+    fi
+    finish_allow
+  fi
   lookup_exit_status=0
   BRANCH_KEY=$(gaia_loop_key "$root") || lookup_exit_status=$?
   case "$lookup_exit_status" in

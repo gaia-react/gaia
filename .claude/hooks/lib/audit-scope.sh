@@ -317,6 +317,119 @@ audit_roster_member_names() {
   printf '%s\n' "$names"
 }
 
+# --- Light-review roster keys -------------------------------------------------
+#
+# A separate awk pass over the roster, never folded into
+# _audit_scope_parse_auditors: that parser's output is the ownership contract
+# every dispatch and gate consumer reads, and a `light_hard_full` item must
+# never be mistaken for an ownership glob. The ownership parser ends its
+# `globs:` list on any `[A-Za-z_]+:` key, which is why the three keys are
+# snake_case: a hyphenated spelling matches no key pattern, so the list it
+# follows keeps running and its items become globs the member owns.
+#
+# Emits, tab-separated so a glob may legally contain a space, the RAW values
+# (comments stripped; booleans and integers never unquoted, so a quoted
+# `"true"` is reported as the malformed value it is rather than read as true):
+#   REVIEW <member> <value>
+#   CAP <member> <value>
+#   HARDFULL <member> <glob>
+
+_audit_scope_parse_light() {
+  awk "$_AUDIT_SCOPE_GLOB_AWK"'
+    function scalar(line, key,   v) {
+      v = line
+      sub("^[[:space:]]+" key "[[:space:]]*:[[:space:]]*", "", v)
+      sub(/[[:space:]]+#.*$/, "", v)
+      sub(/[[:space:]]+$/, "", v)
+      return v
+    }
+    BEGIN { OFS = "\t"; in_auditors = 0; in_hard_full = 0; member = "" }
+    {
+      raw = $0
+      if (raw ~ /^auditors[[:space:]]*:/) { in_auditors = 1; next }
+      if (!in_auditors) next
+      if (raw ~ /^[A-Za-z_]/) { in_auditors = 0; in_hard_full = 0; next }
+      if (raw ~ /^[[:space:]]*$/) next
+      if (raw ~ /^[[:space:]]*#/) next
+      if (raw ~ /^[[:space:]]*-[[:space:]]+name[[:space:]]*:/) {
+        in_hard_full = 0
+        v = raw
+        sub(/^[[:space:]]*-[[:space:]]+name[[:space:]]*:[[:space:]]*/, "", v)
+        sub(/[[:space:]]+#.*$/, "", v)
+        sub(/^[[:space:]]+/, "", v); sub(/[[:space:]]+$/, "", v)
+        member = unq(v)
+        next
+      }
+      if (raw ~ /^[[:space:]]+light_review[[:space:]]*:/) { in_hard_full = 0; print "REVIEW", member, scalar(raw, "light_review"); next }
+      if (raw ~ /^[[:space:]]+light_line_cap[[:space:]]*:/) { in_hard_full = 0; print "CAP", member, scalar(raw, "light_line_cap"); next }
+      if (raw ~ /^[[:space:]]+light_hard_full[[:space:]]*:/) { in_hard_full = 1; next }
+      if (raw ~ /^[[:space:]]+[A-Za-z_]+[[:space:]]*:/) { in_hard_full = 0; next }
+      if (in_hard_full && raw ~ /^[[:space:]]*-[[:space:]]+/) {
+        g = raw
+        sub(/^[[:space:]]*-[[:space:]]+/, "", g)
+        sub(/[[:space:]]+#.*$/, "", g)
+        sub(/^[[:space:]]+/, "", g); sub(/[[:space:]]+$/, "", g)
+        g = unq(g)
+        if (g != "") print "HARDFULL", member, g
+        next
+      }
+    }
+  '
+}
+
+# audit_roster_light_config <root> <member> [config-file]
+#
+# Line 1 is "<opted>\t<cap-raw>": opted is "true" only for the literal value
+# `true`; cap-raw is the roster's literal value, or "-" when the key is absent.
+# One "HARDFULL\t<glob>" line follows per light_hard_full item, in roster order.
+# A member the roster does not name answers "false\t-". Validation and clamping
+# belong to the caller. Exit 1 when the roster cannot be read.
+
+audit_roster_light_config() {
+  local root="$1" member="$2" config_file="${3:-}"
+  [ -n "$config_file" ] || config_file="${root}/.gaia/audit-ci.yml"
+  [ -f "$config_file" ] || return 1
+
+  _audit_scope_parse_light < "$config_file" |
+    AUDIT_LIGHT_MEMBER="$member" awk -F'\t' '
+      BEGIN { member = ENVIRON["AUDIT_LIGHT_MEMBER"]; opted = "false"; cap = "-"; n = 0 }
+      $2 != member { next }
+      $1 == "REVIEW" { opted = ($3 == "true") ? "true" : "false"; next }
+      $1 == "CAP" { cap = $3; next }
+      $1 == "HARDFULL" { n++; hard_full[n] = $3; next }
+      END {
+        printf "%s\t%s\n", opted, cap
+        for (i = 1; i <= n; i++) printf "HARDFULL\t%s\n", hard_full[i]
+      }
+    '
+}
+
+# audit_glob_matches <glob> <path>
+#
+# Exit 0 when <path> matches <glob> in the roster glob dialect, 1 when it does
+# not, 2 on a missing or empty argument or an awk failure; prints nothing.
+# The glob compiler is the one ownership uses, so a floor glob, a
+# light_hard_full glob and an ownership glob can never disagree on the dialect.
+# Both values travel through the environment: `awk -v` would process backslash
+# escapes in them, and interpolating them into the program text would let a
+# path carry code.
+
+audit_glob_matches() {
+  [ "$#" -ge 2 ] && [ -n "$1" ] && [ -n "$2" ] || return 2
+
+  local status=0
+  AUDIT_GLOB_ARG="$1" AUDIT_PATH_ARG="$2" awk "$_AUDIT_SCOPE_GLOB_AWK"'
+    BEGIN {
+      if (ENVIRON["AUDIT_PATH_ARG"] ~ glob_to_regex(ENVIRON["AUDIT_GLOB_ARG"])) exit 0
+      exit 1
+    }
+  ' || status=$?
+  case "$status" in
+    0|1) return "$status" ;;
+    *) return 2 ;;
+  esac
+}
+
 # --- Internal: classify one path with no subshell and no stdout -------------
 #
 # Sets _AUDIT_SCOPE_OWNER_RESULT (empty when ownerless). Shared by the two

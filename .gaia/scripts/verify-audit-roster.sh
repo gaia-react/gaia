@@ -51,6 +51,18 @@
 #      compiled globs must agree per member on the count. On drift the
 #      remit-parity and unowned-dialect verdicts are withheld; region-shape and
 #      coverage verdicts still render.
+#   4. Light-review keys. Every member carrying `light_review`,
+#      `light_line_cap` or `light_hard_full` states them in a form the router
+#      can trust: `light_review` is the literal `true` or `false`;
+#      `light_line_cap` is a positive integer no greater than 50 (the router
+#      clamps a larger value, so the roster would state a cap that does not
+#      apply); every `light_hard_full` glob fits the bounded dialect below and
+#      lies inside the member's own globs, because a hard-Full glob the member
+#      does not own can never be reached by that member's diff. Coverage is
+#      decided as: identical to an owned glob, or under an owned glob's literal
+#      `<prefix>/**`, or a wildcard-free path the classifier's own matcher
+#      (audit_glob_matches) places inside an owned glob. Any other shape is
+#      reported as undecidable, never passed.
 #
 # THE BOUNDED DIALECT a glob must fit to be classified. The classifier compiles
 # three constructs (glob_to_regex, in the roster module sourced below):
@@ -165,6 +177,11 @@ _self_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.claude/hook
 if [ -n "${_self_library_directory:-}" ] && [ -f "$_self_library_directory/audit-scope.sh" ]; then
   # shellcheck source=/dev/null
   . "$_self_library_directory/audit-scope.sh"
+fi
+
+if ! command -v _audit_scope_parse_light >/dev/null 2>&1 || ! command -v audit_glob_matches >/dev/null 2>&1; then
+  printf 'verify-audit-roster: light-review roster reader unavailable in the roster-parsing library\n' >&2
+  exit 1
 fi
 
 if ! command -v _audit_scope_parse_auditors >/dev/null 2>&1; then
@@ -323,6 +340,10 @@ region_records="$(_verify_roster_read_regions "$root" "$raw_records")"
 # second chance for the two to disagree about which lines the block holds.
 unowned_records="$(_audit_scope_parse_unowned < "$config")"
 
+# The light-review keys, read once for the dialect-and-coverage pass below and
+# the scalar checks after it.
+light_records="$(_audit_scope_parse_light < "$config")"
+
 # --- Invariant: the shared machinery list is readable ------------------------
 #
 # Read the list as TEXT under --root: that is what makes the invariant
@@ -448,6 +469,7 @@ violation_records="$(
     printf '%s\n' "$raw_records"
     printf '%s\n' "$region_records"
     printf '%s\n' "$unowned_records"
+    printf '%s\n' "$light_records"
   } | awk -F'\t' '
     # --- The glob layer ------------------------------------------------------
     #
@@ -492,6 +514,7 @@ violation_records="$(
     # Field 3 is the compiled regex, which this pass never reads: it classifies
     # the raw glob, exactly as the claimant and region positions do.
     $1 == "UNOWNED" { unowned_entry_count++; unowned_globs[unowned_entry_count] = $2; next }
+    $1 == "HARDFULL" { light_glob_count++; light_glob_member[light_glob_count] = $2; light_glob_text[light_glob_count] = $3; next }
 
     END {
       # The scrape and the classifier agree about how many globs each member
@@ -572,6 +595,35 @@ violation_records="$(
       for (i = 1; i <= (unowned_entry_count + 0); i++) {
         if (glob_items(unowned_globs[i], UNOWNED_ITEMS) < 0)
           printf "UNOWNEDUNDECIDABLE\t%s\t%s\n", unowned_globs[i], REJECTION_REASON
+      }
+
+      # --- The light_hard_full dialect and coverage --------------------------
+      #
+      # A hard-Full glob must fit the dialect, and must lie inside what the
+      # member owns. Coverage is decided here only by the two string relations
+      # that are exact in the segment model: identical to an owned glob, or
+      # beginning with the literal prefix of an owned `<prefix>/**`. A glob
+      # with no wildcard at all is a concrete path, so the shell side tests it
+      # with the classifier matcher rather than a second matcher here. Every
+      # other wildcard shape is reported rather than guessed at.
+      for (i = 1; i <= (light_glob_count + 0); i++) {
+        member = light_glob_member[i]; glob = light_glob_text[i]
+        if (glob_items(glob, LIGHT_ITEMS) < 0) {
+          printf "LIGHTUNDECIDABLE\t%s\t%s\t%s\n", member, glob, REJECTION_REASON
+          continue
+        }
+        covered = 0
+        for (k = 1; k <= (raw_glob_count[member] + 0) && !covered; k++) {
+          owned = raw[member, k]
+          if (owned == glob) covered = 1
+          else if (length(owned) > 3 && substr(owned, length(owned) - 2) == "/**") {
+            owned_prefix = substr(owned, 1, length(owned) - 2)
+            if (!index(owned_prefix, "*") && index(glob, owned_prefix) == 1) covered = 1
+          }
+        }
+        if (covered) continue
+        if (!index(glob, "*")) printf "LIGHTLITERAL\t%s\t%s\n", member, glob
+        else printf "LIGHTUNCOVERED\t%s\t%s\n", member, glob
       }
     }
   '
@@ -674,8 +726,112 @@ while IFS=$'\t' read -r kind first_field second_field third_field fourth_field; 
       printf '  Express it in the dialect.\n'
       printf '\n'
       ;;
+    LIGHTUNDECIDABLE)
+      findings=$((findings + 1))
+      printf 'verify-audit-roster: FAIL undecidable-light-hard-full-glob\n'
+      printf '  member:  %s\n' "$first_field"
+      printf '  glob:    %s\n' "$second_field"
+      printf '  reason:  %s\n' "$third_field"
+      printf '  A `light_hard_full` glob outside the classifier dialect compiles to\n'
+      printf '  something other than it reads, so the router would force a full\n'
+      printf '  review on a different set of paths than the roster states. Express\n'
+      printf '  it in the dialect.\n'
+      printf '\n'
+      ;;
+    LIGHTUNCOVERED)
+      findings=$((findings + 1))
+      printf 'verify-audit-roster: FAIL light-hard-full-glob-uncovered\n'
+      printf '  member:  %s\n' "$first_field"
+      printf '  glob:    %s\n' "$second_field"
+      printf '  roster:  %s\n' "$config"
+      printf '  This `light_hard_full` glob is not one of the member'"'"'s own globs and\n'
+      printf '  does not sit under a literal `<prefix>/**` the member owns, so it\n'
+      printf '  either names paths the member is never dispatched for or cannot be\n'
+      printf '  shown to lie inside what it owns. Both read as a hard-Full rule that\n'
+      printf '  protects nothing. Grant the surface to the member first, or restate\n'
+      printf '  the glob as one the member already owns.\n'
+      printf '\n'
+      ;;
+    LIGHTLITERAL)
+      # A wildcard-free glob is one concrete path: the classifier's own matcher
+      # decides whether any owned glob contains it. Exit 2 from the matcher is
+      # a finding, never a pass.
+      light_literal_covered=0
+      light_literal_failed=0
+      while IFS=$'\t' read -r raw_kind raw_member owned_glob; do
+        [ "$raw_kind" = "RAW" ] && [ "$raw_member" = "$first_field" ] || continue
+        audit_glob_matches "$owned_glob" "$second_field"
+        case "$?" in
+          0) light_literal_covered=1; break ;;
+          1) ;;
+          *) light_literal_failed=1 ;;
+        esac
+      done < <(printf '%s\n' "$raw_records")
+      if [ "$light_literal_covered" -eq 0 ]; then
+        findings=$((findings + 1))
+        printf 'verify-audit-roster: FAIL light-hard-full-glob-uncovered\n'
+        printf '  member:  %s\n' "$first_field"
+        printf '  glob:    %s\n' "$second_field"
+        printf '  roster:  %s\n' "$config"
+        if [ "$light_literal_failed" -eq 1 ]; then
+          printf '  The glob matcher failed (exit 2) while testing this path against the\n'
+          printf '  member'"'"'s globs, so coverage is unproven.\n'
+        else
+          printf '  This path is outside every glob the member owns, so a hard-Full rule\n'
+          printf '  on it protects nothing. Grant it to the member first, or drop it.\n'
+        fi
+        printf '\n'
+      fi
+      ;;
   esac
 done < <(printf '%s\n' "$violation_records")
+
+# --- Invariant: the light-review scalar keys ---------------------------------
+#
+# The router reads these values as typed, so each is checked as typed: no
+# unquoting, so a quoted `"true"` or `"50"` is a malformed value rather than a
+# value one reader accepts and another does not. The ceiling is the router's
+# built-in maximum; a cap above it is a roster that states a budget the router
+# will not apply.
+
+light_line_cap_ceiling=50
+
+while IFS=$'\t' read -r kind member value; do
+  case "$kind" in
+    REVIEW)
+      if [ "$value" != "true" ] && [ "$value" != "false" ]; then
+        findings=$((findings + 1))
+        printf 'verify-audit-roster: FAIL invalid-light-review\n'
+        printf '  member: %s\n' "$member"
+        printf '  value:  %s\n' "$value"
+        printf '  `light_review` is the literal `true` or `false`. The router opts a\n'
+        printf '  member in only on `true`, so any other spelling silently leaves the\n'
+        printf '  member on full review while the roster reads as if it opted in.\n'
+        printf '\n'
+      fi
+      ;;
+    CAP)
+      cap_problem=""
+      case "$value" in
+        ''|*[!0-9]*|0*) cap_problem="not a positive integer" ;;
+        *)
+          if [ "${#value}" -gt 3 ] || [ "$value" -gt "$light_line_cap_ceiling" ]; then
+            cap_problem="above the ceiling of ${light_line_cap_ceiling}; the router clamps it, so the roster would state a cap that does not apply"
+          fi
+          ;;
+      esac
+      if [ -n "$cap_problem" ]; then
+        findings=$((findings + 1))
+        printf 'verify-audit-roster: FAIL invalid-light-line-cap\n'
+        printf '  member: %s\n' "$member"
+        printf '  value:  %s\n' "$value"
+        printf '  reason: %s\n' "$cap_problem"
+        printf '  `light_line_cap` is a positive integer no greater than %s.\n' "$light_line_cap_ceiling"
+        printf '\n'
+      fi
+      ;;
+  esac
+done < <(printf '%s\n' "$light_records")
 
 # --- Invariant: every tracked path resolves an owner -------------------------
 #

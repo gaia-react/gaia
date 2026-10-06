@@ -1,5 +1,6 @@
 {
   "files": {
+    ".claude/agents/audit-light-reviewer.md": "owned",
     ".claude/agents/audit-loop-unit.md": "owned",
     ".claude/agents/code-audit-frontend.md": "owned",
     ".claude/agents/code-audit-github-workflows.md": "owned",
@@ -43,6 +44,7 @@
     ".claude/hooks/lib/audit-bypass-stamp.sh": "owned",
     ".claude/hooks/lib/audit-clearance.sh": "owned",
     ".claude/hooks/lib/audit-digest.sh": "owned",
+    ".claude/hooks/lib/audit-light-route-lib.sh": "owned",
     ".claude/hooks/lib/audit-machinery.sh": "owned",
     ".claude/hooks/lib/audit-rules-changed.sh": "owned",
     ".claude/hooks/lib/audit-scope.sh": "owned",
@@ -174,6 +176,8 @@
     ".gaia/scripts/audit-fix-verify.sh": "owned",
     ".gaia/scripts/audit-key-lib.sh": "owned",
     ".gaia/scripts/audit-ledger/append-worthiness.mjs": "owned",
+    ".gaia/scripts/audit-light-mark.sh": "owned",
+    ".gaia/scripts/audit-light-route.sh": "owned",
     ".gaia/scripts/audit-loop-eval.sh": "owned",
     ".gaia/scripts/audit-loop-record.sh": "owned",
     ".gaia/scripts/audit-loop-signals-lib.sh": "owned",
@@ -694,7 +698,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-10-06T08:39:37.342Z",
+  "generated": "2026-10-06T11:15:44.276Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

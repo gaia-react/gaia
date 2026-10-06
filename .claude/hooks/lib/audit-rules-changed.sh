@@ -69,6 +69,15 @@ AUDIT_GLOBAL_RULES_PATHS="$(cat <<'EOF'
 .claude/hooks/post-audit-status.sh
 .claude/hooks/pr-merge-audit-check.sh
 .github/audit/resolve-audit-base.sh
+# The light-review router with its helper library, the light-marker script and
+# the reviewer definition decide whether a clearance is believed: they route a
+# re-audit to the cheap reviewer and turn its verdict into a marker, so a
+# standing anchor was judged under rules that have moved when any of them
+# changes.
+.gaia/scripts/audit-light-route.sh
+.claude/hooks/lib/audit-light-route-lib.sh
+.gaia/scripts/audit-light-mark.sh
+.claude/agents/audit-light-reviewer.md
 # The two rules under .claude/rules/ that govern the gate rather than the
 # code. quality-gate.md decides the deterministic checks a clearance
 # stands on, and pr-merge.md decides the marker handshake: where the gate

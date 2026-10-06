@@ -52,3 +52,44 @@ setup() {
 EOF
   [ -z "$unmatched" ] || { printf 'not matched by audit_path_is_machinery:%s\n' "$unmatched" >&2; return 1; }
 }
+
+# The three light-review files decide whether a clearance is written without
+# the member having run. Each is asserted by name, per element, so dropping one
+# entry reds that path rather than a count.
+
+@test "each light-review file is machinery" {
+  for light_path in \
+    .gaia/scripts/audit-light-route.sh \
+    .gaia/scripts/audit-light-mark.sh \
+    .claude/agents/audit-light-reviewer.md; do
+    audit_path_is_machinery "$light_path" || { echo "not machinery: $light_path" >&2; return 1; }
+  done
+}
+
+@test "the batch classifier flags each light-review file as machinery" {
+  run audit_machinery_flags <<'PATHS'
+.gaia/scripts/audit-light-route.sh
+.gaia/scripts/audit-light-mark.sh
+.claude/agents/audit-light-reviewer.md
+PATHS
+  [ "$status" -eq 0 ]
+  [ "${#lines[@]}" -eq 3 ]
+  for line in "${lines[@]}"; do
+    case "$line" in
+      *$'\t'1) ;;
+      *) echo "not flagged: $line" >&2; return 1 ;;
+    esac
+  done
+}
+
+@test "a sibling of a light-review file is not machinery" {
+  # Entries are exact paths, so a backup copy or a neighbor never inherits the
+  # status. The guard can fail: the real entry matches, these must not.
+  audit_path_is_machinery ".gaia/scripts/audit-light-route.sh" || return 1
+  run audit_path_is_machinery ".gaia/scripts/audit-light-route.sh.bak"
+  [ "$status" -ne 0 ]
+  run audit_path_is_machinery ".gaia/scripts/audit-light-marks.sh"
+  [ "$status" -ne 0 ]
+  run audit_path_is_machinery ".claude/agents/audit-light-reviewer.md.orig"
+  [ "$status" -ne 0 ]
+}

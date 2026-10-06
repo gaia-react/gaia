@@ -167,13 +167,13 @@ run_in_registry_repo() {
 # cutover-risk scenarios run against the shipped registry: the concrete proof
 # that a per-tree entry is genuinely not shared.
 
-@test "gaia_registry_linkable_paths: prints exactly the 15 shared paths, each by name" {
+@test "gaia_registry_linkable_paths: prints exactly the 16 shared paths, each by name" {
   run_in_registry_repo gaia_registry_linkable_paths
   [ "$status" -eq 0 ]
-  [ "${#lines[@]}" -eq 15 ]
+  [ "${#lines[@]}" -eq 16 ]
   local expected_path
   for expected_path in setup-state.json cache/shared/context cache/shared protected \
-    settings.json audit telemetry telemetry/usage-sweep.lock.d debt harden runs \
+    settings.json audit audit/light telemetry telemetry/usage-sweep.lock.d debt harden runs \
     ports ports/tombstones ports/launches ports/sessions; do
     grep -qxF -- "$expected_path" <<<"$output" || return 1
   done
@@ -510,4 +510,35 @@ run_in_registry_repo() {
   ' "$REGISTRY"
   [ "$status" -eq 0 ]
   [ "$output" = "true" ]
+}
+
+# The light-review state and its maintainer-only routing log are shared state.
+# The directory row precedes the audit-store glob rows, so a file under it is
+# never claimed by a looser pattern first.
+
+@test "gaia_registry_classify: light-review state and the routing log classify shared" {
+  run_in_registry_repo gaia_registry_classify audit/light/route-record.json
+  [ "$status" -eq 0 ]
+  [ "$output" = "shared" ]
+  run_in_registry_repo gaia_registry_classify audit/light/branch-ledger.json
+  [ "$status" -eq 0 ]
+  [ "$output" = "shared" ]
+  run_in_registry_repo gaia_registry_classify telemetry/audit-light-routing.jsonl
+  [ "$status" -eq 0 ]
+  [ "$output" = "shared" ]
+}
+
+@test "gaia_registry_classify: a sibling of the routing log is not claimed by its row" {
+  # The exact row cannot absorb a neighbor: this one has no row of its own
+  # beyond the telemetry singletons, so it must not classify shared by accident.
+  run_in_registry_repo gaia_registry_classify telemetry/audit-light-routing.jsonl.bak
+  [ "$status" -eq 0 ]
+  [ "$output" = "unknown" ]
+}
+
+@test "gaia_registry_recognizes: the light-review directory is recognized, an unregistered sibling is not" {
+  run_in_registry_repo gaia_registry_recognizes audit/light d
+  [ "$status" -eq 0 ]
+  run_in_registry_repo gaia_registry_recognizes audit/light-unregistered d
+  [ "$status" -ne 0 ]
 }

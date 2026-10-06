@@ -63,6 +63,18 @@
       "source": "statusline left-side choice, added after the frozen classification"
     },
     {
+      "id": "audit-light-review-state",
+      "path": "audit/light/",
+      "match": "prefix",
+      "kind": "dir",
+      "scope": "shared",
+      "keyed_by": "content digest and member, in the file name; the per-branch ledger is keyed by branch",
+      "why": "The light-review route records, reviewer inputs, verdicts and the per-branch light-review ledger. Written beside the clearance markers in the shared audit store so one gate sees every checkout's light reviews. Must precede the audit-store glob rows, whose patterns could otherwise claim files under this directory first.",
+      "writer": "code",
+      "reaped_by": null,
+      "source": "light-review routing: router, reviewer input, verdict, and per-branch ledger state"
+    },
+    {
       "id": "audit-clearance-markers",
       "path": "audit/*.ok|audit/*.refused",
       "match": "glob",
@@ -217,6 +229,18 @@
       "writer": "code",
       "reaped_by": null,
       "source": "SPEC-087 §shared"
+    },
+    {
+      "id": "telemetry-audit-light-routing",
+      "path": "telemetry/audit-light-routing.jsonl",
+      "match": "exact",
+      "kind": "file",
+      "scope": "shared",
+      "keyed_by": "singleton store; append-only rows that identify themselves by branch, member and digest",
+      "why": "Maintainer-repo-only log of each light-review routing decision, appended by the routing telemetry script and read by its tally. It does not exist on an adopter clone.",
+      "writer": "code",
+      "reaped_by": null,
+      "source": "maintainer-only light-routing telemetry log"
     },
     {
       "id": "telemetry-usage-cursor-cache",

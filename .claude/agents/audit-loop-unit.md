@@ -40,11 +40,26 @@ A member dispatch is denied with text that carries a `BLOCKED:` marker after a h
 
 A nested Agent call that errors with no `BLOCKED:` anywhere is `nesting-unavailable` when no round has opened yet, and `failure` after one has. A `BLOCKED:` deny is never `nesting-unavailable`.
 
+## Routing each member
+
+For every member the wave would dispatch that is not already cleared for its current digest, in this order:
+
+1. Run `bash <root>/.gaia/scripts/audit-light-route.sh --root <root> --member <m>`. A non-zero exit, or a first field other than `light`, means dispatch the member exactly as before.
+2. On `light`, derive the digest with `bash <root>/.gaia/scripts/audit-member-digest.sh --root <root> --member <m> --ref <the HEAD tree captured for this wave>`. The router prints only `<route>`, tab, `<reason>`, and the route record's path is keyed by the digest, so the unit derives it; keying it to the captured tree rather than a live HEAD means a HEAD move cannot point the reviewer at another digest's input. A non-zero exit or empty output means dispatch the member as before. Otherwise dispatch `audit-light-reviewer` instead of the member, in the same parallel wave as the other members, with the brief `Working root: <root>`, `Expected HEAD tree: <tree captured for this wave>`, `Member: <m>`, `Input: <root>/.gaia/local/audit/light/<digest>.<m>.input.md`.
+3. When the reviewer returns, write its reply verbatim with the Write tool to a file in your session scratchpad directory, then run `bash <root>/.gaia/scripts/audit-light-mark.sh --root <root> --member <m> --verdict <that file's absolute path> --reviewer-tokens <n> --reviewer-duration-ms <n>`. A heredoc or pipe carrying the reply is refused under worktree confinement, so the file is the only spelling that runs there. When the reviewer errored or returned nothing, write no file and run the same command with `--verdict -` and `< /dev/null`. Omit the two reviewer flags when the values are unknown. Never edit, summarize, or reformat the reply.
+4. On `light-cleared` the member is cleared for this digest: do not dispatch it. On any `full` line or a non-zero exit, dispatch the member on the same tree in this round; the bound hook counts that dispatch as a round as usual. A no-op, empty, or malformed reply is not re-dispatched, unlike the single re-dispatch `.claude/rules/subagent-dispatch.md` prescribes for a no-op agent artifact: the full member is strictly more coverage than a second light attempt, so falling back to it is the retry.
+5. The light-marker script is the only light writer. Never write a verdict, route record, or marker by any other route.
+
+Light routing happens only in this unit's member wave. When the PR Merge Workflow's main thread runs the member wave itself (no subagent nesting), every member dispatches Full.
+
 ## Per round
 
 Follow the page in this order: `#### The audit loop unit` for the unit's shape, then `#### The fix round: fixer, verifier, gate`, then `#### When rounds stop: pre-commit a disposition for every branch`, and `#### Cross-remit findings` for any out-of-scope or cross-remit finding. Unit-specific rules on top:
 
-- Dispatch the round's members in parallel.
+- Dispatch the round's members in parallel, each routed as `## Routing each member` says.
+<!-- gaia:maintainer-only:start -->
+- After each member's result lands, run `[ -f <root>/.gaia/scripts/audit-light-telemetry.sh ] && bash <root>/.gaia/scripts/audit-light-telemetry.sh member-result --root <root> --member <m> || true`.
+<!-- gaia:maintainer-only:end -->
 <!-- gaia:maintainer-only:start -->
 - Dispose findings under `.claude/rules/maintainers/harness-triage-threshold.md` when that file exists.
 <!-- gaia:maintainer-only:end -->
@@ -68,7 +83,7 @@ Write `<run>/unit-<u>.json` with Bash at the main-checkout absolute path, and re
 ## Never
 
 - Never run `gh pr merge`, and never merge by any other route.
-- Never run `post-audit-status.sh` or post a `GAIA-Audit` status, and never write a marker by hand.
+- Never run `post-audit-status.sh` or post a `GAIA-Audit` status, and never write a marker by hand: the light-marker script is the one scripted light writer, and only through `## Routing each member`.
 - Never edit `CHANGELOG.md`.
 - Never write the loop state file, and never write `vetoes.json`; only the main thread writes vetoes.
 - Never ask the user a question; a subagent cannot prompt. A decision that needs a human is a `needs-human` stop.
