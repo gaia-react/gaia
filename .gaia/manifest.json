@@ -540,7 +540,6 @@
     "frontend/test/mocks/database.ts": "owned",
     "frontend/test/mocks/faker.ts": "owned",
     "frontend/test/mocks/index.ts": "owned",
-    "frontend/test/mocks/ping.ts": "owned",
     "frontend/test/mocks/url.ts": "owned",
     "frontend/test/msw-worker-script.test.ts": "owned",
     "frontend/test/preview-env.test.ts": "owned",

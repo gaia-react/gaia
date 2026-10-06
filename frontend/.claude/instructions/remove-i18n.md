@@ -128,16 +128,13 @@ import {HydratedRouter} from 'react-router/dom';
 
 const prepareApp = async () => {
   if (import.meta.env.DEV && window.process.env.MSW_ENABLED === true) {
-    const [{network}, {default: handlers}, {default: ping}] = await Promise.all(
-      [
-        import('virtual:msw'),
-        import('../test/mocks'),
-        import('../test/mocks/ping'),
-      ]
-    );
+    const [{network}, {default: handlers}] = await Promise.all([
+      import('virtual:msw'),
+      import('../test/mocks'),
+    ]);
 
     network.configure({
-      handlers: [ping, ...handlers],
+      handlers,
       onUnhandledFrame: 'bypass',
     });
     await network.enable();
