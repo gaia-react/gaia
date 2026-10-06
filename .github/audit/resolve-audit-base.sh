@@ -172,11 +172,16 @@
 #   The trailer and the status are light-blind by design: they attest that no
 #   dispatched member is pending, not how deep any review was. So the --member
 #   form anchors on a whole-team signal S only when the local marker store
-#   positively verifies depth for EVERY member, scanned across the whole
-#   roster and not only the resolving member: (a) no candidate in range may
-#   carry a tree holding any member's non-full earned marker (light, or a body
-#   without the field, at any version), and (b) some member's earned
-#   `review: full` marker must record S's tree. Either failing disables the
+#   shows no non-full marker among the in-range candidate trees, scanned
+#   across the whole roster and not only the resolving member: (a) no
+#   candidate in range may carry a tree holding any member's non-full earned
+#   marker (light, or a body without the field, at any version), and (b) some
+#   member's earned `review: full` marker must record S's tree. Check (a)
+#   matches a marker by the tree it recorded, so a non-full marker whose tree
+#   left the range (a content amend or a rebase rewrites the commit trees
+#   while the marker stays valid by content digest) is not found and does not
+#   disable the arm; the reviewed delta of that member can then fall before
+#   the anchor. Either failing check disables the
 #   arm for the run and logs why; the walk still continues, so the per-member
 #   arm can win on an older full clearance of the resolving member, and with
 #   none in range the answer is no-anchor, the full-branch base.
@@ -638,7 +643,7 @@ EOF
 # store scan costs seconds per member; the resolving member's scan is the one
 # already captured above, not repeated.
 scan_roster_depth() {
-  local roster_member roster_includes_member="false" candidate_tree non_full_owner
+  local roster_member roster_includes_member="false" candidate_tree non_full_owner candidate_sha
   while IFS= read -r roster_member; do
     [ -n "$roster_member" ] || continue
     if [ "$roster_member" = "$member" ]; then
@@ -652,12 +657,12 @@ $roster_members
 EOF
   [ "$roster_includes_member" = "true" ] || record_roster_scan "$member" "$earned_scan"
   if [ -n "$non_full_trees" ]; then
-    for sha in $candidates; do
-      candidate_tree="$(git -C "$repo_root" rev-parse "${sha}^{tree}" 2>/dev/null || true)"
+    for candidate_sha in $candidates; do
+      candidate_tree="$(git -C "$repo_root" rev-parse "${candidate_sha}^{tree}" 2>/dev/null || true)"
       [ -n "$candidate_tree" ] || continue
       if grep -qxF -- "$candidate_tree" <<<"$non_full_trees"; then
         non_full_owner="$(grep -F -- "${candidate_tree}${TAB}" <<<"$non_full_owners" | head -n 1 | cut -f2 || true)"
-        team_arm_refusal="${non_full_owner:-a member} holds a non-full clearance at ${sha}, so the whole-team signal may stand on content no full review read"
+        team_arm_refusal="${non_full_owner:-a member} holds a non-full clearance at ${candidate_sha}, so the whole-team signal may stand on content no full review read"
         echo "resolve-audit-base: ${team_arm_refusal}; whole-team anchoring disabled for ${member} this run." >&2
         break
       fi

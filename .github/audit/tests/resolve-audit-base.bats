@@ -1162,6 +1162,21 @@ assert_global_reset_for() {
   grep -qF "${OTHER_MEMBER} holds a non-full clearance at ${signal_sha}" <<<"$stderr"
 }
 
+@test "review depth: a non-full marker outside the range leaves the verified signal as the base" {
+  require_jq
+  add_commit a
+  add_commit b
+  signal_sha="$(stamp_anchor bare)"
+  support_signal_at HEAD
+  write_clearance "$OTHER_MEMBER" earned "$(printf '%040d' 7)" 1.2.3 light >/dev/null
+  add_commit c
+
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  [ "$status" -eq 0 ]
+  [ "$(member_base)" = "$signal_sha" ]
+  [ "$(member_reason)" = "team-signal" ]
+}
+
 @test "review depth: the same signal anchors when the other member's clearance is full" {
   require_jq
   add_commit a

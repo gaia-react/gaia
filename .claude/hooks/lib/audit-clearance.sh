@@ -172,6 +172,8 @@ clearance_review_kind() {
 clearance_scan() {
   local root="$1" member="$2" provenance="$3"
   local audit_directory extension file base stem digest tree version sha any=1
+  local fields rest marker_member marker_provenance review tab
+  tab="$(printf '\t')"
   command -v jq >/dev/null 2>&1 || return 1
   case "$provenance" in
     earned) extension="ok" ;;
@@ -190,15 +192,32 @@ clearance_scan() {
         *) continue ;;
       esac
     fi
-    digest="$(clearance_field "$file" digest)"
+    # One jq read per marker: seven tab-separated fields, emitted in a fixed
+    # order and peeled with parameter expansion (not `read` under a tab IFS,
+    # which would collapse an empty version or sha and shift the later fields).
+    fields="$(jq -r '[.digest, .member, .provenance, .tree, .version, .sha, .review]
+      | map(if . == null then "" elif type == "string" then . else tojson end) | join("\t")' "$file" 2>/dev/null)" || continue
+    digest="${fields%%"$tab"*}"
+    rest="${fields#*"$tab"}"
+    marker_member="${rest%%"$tab"*}"
+    rest="${rest#*"$tab"}"
+    marker_provenance="${rest%%"$tab"*}"
+    rest="${rest#*"$tab"}"
+    tree="${rest%%"$tab"*}"
+    rest="${rest#*"$tab"}"
+    version="${rest%%"$tab"*}"
+    rest="${rest#*"$tab"}"
+    sha="${rest%%"$tab"*}"
+    review="${rest#*"$tab"}"
     [ -n "$digest" ] && [ "$digest" = "$stem" ] || continue
-    [ "$(clearance_field "$file" member)" = "$member" ] || continue
-    [ "$(clearance_field "$file" provenance)" = "$provenance" ] || continue
-    tree="$(clearance_field "$file" tree)"
+    [ "$marker_member" = "$member" ] || continue
+    [ "$marker_provenance" = "$provenance" ] || continue
     [ -n "$tree" ] || continue
-    version="$(clearance_field "$file" version)"
-    sha="$(clearance_field "$file" sha)"
-    printf '%s\t%s\t%s\t%s\t%s\n' "$tree" "$version" "$sha" "$(clearance_review_kind "$file")" "$file"
+    case "$review" in
+      full|light) ;;
+      *) review="-" ;;
+    esac
+    printf '%s\t%s\t%s\t%s\t%s\n' "$tree" "$version" "$sha" "$review" "$file"
     any=0
   done
   return "$any"

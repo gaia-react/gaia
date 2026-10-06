@@ -212,18 +212,24 @@ light_mark_main() {
   fi
 
   # Step 9: the light sidecar, keyed by the shared base exactly as members key
-  # theirs. The resolver has no --root flag and reads its repository from the
-  # working directory, so it runs in a subshell rooted at --root; the cwd of
-  # this script never changes.
+  # theirs. The argument-less resolver prints that shared base as its single
+  # stdout line and scans no clearance store, so the per-member form's store
+  # walk is never paid here. The resolver has no --root flag and reads its
+  # repository from the working directory, so it runs in a subshell rooted at
+  # --root; the cwd of this script never changes.
   local resolver_output shared_reference shared_base sidecar_path
-  resolver_output="$(cd "$root" && bash "$root/.github/audit/resolve-audit-base.sh" --member "$member" 2>/dev/null)" \
+  resolver_output="$(cd "$root" && bash "$root/.github/audit/resolve-audit-base.sh" 2>&1)" \
     || _light_mark_full sidecar-failed
   # A degraded answer means the resolver could not read its repository, and its
-  # shared base is then the main ref by default rather than a derivation.
-  [ "$(printf '%s\n' "$resolver_output" | sed -n '2p')" != "degraded" ] || _light_mark_full sidecar-failed
-  shared_reference="$(printf '%s\n' "$resolver_output" | sed -n '3p')"
+  # shared base is then the main ref by default rather than a derivation. The
+  # argument-less form signals it only in its stderr record, so stderr is read
+  # alongside stdout and the base is the last line.
+  case "$resolver_output" in
+    *" reason=degraded "*) _light_mark_full sidecar-failed ;;
+  esac
+  shared_reference="$(printf '%s\n' "$resolver_output" | tail -n 1)"
   [ -n "$shared_reference" ] || _light_mark_full sidecar-failed
-  # Line 3 is a ref; members key their artifacts by its merge-base with HEAD.
+  # The answer is a ref; members key their artifacts by its merge-base with HEAD.
   shared_base="$(git -C "$root" merge-base "$shared_reference" HEAD 2>/dev/null)" || _light_mark_full sidecar-failed
   [ -n "$shared_base" ] || _light_mark_full sidecar-failed
   sidecar_path="$(printf '[]' | bash "$root/.gaia/scripts/audit-write-findings.sh" --root "$root" --member "$member" \
