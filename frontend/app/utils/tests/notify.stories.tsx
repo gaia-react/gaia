@@ -272,12 +272,16 @@ export const ErrorDurationLongerByDefault: StoryObj<typeof meta> = {
 
 export const ExplicitDurationOverrides: StoryObj<typeof meta> = {
   play: async () => {
+    // Longer than the error default and than any scan of this story: a
+    // shorter value can close the toast while axe runs, and its exit state
+    // trips aria-hidden-focus.
+    const customDuration = 123_456;
     const addSpy = spyOn(toast, 'add');
-    notify.error({duration: 1234, message: 'custom duration'});
+    notify.error({duration: customDuration, message: 'custom duration'});
     const addedOptions = addSpy.mock.calls[0][0];
 
     addSpy.mockRestore();
-    await expect(addedOptions).toMatchObject({timeout: 1234});
+    await expect(addedOptions).toMatchObject({timeout: customDuration});
   },
 };
 

@@ -1,7 +1,8 @@
 import type {ComponentProps} from 'react';
 import {useTranslation} from 'react-i18next';
-import type {Meta, StoryFn} from '@storybook/react-vite';
+import type {Meta, StoryFn, StoryObj} from '@storybook/react-vite';
 import {SearchIcon, SendIcon} from 'lucide-react';
+import {expect, userEvent, within} from 'storybook/test';
 import {
   InputGroup,
   InputGroupAddon,
@@ -99,4 +100,33 @@ export const Disabled: StoryFn = () => {
       </InputGroupAddon>
     </InputGroup>
   );
+};
+
+export const AddonClickFocusesInput: StoryObj<typeof meta> = {
+  play: async ({canvasElement}) => {
+    const canvas = within(canvasElement);
+    const input = canvas.getByRole('textbox', {name: 'Email'});
+
+    await expect(input).not.toHaveFocus();
+
+    await userEvent.click(canvas.getByText('Email'));
+
+    await expect(input).toHaveFocus();
+  },
+  render: () => <AddonStory align="inline-start" />,
+};
+
+export const AddonButtonClickKeepsFocusOnButton: StoryObj<typeof meta> = {
+  play: async ({canvasElement}) => {
+    const canvas = within(canvasElement);
+    const button = canvas.getByRole('button', {name: 'Submit'});
+
+    await userEvent.click(button);
+
+    await expect(button).toHaveFocus();
+    await expect(
+      canvas.getByRole('textbox', {name: 'Email'})
+    ).not.toHaveFocus();
+  },
+  render: () => <ButtonStory size="xs" />,
 };

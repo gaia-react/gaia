@@ -20,7 +20,7 @@ Configure a story through props and args (for example `LanguageSelect`'s `langua
 
 ## Accessibility
 
-addon-a11y runs on every story with the WCAG 2.0/2.1 A and AA tags and fails on a violation of any impact; only the `region` rule is off, because a story renders a fragment outside the page landmarks. The config is `parameters.a11y` in `.storybook/preview.ts`. Do not opt a story out (`parameters.a11y.test: 'off'` or a disabled rule) without a reason written beside it; fix the markup instead. Page landmark and heading checks are play assertions (one `main`, one level-1 heading).
+addon-a11y runs on every story with the WCAG 2.0/2.1 A and AA tags and fails on a violation of any impact; only the `region` rule is off, because a story renders a fragment outside the page landmarks. The config is `.storybook/a11y.ts`, which `.storybook/preview.ts` sets as `parameters.a11y`. Do not opt a story out (`parameters.a11y.test: 'todo'` or `'off'`, or a disabled rule); fix the markup instead. This check is the only light-theme axe pass a story gets, since the Playwright scan covers dark, so `test/story-a11y-opt-out.test.tsx` fails on any story whose resolved `a11y.test` is not `'error'` unless its id and a reason are recorded there. Page landmark and heading checks are play assertions (one `main`, one level-1 heading).
 
 ## Vitest and Chromatic
 
