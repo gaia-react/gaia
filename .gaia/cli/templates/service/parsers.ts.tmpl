@@ -5,3 +5,5 @@ export const {{singular}}Schema = z.object({
 {{/each}}});
 
 export const {{plural}}Schema = z.array({{singular}}Schema);
+
+export const {{singular}}InputSchema = {{inputSchemaExpression}};

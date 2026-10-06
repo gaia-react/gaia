@@ -5,6 +5,15 @@
 import {existsSync, readdirSync, statSync} from 'node:fs';
 import path from 'node:path';
 
+/** Names of the directories directly under `dir`, sorted; empty when `dir` is absent. */
+export const listSubdirectories = (dir: string): string[] =>
+  existsSync(dir) ?
+    readdirSync(dir, {withFileTypes: true})
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .toSorted((a, b) => a.localeCompare(b))
+  : [];
+
 /**
  * The folder under `app/services/` holding the domain layer. The template
  * ships it as `gaia` and adopters rename it to their company or API name, so
@@ -26,13 +35,9 @@ export const resolveLayer = (
       : {error: `--layer folder not found: app/services/${requested}/`};
   }
 
-  const candidates =
-    existsSync(servicesDir) ?
-      readdirSync(servicesDir, {withFileTypes: true})
-        .filter((entry) => entry.isDirectory() && entry.name !== 'api')
-        .map((entry) => entry.name)
-        .toSorted((a, b) => a.localeCompare(b))
-    : [];
+  const candidates = listSubdirectories(servicesDir).filter(
+    (name) => name !== 'api'
+  );
   const [only] = candidates;
 
   if (candidates.length === 1 && only !== undefined) return {layer: only};

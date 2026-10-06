@@ -29,23 +29,9 @@ const packageJsonSchema = z.looseObject({
   devDependencies: dependencyMapSchema,
 });
 
-/**
- * Whether the frontend package at `packageDir` declares TanStack Query in its
- * dependencies or devDependencies. A missing or unreadable `package.json`
- * reads as not installed.
- */
-export const hasTanstackQuery = (packageDir: string): boolean => {
-  let raw: unknown;
-
-  try {
-    raw = JSON.parse(
-      readFileSync(path.join(packageDir, 'package.json'), 'utf8')
-    );
-  } catch {
-    return false;
-  }
-
-  const parsed = packageJsonSchema.safeParse(raw);
+/** Whether parsed `package.json` content declares TanStack Query as a dependency or devDependency. */
+export const declaresTanstackQuery = (packageJson: unknown): boolean => {
+  const parsed = packageJsonSchema.safeParse(packageJson);
 
   if (!parsed.success) return false;
 
@@ -56,6 +42,48 @@ export const hasTanstackQuery = (packageDir: string): boolean => {
     Object.hasOwn(devDependencies ?? {}, TANSTACK_QUERY_PACKAGE)
   );
 };
+
+/**
+ * Whether the frontend package at `packageDir` declares TanStack Query in its
+ * dependencies or devDependencies. A missing or unreadable `package.json`
+ * reads as not installed.
+ */
+export const hasTanstackQuery = (packageDir: string): boolean => {
+  try {
+    return declaresTanstackQuery(
+      JSON.parse(readFileSync(path.join(packageDir, 'package.json'), 'utf8'))
+    );
+  } catch {
+    return false;
+  }
+};
+
+const hasExportedRequest = (source: string, name: string): boolean =>
+  new RegExp(
+    String.raw`\bexport\s+(?:async\s+)?(?:const|function)\s+${name}\b`,
+    'u'
+  ).test(source);
+
+/** The getter names `queries.ts` calls, which `requests.ts` must export. */
+const queryGetterNames = (names: {
+  Plural: string;
+  Singular: string;
+}): string[] => [`getAll${names.Plural}`, `get${names.Singular}ById`];
+
+/** The getters of `queryGetterNames` that `requestsSource` does not export. */
+export const missingQueryGetters = (
+  requestsSource: string,
+  names: {Plural: string; Singular: string}
+): string[] =>
+  queryGetterNames(names).filter(
+    (name) => !hasExportedRequest(requestsSource, name)
+  );
+
+/** Whether `requestsSource` exports every getter `queries.ts` calls. */
+export const hasQueryGetters = (
+  requestsSource: string,
+  names: {Plural: string; Singular: string}
+): boolean => missingQueryGetters(requestsSource, names).length === 0;
 
 /** Absolute path of a data-layer template under the scaffold templates. */
 export const dataLayerTemplatePath = (fileName: string): string =>

@@ -1,49 +1,74 @@
-import {api} from '../api';
-import {{{plural}}Schema, {{singular}}Schema} from './parsers';
-import type {{{Plural}}, {{Singular}}} from './types';
-import {{{NAME_UPPER}}_URLS} from './urls';
+{{importLines}}
 
 {{#hasGet}}
-export const getAll{{Plural}} = async (): Promise<{{Plural}}> => {
-  const result = await api({{NAME_UPPER}}_URLS.{{plural}});
+export const getAll{{Plural}} = async (
+  signal?: AbortSignal
+): Promise<{{Plural}}> => {
+  const {data} = await api({{NAME_UPPER}}_URLS.{{plural}}, {
+    schema: envelope({{plural}}Schema),
+    signal,
+  });
 
-  return {{plural}}Schema.parse(result.data);
+  return data;
 };
 
-export const get{{Singular}}ById = async (id: string): Promise<{{Singular}}> => {
-  const result = await api({{NAME_UPPER}}_URLS.{{plural}}Id, {pathParams: {id}});
+export const get{{Singular}}ById = async (
+  id: string,
+  signal?: AbortSignal
+): Promise<{{Singular}}> => {
+  const {data} = await api({{NAME_UPPER}}_URLS.{{plural}}Id, {
+    pathParams: {id},
+    schema: envelope({{singular}}Schema),
+    signal,
+  });
 
-  return {{singular}}Schema.parse(result.data);
+  return data;
 };
 
 {{/hasGet}}
 {{#hasPost}}
 export const create{{Singular}} = async (
-  body: FormData
+  input: {{Singular}}Input,
+  signal?: AbortSignal
 ): Promise<{{Singular}}> => {
-  const result = await api({{NAME_UPPER}}_URLS.{{plural}}, {body, method: 'post'});
+  const {data} = await api({{NAME_UPPER}}_URLS.{{plural}}, {
+    json: input,
+    method: 'post',
+    schema: envelope({{singular}}Schema),
+    signal,
+  });
 
-  return {{singular}}Schema.parse(result.data);
+  return data;
 };
 
 {{/hasPost}}
 {{#hasPut}}
 export const update{{Singular}} = async (
-  body: FormData
+  id: string,
+  input: {{Singular}}Input,
+  signal?: AbortSignal
 ): Promise<{{Singular}}> => {
-  const id = String(body.get('id') ?? '');
-  const result = await api({{NAME_UPPER}}_URLS.{{plural}}Id, {
-    body,
+  const {data} = await api({{NAME_UPPER}}_URLS.{{plural}}Id, {
+    json: input,
     method: 'put',
     pathParams: {id},
+    schema: envelope({{singular}}Schema),
+    signal,
   });
 
-  return {{singular}}Schema.parse(result.data);
+  return data;
 };
 
 {{/hasPut}}
 {{#hasDelete}}
-export const delete{{Singular}} = async (id: string) =>
-  api({{NAME_UPPER}}_URLS.{{plural}}Id, {method: 'delete', pathParams: {id}});
+export const delete{{Singular}} = async (
+  id: string,
+  signal?: AbortSignal
+): Promise<void> =>
+  api({{NAME_UPPER}}_URLS.{{plural}}Id, {
+    method: 'delete',
+    pathParams: {id},
+    signal,
+  });
 
 {{/hasDelete}}

@@ -1,0 +1,22 @@
+import {queryOptions} from '@tanstack/react-query';
+import {getAll{{Plural}}, get{{Singular}}ById} from './requests';
+
+const {{NAME_UPPER}}_ROOT_KEY = ['{{name}}'] as const;
+
+export const {{singular}}Keys = {
+  all: {{NAME_UPPER}}_ROOT_KEY,
+  detail: (id: string) => [...{{NAME_UPPER}}_ROOT_KEY, 'detail', id] as const,
+  list: () => [...{{NAME_UPPER}}_ROOT_KEY, 'list'] as const,
+};
+
+export const {{plural}}Query = () =>
+  queryOptions({
+    queryFn: ({signal}) => getAll{{Plural}}(signal),
+    queryKey: {{singular}}Keys.list(),
+  });
+
+export const {{singular}}Query = (id: string) =>
+  queryOptions({
+    queryFn: ({signal}) => get{{Singular}}ById(id, signal),
+    queryKey: {{singular}}Keys.detail(id),
+  });

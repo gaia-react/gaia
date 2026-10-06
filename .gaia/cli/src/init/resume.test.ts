@@ -74,6 +74,31 @@ describe('argvFromStepArgs', () => {
     expect(argvFromStepArgs('configure-i18n', {locales: 'bad'})).toBeNull();
   });
 
+  test('reconstructs configure-data-layer argv and round-trips its saved args', () => {
+    expect(
+      argvFromStepArgs('configure-data-layer', {
+        casing: 'camel',
+        layer: 'acme',
+        query: true,
+      })
+    ).toEqual(['--casing', 'camel', '--query', 'true', '--layer', 'acme']);
+    expect(
+      argvFromStepArgs('configure-data-layer', {
+        casing: null,
+        layer: null,
+        query: false,
+      })
+    ).toEqual(['--query', 'false']);
+    expect(
+      argvFromStepArgs('configure-data-layer', {
+        casing: null,
+        layer: null,
+        query: null,
+      })
+    ).toBeNull();
+    expect(argvFromStepArgs('configure-data-layer', undefined)).toBeNull();
+  });
+
   test('reconstructs rename argv', () => {
     expect(
       argvFromStepArgs('rename', {kebab: 'hello-world', title: 'Hello World'})
@@ -118,9 +143,12 @@ describe('argvFromStepArgs', () => {
     ).toBeNull();
   });
 
-  test('STEP_ORDER keeps seven steps with write-project-config at index 5', () => {
-    expect(STEP_ORDER).toHaveLength(7);
-    expect(STEP_ORDER.indexOf('write-project-config')).toBe(5);
+  test('STEP_ORDER places configure-data-layer right after configure-i18n', () => {
+    expect(STEP_ORDER).toHaveLength(8);
+    expect(STEP_ORDER.indexOf('configure-data-layer')).toBe(
+      STEP_ORDER.indexOf('configure-i18n') + 1
+    );
+    expect(STEP_ORDER.indexOf('write-project-config')).toBe(6);
     expect(STEP_ORDER as readonly string[]).not.toContain(
       ['configure', 'automation'].join('-')
     );
@@ -149,11 +177,16 @@ describe('init resume', () => {
     vi.restoreAllMocks();
   });
 
-  test('--from-step 3 skips steps 1-2 if marked complete; runs from step 3', async () => {
+  test('--from-step 4 skips steps 1-3 if marked complete; runs from step 4', async () => {
     sandbox = setupSandbox();
     writeState(sandbox.root, {
-      completed_steps: ['strip-branding', 'configure-i18n'],
+      completed_steps: [
+        'strip-branding',
+        'configure-i18n',
+        'configure-data-layer',
+      ],
       step_args: {
+        'configure-data-layer': {casing: 'snake', layer: null, query: false},
         'configure-i18n': {locales: ['en'], strip: false},
         rename: {kebab: 'hello', title: 'Hello'},
         'strip-branding': {title: 'Hello'},
@@ -170,9 +203,10 @@ describe('init resume', () => {
       return 0;
     };
 
-    const exit = await run(['--from-step', '3'], {
+    const exit = await run(['--from-step', '4'], {
       cwd: sandbox.root,
       runners: {
+        'configure-data-layer': stub('configure-data-layer'),
         'configure-i18n': stub('configure-i18n'),
         finalize: stub('finalize'),
         rename: stub('rename'),
@@ -183,7 +217,7 @@ describe('init resume', () => {
     });
     expect(exit).toBe(0);
 
-    // configure-i18n + strip-branding are step 1 and 2, and ALSO marked
+    // the first three steps are before step 4, and ALSO marked
     // complete. They should not run regardless of skip-vs-from-step.
     expect(calls.map((c) => c.step)).toEqual([
       'rename',
@@ -199,6 +233,7 @@ describe('init resume', () => {
     writeState(sandbox.root, {
       completed_steps: ['strip-branding'],
       step_args: {
+        'configure-data-layer': {casing: 'snake', layer: null, query: false},
         'configure-i18n': {locales: ['en'], strip: true},
         rename: {kebab: 'x', title: 'X'},
         'strip-branding': {title: 'X'},
@@ -218,6 +253,7 @@ describe('init resume', () => {
     const exit = await run([], {
       cwd: sandbox.root,
       runners: {
+        'configure-data-layer': stub('configure-data-layer'),
         'configure-i18n': stub('configure-i18n'),
         finalize: stub('finalize'),
         rename: stub('rename'),
@@ -229,6 +265,7 @@ describe('init resume', () => {
     expect(exit).toBe(0);
     expect(ran).not.toContain('strip-branding');
     expect(ran).toContain('configure-i18n');
+    expect(ran).toContain('configure-data-layer');
     expect(ran).toContain('write-project-config');
     expect(ran).toContain('finalize');
   });
@@ -265,14 +302,14 @@ describe('init resume', () => {
     expect(stdio.errors.join('')).toContain('--from-step must be');
   });
 
-  test('--from-step 8 is refused because only seven steps exist', async () => {
+  test('--from-step 9 is refused because only eight steps exist', async () => {
     sandbox = setupSandbox();
-    const exit = await run(['--from-step', '8'], {cwd: sandbox.root});
+    const exit = await run(['--from-step', '9'], {cwd: sandbox.root});
     expect(exit).toBe(1);
     expect(stdio.errors.join('')).toContain('--from-step must be');
   });
 
-  test('--from-step 6 replays write-project-config from its saved args', async () => {
+  test('--from-step 7 replays write-project-config from its saved args', async () => {
     sandbox = setupSandbox();
     writeState(sandbox.root, {
       completed_steps: [],
@@ -292,7 +329,7 @@ describe('init resume', () => {
       return 0;
     };
 
-    const exit = await run(['--from-step', '6'], {
+    const exit = await run(['--from-step', '7'], {
       cwd: sandbox.root,
       runners: {
         finalize: stub('finalize'),
@@ -310,6 +347,42 @@ describe('init resume', () => {
       '--isolation-policy',
       'prefer-branch',
     ]);
+  });
+
+  test('replays a saved configure-data-layer step through its runner', async () => {
+    sandbox = setupSandbox();
+    writeState(sandbox.root, {
+      completed_steps: [],
+      step_args: {
+        'configure-data-layer': {casing: 'camel', layer: null, query: true},
+        rename: {kebab: 'x', title: 'X'},
+        'wire-statusline': {mode: 'skip'},
+        'write-project-config': {sandbox_recommended: false},
+      },
+    });
+
+    const calls: {argv: readonly string[]; step: string}[] = [];
+
+    const stub = (step: string) => (argv: readonly string[]) => {
+      calls.push({argv, step});
+
+      return 0;
+    };
+
+    const exit = await run(['--from-step', '3'], {
+      cwd: sandbox.root,
+      runners: {
+        'configure-data-layer': stub('configure-data-layer'),
+        finalize: stub('finalize'),
+        rename: stub('rename'),
+        'wire-statusline': stub('wire-statusline'),
+        'write-project-config': stub('write-project-config'),
+      },
+    });
+
+    expect(exit).toBe(0);
+    expect(calls[0]?.step).toBe('configure-data-layer');
+    expect(calls[0]?.argv).toEqual(['--casing', 'camel', '--query', 'true']);
   });
 
   test('--from-step 0 exits 1', async () => {

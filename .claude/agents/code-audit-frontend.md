@@ -31,6 +31,7 @@ You conduct comprehensive code audits for production React 19 / React Router 7 S
 - `*.config.cjs`
 - `*.config.js`
 - `frontend/.playwright/**`
+- `frontend/eslint/**`
 - `.npmrc`
 - `.prettierignore`
 - `.nvmrc`

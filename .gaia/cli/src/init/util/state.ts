@@ -98,6 +98,7 @@ export const markStepCompleted = (
 export const STEP_ORDER = [
   'strip-branding',
   'configure-i18n',
+  'configure-data-layer',
   'rename',
   'wire-statusline',
   'bootstrap-env',

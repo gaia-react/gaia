@@ -65,6 +65,60 @@ const setupSandbox = ({withDatabase}: {withDatabase: boolean}): Sandbox => {
 
 const read = (filePath: string): string => readFileSync(filePath, 'utf8');
 
+const itemsDir = (root: string): string =>
+  path.join(root, 'app', 'services', 'gaia', 'items');
+
+const scaffoldItems = (root: string, extra: string[] = []): number =>
+  run(
+    [
+      'items',
+      '--endpoints',
+      'get,post,put,delete',
+      '--schema',
+      'id:string,displayName:string',
+      ...extra,
+    ],
+    {cwd: root}
+  );
+
+const scaffoldGetPost = (root: string): number =>
+  run(
+    [
+      'items',
+      '--endpoints',
+      'get,post',
+      '--schema',
+      'id:string,displayName:string',
+    ],
+    {cwd: root}
+  );
+
+const installQuery = (root: string): void => {
+  writeFileSync(
+    path.join(root, 'package.json'),
+    JSON.stringify({dependencies: {'@tanstack/react-query': '5.104.1'}}),
+    'utf8'
+  );
+};
+
+const captureStderr = (action: () => number): {code: number; err: string} => {
+  let err = '';
+  const originalWrite = process.stderr.write.bind(process.stderr);
+
+  (process.stderr as any).write = (chunk: string | Uint8Array): boolean => {
+    err +=
+      typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString('utf8');
+
+    return true;
+  };
+
+  try {
+    return {code: action(), err};
+  } finally {
+    process.stderr.write = originalWrite;
+  }
+};
+
 describe('gaia scaffold service', () => {
   let sandbox: Sandbox;
 
@@ -628,5 +682,209 @@ describe('gaia scaffold service', () => {
     );
 
     expect(code).toBe(EXIT_CODES.UNKNOWN_SUBCOMMAND);
+  });
+
+  describe('request contract', () => {
+    test('requests.ts validates through envelope, sends JSON, and threads signal', () => {
+      expect(scaffoldItems(sandbox.dir)).toBe(EXIT_CODES.OK);
+      const requests = read(path.join(itemsDir(sandbox.dir), 'requests.ts'));
+
+      expect(requests).toContain("import {api, envelope} from '../api';");
+      expect(requests).toContain('envelope(itemsSchema)');
+      expect(requests).toContain('envelope(itemSchema)');
+      expect(requests).toContain('json: input');
+      expect(requests).toContain('signal');
+      expect(requests).toContain(
+        'export const updateItem = async (\n  id: string,\n  input: ItemInput,'
+      );
+      expect(requests).toContain(
+        'export const deleteItem = async (\n  id: string,\n  signal?: AbortSignal\n): Promise<void> =>'
+      );
+      expect(requests).not.toMatch(/\.parse\(/u);
+      expect(requests).not.toMatch(/api</u);
+      expect(requests).not.toMatch(/ as /u);
+      expect(requests).not.toContain('FormData');
+    });
+
+    test('a delete-only service imports no unused envelope or parsers', () => {
+      const code = run(
+        ['items', '--endpoints', 'delete', '--schema', 'id:string'],
+        {cwd: sandbox.dir}
+      );
+      const requests = read(path.join(itemsDir(sandbox.dir), 'requests.ts'));
+
+      expect(code).toBe(EXIT_CODES.OK);
+      expect(requests).toContain("import {api} from '../api';");
+      expect(requests).not.toContain('envelope');
+      expect(requests).not.toContain('./parsers');
+    });
+
+    test('input schema omits id when the schema has one', () => {
+      scaffoldItems(sandbox.dir);
+      const parsers = read(path.join(itemsDir(sandbox.dir), 'parsers.ts'));
+      const types = read(path.join(itemsDir(sandbox.dir), 'types.ts'));
+
+      expect(parsers).toContain(
+        'itemInputSchema = itemSchema.omit({id: true});'
+      );
+      expect(types).toContain('export type ItemInput');
+    });
+
+    test('input schema is the entity schema when there is no id', () => {
+      const code = run(
+        ['items', '--endpoints', 'post', '--schema', 'displayName:string'],
+        {cwd: sandbox.dir}
+      );
+
+      expect(code).toBe(EXIT_CODES.OK);
+      expect(read(path.join(itemsDir(sandbox.dir), 'parsers.ts'))).toContain(
+        'itemInputSchema = itemSchema;'
+      );
+    });
+
+    test('parsers.ts keeps one field per line as "  <name>: <zod>,"', () => {
+      scaffoldItems(sandbox.dir);
+      const parsers = read(path.join(itemsDir(sandbox.dir), 'parsers.ts'));
+      const block = /z\.object\(\{\n([\s\S]*?)\}\);/u.exec(parsers)?.[1];
+
+      expect(block?.split('\n').filter(Boolean)).toEqual([
+        '  id: z.string(),',
+        '  displayName: z.string(),',
+      ]);
+    });
+
+    test('mock post and put read the JSON body, not form data', () => {
+      scaffoldItems(sandbox.dir, ['--mocks']);
+      const mockDir = path.join(sandbox.dir, 'test', 'mocks', 'items');
+      const post = read(path.join(mockDir, 'post.ts'));
+      const put = read(path.join(mockDir, 'put.ts'));
+
+      expect(post).toContain('request.json()');
+      expect(post).toContain('crypto.randomUUID()');
+      expect(post).not.toContain('formData');
+      expect(put).toContain('request.json()');
+      expect(put).not.toContain('formData');
+    });
+  });
+
+  describe('TanStack Query', () => {
+    test('writes queries.ts when Query is installed', () => {
+      installQuery(sandbox.dir);
+      expect(scaffoldGetPost(sandbox.dir)).toBe(EXIT_CODES.OK);
+      const queries = read(path.join(itemsDir(sandbox.dir), 'queries.ts'));
+
+      expect(queries).toContain('export const itemKeys');
+      expect(queries).toContain('all: ITEMS_ROOT_KEY');
+      expect(queries).toContain('detail: (id: string)');
+      expect(queries).toContain(
+        'queryFn: ({signal}) => getItemById(id, signal)'
+      );
+      expect(queries).toContain('queryFn: ({signal}) => getAllItems(signal)');
+      expect(read(path.join(itemsDir(sandbox.dir), 'index.ts'))).not.toContain(
+        'queries'
+      );
+    });
+
+    test('writes no queries.ts without the dependency', () => {
+      expect(scaffoldGetPost(sandbox.dir)).toBe(EXIT_CODES.OK);
+      expect(existsSync(path.join(itemsDir(sandbox.dir), 'queries.ts'))).toBe(
+        false
+      );
+    });
+
+    test('writes no queries.ts when the service has no get endpoint', () => {
+      installQuery(sandbox.dir);
+      const code = run(
+        ['items', '--endpoints', 'post', '--schema', 'id:string'],
+        {cwd: sandbox.dir}
+      );
+
+      expect(code).toBe(EXIT_CODES.OK);
+      expect(existsSync(path.join(itemsDir(sandbox.dir), 'queries.ts'))).toBe(
+        false
+      );
+    });
+
+    test('--queries-only writes only queries.ts and leaves the rest byte-identical', () => {
+      scaffoldGetPost(sandbox.dir);
+      const files = [
+        'parsers.ts',
+        'types.ts',
+        'requests.ts',
+        'urls.ts',
+        'index.ts',
+      ];
+      const before = files.map((file) =>
+        read(path.join(itemsDir(sandbox.dir), file))
+      );
+      installQuery(sandbox.dir);
+
+      expect(run(['items', '--queries-only'], {cwd: sandbox.dir})).toBe(
+        EXIT_CODES.OK
+      );
+      expect(existsSync(path.join(itemsDir(sandbox.dir), 'queries.ts'))).toBe(
+        true
+      );
+      expect(
+        files.map((file) => read(path.join(itemsDir(sandbox.dir), file)))
+      ).toEqual(before);
+    });
+
+    test('--queries-only refuses without Query and names the install command', () => {
+      scaffoldGetPost(sandbox.dir);
+      const {code, err} = captureStderr(() =>
+        run(['items', '--queries-only'], {cwd: sandbox.dir})
+      );
+
+      expect(code).toBe(EXIT_CODES.UNKNOWN_SUBCOMMAND);
+      expect(err).toContain('init configure-data-layer --query true');
+      expect(existsSync(path.join(itemsDir(sandbox.dir), 'queries.ts'))).toBe(
+        false
+      );
+    });
+
+    test('--queries-only refuses a missing service folder', () => {
+      installQuery(sandbox.dir);
+      const {code} = captureStderr(() =>
+        run(['items', '--queries-only'], {cwd: sandbox.dir})
+      );
+
+      expect(code).toBe(EXIT_CODES.UNKNOWN_SUBCOMMAND);
+      expect(existsSync(itemsDir(sandbox.dir))).toBe(false);
+    });
+
+    test('--queries-only refuses when requests.ts lacks the by-id getter', () => {
+      scaffoldGetPost(sandbox.dir);
+      writeFileSync(
+        path.join(itemsDir(sandbox.dir), 'requests.ts'),
+        'export const getAllItems = async () => [];\n',
+        'utf8'
+      );
+      installQuery(sandbox.dir);
+      const {code, err} = captureStderr(() =>
+        run(['items', '--queries-only'], {cwd: sandbox.dir})
+      );
+
+      expect(code).toBe(EXIT_CODES.UNKNOWN_SUBCOMMAND);
+      expect(err).toContain('getItemById');
+      expect(existsSync(path.join(itemsDir(sandbox.dir), 'queries.ts'))).toBe(
+        false
+      );
+    });
+
+    test('--queries-only refuses --endpoints and --schema', () => {
+      scaffoldGetPost(sandbox.dir);
+      installQuery(sandbox.dir);
+      const {code} = captureStderr(() =>
+        run(['items', '--queries-only', '--endpoints', 'get'], {
+          cwd: sandbox.dir,
+        })
+      );
+
+      expect(code).toBe(EXIT_CODES.UNKNOWN_SUBCOMMAND);
+      expect(existsSync(path.join(itemsDir(sandbox.dir), 'queries.ts'))).toBe(
+        false
+      );
+    });
   });
 });

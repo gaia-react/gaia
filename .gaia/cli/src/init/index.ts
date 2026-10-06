@@ -6,7 +6,7 @@
  * Also owns the target guard: every step rewrites the tree it runs in, and
  * every per-step precondition asks only whether its own rewrite is doable,
  * never where it is running. The guard is here rather than in any one step
- * because all eight resolve the target identically from ambient state.
+ * because every step resolves the target identically from ambient state.
  */
 import {existsSync} from 'node:fs';
 import path from 'node:path';
@@ -14,6 +14,7 @@ import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {lookupOwn} from '../util/argv.js';
 import {run as runBootstrapEnv} from './bootstrap-env.js';
+import {run as runConfigureDataLayer} from './configure-data-layer.js';
 import {run as runConfigureI18n} from './configure-i18n.js';
 import {run as runFinalize} from './finalize.js';
 import {run as runRename} from './rename.js';
@@ -28,6 +29,10 @@ const HELP_TEXT = `Usage: gaia init <subcommand> [args]
                             Remove GAIA branding from the project.
   configure-i18n --locales <list> --strip <bool>
                             Configure or strip the i18n surface.
+  configure-data-layer [--casing <c>] [--query <bool>] [--layer <folder>]
+                            Apply the backend-casing and TanStack Query answers.
+                            Writes one JSON line to stdout. Rerunnable after
+                            init finalizes, e.g. --query true adds Query later.
   rename --title <T> --kebab <K>
                             Rename the project across package.json + locales.
   wire-statusline --mode <global|project|skip>
@@ -96,6 +101,7 @@ const SUBCOMMAND_HANDLERS: Readonly<
   Partial<Record<string, SubcommandHandler>>
 > = {
   'bootstrap-env': runBootstrapEnv,
+  'configure-data-layer': runConfigureDataLayer,
   'configure-i18n': runConfigureI18n,
   finalize: runFinalize,
   rename: runRename,

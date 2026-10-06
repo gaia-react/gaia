@@ -8,6 +8,7 @@
 #
 #   gaia init strip-branding   --title "Test Project"
 #   gaia init configure-i18n   --locales "en,es" --strip false
+#   gaia init configure-data-layer --casing snake --query false
 #   gaia init rename           --title "Test Project" --kebab "test-project"
 #   gaia init wire-statusline  --mode project
 #   gaia init finalize
@@ -28,6 +29,13 @@
 #   configure-i18n  frontend/app/languages/index.ts contains both 'en' and 'es'
 #                   imports + a LANGUAGES list with both codes;
 #                   frontend/app/i18n.ts has fallbackLng: 'en'.
+#
+#   configure-data-layer
+#                   Prints one JSON line on stdout (the one step exempt from
+#                   the no-stdout contract) whose `changed` list is empty;
+#                   the domain layer's create() keeps no useSnakeCase
+#                   argument and frontend/package.json gains no TanStack
+#                   Query dependency.
 #
 #   rename          package.json "name" == "test-project"; CLAUDE.md
 #                   first H1 line == "# Test Project";
@@ -82,6 +90,8 @@ rsync -a "$STAGING"/ "$SCAFFOLD"/
 # configure-i18n targets.
 [ -f "$SCAFFOLD/frontend/app/languages/index.ts" ] \
   || { fail "staged tree missing frontend/app/languages/index.ts (configure-i18n target)"; exit 1; }
+[ -f "$SCAFFOLD/frontend/app/services/gaia/api.ts" ] \
+  || { fail "staged tree missing frontend/app/services/gaia/api.ts (configure-data-layer target)"; exit 1; }
 [ -f "$SCAFFOLD/frontend/app/i18n.ts" ] \
   || { fail "staged tree missing frontend/app/i18n.ts (configure-i18n fallbackLng target)"; exit 1; }
 
@@ -122,6 +132,16 @@ run_step() {
   fi
 }
 
+# The one init step with stdout: configure-data-layer prints a single JSON
+# line, which the caller asserts on instead of the no-stdout contract.
+run_step_json() {
+  local label="$1"; shift
+  local stdout
+  stdout="$(cd "$SCAFFOLD" && run_cli "$GAIA" "$@")" \
+    || fail_with_stderr "gaia $* exited non-zero on staged tree (step: $label)"
+  printf '%s' "$stdout"
+}
+
 # Step 1; strip-branding. Sets up the tree for the remaining steps;
 # post-conditions are covered by 07.
 run_step "strip-branding" \
@@ -143,7 +163,27 @@ grep -q "LANGUAGES = \['en', 'es'\]" "$LANGUAGES_INDEX" \
 grep -q "fallbackLng: 'en'" "$SCAFFOLD/frontend/app/i18n.ts" \
   || { fail "configure-i18n did not set fallbackLng: 'en' in frontend/app/i18n.ts"; exit 1; }
 
-# Step 3; rename. Touches package.json, CLAUDE.md H1, and two seeded
+# Step 3; configure-data-layer, with the Automatic defaults (snake_case,
+# no TanStack Query). Additive: with these answers nothing changes.
+DATA_LAYER_JSON="$(run_step_json "configure-data-layer" \
+  init configure-data-layer --casing snake --query false)"
+DATA_LAYER_CHANGED="$(printf '%s' "$DATA_LAYER_JSON" | node -e '
+  const parsed_output = JSON.parse(require("node:fs").readFileSync(0, "utf8"));
+  process.stdout.write(String((parsed_output.changed || ["<missing>"]).length));
+' 2>/dev/null)" \
+  || { fail "configure-data-layer stdout is not one JSON line (got: $DATA_LAYER_JSON)"; exit 1; }
+[ "$DATA_LAYER_CHANGED" = "0" ] \
+  || { fail "configure-data-layer --casing snake --query false changed files (got: $DATA_LAYER_JSON)"; exit 1; }
+if grep -q 'useSnakeCase' "$SCAFFOLD/frontend/app/services/gaia/api.ts"; then
+  fail "configure-data-layer --casing snake left a useSnakeCase argument in frontend/app/services/gaia/api.ts"
+  exit 1
+fi
+if grep -q '@tanstack/react-query' "$SCAFFOLD/frontend/package.json"; then
+  fail "configure-data-layer --query false added @tanstack/react-query to frontend/package.json"
+  exit 1
+fi
+
+# Step 4; rename. Touches package.json, CLAUDE.md H1, and two seeded
 # language files.
 run_step "rename" \
   init rename --title "$TITLE" --kebab "$KEBAB"
@@ -164,7 +204,7 @@ grep -qE "siteName:\s*['\"]Test Project['\"]" "$SCAFFOLD/frontend/app/languages/
 grep -qE "title:\s*['\"]Test Project['\"]" "$SCAFFOLD/frontend/app/languages/en/pages/_index.ts" \
   || { fail "rename did not set title: 'Test Project' in en/pages/_index.ts"; exit 1; }
 
-# Step 4; wire-statusline. --mode project so the merge writes to the
+# Step 5; wire-statusline. --mode project so the merge writes to the
 # scaffold's .claude/settings.json; never the host's ~/.claude.
 run_step "wire-statusline" \
   init wire-statusline --mode project
@@ -192,7 +232,7 @@ ACTUAL_STATUSLINE="$(node -e '
 grep -q '"statusLine":' "$SETTINGS" \
   || { fail "wire-statusline did not insert statusLine key"; exit 1; }
 
-# Step 5; finalize. Removes the interceptor hook + command file, prunes
+# Step 6; finalize. Removes the interceptor hook + command file, prunes
 # the matching UserPromptExpansion entry from settings.json.
 run_step "finalize" \
   init finalize
@@ -200,4 +240,4 @@ run_step "finalize" \
 [ ! -f "$SCAFFOLD/.claude/commands/gaia-init.md" ] \
   || { fail "finalize did not remove .claude/commands/gaia-init.md"; exit 1; }
 
-pass "gaia init full sequence (strip-branding → configure-i18n → rename → wire-statusline → finalize) produced expected post-conditions on staged tree"
+pass "gaia init full sequence (strip-branding → configure-i18n → configure-data-layer → rename → wire-statusline → finalize) produced expected post-conditions on staged tree"

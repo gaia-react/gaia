@@ -23,6 +23,7 @@ import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {takeValue} from '../util/argv.js';
 import {run as runBootstrapEnv} from './bootstrap-env.js';
+import {run as runConfigureDataLayer} from './configure-data-layer.js';
 import {run as runConfigureI18n} from './configure-i18n.js';
 import {run as runFinalize} from './finalize.js';
 import {run as runRename} from './rename.js';
@@ -43,11 +44,12 @@ const HELP_TEXT = `Usage: gaia init resume [--from-step <N>]
   Steps (in order):
     1. strip-branding
     2. configure-i18n
-    3. rename
-    4. wire-statusline
-    5. bootstrap-env
-    6. write-project-config
-    7. finalize
+    3. configure-data-layer
+    4. rename
+    5. wire-statusline
+    6. bootstrap-env
+    7. write-project-config
+    8. finalize
 
   Exit codes:
     0  resume completed
@@ -113,6 +115,7 @@ type StepRunner = (
 
 const STEP_RUNNERS: Readonly<Record<StepName, StepRunner>> = {
   'bootstrap-env': runBootstrapEnv,
+  'configure-data-layer': runConfigureDataLayer,
   'configure-i18n': runConfigureI18n,
   finalize: runFinalize,
   rename: runRename,
@@ -155,6 +158,23 @@ const buildConfigureI18nArgv: StepArgvBuilder = (saved) => {
   ];
 };
 
+const buildConfigureDataLayerArgv: StepArgvBuilder = (saved) => {
+  if (saved === undefined) return null;
+  const {casing, layer, query} = saved;
+  const argv: string[] = [];
+
+  if (typeof casing === 'string') argv.push('--casing', casing);
+
+  if (typeof query === 'boolean')
+    argv.push('--query', query ? 'true' : 'false');
+
+  if (argv.length === 0) return null;
+
+  if (typeof layer === 'string') argv.push('--layer', layer);
+
+  return argv;
+};
+
 const buildRenameArgv: StepArgvBuilder = (saved) => {
   if (saved === undefined) return null;
   const {kebab, title} = saved;
@@ -191,6 +211,7 @@ const buildWireStatuslineArgv: StepArgvBuilder = (saved) => {
 
 const STEP_ARGV_BUILDERS: Readonly<Record<StepName, StepArgvBuilder>> = {
   'bootstrap-env': () => [],
+  'configure-data-layer': buildConfigureDataLayerArgv,
   'configure-i18n': buildConfigureI18nArgv,
   finalize: () => [],
   rename: buildRenameArgv,
