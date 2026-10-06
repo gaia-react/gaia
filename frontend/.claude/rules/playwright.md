@@ -112,10 +112,10 @@ GAIA's `playwright.config.ts` ships these defaults:
 - Locally: Playwright default workers (half the cores), no retries, multi-browser opt-in via `TEST_ALL_BROWSERS`.
 - Primary browser: Chromium only by default. Other browsers (webkit, firefox, mobile) guarded behind `TEST_ALL_BROWSERS` flag.
 
-## Traces and screenshots
+## Traces
 
 - `trace: 'retain-on-failure'`, traces saved to `.playwright/output/` on failure.
-- Specs make no explicit screenshot calls, except the Storybook scan below, which writes one dark-theme screenshot per story (uploaded on every CI run so hover and active colors can be reviewed by eye). Use the trace viewer for debugging.
+- Use the trace viewer for debugging.
 
 ## Accessibility scans
 

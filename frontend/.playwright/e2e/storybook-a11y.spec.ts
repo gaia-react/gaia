@@ -100,10 +100,6 @@ const expectStoryHasContent = async (page: Page, storyId: string) => {
   }
 };
 
-const saveScreenshot = async (page: Page, testInfo: TestInfo, name: string) => {
-  await page.screenshot({path: testInfo.outputPath(`${name}.png`)});
-};
-
 const expectToastIconContrast = async (
   page: Page,
   testInfo: TestInfo,
@@ -166,7 +162,6 @@ test.describe('storybook a11y', () => {
   // Dark only: the Vitest storybook project already runs every story under
   // addon-a11y in the light theme, failing on any impact rather than only
   // critical and serious, so a light pass here would repeat a weaker check.
-  // Light screenshots come from Chromatic's light mode.
   const storyScanTheme = 'dark';
 
   for (const story of stories) {
@@ -191,7 +186,7 @@ test.describe('storybook a11y', () => {
       await expectStoryHasContent(page, story.id);
       await expectTheme(page, storyScanTheme);
 
-      // Before the screenshot and axe scan: a notify toast dismisses after 5s.
+      // Before the axe scan: a notify toast dismisses after 5s.
       for (const {type} of notifyTypes) {
         await expectToastIconContrast(page, testInfo, {
           theme: storyScanTheme,
@@ -199,7 +194,6 @@ test.describe('storybook a11y', () => {
         });
       }
 
-      await saveScreenshot(page, testInfo, `${story.id}-${storyScanTheme}`);
       await expectNoSeriousA11yViolations(page, testInfo, {
         label: storyScanTheme,
       });

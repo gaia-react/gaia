@@ -214,17 +214,3 @@ jobs:
           name: playwright-traces
           path: frontend/.playwright/output
           retention-days: 5
-      # Every story is screenshotted in dark, so the maintainer can review
-      # hover, active and dark rendering by eye (axe checks neither); light
-      # rendering is in Chromatic's light-mode snapshots.
-      # `always()` rather than `failure()`: a passing run keeps them too.
-      - if: ${{ always() && steps.chore-deps.outputs.skip == 'false' && steps.filter.outputs.code == 'true' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        name: Upload Playwright story screenshots
-        with:
-          name: playwright-story-screenshots
-          path: |
-            frontend/.playwright/output/**/*.png
-            !frontend/.playwright/output/**/attachments/**
-          if-no-files-found: error
-          retention-days: 5

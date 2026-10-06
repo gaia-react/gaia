@@ -8,7 +8,7 @@ model: haiku
 
 How to resolve specific axe-core violations in this project.
 
-Violations come from addon-a11y, which axe-checks every story under Vitest (configured in `.storybook/preview.ts`), `.playwright/a11y.ts` (Playwright), or the `code-audit-frontend` agent's a11y bucket. General a11y guidance lives in `frontend/.claude/rules/accessibility.md`.
+Violations come from addon-a11y, which axe-checks every story under Vitest (configured in `.storybook/a11y.ts`), `.playwright/a11y.ts` (Playwright), or the `code-audit-frontend` agent's a11y bucket. General a11y guidance lives in `frontend/.claude/rules/accessibility.md`.
 
 ## Fix-then-verify loop
 

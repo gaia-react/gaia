@@ -132,9 +132,9 @@ When a project requires authentication, use a global setup file (`auth.setup.ts`
 
 `fullyParallel: true`; CI uses `workers: '100%'` (one per runner core), `retries: 2`. Locally, `retries: 0`: the global-setup warm-up and the `hydration()` probe-then-reload self-heal the cold dep-optimize race, so a real flake fails instead of being masked. Multi-browser (webkit, Firefox, mobile) is opt-in via `TEST_ALL_BROWSERS`. See `frontend/.claude/rules/playwright.md` for the full table.
 
-## Traces and screenshots
+## Traces
 
-`trace: 'retain-on-failure'`: traces saved to `frontend/.playwright/output/` on test failure. Use the Playwright trace viewer (`pnpm exec playwright show-trace`) to inspect. No manual screenshot calls in specs.
+`trace: 'retain-on-failure'`: traces saved to `frontend/.playwright/output/` on test failure. Use the Playwright trace viewer (`pnpm exec playwright show-trace`) to inspect.
 
 ## Scripts
 
