@@ -18,6 +18,7 @@
 # Usage
 #   audit-write-findings.sh --root <path> --member <name> --base <sha>
 #                           --findings <file>|-
+#                           [--resolutions <file>|-]
 #                           [--review-base <sha> --base-reason <token>]
 #                           [--anchor-tree <tree>] [--review light] [--help|-h]
 #
@@ -31,15 +32,21 @@
 #     --findings  REQUIRED. Path to a JSON array of finding objects, or `-` to
 #                 read that array from stdin. `[]` is valid and meaningful: the
 #                 member ran and found nothing countable.
+#     --resolutions OPTIONAL. Path to a JSON array of resolution records
+#                 {"entry_id": "<id>", "rationale": "<why>"}, or `-` for stdin.
+#                 Accounts for a still-open re-run ledger entry that is fixed or
+#                 operator-acknowledged. entry_id must be a non-empty string and
+#                 rationale non-empty after trimming. `--findings -` and
+#                 `--resolutions -` cannot both read stdin (exit 2).
 #     --review-base OPTIONAL. The PER-MEMBER review base sha
 #                 (.github/audit/resolve-audit-base.sh --member), distinct from
 #                 --base above (the SHARED artifact key). Must be paired with
 #                 --base-reason: exactly one present is a usage error.
 #     --base-reason OPTIONAL. The reason token the resolver emitted for
 #                 --review-base. Paired with it as above.
-#     --anchor-tree OPTIONAL. The recorded tree of the clearance that anchored
-#                 the per-member base, or an empty value on every path where no
-#                 clearance anchored it. Independent of the pairing rule: valid
+#     --anchor-tree OPTIONAL. The recorded tree of the clearance or refusal that
+#                 anchored the per-member base, or an empty value on every path
+#                 where no record anchored it. Independent of the pairing rule: valid
 #                 present or absent regardless of --review-base/--base-reason.
 #     --review    OPTIONAL. Only `light` is accepted (anything else is exit 2). It
 #                 writes the sidecar of a light review to its own path (see
@@ -81,6 +88,9 @@
 #                  reasoning that suggested looking (e.g. "fed the hook the
 #                  braced-expansion fixture: base denies, HEAD allows").
 #   suggested_fix  the recommended repair, concrete enough to act on.
+#   entry_id       OPTIONAL non-empty string. Present means "this finding is the
+#                  still-open re-run ledger entry with this id" (a re-report; the
+#                  line may have moved, the id is what matches).
 #   area_tags      OPTIONAL array of strings. Defaults to the `path`'s
 #                  directory, which is what the recurrence tally reads; supply
 #                  it only to say something the dirname does not.
@@ -93,6 +103,12 @@
 #
 # Written shape (schema 1; the shape post-findings-block.sh merges)
 #   {"schema":1,"member":"<name>","findings":[ {<finding>}, ... ]}
+#   With --resolutions, one more additive top-level key, an array (`[]` when
+#   the given array is empty):
+#   {"schema":1,"member":"<name>","findings":[...],
+#    "resolutions":[{"entry_id":"<id>","rationale":"<why>"}]}
+#   Without --resolutions the key is absent. Neither `entry_id` nor
+#   `resolutions` is projected into the PR-comment findings block.
 #   With --review-base and --base-reason both present and non-empty, one
 #   additive key:
 #   {"schema":1,"member":"<name>","findings":[...],
@@ -131,6 +147,7 @@ usage() {
   cat <<'EOF' >&2
 usage: audit-write-findings.sh --root <path> --member <name> --base <sha>
                                --findings <file>|-
+                               [--resolutions <file>|-]
                                [--review-base <sha> --base-reason <token>]
                                [--anchor-tree <tree>] [--review light]
                                [--help|-h]
@@ -139,16 +156,18 @@ usage: audit-write-findings.sh --root <path> --member <name> --base <sha>
   --member      the Code Audit Team member writing the sidecar.
   --base        the incremental audit base sha (keyed with this tree's branch).
   --findings    a JSON array of finding objects, or `-` for stdin. `[]` is valid.
+  --resolutions a JSON array of {entry_id, rationale} records, or `-` for
+                stdin (not together with `--findings -`).
   --review-base the per-member review base sha. Must be paired with
                 --base-reason: exactly one present is a usage error.
   --base-reason the resolver's reason token for --review-base.
-  --anchor-tree the clearance tree that anchored --review-base. Independently
+  --anchor-tree the clearance or refusal tree that anchored --review-base. Independently
                 optional; never part of the pairing rule.
   --review      only `light`: writes the light sidecar path and body key.
 
 Each finding requires finding_class, severity (error|warning|suggestion), path,
 line, title, failure_mode, verified_by, and suggested_fix. area_tags is
-optional and defaults to the path's directory.
+optional and defaults to the path's directory; entry_id is optional.
 
 exit 0 = written (path on stdout) or declined; 2 = usage/validation error.
 EOF
@@ -162,6 +181,8 @@ ROOT=""
 MEMBER=""
 BASE=""
 FINDINGS_INPUT=""
+RESOLUTIONS_INPUT=""
+RESOLUTIONS_SET=0
 REVIEW_BASE=""
 REVIEW_BASE_SET=0
 BASE_REASON=""
@@ -189,6 +210,11 @@ while [ "$#" -gt 0 ]; do
       ;;
     --findings)
       FINDINGS_INPUT="${2:-}"
+      shift 2 2>/dev/null || shift
+      ;;
+    --resolutions)
+      RESOLUTIONS_INPUT="${2:-}"
+      RESOLUTIONS_SET=1
       shift 2 2>/dev/null || shift
       ;;
     --review-base)
@@ -248,6 +274,18 @@ fi
 
 if [ "$REVIEW_SET" -eq 1 ] && [ "$REVIEW" != "light" ]; then
   error "invalid --review '$REVIEW' (only light is accepted)"
+  usage
+  exit 2
+fi
+
+if [ "$RESOLUTIONS_SET" -eq 1 ] && [ -z "$RESOLUTIONS_INPUT" ]; then
+  error "--resolutions requires a file or -"
+  usage
+  exit 2
+fi
+
+if [ "$FINDINGS_INPUT" = "-" ] && [ "$RESOLUTIONS_INPUT" = "-" ]; then
+  error "--findings - and --resolutions - cannot both read stdin"
   usage
   exit 2
 fi
@@ -312,6 +350,8 @@ if ! violation="$(printf '%s' "$raw" | jq -r '
             and ((($finding.area_tags | type) != "array")
                  or (any($finding.area_tags[]; type != "string"))))
         then "area_tags, when present, must be an array of strings"
+      elif ($finding | has("entry_id")) and ($finding.entry_id | nonempty_string | not)
+        then "entry_id, when present, must be a non-empty string"
       elif ($finding | has("security")) and (($finding.security | type) != "boolean")
         then "security, when present, must be a boolean"
       elif ($finding | has("cross_remit")) and (($finding.cross_remit | type) != "boolean")
@@ -330,6 +370,44 @@ if [ -n "$violation" ]; then
   error "findings[${_bad_index}]: ${_bad_reason}"
   error "a finding that cannot name its file, line, defect, verification, and repair cannot brief the fix that would clear it"
   exit 2
+fi
+
+# Resolutions are validated in the same pre-write window as findings.
+resolutions_raw=""
+if [ "$RESOLUTIONS_SET" -eq 1 ]; then
+  if [ "$RESOLUTIONS_INPUT" = "-" ]; then
+    resolutions_raw="$(cat)"
+  else
+    if [ ! -f "$RESOLUTIONS_INPUT" ]; then
+      error "--resolutions file does not exist: $RESOLUTIONS_INPUT"
+      exit 2
+    fi
+    resolutions_raw="$(cat "$RESOLUTIONS_INPUT")"
+  fi
+  if ! printf '%s' "$resolutions_raw" | jq -e 'type == "array"' >/dev/null 2>&1; then
+    error "--resolutions must hold a JSON array of {entry_id, rationale} objects"
+    exit 2
+  fi
+  if ! resolution_violation="$(printf '%s' "$resolutions_raw" | jq -r '
+    def reason:
+      . as $resolution
+      | if ($resolution | type) != "object" then "not a JSON object"
+        elif (($resolution.entry_id | type) != "string") or ($resolution.entry_id | length) == 0
+          then "entry_id must be a non-empty string"
+        elif (($resolution.rationale | type) != "string")
+          or ($resolution.rationale | gsub("^\\s+|\\s+$"; "") | length) == 0
+          then "rationale must be a non-empty string"
+        else empty
+        end;
+    first(to_entries[] | select((.value | [reason] | length) > 0) | "\(.key)\t\(.value | reason)") // empty
+  ' 2>&1)"; then
+    error "cannot validate the resolutions input: $resolution_violation"
+    exit 2
+  fi
+  if [ -n "$resolution_violation" ]; then
+    error "resolutions[${resolution_violation%%$'\t'*}]: ${resolution_violation#*$'\t'}"
+    exit 2
+  fi
 fi
 
 # -----------------------------------------------------------------------------
@@ -394,11 +472,14 @@ if ! printf '%s' "$raw" | jq -c \
   --arg base_reason "$BASE_REASON" \
   --arg anchor_tree "$ANCHOR_TREE" \
   --arg review "$REVIEW" \
+  --argjson has_resolutions "$([ "$RESOLUTIONS_SET" -eq 1 ] && echo true || echo false)" \
+  --argjson resolutions "${resolutions_raw:-[]}" \
   '{schema: 1, member: $member}
    + (if $review == "light" then {review: "light"} else {} end)
    + {findings: [.[]
       | . + {area_tags: (.area_tags
              // [(if (.path | test("/")) then (.path | sub("/[^/]*$"; "")) else "." end)])}]}
+   + (if $has_resolutions then {resolutions: $resolutions} else {} end)
    + (if $has_review_base
       then {review_base: ({sha: $review_base, reason: $base_reason}
             + (if $has_anchor_tree then {anchor_tree: $anchor_tree} else {} end))}

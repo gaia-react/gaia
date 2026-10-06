@@ -1594,6 +1594,228 @@ assert_degraded_with_unparseable() {
 }
 
 # -----------------------------------------------------------------------------
+# Characterization of the resolver outputs that a per-member anchor change must
+# leave alone, compared against a golden recorded from the resolver before that
+# change. The golden holds labels, never raw shas or trees (those differ on
+# every run): a commit label the fixture assigns, `tree:<label>`, `main-ref`, a
+# reason token, or `empty`.
+# -----------------------------------------------------------------------------
+
+CHARACTERIZATION_REASON_TOKENS=" no-anchor team-signal machinery-reset rules-reset-member rules-reset-global degraded no-version member-clearance "
+
+characterization_golden_path() {
+  printf '%s\n' "$THIS_DIRECTORY/fixtures/resolve-audit-base-characterization.golden"
+}
+
+# The forms a fixture captures: `argless` is line 1 of the argument-less form,
+# `member4` all four --member lines, `member2` the first two.
+characterization_forms() {
+  case "$1" in
+    refusal-only|team-older-than-refusal|machinery-after-team) printf '%s\n' "argless member4" ;;
+    clearance-both-rules) printf '%s\n' "member2" ;;
+    clearance-degraded|clearance-no-version) printf '%s\n' "member2 argless" ;;
+    *) return 1 ;;
+  esac
+}
+
+# Fixture names, derived from the builder functions below so a builder added
+# without a golden record (or the reverse) is caught by the set-equality test.
+characterization_fixture_names() {
+  declare -F | awk '{ print $3 }' | grep '^characterization_build_' | sed 's/^characterization_build_//'
+}
+
+# Record <label> for the sha and tree of <ref>.
+characterization_label() {
+  printf '%s\t%s\n' "$(sha_of "$2")" "$1" >> "$CHARACTERIZATION_LABELS"
+  printf '%s\t%s\n' "$(tree_of "$2")" "tree:$1" >> "$CHARACTERIZATION_LABELS"
+}
+
+characterization_render_value() {
+  local value="$1" label
+  if [ -z "$value" ]; then
+    printf '%s\n' "empty"
+    return 0
+  fi
+  if [ "$value" = "main" ]; then
+    printf '%s\n' "main-ref"
+    return 0
+  fi
+  case "$CHARACTERIZATION_REASON_TOKENS" in
+    *" ${value} "*) printf '%s\n' "$value"; return 0 ;;
+  esac
+  label="$(awk -F '\t' -v value="$value" '$1 == value { print $2; exit }' "$CHARACTERIZATION_LABELS")"
+  if [ -n "$label" ]; then
+    printf '%s\n' "$label"
+  else
+    printf 'unlabelled:%s\n' "$value"
+  fi
+}
+
+characterization_build_refusal-only() {
+  add_commit a
+  characterization_label A HEAD
+  write_clearance "$DEFAULT_MEMBER" refused "$(tree_of HEAD)" 1.2.3 >/dev/null
+  add_commit b
+  characterization_label B HEAD
+}
+
+characterization_build_team-older-than-refusal() {
+  add_commit t
+  stamp_anchor >/dev/null
+  characterization_label T HEAD
+  add_commit a
+  characterization_label A HEAD
+  write_clearance "$DEFAULT_MEMBER" refused "$(tree_of HEAD)" 1.2.3 >/dev/null
+  add_commit b
+  characterization_label B HEAD
+}
+
+characterization_build_machinery-after-team() {
+  add_commit t
+  stamp_anchor >/dev/null
+  characterization_label T HEAD
+  add_commit a
+  characterization_label A HEAD
+  write_clearance "$DEFAULT_MEMBER" refused "$(tree_of HEAD)" 1.2.3 >/dev/null
+  add_machinery_commit
+  add_commit b
+  characterization_label B HEAD
+}
+
+characterization_build_clearance-both-rules() {
+  add_commit a
+  characterization_label A HEAD
+  write_clearance "$DEFAULT_MEMBER" earned "$(tree_of HEAD)" 1.2.3 full >/dev/null
+  mkdir -p "$SANDBOX/.claude/agents" "$SANDBOX/.claude/rules"
+  echo "agent" > "$SANDBOX/.claude/agents/code-audit-frontend.md"
+  echo "gate rule" > "$SANDBOX/.claude/rules/quality-gate.md"
+  git -C "$SANDBOX" add .claude/agents/code-audit-frontend.md .claude/rules/quality-gate.md
+  git -C "$SANDBOX" commit --quiet -m "agent definition and global rules"
+  add_commit b
+  characterization_label B HEAD
+}
+
+characterization_build_clearance-degraded() {
+  add_commit a
+  characterization_label A HEAD
+  write_clearance "$DEFAULT_MEMBER" earned "$(tree_of HEAD)" 1.2.3 full >/dev/null
+  add_commit b
+  characterization_label B HEAD
+  rm -f "$SANDBOX/.claude/hooks/lib/audit-scope.sh"
+}
+
+characterization_build_clearance-no-version() {
+  add_commit a
+  characterization_label A HEAD
+  write_clearance "$DEFAULT_MEMBER" earned "$(tree_of HEAD)" 1.2.3 full >/dev/null
+  add_commit b
+  characterization_label B HEAD
+  rm -f "$SANDBOX/.gaia/VERSION"
+}
+
+# Build <fixture> in the sandbox, run the forms it captures, and print the
+# rendered records in golden format.
+characterization_render() {
+  local fixture="$1" form line_number value
+  CHARACTERIZATION_LABELS="$BATS_TEST_TMPDIR/characterization-labels"
+  : > "$CHARACTERIZATION_LABELS"
+  "characterization_build_${fixture}" || return 1
+  for form in $(characterization_forms "$fixture"); do
+    case "$form" in
+      argless)
+        value="$( cd "$SANDBOX" && "$SCRIPT" 2>/dev/null )" || return 1
+        printf '%s argless 1 %s\n' "$fixture" "$(characterization_render_value "$value")"
+        ;;
+      member4|member2)
+        run_member "$DEFAULT_MEMBER" 2>/dev/null || return 1
+        for line_number in 1 2 3 4; do
+          [ "$line_number" -le "${form#member}" ] || continue
+          value="$(sed -n "${line_number}p" "$MEMBER_OUTPUT_FILE")"
+          printf '%s member %s %s\n' "$fixture" "$line_number" "$(characterization_render_value "$value")"
+        done
+        ;;
+    esac
+  done
+}
+
+# Compare the rendered records for <fixture> with the golden's lines for it.
+# $2 overrides the golden path. A fixture the golden has no line for fails
+# rather than comparing empty to empty; the rendered text goes to stderr so a
+# golden can be regenerated from a failing run against an unchanged resolver.
+characterization_matches_golden() {
+  local fixture="$1" golden="${2:-$(characterization_golden_path)}" actual expected
+  actual="$(characterization_render "$fixture")" || return 1
+  expected="$(grep -E "^${fixture} " "$golden" || true)"
+  if [ -z "$expected" ]; then
+    printf 'golden has no record for fixture %s; actual:\n%s\n' "$fixture" "$actual" >&2
+    return 1
+  fi
+  if [ "$actual" != "$expected" ]; then
+    printf 'fixture %s differs from the golden.\nexpected:\n%s\nactual:\n%s\n' "$fixture" "$expected" "$actual" >&2
+    return 1
+  fi
+  return 0
+}
+
+# Assert the golden holds <count> records for <fixture>.
+assert_characterization_count() {
+  local fixture="$1" count="$2"
+  [ "$(grep -cE "^${fixture} " "$(characterization_golden_path)")" -eq "$count" ]
+}
+
+@test "characterization: refusal-only fixture matches the golden" {
+  require_jq
+  characterization_matches_golden refusal-only
+  assert_characterization_count refusal-only 5
+}
+
+@test "characterization: team-older-than-refusal fixture matches the golden" {
+  require_jq
+  characterization_matches_golden team-older-than-refusal
+  assert_characterization_count team-older-than-refusal 5
+}
+
+@test "characterization: machinery-after-team fixture matches the golden" {
+  require_jq
+  characterization_matches_golden machinery-after-team
+  assert_characterization_count machinery-after-team 5
+}
+
+@test "characterization: clearance-both-rules fixture matches the golden" {
+  require_jq
+  characterization_matches_golden clearance-both-rules
+  assert_characterization_count clearance-both-rules 2
+}
+
+@test "characterization: clearance-degraded fixture matches the golden" {
+  require_jq
+  characterization_matches_golden clearance-degraded
+  assert_characterization_count clearance-degraded 3
+}
+
+@test "characterization: clearance-no-version fixture matches the golden" {
+  require_jq
+  characterization_matches_golden clearance-no-version
+  assert_characterization_count clearance-no-version 3
+}
+
+@test "characterization: the comparison fails on a deliberately wrong expected line" {
+  require_jq
+  wrong_golden="$BATS_TEST_TMPDIR/wrong.golden"
+  sed 's/^refusal-only member 2 .*/refusal-only member 2 team-signal/' "$(characterization_golden_path)" > "$wrong_golden"
+  grep -qxF "refusal-only member 2 team-signal" "$wrong_golden"
+  characterization_matches_golden refusal-only "$wrong_golden" 2>/dev/null && return 1
+  true
+}
+
+@test "characterization: the golden's fixture set equals the suite's fixture set" {
+  golden_names="$(grep -v '^#' "$(characterization_golden_path)" | awk 'NF { print $1 }' | sort -u)"
+  suite_names="$(characterization_fixture_names | sort -u)"
+  [ -n "$suite_names" ]
+  [ "$golden_names" = "$suite_names" ]
+}
+
+# -----------------------------------------------------------------------------
 # Argument handling. A mis-invocation cannot be trusted to be a member call
 # site, so it degrades to the argument-less full-scope shape -- and still
 # exits 0, because a non-zero exit degrades the agent call sites to an EMPTY

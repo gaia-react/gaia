@@ -354,6 +354,60 @@ EOF
   [ "$second" = "$first" ]
 }
 
+@test "the stored capture records the printed BASE_REASON and no override" {
+  local repo key scope_file
+  repo="$(make_repo capture-reason)"
+  git -C "$repo" checkout -q -b feat
+  commit_file "$repo" app/a.ts
+  run --separate-stderr "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-maintainer-shell --root "$repo"
+  [ "$status" -eq 0 ]
+  key="$(value_of "$output" AUDIT_KEY)"
+  [ -n "$key" ]
+  scope_file="$repo/.gaia/local/audit/${key}.code-audit-maintainer-shell.scope.json"
+  [ -f "$scope_file" ]
+  [ -n "$(value_of "$output" BASE_REASON)" ]
+  [ "$(jq -r '.base_reason' "$scope_file")" = "$(value_of "$output" BASE_REASON)" ]
+  [ "$(jq -r '.base_overridden' "$scope_file")" = "false" ]
+}
+
+@test "--base-override stores base_overridden true and still stores the resolver's reason" {
+  local repo first key scope_file
+  repo="$(make_repo capture-override)"
+  git -C "$repo" checkout -q -b feat
+  commit_file "$repo" app/a.ts
+  first="$(git -C "$repo" rev-parse HEAD)"
+  commit_file "$repo" app/b.ts
+  run --separate-stderr "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-frontend --root "$repo" \
+    --skip-full-base --base-override "$first"
+  [ "$status" -eq 0 ]
+  key="$(value_of "$output" AUDIT_KEY)"
+  scope_file="$repo/.gaia/local/audit/${key}.code-audit-frontend.scope.json"
+  [ -f "$scope_file" ]
+  [ -n "$(value_of "$output" BASE_REASON)" ]
+  [ "$(jq -r '.base_overridden' "$scope_file")" = "true" ]
+  [ "$(jq -r '.base_reason' "$scope_file")" = "$(value_of "$output" BASE_REASON)" ]
+}
+
+@test "a member-refusal reason from the resolver passes through to the printout and the capture" {
+  local repo main_sha tree key scope_file
+  repo="$(make_repo capture-member-refusal)"
+  main_sha="$(git -C "$repo" rev-parse HEAD)"
+  git -C "$repo" checkout -q -b feat
+  commit_file "$repo" app/a.ts
+  tree="$(git -C "$repo" rev-parse 'HEAD^{tree}')"
+  printf '#!/usr/bin/env bash\nprintf "%%s\\n" "%s" member-refusal "%s" "%s"\n' \
+    "$main_sha" "$main_sha" "$tree" > "$repo/.github/audit/resolve-audit-base.sh"
+  chmod +x "$repo/.github/audit/resolve-audit-base.sh"
+  run --separate-stderr "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-maintainer-shell --root "$repo"
+  [ "$status" -eq 0 ]
+  [ "$(value_of "$output" BASE_REASON)" = "member-refusal" ]
+  [ "$(value_of "$output" ANCHOR_TREE)" = "$tree" ]
+  key="$(value_of "$output" AUDIT_KEY)"
+  [ -n "$key" ]
+  scope_file="$repo/.gaia/local/audit/${key}.code-audit-maintainer-shell.scope.json"
+  [ "$(jq -r '.base_reason' "$scope_file")" = "member-refusal" ]
+}
+
 @test "AUDIT_KEY is empty on a detached HEAD, where the branch half of the key is undeterminable" {
   local repo
   repo="$(make_repo detached)"

@@ -89,6 +89,25 @@ sequence_case() {
   [ "$(gaia_loop_decide "$(cat "$ALF_STATE")" "$snapshot")" = "$decision" ]
 }
 
+@test "entry_id on findings and a resolutions key on the sidecar never change the verdict, A, or counted keys" {
+  local plain decorated sidecar_file decorated_count=0
+  alf_sequence 5 5 5
+  plain="$(evaluate_round 3)"
+  [ "$(read_json "$plain" '.verdict')" = stalled ]
+  for sidecar_file in "$ALF_ROOT"/.gaia/local/audit/*.findings.json; do
+    jq -c '.findings |= (to_entries | map(.value + {entry_id: ("r1-" + (.key + 1 | tostring))}))
+           | . + {resolutions: [{entry_id: "r1-99", rationale: "fixed at HEAD"}]}' \
+      "$sidecar_file" >"$sidecar_file.decorated" && mv "$sidecar_file.decorated" "$sidecar_file"
+    [ "$(jq -r '.findings[0].entry_id' "$sidecar_file")" = "r1-1" ] || return 1
+    decorated_count=$((decorated_count + 1))
+  done
+  [ "$decorated_count" -ge 1 ]
+  decorated="$(evaluate_round 3)"
+  [ "$(read_json "$decorated" '.verdict')" = "$(read_json "$plain" '.verdict')" ]
+  [ "$(read_json "$decorated" '.A')" = "$(read_json "$plain" '.A')" ]
+  [ "$(read_json "$decorated" '.evidence | tojson')" = "$(read_json "$plain" '.evidence | tojson')" ]
+}
+
 @test "UAT-006: A 5,5,5 is stalled and denies" {
   sequence_case stalled "deny stalled" 5 5 5
 }
