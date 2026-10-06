@@ -724,7 +724,10 @@ if [ -n "$audit_key" ]; then
   findings_sidecar="${audit_directory}/${audit_key}.${MEMBER}.findings.json"
 fi
 
+accounting_protocol_pointer="The accounting step is documented in your own definition under '${_root_toplevel}/.claude/agents/'."
+# gaia:maintainer-only:start
 accounting_protocol_pointer="The accounting step is documented in '${_root_toplevel}/.claude/hooks/lib/audit-member-protocol.md' and in your own definition under '${_root_toplevel}/.claude/agents/'."
+# gaia:maintainer-only:end
 
 review_coverage_digest=""
 if [ "${GITHUB_ACTIONS:-}" != "true" ] && [ -n "$audit_key" ]; then
