@@ -409,7 +409,7 @@ cost_record_has() {
 @test "the command's argument hint is the multi-number form with the isolation suffix" {
   [ -s "$COMMAND_MD" ]
   hint="$(grep -E '^argument-hint:' "$COMMAND_MD")"
-  [ "$hint" = 'argument-hint: [fix|list|why <issue-number>|<issue-number>... [[use] worktree|branch]]' ]
+  [ "$hint" = 'argument-hint: [fix|list|why <issue-number>|[<issue-number>...] [[use] worktree|branch]]' ]
 }
 
 @test "the command's description and dispatch line name the multi-number form" {

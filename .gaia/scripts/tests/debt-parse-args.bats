@@ -15,7 +15,7 @@ bats_require_minimum_version 1.5.0
 setup() {
   SCRIPT="${DEBT_PARSE_ARGS_SCRIPT:-$(cd "$BATS_TEST_DIRNAME/.." && pwd)/debt-parse-args.sh}"
   LONG_NUMBER="1234567890123456789012345"
-  USAGE_LINE="accepted forms: /gaia-debt | /gaia-debt fix | /gaia-debt list | /gaia-debt why <issue-number> | /gaia-debt [fix] <issue-number> [<issue-number> ...] [[use] worktree|branch] (numbers may carry a leading # and be separated by spaces or commas)"
+  USAGE_LINE="accepted forms: /gaia-debt | /gaia-debt [use] worktree|branch | /gaia-debt fix | /gaia-debt list | /gaia-debt why <issue-number> | /gaia-debt [fix] <issue-number> [<issue-number> ...] [[use] worktree|branch] (numbers may carry a leading # and be separated by spaces or commas)"
 }
 
 # parse <interpreter> <stdin text>: run the parser with the text on stdin.
@@ -75,9 +75,12 @@ fix fix|fix
 12 fix|fix
 FIX|FIX
 ,|,
-worktree|worktree
-use worktree|use
 fix worktree|worktree
+use|use
+worktree 12|12
+use 12|12
+worktree branch|branch
+use worktree use|use
 fix use branch|use
 12 use|use
 12 use use worktree|use
@@ -95,9 +98,15 @@ EOF
 }
 
 # isolation_rows: one "stdin|stdout" row per line, stdout's newline written as
-# `;`. The suffix comes after the numbers, last, with `use` optional.
+# `;`. The suffix is the whole argument, or comes after the numbers, last;
+# `use` is optional either way.
 isolation_rows() {
   cat <<'EOF'
+worktree|top;isolation worktree
+branch|top;isolation branch
+use worktree|top;isolation worktree
+use branch|top;isolation branch
+ use worktree |top;isolation worktree
 12 worktree|numbers 12;isolation worktree
 12 branch|numbers 12;isolation branch
 12 use worktree|numbers 12;isolation worktree
@@ -152,10 +161,10 @@ run_unrecognized() {
 @test "every unrecognized form exits 2 naming the first offending token" {
   run_unrecognized bash
   [ "$UNRECOGNIZED_ROW_COUNT" -eq "$(unrecognized_rows | wc -l | tr -d ' ')" ]
-  [ "$UNRECOGNIZED_ROW_COUNT" -ge 35 ]
+  [ "$UNRECOGNIZED_ROW_COUNT" -ge 38 ]
 }
 
-@test "a trailing [use] worktree|branch after the numbers names the isolation mode" {
+@test "a bare or trailing [use] worktree|branch names the isolation mode" {
   local row_count=0 row stdin_text expected
   while IFS= read -r row; do
     stdin_text="${row%%|*}"
@@ -168,7 +177,7 @@ run_unrecognized() {
     fi
   done < <(isolation_rows)
   [ "$row_count" -eq "$(isolation_rows | wc -l | tr -d ' ')" ]
-  [ "$row_count" -ge 8 ]
+  [ "$row_count" -ge 13 ]
 }
 
 @test "a lone newline is the empty argument" {
