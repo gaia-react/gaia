@@ -9,7 +9,7 @@ Four layers share one mocking foundation (`msw` + `@msw/data`). Write tests at t
 | Component / page  | Storybook story with a play function  | `storybook`    | `app/components/<name>/tests/*.stories.tsx` | rendered DOM, user interactions, props behavior, accessibility |
 | Hook              | `renderHook` from `vitest-browser-react` | `browser`   | `app/hooks/tests/`                      | hook return values, state transitions, callbacks    |
 | Pure / service    | MSW handlers + Zod                    | `node`         | `app/services/<name>/tests/`, `app/utils/tests/` | parsed response shape, request payload, error cases |
-| E2E               | Playwright + MSW browser              | Playwright     | `.playwright/e2e/*.spec.ts`             | full user flow across routes                        |
+| E2E               | Playwright + dev-server MSW              | Playwright     | `.playwright/e2e/*.spec.ts`             | full user flow across routes                        |
 
 One Vitest config (`vitest.config.ts`) holds three projects. `node` runs `*.test.ts` outside any `hooks/` folder; `browser` runs `*.test.tsx` and `hooks/**/*.test.ts` in headless Chromium; `storybook` runs every `*.stories.tsx` through `@storybook/addon-vitest`. There is no DOM emulation: component and hook code runs in a real browser, so install Chromium once with `pnpm install:browsers`. Run a subset with `pnpm test --run --project storybook <story-file>`.
 
@@ -196,7 +196,7 @@ Mock at **system boundaries** only:
 
 **Mutating data in a test**: write to `database` directly; reset in `afterEach` via `resetTestData()` from `test/mocks/database`. The read-then-verify shape tests the interface end-to-end and survives schema renames as long as the public service contract holds.
 
-The MSW server runs in the `node` Vitest project and Playwright E2E uses the MSW browser layer; stories supply handlers through `parameters.msw.handlers` or read seed data from the same `database` collections directly.
+The MSW server runs in the `node` Vitest project and Playwright E2E runs against the dev server, where MSW mocks both browser and SSR requests (`wiki/dependencies/MSW.md`); stories supply handlers through `parameters.msw.handlers` or read seed data from the same `database` collections directly.
 
 ## Testing Forms with Conform
 

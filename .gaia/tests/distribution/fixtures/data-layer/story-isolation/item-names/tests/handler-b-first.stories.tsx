@@ -1,5 +1,5 @@
 import type {Meta, StoryObj} from '@storybook/react-vite';
-import {http, HttpResponse} from 'msw';
+import {http, HttpResponse} from 'msw/http';
 import {expect, within} from 'storybook/test';
 import {url} from 'test/mocks/url';
 import {ITEMS_URLS} from '~/services/gaia/items';

@@ -122,35 +122,43 @@ lang = 'en';
 Replace the entire file body with:
 
 ```tsx
-/**
- * By default, Remix will handle hydrating your app on the client for you.
- * You are free to delete this file if you'd like to, but if you ever want it revealed again, you can run `npx remix reveal` ✨
- * For more information, see https://remix.run/file-conventions/entry.client
- */
-
 import {startTransition, StrictMode} from 'react';
 import {hydrateRoot} from 'react-dom/client';
 import {HydratedRouter} from 'react-router/dom';
 
 const prepareApp = async () => {
-  if (
-    window.process.env.NODE_ENV === 'development' &&
-    window.process.env.MSW_ENABLED === true
-  ) {
-    const {worker} = await import('../test/worker');
+  if (import.meta.env.DEV && window.process.env.MSW_ENABLED === true) {
+    const [{network}, {default: handlers}, {default: ping}] = await Promise.all(
+      [
+        import('virtual:msw'),
+        import('../test/mocks'),
+        import('../test/mocks/ping'),
+      ]
+    );
 
-    return worker.start({onUnhandledRequest: 'bypass'});
+    network.configure({
+      handlers: [ping, ...handlers],
+      onUnhandledFrame: 'bypass',
+    });
+    await network.enable();
   }
 };
 
 const hydrate = async () => {
   await prepareApp().then(() => {
+    // The react-perf capture harness sets this global (via addInitScript, before
+    // hydration) to opt out of StrictMode for honest, non-doubled render
+    // timings; everything else keeps StrictMode on.
+    // eslint-disable-next-line no-underscore-dangle -- global injected by the react-perf capture harness
+    const isStrictModeDisabled = window.__PERF_NO_STRICT;
     startTransition(() => {
       hydrateRoot(
         document,
-        <StrictMode>
+        isStrictModeDisabled ?
           <HydratedRouter />
-        </StrictMode>
+        : <StrictMode>
+            <HydratedRouter />
+          </StrictMode>
       );
     });
   });

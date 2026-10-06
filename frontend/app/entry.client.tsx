@@ -7,13 +7,20 @@ import LanguageDetector from 'i18next-browser-languagedetector';
 import i18n, {DEFAULT_LOCALE} from './i18n';
 
 const prepareApp = async () => {
-  if (
-    window.process.env.NODE_ENV === 'development' &&
-    window.process.env.MSW_ENABLED === true
-  ) {
-    const {worker} = await import('../test/worker');
+  if (import.meta.env.DEV && window.process.env.MSW_ENABLED === true) {
+    const [{network}, {default: handlers}, {default: ping}] = await Promise.all(
+      [
+        import('virtual:msw'),
+        import('../test/mocks'),
+        import('../test/mocks/ping'),
+      ]
+    );
 
-    return worker.start({onUnhandledRequest: 'bypass'});
+    network.configure({
+      handlers: [ping, ...handlers],
+      onUnhandledFrame: 'bypass',
+    });
+    await network.enable();
   }
 };
 

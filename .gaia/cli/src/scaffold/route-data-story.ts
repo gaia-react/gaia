@@ -188,7 +188,7 @@ const storyImportLines = (context: DataRouteContext): string => {
 
   return [
     "import type {Meta, StoryFn} from '@storybook/react-vite';",
-    "import {http, HttpResponse} from 'msw';",
+    "import {http, HttpResponse} from 'msw/http';",
     `import {${testNames.join(', ')}} from 'storybook/test';`,
     "import {url} from 'test/mocks/url';",
     "import stubs from 'test/stubs';",

@@ -120,6 +120,8 @@ update together**, so a group moves as one unit (and snoozes as one unit).
 | `stylelint`       | `stylelint`, `stylelint-config-*`, `stylelint-order`                                                                                     |
 | `prettier`        | `prettier`, `eslint-config-prettier`, `eslint-plugin-prettier`                                                                           |
 
+After any change to the installed `msw` version (Wave A or Wave B), run `pnpm -C frontend msw:init` (`pnpm -C frontend exec msw init` when the project has no such script) so the regenerated `frontend/public/mockServiceWorker.js` joins the change; msw 3 has no postinstall that keeps it current.
+
 Packages not matched form singleton groups. `typescript` is deliberately one of
 them: a compiler bump and an ambient type-definition bump (`@types/node`) carry
 independent risk and independent migration guides, so they never move as a unit.

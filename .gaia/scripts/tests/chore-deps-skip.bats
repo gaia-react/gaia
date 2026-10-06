@@ -196,6 +196,40 @@ commit_file() {
   [ "$(field "$result" skip)" = "false" ]
 }
 
+@test "tests.yml 'Check chore-deps title': a manifest-only diff that changes the msw entry does not skip" {
+  body="$(extract_step_body "$REPO_ROOT/.github/workflows/tests.yml" "Check chore-deps title")"
+  [ -n "$body" ]
+  setup_sandbox_repo
+  commit_file package.json '{"devDependencies":{
+  "msw": "3.0.1"
+}}'
+  base="$(git -C "$SANDBOX" rev-parse HEAD)"
+  commit_file package.json '{"devDependencies":{
+  "msw": "3.0.2"
+}}'
+  result="$(run_step_capture "$body" PR_TITLE="chore(deps): bump msw" "PR_BASE_SHA=$base" "EVENT_NAME=pull_request")"
+  [ "$(field "$result" exit_status)" -eq 0 ]
+  [ "$(field "$result" skip)" = "false" ]
+}
+
+@test "tests.yml 'Check chore-deps title': a manifest-only diff that changes another package still skips" {
+  body="$(extract_step_body "$REPO_ROOT/.github/workflows/tests.yml" "Check chore-deps title")"
+  [ -n "$body" ]
+  setup_sandbox_repo
+  commit_file package.json '{"devDependencies":{
+  "msw": "3.0.2",
+  "zod": "4.0.0"
+}}'
+  base="$(git -C "$SANDBOX" rev-parse HEAD)"
+  commit_file package.json '{"devDependencies":{
+  "msw": "3.0.2",
+  "zod": "4.0.1"
+}}'
+  result="$(run_step_capture "$body" PR_TITLE="chore(deps): bump zod" "PR_BASE_SHA=$base" "EVENT_NAME=pull_request")"
+  [ "$(field "$result" exit_status)" -eq 0 ]
+  [ "$(field "$result" skip)" = "true" ]
+}
+
 @test "chromatic.yml 'Check chore-deps commit' body is non-empty and executes" {
   body="$(extract_step_body "$REPO_ROOT/.github/workflows/chromatic.yml" "Check chore-deps commit")"
   [ -n "$body" ]

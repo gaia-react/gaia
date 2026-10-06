@@ -65,6 +65,13 @@ jobs:
             else
               skip=false
             fi
+            # An msw bump regenerates the committed worker script, which only
+            # the test suite checks, so a manifest-only msw change never skips.
+            # An unreadable diff leaves skip as set above; a grep miss must not
+            # abort the step under set -e.
+            if [ "$skip" = "true" ] && msw_diff=$(git diff --no-renames "${PR_BASE_SHA}...HEAD" -- '*package.json') && printf '%s\n' "$msw_diff" | grep -qE '^[+-][[:space:]]*"msw":'; then
+              skip=false
+            fi
           else
             skip=false
           fi
@@ -129,8 +136,10 @@ jobs:
           # would read as no relevant change while its importers break.
           # The root-level dev-ports modules are imported by vite.config.ts and
           # playwright.config.ts, so a change to one is test-relevant too.
+          # The committed msw worker script is read by the node-project drift
+          # test, so a change to it alone is test-relevant.
           changed=$(set -o pipefail; git diff --name-only -z --no-renames "${CHECK_BASE}...HEAD" | tr '\0' '\n')
-          pattern='^frontend/(app|test)/|^frontend/\.playwright/|^frontend/\.storybook/|^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.npmrc|\.node-version)$|^frontend/package\.json$|^frontend/tsconfig[^/]*\.json$|^frontend/dev-ports[^/]*\.ts$|^frontend/components\.json$|^frontend/(vite|vitest|playwright|eslint|react-router|react-compiler|doctor|knip|prettier|stylelint)\.config\.|^\.gaia/packages\.json$|^frontend/gaia\.package\.json$|^\.github/workflows/tests\.yml$'
+          pattern='^frontend/(app|test)/|^frontend/\.playwright/|^frontend/\.storybook/|^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.npmrc|\.node-version)$|^frontend/package\.json$|^frontend/tsconfig[^/]*\.json$|^frontend/dev-ports[^/]*\.ts$|^frontend/components\.json$|^frontend/(vite|vitest|playwright|eslint|react-router|react-compiler|doctor|knip|prettier|stylelint)\.config\.|^\.gaia/packages\.json$|^frontend/gaia\.package\.json$|^frontend/public/mockServiceWorker\.js$|^\.github/workflows/tests\.yml$'
           if printf '%s\n' "$changed" | grep -qE "$pattern"; then
             echo "code=true" >> "$GITHUB_OUTPUT"
           else

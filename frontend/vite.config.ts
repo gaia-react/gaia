@@ -1,5 +1,6 @@
 import {reactRouter} from '@react-router/dev/vite';
 import tailwindcss from '@tailwindcss/vite';
+import {msw} from 'msw/vite';
 import {defineConfig} from 'vite';
 import {fileURLToPath} from 'node:url';
 import {devPortsPlugin} from './dev-ports-vite-plugin.ts';
@@ -47,8 +48,10 @@ export default defineConfig({
       'i18next-browser-languagedetector',
       'ky',
       'lodash-es',
-      'msw',
       'msw/browser',
+      'msw/experimental',
+      'msw/http',
+      'msw/utils/passthrough',
       'nanoid',
       'query-string',
       'react-i18next',
@@ -63,6 +66,7 @@ export default defineConfig({
     devPortsPlugin(packageDirectory),
     reactRouter(),
     reactCompiler,
+    msw(),
   ],
   resolve: {
     tsconfigPaths: true,

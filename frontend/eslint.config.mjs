@@ -27,4 +27,13 @@ export default defineConfig([
     },
     rules: {'local/no-imperative-query-fetch': 'error'},
   },
+  {
+    files: ['app/**/*.{ts,tsx}'],
+    rules: {
+      'import-x/no-unresolved': [
+        'error',
+        {caseSensitive: true, commonjs: true, ignore: ['^virtual:']},
+      ],
+    },
+  },
 ]);

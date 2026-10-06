@@ -1,6 +1,6 @@
 ---
 type: module
-path: frontend/test/mocks/, frontend/test/worker.ts, frontend/test/test.server.ts, frontend/test/msw.server.ts
+path: frontend/test/mocks/, frontend/test/worker.ts, frontend/test/test.server.ts, frontend/vite.config.ts, frontend/app/entry.client.tsx, frontend/app/entry.server.tsx
 status: active
 language: typescript
 purpose: API mocking layer shared across Vitest, Storybook, and dev
@@ -32,7 +32,7 @@ This means tests exercise the full request path: route loader → service functi
 A request URL is built by joining `API_URL` (env, e.g. `http://localhost:3001/api/`) with a path token from the domain's `{NAME}_URLS` constant (e.g. `'resources/:id'`). `ky` does the join in the service layer. The handler must use the same logic; the `url()` helper in `frontend/test/mocks/url.ts` mirrors ky's prefix-join (strips trailing slash from prefix, leading slash from path, joins with exactly one `/`).
 
 ```ts
-import {http} from 'msw';
+import {http} from 'msw/http';
 import {RESOURCES_URLS} from '~/services/gaia/resources/urls';
 import {url} from '../url';
 
@@ -40,15 +40,15 @@ http.get(url(RESOURCES_URLS.resources), () => { ... });
 ```
 
 > [!warning] URL drift = escaped requests
-> If a handler URL doesn't match the ky-constructed URL, MSW passes the request through (`onUnhandledRequest: 'bypass'`). The request goes to the real network, fails silently in tests, and appears as a flaky fetch error rather than a mock miss.
+> If a handler URL doesn't match the ky-constructed URL, MSW passes the request through (`onUnhandledFrame: 'bypass'`). The request goes to the real network, fails silently in tests, and appears as a flaky fetch error rather than a mock miss.
 
 The fix: both the service request functions and the handlers import the same per-domain `{NAME}_URLS` from `frontend/app/services/gaia/{domain}/urls.ts`. **Never hardcode paths in handler files.** When a URL constant changes, both sides update together.
 
 ## Three runtime modes
 
-- **Dev**: Browser Service Worker (`frontend/test/worker.ts`, client) + Node `SetupServer` (SSR) run simultaneously when `MSW_ENABLED=true` in `.env`. The SSR side runs `startApiMocks` from `frontend/test/msw.server.ts`, imported by `frontend/app/entry.server.tsx` (gated on `NODE_ENV !== 'production' && MSW_ENABLED`); it stores the server on `globalThis.__MSW_SERVER` so it survives HMR restarts. The browser worker prepends a `ping` passthrough handler (`frontend/test/mocks/ping.ts`) so the dev server's `/ping` hot-update endpoint reaches the real network instead of being intercepted.
-- **Vitest**: Node `setupServer` via `frontend/test/test.server.ts` (distinct from the dev SSR `frontend/test/msw.server.ts`), registered in `frontend/test/setup.ts`. `beforeAll → listen`, `afterEach → resetHandlers`, `afterAll → close`.
-- **Playwright**: MSW is **not** wired automatically. Start `pnpm dev` with `MSW_ENABLED=true` and point Playwright's `baseURL` at it.
+- **Dev**: with `MSW_ENABLED=true` in `.env`, browser and SSR requests both go through the msw/vite plugin's network; wiring in [[MSW]].
+- **Vitest**: Node `setupServer` via `frontend/test/test.server.ts`, registered in `frontend/test/setup.ts`. `beforeAll → listen`, `afterEach → resetHandlers`, `afterAll → close`.
+- **Playwright**: the Playwright web server is `pnpm dev`, so with `MSW_ENABLED=true` its requests are mocked on both the browser and SSR sides (see [[MSW]]).
 
 ## Writing a new mock
 
@@ -99,9 +99,9 @@ Stories and browser-project tests run neither the MSW node server nor this reset
 - **Request escapes to real network** → handler URL doesn't match ky URL. Use `url({NAME}_URLS.key)`, never a hardcoded string.
 - **Test sees stale data after mutation** → the test runs outside the `node` project (a story or browser test), where the automatic `afterEach` `resetTestData()` never runs; keep stories and browser tests from mutating the collections.
 - **MSW not active in dev** → `MSW_ENABLED` missing or false in `.env`.
-- **Server-side requests bypass mock in dev** → `entry.server.tsx` check failed; ensure `env.MSW_ENABLED` is truthy.
+- **Server-side requests bypass mock in dev** → `MSW_ENABLED` is not truthy in the server's environment, or the request URL matches no handler (`onUnhandledFrame: 'bypass'` lets it through).
 - **Handler added but never triggered** → not registered in `frontend/test/mocks/index.ts`.
 - **Runtime override persists across tests** → `server.use()` was called outside a test body. Don't.
-- **Playwright ignores mocks** → start dev server with `MSW_ENABLED=true` and point Playwright at it.
+- **Playwright ignores mocks** → `MSW_ENABLED` is not `true` in the environment that launches the `pnpm dev` web server.
 
 For the current folder structure and file inventory, query Serena (`.claude/rules/code-search.md`).

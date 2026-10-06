@@ -19,9 +19,15 @@ import 'dotenv/config';
 
 setToastCookieOptions({secrets: [env.SESSION_SECRET]});
 
-if (env.NODE_ENV !== 'production' && env.MSW_ENABLED) {
-  const {startApiMocks} = await import('../test/msw.server');
-  startApiMocks();
+if (import.meta.env.DEV && env.MSW_ENABLED) {
+  const [{network}, {default: handlers}] = await Promise.all([
+    import('virtual:msw'),
+    import('../test/mocks'),
+  ]);
+
+  network.configure({handlers, onUnhandledFrame: 'bypass'});
+  await network.enable();
+  console.info('\u001B[31m', '\n[MSW] Mocking enabled\n', '\u001B[0m');
 }
 
 const streamTimeout = 5000;
