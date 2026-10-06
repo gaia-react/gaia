@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # 20-data-layer-query-off.sh
+# distribution-runner: exclusive
 #
 # Adopter-flow regression for the Automatic-defaults data layer (snake_case,
 # no TanStack Query) in a staged release tree:
