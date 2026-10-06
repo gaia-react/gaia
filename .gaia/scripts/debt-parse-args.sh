@@ -3,8 +3,8 @@
 # The /gaia-debt argument parser: turns the raw argument string into exactly one
 # stdout line naming what to run, so the grammar is executable instead of prose
 # the model interprets (.claude/skills/gaia/references/debt.md, "Argument
-# parsing"). A first word the grammar does not know stops the run; it never
-# falls through to draining the top of the backlog.
+# parsing"). A word the grammar does not know stops the run; it never falls
+# through to draining the top of the backlog.
 #
 # The argument string arrives on STDIN, never argv, so the caller can hand it
 # over through a quoted heredoc and nothing in it is expanded by a shell. The
@@ -14,34 +14,25 @@
 # why the number grammar is pinned here, before anything reaches them.
 #
 # Grammar. Split on whitespace and commas, drop empty fields, then:
-#   (nothing, or only whitespace)  ->  top
-#   fix                            ->  top
-#   list                           ->  list        (any further token is refused)
-#   why <number>                   ->  why <N>     (exactly one number)
-#   [fix] <number> [<number> ...]  ->  numbers <N1> [<N2> ...]
-#   [use] worktree|branch          ->  top, plus `isolation <mode>`
-#   <number> ... [use] worktree|branch  ->  numbers ..., plus `isolation <mode>`
-# A number token is an optional single `#` then a positive integer with no
-# leading zero. Duplicates collapse, first occurrence wins. Numbers are compared
-# as strings and never put through shell arithmetic, which overflows on a long
-# digit run. Subcommand words are exact lowercase. The offending token of a
-# refusal is the first one, left to right, that the grammar cannot place.
-# Non-whitespace input that yields no token (only commas) is refused as `,`.
-#
-# The isolation suffix is the only way to name the mode: `worktree` or
-# `branch`, optionally preceded by `use`, either as the whole argument or after
-# the numbers as the last token. Nothing may follow it, and it is accepted
-# nowhere else (not after `fix`, `list`, or `why`).
+#   [<number> ...] [[use] worktree|branch]
+# No numbers prints `top`; one or more prints `numbers <N1> [<N2> ...]`. The
+# isolation suffix, when present, is the last token and adds a second line,
+# `isolation <mode>`. A number token is an optional single `#` then a positive
+# integer with no leading zero. Duplicates collapse, first occurrence wins.
+# Numbers are compared as strings and never put through shell arithmetic, which
+# overflows on a long digit run. The words are exact lowercase. The offending
+# token of a refusal is the first one, left to right, that the grammar cannot
+# place. Non-whitespace input that yields no token (only commas) is refused
+# as `,`.
 #
 # Usage:
 #   bash .gaia/scripts/debt-parse-args.sh <<'GAIA_DEBT_ARGUMENTS'
 #   /gaia-debt arguments, verbatim
 #   GAIA_DEBT_ARGUMENTS
 #
-# Stdout is one line: top | list | why <N> | numbers <N1> [<N2> ...] (numbers
-# without the `#`), or `unrecognized <token>` on a refusal. A `top` or `numbers`
-# result that ended in the isolation suffix gains a second line,
-# `isolation worktree` or `isolation branch`.
+# Stdout is one line, top | numbers <N1> [<N2> ...] (numbers without the `#`),
+# plus the optional `isolation worktree|branch` line, or `unrecognized <token>`
+# on a refusal.
 #
 # Exit: 0 parsed, 2 refused (stderr carries the token and the accepted forms),
 # 3 misused (an argv argument was given, or stdin could not be read; stdout is
@@ -66,7 +57,7 @@ refuse() {
   printf 'unrecognized %s\n' "$1"
   {
     printf 'unrecognized argument: %s\n' "$1"
-    echo "accepted forms: /gaia-debt | /gaia-debt [use] worktree|branch | /gaia-debt fix | /gaia-debt list | /gaia-debt why <issue-number> | /gaia-debt [fix] <issue-number> [<issue-number> ...] [[use] worktree|branch] (numbers may carry a leading # and be separated by spaces or commas)"
+    echo "accepted form: /gaia-debt [<issue-number> ...] [[use] worktree|branch] (numbers may carry a leading # and be separated by spaces or commas)"
   } >&2
   exit 2
 }
@@ -85,47 +76,19 @@ is_number_token() {
 }
 
 # State machine over the token stream, so the tokens never need a second pass:
-#   start     nothing seen yet
-#   fixed     a leading `fix`; a number must follow
-#   listed    `list`; nothing may follow
-#   why_bare  `why`; one number must follow
-#   why_done  `why <N>`; nothing may follow
-#   numbers   one or more numbers so far
-#   use_bare  `use`, alone or after numbers; `worktree` or `branch` must follow
-#   isolated  the isolation suffix, alone or after numbers; nothing may follow
-state="start"
+#   numbers   zero or more numbers so far
+#   use_bare  `use`; `worktree` or `branch` must follow
+#   isolated  the isolation suffix; nothing may follow
+state="numbers"
 token_count=0
 numbers_seen=" "
 numbers_out=""
-why_number=""
 isolation_mode=""
 
 consume_token() {
   local token="$1"
   token_count=$((token_count + 1))
   case "$state" in
-    start)
-      case "$token" in
-        fix) state="fixed" ;;
-        list) state="listed" ;;
-        why) state="why_bare" ;;
-        use) state="use_bare" ;;
-        worktree | branch)
-          state="isolated"
-          isolation_mode="$token"
-          ;;
-        *)
-          is_number_token "$token" || refuse "$token"
-          state="numbers"
-          add_number "$number_value"
-          ;;
-      esac
-      ;;
-    fixed)
-      is_number_token "$token" || refuse "$token"
-      state="numbers"
-      add_number "$number_value"
-      ;;
     numbers)
       case "$token" in
         use) state="use_bare" ;;
@@ -147,11 +110,6 @@ consume_token() {
           ;;
         *) refuse "$token" ;;
       esac
-      ;;
-    why_bare)
-      is_number_token "$token" || refuse "$token"
-      state="why_done"
-      why_number="$number_value"
       ;;
     *) refuse "$token" ;;
   esac
@@ -189,19 +147,13 @@ if [ "$token_count" -eq 0 ]; then
   esac
 fi
 
-case "$state" in
-  fixed) echo "top" ;;
-  listed) echo "list" ;;
-  why_bare) refuse "why" ;;
-  why_done) echo "why $why_number" ;;
-  numbers) echo "numbers$numbers_out" ;;
-  use_bare) refuse "use" ;;
-  isolated)
-    if [ -n "$numbers_out" ]; then
-      echo "numbers$numbers_out"
-    else
-      echo "top"
-    fi
-    echo "isolation $isolation_mode"
-    ;;
-esac
+[ "$state" = "use_bare" ] && refuse "use"
+
+if [ -n "$numbers_out" ]; then
+  echo "numbers$numbers_out"
+else
+  echo "top"
+fi
+if [ -n "$isolation_mode" ]; then
+  echo "isolation $isolation_mode"
+fi

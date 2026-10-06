@@ -85,10 +85,10 @@ assert_golden() {
 # with one mutation applied to <file>; fails when the sed changed nothing.
 scratch_flusher() {
   local scratch_directory="$TEMPORARY_DIRECTORY/scratch"
-  mkdir -p "$scratch_directory/.gaia/scripts" "$scratch_directory/.specify/extensions/gaia/lib"
+  mkdir -p "$scratch_directory/.gaia/scripts" "$scratch_directory/.gaia/scripts/spec"
   cp "$SCRIPTS"/usage-flush.sh "$SCRIPTS"/usage-parse-lib.sh "$SCRIPTS"/usage-lib.sh "$SCRIPTS"/main-root-lib.sh \
     "$SCRIPTS"/branch-name-lib.sh "$SCRIPTS"/ledger-path-lib.sh "$scratch_directory/.gaia/scripts/"
-  cp "$SCRIPTS/../../.specify/extensions/gaia/lib/with-ledger-lock.sh" "$scratch_directory/.specify/extensions/gaia/lib/"
+  cp "$SCRIPTS/spec/with-ledger-lock.sh" "$scratch_directory/.gaia/scripts/spec/"
   sed "$1" "$SCRIPTS/$2" >"$scratch_directory/.gaia/scripts/$2.m"
   if cmp -s "$SCRIPTS/$2" "$scratch_directory/.gaia/scripts/$2.m"; then
     echo "mutation did not apply to $2" >&2

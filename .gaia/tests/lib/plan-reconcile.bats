@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# Tests for `.specify/extensions/gaia/lib/plan-reconcile.sh`, the plan-arm
+# Tests for `.gaia/scripts/spec/plan-reconcile.sh`, the plan-arm
 # counterpart to `spec-reconcile.sh` (see spec-reconcile.bats for the spec
 # arm). Orchestrator-driven: the caller already knows the merge is confirmed
 # and the plan_id, so there is no gh/PR scan here, unlike the spec arm. Plan
@@ -20,7 +20,7 @@ setup() {
   REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"
   # snapshot_file + assert_files_identical: byte identity without `$(cat …)`.
   . "$REPO_ROOT/.gaia/tests/helpers/files.sh"
-  SOURCE_LIBRARY_DIRECTORY="$REPO_ROOT/.specify/extensions/gaia/lib"
+  SOURCE_LIBRARY_DIRECTORY="$REPO_ROOT/.gaia/scripts/spec"
   SOURCE_SCRIPTS_DIRECTORY="$REPO_ROOT/.gaia/scripts"
   [ -x "$SOURCE_LIBRARY_DIRECTORY/plan-reconcile.sh" ] || skip "plan-reconcile.sh not executable"
 
@@ -29,12 +29,12 @@ setup() {
 
   git -C "$SANDBOX" init --quiet --initial-branch=main
 
-  mkdir -p "$SANDBOX/.specify/extensions/gaia/lib"
+  mkdir -p "$SANDBOX/.gaia/scripts/spec"
   for library_file in plan-reconcile.sh plan-ledger-update.sh with-ledger-lock.sh; do
-    cp "$SOURCE_LIBRARY_DIRECTORY/$library_file" "$SANDBOX/.specify/extensions/gaia/lib/$library_file"
+    cp "$SOURCE_LIBRARY_DIRECTORY/$library_file" "$SANDBOX/.gaia/scripts/spec/$library_file"
   done
-  chmod +x "$SANDBOX/.specify/extensions/gaia/lib/plan-reconcile.sh" \
-    "$SANDBOX/.specify/extensions/gaia/lib/plan-ledger-update.sh"
+  chmod +x "$SANDBOX/.gaia/scripts/spec/plan-reconcile.sh" \
+    "$SANDBOX/.gaia/scripts/spec/plan-ledger-update.sh"
 
   mkdir -p "$SANDBOX/.gaia/scripts"
   cp "$SOURCE_SCRIPTS_DIRECTORY/ledger-path-lib.sh" "$SANDBOX/.gaia/scripts/ledger-path-lib.sh"
@@ -66,7 +66,7 @@ teardown() {
 LEDGER_RELATIVE_PATH=".gaia/local/plans/ledger.json"
 
 _reconcile() {
-  bash "$SANDBOX/.specify/extensions/gaia/lib/plan-reconcile.sh" "$SANDBOX" "$@"
+  bash "$SANDBOX/.gaia/scripts/spec/plan-reconcile.sh" "$SANDBOX" "$@"
 }
 
 _row_field() {

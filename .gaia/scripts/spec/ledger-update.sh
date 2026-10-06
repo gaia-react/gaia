@@ -43,8 +43,8 @@ type with_ledger_lock >/dev/null 2>&1 || {
 }
 # No probe of its own: the gaia_resolve_specs_directory call below already refuses
 # when the function is absent, which is the degrade this load owes.
-# shellcheck source=../../../../.gaia/scripts/ledger-path-lib.sh
-set +e; [ -f "${_library_directory}/../../../../.gaia/scripts/ledger-path-lib.sh" ] && . "${_library_directory}/../../../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null; set -e
+# shellcheck source=../ledger-path-lib.sh
+set +e; [ -f "${_library_directory}/../ledger-path-lib.sh" ] && . "${_library_directory}/../ledger-path-lib.sh" 2>/dev/null; set -e
 
 # repo_root names the tree this write runs in; the ledger it writes is
 # main's, because the state registry declares specs/ main-only. Resolve

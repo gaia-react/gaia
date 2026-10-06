@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# Tests for `.specify/extensions/gaia/lib/spec-abandon-empty.sh`: the guarded
+# Tests for `.gaia/scripts/spec/spec-abandon-empty.sh`: the guarded
 # sweep that retires a never-authored SPEC draft to the terminal `abandoned`
 # ledger status. Every test runs the real script against an isolated fixture
 # ledger, never the GAIA repo's own `.gaia/local/specs/ledger.json`.
@@ -7,7 +7,7 @@
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
-  LIBRARY_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")/../../../.specify/extensions/gaia/lib" && pwd)"
+  LIBRARY_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")/../spec" && pwd)"
   REPO_SCRIPTS="$(cd "$(dirname "$BATS_TEST_FILENAME")/../../../.gaia/scripts" && pwd)"
   SCRIPT="$LIBRARY_DIRECTORY/spec-abandon-empty.sh"
   LEDGER_UPDATE="$LIBRARY_DIRECTORY/ledger-update.sh"

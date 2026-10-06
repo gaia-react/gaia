@@ -14,9 +14,9 @@
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   SPEC_MD="$REPO_ROOT/.claude/skills/gaia/references/spec.md"
-  TEMPLATE="$REPO_ROOT/.specify/extensions/gaia/templates/spec-template.md"
-  ALLOCATOR="$REPO_ROOT/.specify/extensions/gaia/lib/spec-allocator.sh"
-  LINT="$REPO_ROOT/.specify/extensions/gaia/lib/lint.sh"
+  TEMPLATE="$REPO_ROOT/.claude/skills/gaia/references/spec/spec-template.md"
+  ALLOCATOR="$REPO_ROOT/.gaia/scripts/spec/spec-allocator.sh"
+  LINT="$REPO_ROOT/.gaia/scripts/spec/lint.sh"
 
   slash_command_prefix="/spec""kit-"
   hook_pre_draft="before""_specify"
@@ -79,7 +79,7 @@ step3_range() {
     'SPEC_ID' \
     'main-root-lib.sh' \
     'mkdir -p "${MAIN_ROOT}/.gaia/local/specs/${SPEC_ID}"' \
-    'templates/spec-template.md' \
+    'references/spec/spec-template.md' \
     'draft-' \
     'spec_id' 'type' 'status' 'immutable' 'wiki_promote_default' 'chain_trigger' 'created' 'updated'; do
     if ! printf '%s\n' "$range" | grep -qF -- "$needle"; then
@@ -100,7 +100,7 @@ step3_range() {
 @test "step 10 runs the lint script directly" {
   range="$(range_between "$SPEC_MD" '### 10. Immutability lint' '### 11.')"
   [ -n "$range" ]
-  if ! printf '%s\n' "$range" | grep -qF -- 'bash .specify/extensions/gaia/lib/lint.sh'; then
+  if ! printf '%s\n' "$range" | grep -qF -- 'bash .gaia/scripts/spec/lint.sh'; then
     printf 'step 10 does not run lib/lint.sh directly\n' >&2
     return 1
   fi

@@ -8,8 +8,10 @@
 #          [--out-dir <dir>]
 #
 # --baseline-rev   REQUIRED. The pre-change scripts come from `git archive <rev>`
-#                  of .gaia/scripts and .specify/extensions/gaia/lib, never from
-#                  a merge base: a merge base drifts when main moves.
+#                  of .gaia/scripts, never from a merge base: a merge base
+#                  drifts when main moves. A baseline from before the spec
+#                  scripts moved into .gaia/scripts/spec also has them under the
+#                  old extension lib directory, which is archived beside it.
 # --stores         a directory holding usage.jsonl, links.jsonl, cost.jsonl and
 #                  probes.json (the generator's output).
 # --probe          the PR to read; shorthand for --sub "pr <N>".
@@ -120,10 +122,13 @@ mkdir -p "$output_directory" || die "cannot create --out-dir"
 old="$scratch/old" new="$scratch/new" main="$scratch/main"
 telemetry_directory_old="$scratch/tel-old" telemetry_directory_new="$scratch/tel-new" projects="$scratch/projects"
 mkdir -p "$old" "$new" "$main/.claude" "$telemetry_directory_old" "$telemetry_directory_new" "$projects"
-git -C "$repo" archive "$baseline" .gaia/scripts .specify/extensions/gaia/lib | tar -x -C "$old" || die "git archive of $baseline failed"
-mkdir -p "$new/.gaia" "$new/.specify/extensions/gaia"
+baseline_archive_paths=(.gaia/scripts)
+if git -C "$repo" cat-file -e "$baseline:.specify/extensions/gaia/lib" 2>/dev/null; then
+  baseline_archive_paths+=(.specify/extensions/gaia/lib)
+fi
+git -C "$repo" archive "$baseline" ${baseline_archive_paths[@]+"${baseline_archive_paths[@]}"} | tar -x -C "$old" || die "git archive of $baseline failed"
+mkdir -p "$new/.gaia"
 cp -R "$repo/.gaia/scripts" "$new/.gaia/scripts"
-cp -R "$repo/.specify/extensions/gaia/lib" "$new/.specify/extensions/gaia/lib"
 rates="$repo/.gaia/scripts/token-rates.json"
 [ -f "$rates" ] || die "no rate table at $rates"
 

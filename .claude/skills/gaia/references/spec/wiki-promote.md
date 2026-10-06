@@ -68,7 +68,7 @@ If `$pr_json` is `[]` (no merged PR for this branch):
 
    (Cache directory creation: `mkdir -p .gaia/local/cache/wiki-promote/`. The `.gaia/local/` line in `.gitignore` covers this path.)
 
-2. Exit with: `wiki-promote: <id> deferred, awaiting PR merge for branch <current_branch>. Drain by reading `.specify/extensions/gaia/commands/spec-close.md` (or `plan-close.md`, matching the id shape) and following it after merge.`
+2. Exit with: `wiki-promote: <id> deferred, awaiting PR merge for branch <current_branch>. Drain by reading `.claude/skills/gaia/references/spec/spec-close.md` (or `plan-close.md`, matching the id shape) and following it after merge.`
 
 If `$pr_json` contains a merged PR:
 
@@ -322,7 +322,7 @@ Wiki promote complete for <id>.
 
 If any pages were skipped due to hand-edit detection, include a one-line note:
 
-`Hand-edited skips can be resolved by reading `.specify/extensions/gaia/commands/spec-close.md` (or `plan-close.md` for a PLAN-NNN id) and following it with `--force` (TBD; for now resolve manually).`
+`Hand-edited skips can be resolved by reading `.claude/skills/gaia/references/spec/spec-close.md` (or `plan-close.md` for a PLAN-NNN id) and following it with `--force` (TBD; for now resolve manually).`
 
 ## Step 8 - Chain to close (immediate-merge path only)
 
@@ -332,11 +332,11 @@ This step fires only when Step 3 found a merged PR and Steps 4–7 ran full. On 
 
 Otherwise, route by id shape and run the matching closer directly, the lines below state the intent, they are not a substitute for the run:
 
-- `SPEC-NNN` → read `.specify/extensions/gaia/commands/spec-close.md` and follow it, with `<id>`.
-- `PLAN-NNN` → read `.specify/extensions/gaia/commands/plan-close.md` and follow it, with `<id>`.
+- `SPEC-NNN` → read `.claude/skills/gaia/references/spec/spec-close.md` and follow it, with `<id>`.
+- `PLAN-NNN` → read `.claude/skills/gaia/references/spec/plan-close.md` and follow it, with `<id>`.
 
 > Running the closer matching this id. wiki-promote completed inline; the cache is already cleared. The closer will skip drain and go straight to the disposition prompt.
 
 This presents the user with the close flow's disposition prompt. The wiki content is already committed (Step 6's wiki-sync handoff); the disposition only affects `.gaia/local/specs/<id>/` (spec arm) or `.gaia/local/plans/<id>/` (plan arm).
 
-If the closer fails or refuses, exit with the warning `wiki-promote: pages staged and committed; close chain failed. Read `.specify/extensions/gaia/commands/spec-close.md` or `plan-close.md` and follow it with `<id>` manually to dispose of the artifact.` Do NOT retry the chain, the wiki side is already settled.
+If the closer fails or refuses, exit with the warning `wiki-promote: pages staged and committed; close chain failed. Read `.claude/skills/gaia/references/spec/spec-close.md` or `plan-close.md` and follow it with `<id>` manually to dispose of the artifact.` Do NOT retry the chain, the wiki side is already settled.

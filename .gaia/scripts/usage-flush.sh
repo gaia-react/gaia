@@ -84,7 +84,7 @@ else
 fi
 [ -n "$UF_MAIN" ] && [ -d "$UF_MAIN" ] || exit 0
 
-_gaia_usage_load with_ledger_lock ../../.specify/extensions/gaia/lib/with-ledger-lock.sh || {
+_gaia_usage_load with_ledger_lock spec/with-ledger-lock.sh || {
   _uf_log "with-ledger-lock.sh not found; nothing recorded"
   exit 0
 }

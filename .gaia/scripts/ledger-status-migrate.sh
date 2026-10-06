@@ -43,8 +43,8 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 
-# shellcheck source=.specify/extensions/gaia/lib/with-ledger-lock.sh
-. "$(dirname "${BASH_SOURCE[0]}")/../../.specify/extensions/gaia/lib/with-ledger-lock.sh" 2>/dev/null || true
+# shellcheck source=.gaia/scripts/spec/with-ledger-lock.sh
+. "$(dirname "${BASH_SOURCE[0]}")/spec/with-ledger-lock.sh" 2>/dev/null || true
 if ! declare -f with_ledger_lock >/dev/null 2>&1; then
   log "ledger-status-migrate: with-ledger-lock.sh unavailable; skipping"
   exit 0

@@ -5,7 +5,7 @@
 # The hook denies `gh pr merge` unless a code-review-audit signal exists for
 # HEAD. Signal 5 (check_out_of_scope_pr) is a fail-closed allowlist bypass: it
 # allows the merge when EVERY file the PR changes (vs its merge base with the
-# default branch) lives outside audit scope; wiki/, .claude/, .specify/,
+# default branch) lives outside audit scope; wiki/, .claude/,
 # .gaia/, docs/, and root-level markdown. Any in-scope path (app/, test/,
 # configs, .github/workflows/) keeps the marker mandatory.
 #
@@ -993,7 +993,7 @@ assert_not_in_set() {
   # the invariant.
   #
   # The witness must be BOTH ownerless and in-scope, which is a narrow set: the
-  # legacy gate allowlists wiki/, .claude/, .specify/, .gaia/, docs/,
+  # legacy gate allowlists wiki/, .claude/, .gaia/, docs/,
   # root *.md and three root literals outright, so none of those reaches this
   # path. A root Makefile qualifies -- no roster glob claims it and no arm of
   # the allowlist admits it.

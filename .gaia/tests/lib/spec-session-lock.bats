@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# Tests for `.specify/extensions/gaia/lib/spec-session-lock.sh`: the
+# Tests for `.gaia/scripts/spec/spec-session-lock.sh`: the
 # ancestor-walk (`resolve-host` / `match-host`) plus the liveness-lock helper
 # built on top of it (`acquire` / `status` / `release`).
 #
@@ -46,7 +46,7 @@ assert_contains() {
 
 setup() {
   # Three `..` from .gaia/tests/lib/ up to the repo root, then into the lib dir.
-  LIBRARY_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")/../../../.specify/extensions/gaia/lib" && pwd)"
+  LIBRARY_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")/../../../.gaia/scripts/spec" && pwd)"
   SCRIPT="$LIBRARY_DIRECTORY/spec-session-lock.sh"
   [ -f "$SCRIPT" ] || {
     echo "script under test not found: $SCRIPT" >&2

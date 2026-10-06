@@ -92,7 +92,7 @@ Every command in this fragment is read-only. The capture step:
 - Does not invoke `gh` in any form.
 - Does not shell out to any GAIA skill, hook, or script that writes to disk.
 
-The working-tree mtimes across `frontend/app/`, `wiki/`, `.gaia/cli/`, `.claude/`, and `.specify/` do not change across the capture step. This is verifiable by snapshotting mtimes before and after invocation.
+The working-tree mtimes across `frontend/app/`, `wiki/`, `.gaia/cli/`, and `.claude/` do not change across the capture step. This is verifiable by snapshotting mtimes before and after invocation.
 
 ## Output format
 

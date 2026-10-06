@@ -50,7 +50,7 @@ Default-deny. Any path in neither list below is denylisted by default; allowlist
 | `.claude/commands/`         | Slash command definitions.                       |
 | `.claude/agents/`           | Sub-agent definitions.                           |
 | `.gaia/statusline/`         | Statusline scripts.                              |
-| `.specify/extensions/gaia/` | GAIA's spec-lifecycle scripts and runbooks, excluding `templates/`. |
+| `.gaia/scripts/spec/`       | GAIA's spec-lifecycle scripts. The runbooks under `.claude/skills/` are allowed with the skills root, minus the prose templates listed in the denylist. |
 | `.gaia/manifest.json`       | Distribution manifest.                           |
 
 ### Denylist (never modify)
@@ -64,7 +64,8 @@ Default-deny. Any path in neither list below is denylisted by default; allowlist
 | `.specify/specs/`                     | Denied defensively: a project migrated from an older GAIA may still hold a leftover spec-kit specs tree. |
 | `.specify/memory/`                    | Denied defensively: a project migrated from an older GAIA may still hold a leftover spec-kit memory tree. |
 | `.gaia/local/specs/`                  | GAIA spec artifacts.                                                    |
-| `.specify/extensions/gaia/templates/` | Template literals; mutating these affects every adopter.                |
+| `.gaia/templates/spec/`               | Template literals; mutating these affects every adopter.                |
+| `.claude/skills/gaia/references/spec/clarify-prompts.md`, `.claude/skills/gaia/references/spec/system-prompt.md`, `.claude/skills/gaia/references/spec/spec-template.md` | Prose template literals, denied by file so the sibling runbooks under the allowed skills root stay allowed; mutating these affects every adopter. |
 | `.github/workflows/`                  | Workflow files; covers self-modification of the triage workflow itself. |
 
 Everything else, including `.github/forensics/` (the triage harness itself) and the rest of `.github/`, is denied by the path policy's own default: a candidate matching neither list resolves to `default-deny-unenumerated` rather than needing its own explicit denylist row.

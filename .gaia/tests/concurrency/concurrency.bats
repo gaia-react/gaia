@@ -27,9 +27,9 @@ teardown() {
 @test "C3-04: main-anchored ledgers resolve to main from a worktree" {
   MAIN="$(gaia_new_main gaia-c304-main)"
   gaia_copy_real "$MAIN" \
-    .specify/extensions/gaia/lib/plan-allocator.sh \
-    .specify/extensions/gaia/lib/with-ledger-lock.sh \
-    .specify/extensions/gaia/lib/title-normalize.sh \
+    .gaia/scripts/spec/plan-allocator.sh \
+    .gaia/scripts/spec/with-ledger-lock.sh \
+    .gaia/scripts/spec/title-normalize.sh \
     .gaia/scripts/ledger-path-lib.sh \
     .gaia/scripts/main-root-lib.sh
   gaia_commit_all "$MAIN" "add plan allocator"
@@ -39,7 +39,7 @@ teardown() {
   # Mirrors the real invocation in .claude/skills/gaia/references/plan.md:
   # ROOT="$(git rev-parse --show-toplevel)"; plan-allocator.sh next "$ROOT".
   root_b="$(run_in "$WORKTREE_B" -- git rev-parse --show-toplevel)"
-  run bash "$MAIN/.specify/extensions/gaia/lib/plan-allocator.sh" next "$root_b" "feature from B"
+  run bash "$MAIN/.gaia/scripts/spec/plan-allocator.sh" next "$root_b" "feature from B"
   [ "$status" -eq 0 ]
 
   # Target: the write lands in the main checkout's one ledger, because the
@@ -329,9 +329,9 @@ JS
 @test "C4-05: SPEC/plan locks serialize across worktrees" {
   MAIN="$(gaia_new_main gaia-c405-main)"
   gaia_copy_real "$MAIN" \
-    .specify/extensions/gaia/lib/plan-allocator.sh \
-    .specify/extensions/gaia/lib/with-ledger-lock.sh \
-    .specify/extensions/gaia/lib/title-normalize.sh \
+    .gaia/scripts/spec/plan-allocator.sh \
+    .gaia/scripts/spec/with-ledger-lock.sh \
+    .gaia/scripts/spec/title-normalize.sh \
     .gaia/scripts/ledger-path-lib.sh \
     .gaia/scripts/main-root-lib.sh
   gaia_commit_all "$MAIN" "add plan allocator"
@@ -342,8 +342,8 @@ JS
   root_a="$(run_in "$WORKTREE_A" -- git rev-parse --show-toplevel)"
   root_b="$(run_in "$WORKTREE_B" -- git rev-parse --show-toplevel)"
 
-  id_a="$(bash "$MAIN/.specify/extensions/gaia/lib/plan-allocator.sh" next "$root_a" "feature A")"
-  id_b="$(bash "$MAIN/.specify/extensions/gaia/lib/plan-allocator.sh" next "$root_b" "feature B")"
+  id_a="$(bash "$MAIN/.gaia/scripts/spec/plan-allocator.sh" next "$root_a" "feature A")"
+  id_b="$(bash "$MAIN/.gaia/scripts/spec/plan-allocator.sh" next "$root_b" "feature B")"
 
   # Target: concurrent number allocations never both mint the same id -- the
   # lock (and the ledger it guards) is anchored to main, so the second waits

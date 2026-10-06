@@ -94,8 +94,8 @@
 . "$(dirname "${BASH_SOURCE[0]}")/token-pricing-lib.sh" 2>/dev/null || true
 # shellcheck source=.gaia/scripts/ledger-path-lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/ledger-path-lib.sh" 2>/dev/null || true
-# shellcheck source=.specify/extensions/gaia/lib/with-ledger-lock.sh
-. "$(dirname "${BASH_SOURCE[0]}")/../../.specify/extensions/gaia/lib/with-ledger-lock.sh" 2>/dev/null || true
+# shellcheck source=.gaia/scripts/spec/with-ledger-lock.sh
+. "$(dirname "${BASH_SOURCE[0]}")/spec/with-ledger-lock.sh" 2>/dev/null || true
 # shellcheck source=.gaia/scripts/audit-window-lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/audit-window-lib.sh" 2>/dev/null || true
 # shellcheck source=.gaia/scripts/gh-artifact-lib.sh

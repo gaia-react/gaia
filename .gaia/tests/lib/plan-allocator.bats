@@ -18,7 +18,7 @@ teardown() {
 }
 
 _run_allocator() {
-  bash "$REPO/.specify/extensions/gaia/lib/plan-allocator.sh" "$@"
+  bash "$REPO/.gaia/scripts/spec/plan-allocator.sh" "$@"
 }
 
 @test "1: fresh run seeds ledger + returns PLAN-001" {
@@ -140,7 +140,7 @@ _run_allocator() {
     bash -c '
       repo="$1"; job_index="$2"
       until [ -f "$repo/start.flag" ]; do :; done
-      GAIA_LEDGER_LOCK_FORCE_FALLBACK=1 bash "$repo/.specify/extensions/gaia/lib/plan-allocator.sh" next "$repo" > "$repo/out.$job_index" 2>/dev/null
+      GAIA_LEDGER_LOCK_FORCE_FALLBACK=1 bash "$repo/.gaia/scripts/spec/plan-allocator.sh" next "$repo" > "$repo/out.$job_index" 2>/dev/null
     ' _ "$REPO" "$i" &
   done
   touch "$REPO/start.flag"

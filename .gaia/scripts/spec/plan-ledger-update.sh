@@ -42,8 +42,8 @@ patch="$3"
 _library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
 . "${_library_directory}/with-ledger-lock.sh"
-# shellcheck source=../../../../.gaia/scripts/ledger-path-lib.sh
-. "${_library_directory}/../../../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null || true
+# shellcheck source=../ledger-path-lib.sh
+. "${_library_directory}/../ledger-path-lib.sh" 2>/dev/null || true
 
 # repo_root names the tree this update runs in; the ledger it patches is
 # main's, because the state registry declares plans/ main-only. Resolve

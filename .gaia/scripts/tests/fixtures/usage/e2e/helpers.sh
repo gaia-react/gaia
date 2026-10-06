@@ -31,13 +31,13 @@ build_repo() {
   mkdir -p "$REPO" "$PROJECTS_DIRECTORY/$(encode_project_path "$REPO")" "$TEMPORARY_DIRECTORY/bin"
   git -C "$REPO" init -q -b main
   git -C "$REPO" -c commit.gpgsign=false commit -q --allow-empty -m init
-  mkdir -p "$REPO/.claude/hooks/lib" "$REPO/.gaia/scripts" "$REPO/.specify/extensions/gaia/lib" \
-    "$REPO/.specify/extensions/gaia/templates" "$REPO/.claude/skills/gaia/references"
+  mkdir -p "$REPO/.claude/hooks/lib" "$REPO/.gaia/scripts" "$REPO/.gaia/scripts/spec" \
+    "$REPO/.claude/skills/gaia/references/spec"
   cp "$E2E_SOURCE_ROOT"/.claude/hooks/*.sh "$REPO/.claude/hooks/"
   cp "$E2E_SOURCE_ROOT"/.claude/hooks/lib/*.sh "$REPO/.claude/hooks/lib/"
   cp "$E2E_SOURCE_ROOT"/.gaia/scripts/*.sh "$REPO/.gaia/scripts/"
-  cp "$E2E_SOURCE_ROOT"/.specify/extensions/gaia/lib/*.sh "$REPO/.specify/extensions/gaia/lib/"
-  cp "$E2E_SOURCE_ROOT/.specify/extensions/gaia/templates/spec-template.md" "$REPO/.specify/extensions/gaia/templates/"
+  cp "$E2E_SOURCE_ROOT"/.gaia/scripts/spec/*.sh "$REPO/.gaia/scripts/spec/"
+  cp "$E2E_SOURCE_ROOT/.claude/skills/gaia/references/spec/spec-template.md" "$REPO/.claude/skills/gaia/references/spec/"
   cp "$E2E_SOURCE_ROOT/.claude/skills/gaia/references/spec.md" "$REPO/.claude/skills/gaia/references/"
   cp "$E2E_SOURCE_ROOT/.claude/settings.json" "$REPO/.claude/settings.json"
   cat >"$REPO/.gaia/scripts/token-rates.json" <<'JSON'

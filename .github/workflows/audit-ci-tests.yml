@@ -256,7 +256,9 @@ jobs:
               # the spec workflow templates. The three .claude roots are supersets of
               # the narrower file entries around them, which stay listed so each
               # suite's own sources remain armed if a root is ever narrowed; the
-              # health and spec-kit roots match no other entry. Without these
+              # health and spec-template roots match no other entry (the spec
+              # prose templates and runbooks live under .claude/skills/, so the
+              # skills root already covers them). Without these
               # roots, adding a carrier there skips every bats step and greens the
               # required check with the carrier test unrun. These are the roots
               # that hold prompts today, not a proof that no other can; a carrier
@@ -270,7 +272,7 @@ jobs:
               - '.claude/skills/**/*.md'
               - '.claude/commands/**/*.md'
               - '.claude/agents/**/*.md'
-              - '.specify/extensions/gaia/templates/**'
+              - '.gaia/templates/spec/**'
               # The doc-isolation suite (.gaia/tests/lib/) renders the prompt out
               # of the shared isolation reference and greps both callers' pointer
               # wiring, so the fragment and debt.md are sources it guards too.
@@ -380,16 +382,15 @@ jobs:
               # `code=false`, skip every bats step, and green the job having run
               # the assertions it broke zero times.
               - '.gaia/tests/helpers/**'
-              # The .gaia/tests/lib/ suites exercise the SPEC-ledger lib scripts
-              # under .specify/extensions/gaia/lib/ (spec-archive-merged.sh, the
-              # allocators, ledger-update, etc.), so trigger on that source dir
-              # too. A source-only edit then runs the suite, matching the
-              # test-dir + source-dir pairing the filters above already use
-              # (.gaia/tests/hooks/** + .claude/hooks/**;
+              # The .gaia/tests/lib/ suites exercise the SPEC-ledger scripts
+              # under .gaia/scripts/spec/ (spec-archive-merged.sh, the
+              # allocators, ledger-update, etc.). That dir sits under the
+              # .gaia/scripts/** glob above, so a source-only edit already runs
+              # the suite, matching the test-dir + source-dir pairing the
+              # filters above use (.gaia/tests/hooks/** + .claude/hooks/**;
               # .gaia/tests/forensics/** + .github/forensics/**).
-              - '.specify/extensions/gaia/lib/**'
-              # spec-archive-merged.bats reads commands/spec-close.md.
-              - '.specify/extensions/gaia/commands/**'
+              # spec-archive-merged.bats reads references/spec/spec-close.md,
+              # which the .claude/skills/**/*.md glob above covers.
               - '.claude/skills/gaia/references/forensics*'
               - '.github/forensics/**'
               # The statusline suite (.gaia/tests/statusline/) exercises the
@@ -459,7 +460,7 @@ jobs:
               # The INV-7 concurrency meter (.gaia/tests/concurrency/) and the
               # sources it drives. Most are already listed above -- it copies
               # .claude/hooks/**, .gaia/scripts/**, .gaia/statusline/** and
-              # .specify/extensions/gaia/lib/** into its fixtures at their real
+              # .gaia/scripts/spec/** into its fixtures at their real
               # repo-relative paths -- but these five are not, and each is a
               # source the meter reads:
               #   state-registry.json  copied into every fixture, so a

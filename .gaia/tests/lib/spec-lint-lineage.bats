@@ -5,8 +5,8 @@
 # lint runs against the shipped shape. Hermetic: no real specs, no telemetry.
 
 REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
-LINT="$REPO_ROOT/.specify/extensions/gaia/lib/lint.sh"
-TEMPLATE="$REPO_ROOT/.specify/extensions/gaia/templates/spec-template.md"
+LINT="$REPO_ROOT/.gaia/scripts/spec/lint.sh"
+TEMPLATE="$REPO_ROOT/.claude/skills/gaia/references/spec/spec-template.md"
 SPEC_MD="$REPO_ROOT/.claude/skills/gaia/references/spec.md"
 
 # Filled SPEC from the template with the given frontmatter line(s) in place of

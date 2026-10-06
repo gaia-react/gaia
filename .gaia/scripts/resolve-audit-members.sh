@@ -58,7 +58,8 @@
 # So `.gaia/**/*.sh` matches `.gaia/x.sh` and `.gaia/scripts/y.sh`;
 # `.github/**/*.sh` matches a top-level `.github/x.sh` as well as
 # `.github/workflows/y.sh` (the `**/` collapses to zero segments);
-# `.specify/extensions/gaia/lib/*.sh` matches only direct children;
+# `.gaia/scripts/*.sh` matches only direct children, while `.gaia/**/*.sh`
+# also reaches nested `.gaia/scripts/spec/*.sh`;
 # `app/**` matches anything under app/.
 #
 # Bash 3.2 compatible (macOS default): no associative arrays, no `mapfile`,

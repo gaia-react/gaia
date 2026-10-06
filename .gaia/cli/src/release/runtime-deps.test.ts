@@ -1,5 +1,6 @@
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -179,7 +180,7 @@ describe('extractPathRefs', () => {
     // a regex literal that a `ps` command line is matched against; it is never
     // sourced or executed, so the exact token is allowlisted.
     const refs = extractPathRefs(
-      '.specify/extensions/gaia/lib/spec-session-lock.sh',
+      '.gaia/scripts/spec/spec-session-lock.sh',
       "SNAPSHOT_WRAPPER_PATTERN='\\.claude/shell-snapshots/'\n"
     );
     expect(refs.map((r) => r.path)).not.toContain('.claude/shell-snapshots');
@@ -312,6 +313,36 @@ describe('release runtime-deps CLI', () => {
     const exit = run([], {cwd: sandbox.rootDir});
     expect(exit).toBe(0);
     expect(stdio.outputs.join('')).toContain('runtime-dependency leaks: none');
+  });
+
+  test('scans a manifested script under .gaia/scripts/spec and classifies its tokens', () => {
+    // The spec-lifecycle scripts live in a subdirectory of `.gaia/scripts`, so
+    // the recursive walk must reach them: a token that names a shipped file
+    // passes, and the same token naming a missing file flags, exactly as for
+    // any other shipped script.
+    sandbox.writeManifest({
+      '.gaia/scripts/check-updates.sh': 'owned',
+      '.gaia/scripts/spec/lint.sh': 'owned',
+    });
+    sandbox.writeFile(
+      '.gaia/scripts/spec/lint.sh',
+      '#!/usr/bin/env bash\nbash .gaia/scripts/check-updates.sh\n'
+    );
+
+    expect(run([], {cwd: sandbox.rootDir})).toBe(0);
+
+    const cleanOutput = stdio.outputs.join('');
+    expect(cleanOutput).toContain('1 manifest-backed script(s)');
+    expect(cleanOutput).toContain('runtime-dependency leaks: none');
+
+    sandbox.writeFile(
+      '.gaia/scripts/spec/lint.sh',
+      '#!/usr/bin/env bash\nbash .gaia/scripts/missing.sh\n'
+    );
+    stdio.outputs.length = 0;
+
+    expect(run([], {cwd: sandbox.rootDir})).toBe(1);
+    expect(stdio.outputs.join('')).toContain('.gaia/scripts/missing.sh');
   });
 
   test('flags references to release-excluded paths', () => {
@@ -829,5 +860,40 @@ describe('SCAN_GLOBS coverage of the committed manifest', () => {
       );
       expect(covered, `${file} is not under any SCAN_GLOBS entry`).toBe(true);
     }
+  });
+});
+
+describe('no legacy spec-kit token in shipped scripts', () => {
+  test('no owned .sh file in the committed manifest names the retired spec-kit root', () => {
+    const legacyRoot = ['.', 'spec', 'ify/'].join('');
+    const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
+    const manifestPath = path.join(repoRoot, '.gaia', 'manifest.json');
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+      files: Record<string, string>;
+    };
+    const ownedShFiles = Object.entries(manifest.files)
+      .filter(([file, klass]) => klass === 'owned' && file.endsWith('.sh'))
+      .map(([file]) => file);
+
+    let filesRead = 0;
+
+    for (const file of ownedShFiles) {
+      const absolute = path.join(repoRoot, file);
+
+      expect(
+        existsSync(absolute),
+        `${file} is an owned manifest key but is missing from the tree`
+      ).toBe(true);
+
+      const contents = readFileSync(absolute, 'utf8');
+      filesRead += 1;
+
+      expect(
+        contents.includes(legacyRoot),
+        `${file} names the retired spec-kit root`
+      ).toBe(false);
+    }
+
+    expect(filesRead).toBeGreaterThan(0);
   });
 });

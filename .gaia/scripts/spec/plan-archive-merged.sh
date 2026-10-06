@@ -135,10 +135,10 @@ _consolidation_gate_pass() {
 command -v jq >/dev/null 2>&1 || exit 0
 
 _library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../../../../.gaia/scripts/cost-represented.sh
+# shellcheck source=../cost-represented.sh
 . "${repo_root}/.gaia/scripts/cost-represented.sh" 2>/dev/null || true
-# shellcheck source=../../../../.gaia/scripts/ledger-path-lib.sh
-. "${_library_directory}/../../../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null || true
+# shellcheck source=../ledger-path-lib.sh
+. "${_library_directory}/../ledger-path-lib.sh" 2>/dev/null || true
 
 # repo_root names the tree this sweep runs in; the ledger and plan folders it
 # reads are main's, because the state registry declares plans/ main-only.

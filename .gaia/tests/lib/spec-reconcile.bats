@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# Tests for `.specify/extensions/gaia/lib/spec-reconcile.sh` (the spec arm; see
+# Tests for `.gaia/scripts/spec/spec-reconcile.sh` (the spec arm; see
 # plan-reconcile.bats for the plan arm). Uses helpers/tmp-spec-repo.sh, which
 # already copies spec-reconcile.sh + ledger-update.sh + with-ledger-lock.sh
 # into a real tmp git repo so ${BASH_SOURCE[0]}-relative sourcing resolves and
@@ -15,7 +15,7 @@ setup() {
   # snapshot_file + assert_files_identical: byte identity without `$(cat …)`.
   . "$BATS_TEST_DIRNAME/../helpers/files.sh"
   . "$BATS_TEST_DIRNAME/../helpers/path.sh"
-  RECONCILE=".specify/extensions/gaia/lib/spec-reconcile.sh"
+  RECONCILE=".gaia/scripts/spec/spec-reconcile.sh"
 }
 
 teardown() {

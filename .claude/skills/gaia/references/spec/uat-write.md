@@ -4,7 +4,7 @@ description: 'Manual runbook: render PO-authored UATs into Playwright e2e specs 
 
 # UAT write pass
 
-**Status:** no automatic trigger. Run it by hand before implementing: read this file and follow it with the SPEC id, or run `bash .specify/extensions/gaia/lib/uat-write.sh <spec-path>`.
+**Status:** no automatic trigger. Run it by hand before implementing: read this file and follow it with the SPEC id, or run `bash .gaia/scripts/spec/uat-write.sh <spec-path>`.
 
 The agent renders the active SPEC's PO-authored UATs into one Playwright e2e spec per UAT, leaving a red-state harness in place before source is edited.
 
@@ -26,7 +26,7 @@ Step 2 covers a SPEC just written by `/gaia-spec`; step 3 handles the common sin
 Run using the Bash tool:
 
 ```bash
-bash .specify/extensions/gaia/lib/uat-write.sh <resolved-spec-path>
+bash .gaia/scripts/spec/uat-write.sh <resolved-spec-path>
 ```
 
 The helper emits a JSON summary on stdout. Capture it verbatim; do NOT pipe through anything else. Exit codes: `0` success, `1` operational failure, `2` usage error.
@@ -51,8 +51,8 @@ The helper emits a JSON summary on stdout. Capture it verbatim; do NOT pipe thro
 
 - The runbook is **idempotent**: re-running on an unchanged SPEC produces zero file diffs. Per-UAT content hashes are stored in the cache file at `.gaia/local/cache/uat-write/<SPEC-ID>.json`; matching hashes short-circuit the write path.
 - The runbook reads/writes **only** to the `<spec_dir>/` the helper reports (under the `frontend` package registered in `.gaia/packages.json`, `frontend/` by default) plus the cache file under `.gaia/local/cache/uat-write/`. It never edits the SPEC, source, or any other directory.
-- Generated specs carry an inline divergence-rule header pointing to `.specify/extensions/gaia/rules/uat-divergence.md`. The implementer may make cosmetic edits (selector text, button label, copy) but logical changes (flow, success criteria, error handling) are forbidden.
+- Generated specs carry an inline divergence-rule header pointing to `.claude/skills/gaia/references/spec/uat-divergence.md`. The implementer may make cosmetic edits (selector text, button label, copy) but logical changes (flow, success criteria, error handling) are forbidden.
 - Orphaned spec files (a `uat-NNN.spec.ts` whose `UAT-NNN` no longer appears in the SPEC) are **hard-deleted**, not archived. Git preserves history; an `_archived/` directory would be picked up by CI globs.
 - Pluggability: only Playwright is supported in this SPEC. Vitest e2e / Cypress is a future SPEC.
-- The helper is pure: same SPEC in, same JSON out. Any rendering logic belongs in `lib/uat-write.sh`, never inline in this command body.
+- The helper is pure: same SPEC in, same JSON out. Any rendering logic belongs in `.gaia/scripts/spec/uat-write.sh`, never inline in this command body.
 - On completion (success, failure, or skip) it touches only `<spec_dir>/` and its cache file, and performs no other action.

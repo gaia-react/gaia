@@ -153,7 +153,7 @@ Two obligations ride with it, and both exist because GAIA's own backlog has alre
 - **The research block**, required in the body and forbidden without the grade. Step 5 states it.
 - **The queue is capped**, at whatever `INVESTIGATE_CAP` in `.gaia/scripts/check-debt-issue-metadata.sh` holds. Over the cap a filing is refused. Step 4 runs the check and states the two ways out.
 
-`/gaia-debt` never fixes an investigate-graded issue: it is excluded from fix candidacy, shown in `list` annotated `[investigate]`, and resolved by answering its question and re-grading it. `.claude/skills/gaia/references/debt.md` owns that behavior.
+`/gaia-debt` never fixes an investigate-graded issue: it is excluded from fix candidacy and resolved by answering its question and re-grading it. `.claude/skills/gaia/references/debt.md` owns that behavior.
 <!-- gaia:maintainer-only:start -->
 
 **Maintainer repository only.** Every filing on the GAIA maintainer repository carries **exactly one** `audience:` label as well. It records **who can observe the defect**, which is a different question from how bad it is and from how hard it is to fix:

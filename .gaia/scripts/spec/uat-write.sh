@@ -52,7 +52,7 @@ fi
 
 # --- Resolve script + template directory (relative to script location) ---
 script_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-templates_directory="$script_directory/../templates"
+templates_directory="$script_directory/../../templates/spec"
 spec_template="$templates_directory/uat-spec.ts.tmpl"
 fixme_template="$templates_directory/uat-fixme.ts.tmpl"
 
@@ -76,7 +76,7 @@ fail_operation() {
 # plus `.playwright/e2e`. Not run in a command substitution, so fail_operation's
 # stdout and exit reach the caller.
 resolve_e2e_relative_directory() {
-  local packages_library="$script_directory/../../../../.claude/hooks/lib/gaia-packages.sh"
+  local packages_library="$script_directory/../../../.claude/hooks/lib/gaia-packages.sh"
   local packages_status=0 package_path
   if [ ! -f "$packages_library" ]; then
     fail_operation "package library missing: $packages_library. Next step: restore it from the GAIA release."
@@ -292,7 +292,7 @@ fi
 
 # --- Render loop ---
 generated_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-divergence_rule_path=".specify/extensions/gaia/rules/uat-divergence.md"
+divergence_rule_path=".claude/skills/gaia/references/spec/uat-divergence.md"
 
 # Track which UAT files we wrote so we can find orphans afterwards.
 seen_uat_files=""

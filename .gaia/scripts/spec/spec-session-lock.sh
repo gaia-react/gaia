@@ -233,8 +233,8 @@ set -uo pipefail
 # Resolve own dir so main-root-lib.sh loads identically from the real repo and
 # from test copies of the lib dir (no hardcoded repo path).
 _library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../../../../.gaia/scripts/main-root-lib.sh
-. "${_library_directory}/../../../../.gaia/scripts/main-root-lib.sh" 2>/dev/null || true
+# shellcheck source=../main-root-lib.sh
+. "${_library_directory}/../main-root-lib.sh" 2>/dev/null || true
 
 # Pinned default Claude-CLI host-match ERE. See the header for the anchor
 # rationale and the `.claude/` false-match trap. Single-quoted on purpose: the
