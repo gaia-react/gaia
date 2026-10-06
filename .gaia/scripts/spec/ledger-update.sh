@@ -73,7 +73,7 @@ fi
 # "Ledger status vocabulary").
 # This is the single chokepoint for ledger writes, so rejecting an
 # off-vocabulary status here keeps every tool path (allocator finalize,
-# spec-reconcile, spec-close) from persisting a stray label. A patch that does
+# spec-reconcile) from persisting a stray label. A patch that does
 # not set status (e.g. a merged_at-only stamp) passes untouched. An unparseable
 # patch falls through to apply_patch, which reports it as exit 5. Existing
 # off-vocabulary rows (e.g. a hand-edited "shipped") are repaired by

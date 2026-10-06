@@ -195,6 +195,19 @@ worktree_spelling() {
   [ -z "$(gaia_branch_spec_number "feat/spec-notes")" ]
 }
 
+@test "plan-number: every plan spelling prints its number without padding, anything else prints nothing" {
+  [ "$(gaia_branch_plan_number "feat/plan-031-x")" = "31" ]
+  [ "$(gaia_branch_plan_number "plan/plan-012-x")" = "12" ]
+  [ "$(gaia_branch_plan_number "worktree-feat+plan-007-x")" = "7" ]
+  [ "$(gaia_branch_plan_number "plan/plan-000")" = "0" ]
+  [ "$(gaia_branch_plan_number "fix/plan-0100-cards")" = "100" ]
+  [ -z "$(gaia_branch_plan_number "feat/spec-005-x")" ]
+  [ -z "$(gaia_branch_plan_number "plan/spec-005-x")" ]
+  [ -z "$(gaia_branch_plan_number "feat/plan-notes")" ]
+  [ -z "$(gaia_branch_plan_number "main")" ]
+  [ "$(bash "$LIBRARY" plan-number feat/plan-031-x)" = "31" ]
+}
+
 # plan_type_in <library> <branch>: the plan-type output of the library copy at <library>.
 plan_type_in() {
   run bash -c ". '$1' && gaia_branch_plan_type '$2'"

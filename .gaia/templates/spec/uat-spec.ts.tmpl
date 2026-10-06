@@ -1,21 +1,20 @@
-// GAIA UAT, rendered by .gaia/scripts/spec/uat-write.sh (run by hand)
-// SPEC: ${SPEC_ID} | UAT: ${UAT_ID} | generated: ${GENERATED_AT}
-//
+${CONTRACT_MARKER}
 // Given: ${UAT_GIVEN}
-// When:  ${UAT_WHEN}
-// Then:  ${UAT_THEN}
+// When: ${UAT_WHEN}
+// Then: ${UAT_THEN}
 //
-// GAIA UAT, divergence policy
-// Cosmetic divergence (selector text, button label, copy): editable.
-// Logical divergence (flow, success criteria, error handling): forbidden.
-// Full rule: ${DIVERGENCE_RULE_PATH} (skeleton; canonical owner is the verifier SPEC).
+// Cosmetic edits to this test (selectors, labels, copy, layout assertions) are allowed.
+// A change to its flow, success criteria, error-handling branch, asserted side effect,
+// precondition or post-state is a logical divergence: report it instead of editing.
+// Rule: .claude/skills/gaia/references/spec/uat-divergence.md
 
 import {expect, test} from '@playwright/test';
 
-test('${UAT_ID} — ${SPEC_ID}', async ({page}) => {
-  // Red-state baseline. Implementer turns this green.
-  // Given: ${UAT_GIVEN}
-  // When:  ${UAT_WHEN}
-  // Then:  ${UAT_THEN}
-  await expect(false, '${UAT_ID} not yet implemented: ${UAT_THEN}').toBe(true);
+const outcome = {
+  text: ${UAT_THEN_JS},
+};
+
+test(outcome.text, () => {
+  test.fail();
+  expect(false, outcome.text).toBe(true);
 });

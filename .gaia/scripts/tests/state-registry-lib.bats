@@ -428,8 +428,6 @@ run_in_registry_repo() {
     "cache/audit-SPEC-042:ephemeral"
     "cache/mutation-scratch/abc123.work.code-audit-frontend:ephemeral"
     "cache/audit-window-SPEC-042.json:ephemeral"
-    "cache/wiki-promote/SPEC-042.json:ephemeral"
-    "cache/uat-write/SPEC-042.json:ephemeral"
     "cache/some-run/renders.json:ephemeral"
     "audit/KNOWLEDGE-2026-07-23.md:ephemeral"
     "audit/issue-body-abc.md:ephemeral"

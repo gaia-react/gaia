@@ -92,6 +92,11 @@
 #   branch names, leading zeros stripped (`refactor/spec-005-x` prints 5).
 #   Prints nothing otherwise. Returns 0.
 #
+# gaia_branch_plan_number <branch>
+#   Prints the plan number a `<type>/plan-<nnn>` or legacy `plan/plan-<nnn>`
+#   branch names (the worktree spelling included), leading zeros stripped
+#   (`feat/plan-031-x` prints 31). Prints nothing otherwise. Returns 0.
+#
 # gaia_branch_plan_type <branch>
 #   Prints the commit type a type-prefixed plan branch carries (`feat` for
 #   `feat/plan-024-x`). Prints nothing for a legacy `plan/` branch and for every
@@ -152,6 +157,7 @@
 #   bash .gaia/scripts/branch-name-lib.sh members debt/41-42-batch
 #   bash .gaia/scripts/branch-name-lib.sh name plan spec-005 --type feat --slug cards
 #   bash .gaia/scripts/branch-name-lib.sh spec-number feat/spec-005-cards
+#   bash .gaia/scripts/branch-name-lib.sh plan-number feat/plan-024-cards
 #   bash .gaia/scripts/branch-name-lib.sh plan-type feat/plan-024-cards
 #   bash .gaia/scripts/branch-name-lib.sh list [directory]
 #   bash .gaia/scripts/branch-name-lib.sh validate fix/2450-statusline-nudge
@@ -341,6 +347,16 @@ gaia_branch_spec_number() {
   unit="${classified#* }"
   case "$classified" in
     "plan SPEC-"*) printf '%s\n' "$(_gaia_branch_strip_zeros "${unit#SPEC-}")" ;;
+  esac
+  return 0
+}
+
+gaia_branch_plan_number() {
+  local classified unit
+  classified="$(gaia_branch_classify "${1-}")"
+  unit="${classified#* }"
+  case "$classified" in
+    "plan plan-"*) printf '%s\n' "$(_gaia_branch_strip_zeros "${unit#plan-}")" ;;
   esac
   return 0
 }
@@ -673,12 +689,13 @@ if [ "${BASH_SOURCE[0]:-}" = "$0" ]; then
     classify) gaia_branch_classify "${1-}" ;;
     members) gaia_branch_members "${1-}" ;;
     spec-number) gaia_branch_spec_number "${1-}" ;;
+    plan-number) gaia_branch_plan_number "${1-}" ;;
     plan-type) gaia_branch_plan_type "${1-}" ;;
     normalize) gaia_branch_normalize "${1-}"; printf '\n' ;;
     list) gaia_branch_list "${1-}" ;;
     validate) gaia_branch_validate "${1-}"; exit $? ;;
     *)
-      echo "usage: branch-name-lib.sh name|classify|members|spec-number|plan-type|normalize|list|validate <args>" >&2
+      echo "usage: branch-name-lib.sh name|classify|members|spec-number|plan-number|plan-type|normalize|list|validate <args>" >&2
       exit 2
       ;;
   esac

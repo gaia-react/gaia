@@ -11,8 +11,8 @@
 #
 # Sweep criteria: a ledger row with status "abandoned" AND an active folder
 # AND abandoned_at past the retention window AND a passing representation
-# gate. Unlike the merged sweep there is no consolidation gate and no
-# wiki-promote drain check: an abandoned folder reaps as one unit.
+# gate. Unlike the merged sweep there is no consolidation gate: an abandoned
+# folder reaps as one unit.
 #
 # Each test spins up its own tmp git repo via helpers/tmp-spec-repo.sh and
 # tears it down; hermetic, no reliance on the real project ledger.
@@ -315,9 +315,9 @@ _clear_abandoned_at() {
   [ ! -e "$REPO/$SPECS/SPEC-001" ]
 }
 
-# --- 20: a dangling wiki-promote defer flag is purged, not orphaned -----------
+# --- 20: the retired defer cache path is left alone --------------------------
 
-@test "20: reaping an abandoned row purges its wiki-promote defer flag too" {
+@test "20: reaping an abandoned row leaves a leftover wiki-promote cache file untouched" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-abandoned-folder SPEC-001)"
   mkdir -p "$REPO/.gaia/local/cache/wiki-promote"
   printf '{"branch":"spec-1-x","deferred_at":"2026-01-02T00:00:00Z"}\n' \
@@ -328,25 +328,7 @@ _clear_abandoned_at() {
   assert_contains "Deleted 1 abandoned SPEC folder(s): SPEC-001"
 
   [ ! -e "$REPO/$SPECS/SPEC-001" ]
-  [ ! -e "$REPO/.gaia/local/cache/wiki-promote/SPEC-001.json" ]
-  # The wiki-promote/ drop zone itself survives; only its stale entry is purged.
-  [ -d "$REPO/.gaia/local/cache/wiki-promote" ]
-}
-
-
-@test "21: a wiki-promote defer flag survives when the age gate keeps the folder" {
-  REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-abandoned-folder SPEC-001)"
-  _set_abandoned_at "$REPO" SPEC-001 "$(_days_ago 2)"
-  export GAIA_SPEC_RETENTION_DAYS=30
-  mkdir -p "$REPO/.gaia/local/cache/wiki-promote"
-  printf '{"branch":"spec-1-x","deferred_at":"2026-01-02T00:00:00Z"}\n' \
-    > "$REPO/.gaia/local/cache/wiki-promote/SPEC-001.json"
-
-  run _archive "$REPO"
-  [ "$status" -eq 0 ]
-  refute_contains "Deleted"
-
-  [ -d "$REPO/$SPECS/SPEC-001" ]
+  # The cache is retired: nothing reads it and nothing here purges it.
   [ -f "$REPO/.gaia/local/cache/wiki-promote/SPEC-001.json" ]
 }
 

@@ -1,11 +1,11 @@
 #!/usr/bin/env bats
-# Delete-sweep tests for spec-archive-merged.sh (UAT-004, COV-006, DP-003).
+# Delete-sweep tests for spec-archive-merged.sh.
 #
-# The sweep is the safety net for the SPEC close flow: a merged SPEC whose
-# folder still sits in the active specs dir (PR merged out-of-band, or a stale
-# session that never ran close) gets deleted on the next /gaia-spec run. The
-# SPEC close command's own single-id delete delegates to the same script, so
-# both entry points share one gate.
+# The sweep is the safety net for the post-merge close: a merged SPEC whose
+# folder still sits in the active specs dir (PR merged out-of-band, or an
+# orchestrator that ended before its close) gets deleted by the pre-flight
+# sweep of the next /gaia-spec or /gaia-plan run, once the retention window
+# has passed. There is no early reap: --close is accepted and ignored.
 #
 # Deletion is gated on cost representation (cost_folder_represented, sourced
 # from .gaia/scripts/cost-represented.sh): a folder is only deleted once every
@@ -17,9 +17,8 @@
 # (nothing to lose), so most fixtures below need no ledger row.
 #
 # Sweep criteria: a ledger row with status "merged" AND an active folder AND
-# no pending wiki-promote drain cache AND a passing representation gate. A
-# merged row with no folder is skipped; a spec with a drain cache is left for
-# the close flow; a gate failure leaves the folder in place for review.
+# an aged merged_at AND a passing representation gate. A merged row with no
+# folder is skipped; a gate failure leaves the folder in place for review.
 #
 # Each test spins up its own tmp git repo via helpers/tmp-spec-repo.sh and
 # tears it down; hermetic, no reliance on the real project ledger. The
@@ -157,39 +156,21 @@ _clear_merged_at() {
   rm -rf "$REPO2"
 }
 
-# --- 3: spec-close delegation ordering (structural, no execution) ----------
+# --- 6: the retired defer cache no longer blocks a reap ----------------------
 
-@test "3: spec-close flips the ledger before delegating to the single-id sweep" {
-  REPO_ROOT="$(cd "$BATS_TEST_DIRNAME" && git rev-parse --show-toplevel)"
-  SPEC_CLOSE="$REPO_ROOT/.claude/skills/gaia/references/spec/spec-close.md"
-  [ -f "$SPEC_CLOSE" ]
-
-  flip_line="$(grep -n 'ledger-update.sh' "$SPEC_CLOSE" | head -1 | cut -d: -f1)"
-  sweep_line="$(grep -n 'spec-archive-merged.sh' "$SPEC_CLOSE" | tail -1 | cut -d: -f1)"
-  [ -n "$flip_line" ]
-  [ -n "$sweep_line" ]
-  [ "$flip_line" -lt "$sweep_line" ]
-
-  sweep_call="$(grep -n 'spec-archive-merged.sh' "$SPEC_CLOSE" | tail -1)"
-  grep -qF '"$PWD"' <<<"$sweep_call"
-  grep -qF '"$SPEC_ID"' <<<"$sweep_call"
-}
-
-# --- 6: skip when a drain cache is pending -----------------------------------
-
-@test "6: a merged spec with a pending wiki-promote drain cache is left active" {
+@test "6: a leftover wiki-promote defer cache file beside a reapable spec no longer blocks its reap" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-merged-folder SPEC-001)"
   mkdir -p "$REPO/.gaia/local/cache/wiki-promote"
   printf '{"branch":"spec-1-x"}\n' > "$REPO/.gaia/local/cache/wiki-promote/SPEC-001.json"
 
   run _archive "$REPO"
   [ "$status" -eq 0 ]
-  refute_contains "Deleted"
+  assert_contains "Deleted 1 merged SPEC folder(s): SPEC-001"
 
-  [ -f "$REPO/$SPECS/SPEC-001/SPEC.md" ]
-  [ ! -e "$REPO/$SPECS/archived" ]
+  [ ! -e "$REPO/$SPECS/SPEC-001" ]
+  # The sweep neither reads nor purges the retired path.
+  [ -f "$REPO/.gaia/local/cache/wiki-promote/SPEC-001.json" ]
 }
-
 
 @test "7: a merged row with no active folder is a no-op" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-merged SPEC-005)"
@@ -373,9 +354,9 @@ _clear_merged_at() {
   rm -rf "$REPO2"
 }
 
-# --- 21: --close bypasses the age gate only -----------------------------------
+# --- 21: --close is accepted and ignored: no early reap -----------------------
 
-@test "21: --close reaps a within-window consolidated folder; without --close it stays kept" {
+@test "21: a within-window consolidated folder stays kept with and without --close" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-merged-folder SPEC-001)"
   _set_merged_at "$REPO" SPEC-001 "$(_days_ago 2)"
   export GAIA_SPEC_RETENTION_DAYS=30
@@ -387,8 +368,8 @@ _clear_merged_at() {
 
   run bash "$REPO/$ARCHIVE" "$REPO" SPEC-001 --close
   [ "$status" -eq 0 ]
-  assert_contains "Deleted 1 merged SPEC folder(s): SPEC-001"
-  [ ! -e "$REPO/$SPECS/SPEC-001" ]
+  refute_contains "Deleted"
+  [ -d "$REPO/$SPECS/SPEC-001" ]
 }
 
 # --- 22: --close never bypasses the consolidation gate -----------------------

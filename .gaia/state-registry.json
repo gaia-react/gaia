@@ -395,7 +395,7 @@
       "keyed_by": null,
       "why": "The plan folder stays in the main checkout by contract; worktree-mode orchestrators write PROGRESS.md back to main.",
       "writer": "code",
-      "reaped_by": "plan-close (plan-archive-merged.sh --close)",
+      "reaped_by": "pre-flight sweep (plan-archive-merged.sh)",
       "source": "SPEC-061 §main-only"
     },
     {
@@ -574,18 +574,6 @@
       "scope": "ephemeral",
       "keyed_by": null,
       "why": "A cost-ledger breadcrumb recording whether an adversarial audit ran this SPEC or plan session; deliberately resolved to main, keyed by spec/plan id, read-then-deleted by the cost tally.",
-      "writer": "code",
-      "reaped_by": null,
-      "source": "SPEC-061 §ephemeral"
-    },
-    {
-      "id": "wiki-promote-and-uat-write-scratch",
-      "path": "cache/wiki-promote/|cache/uat-write/",
-      "match": "prefix",
-      "kind": "dir",
-      "scope": "ephemeral",
-      "keyed_by": null,
-      "why": "A defer-flag cache for SPEC/plan wiki promotion, and a per-UAT content-hash mirror for the UAT-write idempotency check; both keyed by SPEC or plan id.",
       "writer": "code",
       "reaped_by": null,
       "source": "SPEC-061 §ephemeral"
