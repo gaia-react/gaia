@@ -19,6 +19,7 @@
 #   list                           ->  list        (any further token is refused)
 #   why <number>                   ->  why <N>     (exactly one number)
 #   [fix] <number> [<number> ...]  ->  numbers <N1> [<N2> ...]
+#   ... [use] worktree|branch      ->  the same, plus `isolation <mode>`
 # A number token is an optional single `#` then a positive integer with no
 # leading zero. Duplicates collapse, first occurrence wins. Numbers are compared
 # as strings and never put through shell arithmetic, which overflows on a long
@@ -26,18 +27,9 @@
 # refusal is the first one, left to right, that the grammar cannot place.
 # Non-whitespace input that yields no token (only commas) is refused as `,`.
 #
-# Isolation keyword. An operator may name the isolation mode in the same
-# argument string ("12 34 worktree", "do it on a branch"). When any token
-# contains `worktree` or `branch`, in any case, the string is read as phrasing:
-# every token holding a keyword, and every token in the closed stopword set
-# named in is_filler below, is skipped as filler, and the grammar above runs on
-# what is left. Any other word is not filler, so an unknown or negating word
-# (`not`, `explain`, `LIST`) still refuses, and so does a token with a digit
-# (`12x`). When exactly one of the two keywords
-# appears, a `top` or `numbers` result gains a second stdout line,
-# `isolation worktree` or `isolation branch`; when both appear the mode is
-# ambiguous and no second line is printed. `list` and `why` never isolate, so
-# they never print it. With no keyword in the string, nothing above changes.
+# The isolation suffix is the only way to name the mode: after at least one
+# number, as the last token, `worktree` or `branch`, optionally preceded by
+# `use`. Nothing may follow it, and it is accepted nowhere else.
 #
 # Usage:
 #   bash .gaia/scripts/debt-parse-args.sh <<'GAIA_DEBT_ARGUMENTS'
@@ -45,8 +37,9 @@
 #   GAIA_DEBT_ARGUMENTS
 #
 # Stdout is one line: top | list | why <N> | numbers <N1> [<N2> ...] (numbers
-# without the `#`), or `unrecognized <token>` on a refusal, plus the optional
-# `isolation worktree|branch` second line described above.
+# without the `#`), or `unrecognized <token>` on a refusal. A `numbers` result
+# that ended in the isolation suffix gains a second line, `isolation worktree`
+# or `isolation branch`.
 #
 # Exit: 0 parsed, 2 refused (stderr carries the token and the accepted forms),
 # 3 misused (an argv argument was given, or stdin could not be read; stdout is
@@ -71,7 +64,7 @@ refuse() {
   printf 'unrecognized %s\n' "$1"
   {
     printf 'unrecognized argument: %s\n' "$1"
-    echo "accepted forms: /gaia-debt | /gaia-debt fix | /gaia-debt list | /gaia-debt why <issue-number> | /gaia-debt [fix] <issue-number> [<issue-number> ...] (numbers may carry a leading # and be separated by spaces or commas)"
+    echo "accepted forms: /gaia-debt | /gaia-debt fix | /gaia-debt list | /gaia-debt why <issue-number> | /gaia-debt [fix] <issue-number> [<issue-number> ...] [[use] worktree|branch] (numbers may carry a leading # and be separated by spaces or commas)"
   } >&2
   exit 2
 }
@@ -89,38 +82,6 @@ is_number_token() {
   esac
 }
 
-# The isolation keyword pre-pass runs over the whole string, so filler that
-# comes before the keyword ("please use a worktree") is skipped too. Bracket
-# patterns match case-insensitively without a bash 4 case-folding expansion.
-worktree_pattern='*[wW][oO][rR][kK][tT][rR][eE][eE]*'
-branch_pattern='*[bB][rR][aA][nN][cC][hH]*'
-saw_worktree=0
-saw_branch=0
-# shellcheck disable=SC2254
-case "$input" in $worktree_pattern) saw_worktree=1 ;; esac
-# shellcheck disable=SC2254
-case "$input" in $branch_pattern) saw_branch=1 ;; esac
-phrasing=$((saw_worktree + saw_branch))
-isolation_mode=""
-if [ "$saw_worktree" -eq 1 ] && [ "$saw_branch" -eq 0 ]; then
-  isolation_mode="worktree"
-elif [ "$saw_branch" -eq 1 ] && [ "$saw_worktree" -eq 0 ]; then
-  isolation_mode="branch"
-fi
-
-# is_filler <token>: under phrasing, true for a keyword token and for a word in
-# the closed stopword set. The set is closed on purpose: an open-ended filler arm
-# would erase a negation or an unknown first word and fall through to a drain.
-is_filler() {
-  [ "$phrasing" -gt 0 ] || return 1
-  # shellcheck disable=SC2254
-  case "$1" in
-    $worktree_pattern | $branch_pattern) return 0 ;;
-    a | an | the | on | in | into | use | using | please | do | it | with | new | separate) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
 # State machine over the token stream, so the tokens never need a second pass:
 #   start     nothing seen yet
 #   fixed     a leading `fix`; a number must follow
@@ -128,11 +89,14 @@ is_filler() {
 #   why_bare  `why`; one number must follow
 #   why_done  `why <N>`; nothing may follow
 #   numbers   one or more numbers so far
+#   use_bare  numbers then `use`; `worktree` or `branch` must follow
+#   isolated  numbers then the isolation suffix; nothing may follow
 state="start"
 token_count=0
 numbers_seen=" "
 numbers_out=""
 why_number=""
+isolation_mode=""
 
 consume_token() {
   local token="$1"
@@ -150,10 +114,32 @@ consume_token() {
           ;;
       esac
       ;;
-    fixed | numbers)
+    fixed)
       is_number_token "$token" || refuse "$token"
       state="numbers"
       add_number "$number_value"
+      ;;
+    numbers)
+      case "$token" in
+        use) state="use_bare" ;;
+        worktree | branch)
+          state="isolated"
+          isolation_mode="$token"
+          ;;
+        *)
+          is_number_token "$token" || refuse "$token"
+          add_number "$number_value"
+          ;;
+      esac
+      ;;
+    use_bare)
+      case "$token" in
+        worktree | branch)
+          state="isolated"
+          isolation_mode="$token"
+          ;;
+        *) refuse "$token" ;;
+      esac
       ;;
     why_bare)
       is_number_token "$token" || refuse "$token"
@@ -179,41 +165,32 @@ while IFS= read -r line || [ -n "$line" ]; do
   IFS=$' \t\r,' read -r -a fields <<<"$line"
   field_index=0
   while [ "$field_index" -lt "${#fields[@]}" ]; do
-    if [ -n "${fields[$field_index]}" ] && ! is_filler "${fields[$field_index]}"; then
+    if [ -n "${fields[$field_index]}" ]; then
       consume_token "${fields[$field_index]}"
     fi
     field_index=$((field_index + 1))
   done
 done <<<"$input"
 
-# print_isolation: the optional second line, for the two results that isolate.
-print_isolation() {
-  if [ -n "$isolation_mode" ]; then
-    echo "isolation $isolation_mode"
-  fi
-}
-
 if [ "$token_count" -eq 0 ]; then
   case "$input" in
-    *[![:space:]]*)
-      [ "$phrasing" -gt 0 ] || refuse ","
+    *[![:space:]]*) refuse "," ;;
+    *)
+      echo "top"
+      exit 0
       ;;
   esac
-  echo "top"
-  print_isolation
-  exit 0
 fi
 
 case "$state" in
-  fixed)
-    echo "top"
-    print_isolation
-    ;;
+  fixed) echo "top" ;;
   listed) echo "list" ;;
   why_bare) refuse "why" ;;
   why_done) echo "why $why_number" ;;
-  numbers)
+  numbers) echo "numbers$numbers_out" ;;
+  use_bare) refuse "use" ;;
+  isolated)
     echo "numbers$numbers_out"
-    print_isolation
+    echo "isolation $isolation_mode"
     ;;
 esac

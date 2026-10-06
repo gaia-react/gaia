@@ -15,7 +15,7 @@ bats_require_minimum_version 1.5.0
 setup() {
   SCRIPT="${DEBT_PARSE_ARGS_SCRIPT:-$(cd "$BATS_TEST_DIRNAME/.." && pwd)/debt-parse-args.sh}"
   LONG_NUMBER="1234567890123456789012345"
-  USAGE_LINE="accepted forms: /gaia-debt | /gaia-debt fix | /gaia-debt list | /gaia-debt why <issue-number> | /gaia-debt [fix] <issue-number> [<issue-number> ...] (numbers may carry a leading # and be separated by spaces or commas)"
+  USAGE_LINE="accepted forms: /gaia-debt | /gaia-debt fix | /gaia-debt list | /gaia-debt why <issue-number> | /gaia-debt [fix] <issue-number> [<issue-number> ...] [[use] worktree|branch] (numbers may carry a leading # and be separated by spaces or commas)"
 }
 
 # parse <interpreter> <stdin text>: run the parser with the text on stdin.
@@ -75,11 +75,37 @@ fix fix|fix
 12 fix|fix
 FIX|FIX
 ,|,
-not 12, just 34 on a branch|not
-12 not a branch, a worktree|not
-not a branch, a worktree|not
-LIST worktree|LIST
-explain 12 on a branch|explain
+worktree|worktree
+use worktree|use
+fix worktree|worktree
+fix use branch|use
+12 use|use
+12 use use worktree|use
+12 worktree 34|34
+12 branch worktree|worktree
+12 use worktree branch|branch
+12 Worktree|Worktree
+12 USE branch|USE
+12 please use worktree|please
+12 on a branch|on
+12 worktrees|worktrees
+list worktree|worktree
+why 12 worktree|worktree
+EOF
+}
+
+# isolation_rows: one "stdin|stdout" row per line, stdout's newline written as
+# `;`. The suffix comes after the numbers, last, with `use` optional.
+isolation_rows() {
+  cat <<'EOF'
+12 worktree|numbers 12;isolation worktree
+12 branch|numbers 12;isolation branch
+12 use worktree|numbers 12;isolation worktree
+12 use branch|numbers 12;isolation branch
+#12, #34 worktree|numbers 12 34;isolation worktree
+fix 12 34 use branch|numbers 12 34;isolation branch
+12,34,worktree|numbers 12 34;isolation worktree
+12 12 use worktree|numbers 12;isolation worktree
 EOF
 }
 
@@ -126,31 +152,10 @@ run_unrecognized() {
 @test "every unrecognized form exits 2 naming the first offending token" {
   run_unrecognized bash
   [ "$UNRECOGNIZED_ROW_COUNT" -eq "$(unrecognized_rows | wc -l | tr -d ' ')" ]
-  [ "$UNRECOGNIZED_ROW_COUNT" -ge 23 ]
+  [ "$UNRECOGNIZED_ROW_COUNT" -ge 35 ]
 }
 
-# isolation_rows: one "stdin|stdout" row per line, stdout's newline written as
-# `;`. A keyword makes the string phrasing: filler words drop, and exactly one
-# keyword adds the isolation line to a top or numbers result. Only the closed
-# stopword set drops; any other word refuses (unrecognized_rows).
-isolation_rows() {
-  cat <<'EOF'
-worktree|top;isolation worktree
-branch|top;isolation branch
-please use a worktree|top;isolation worktree
-do it on a branch|top;isolation branch
-WORKTREE|top;isolation worktree
-fix on a Branch|top;isolation branch
-12 34 worktree|numbers 12 34;isolation worktree
-fix #12, 34 on a branch|numbers 12 34;isolation branch
-please fix 12 in worktrees|numbers 12;isolation worktree
-use worktree, 12|numbers 12;isolation worktree
-list worktree|list
-why 12 on a branch|why 12
-EOF
-}
-
-@test "an isolation keyword turns the string into phrasing and names the mode" {
+@test "a trailing [use] worktree|branch after the numbers names the isolation mode" {
   local row_count=0 row stdin_text expected
   while IFS= read -r row; do
     stdin_text="${row%%|*}"
@@ -163,16 +168,7 @@ EOF
     fi
   done < <(isolation_rows)
   [ "$row_count" -eq "$(isolation_rows | wc -l | tr -d ' ')" ]
-  [ "$row_count" -ge 12 ]
-}
-
-@test "under phrasing a token with a digit is still refused, never dropped as filler" {
-  parse bash "12x worktree"
-  [ "$status" -eq 2 ]
-  [ "$output" = "unrecognized 12x" ]
-  parse bash "list 12 worktree"
-  [ "$status" -eq 2 ]
-  [ "$output" = "unrecognized 12" ]
+  [ "$row_count" -ge 8 ]
 }
 
 @test "a lone newline is the empty argument" {
@@ -230,7 +226,10 @@ EOF
     [ "$status" -eq 0 ]
     [ "$output" = "${pair#*|}" ]
   done
-  local refusals=("12x|12x" "why 12 34|34" "list foo|foo" ",|," "007|007") refusal
+  parse /bin/bash "12, 34 use worktree"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(printf 'numbers 12 34\nisolation worktree')" ]
+  local refusals=("12x|12x" "why 12 34|34" "list foo|foo" ",|," "007|007" "12 use|use" "12 worktree 34|34") refusal
   for refusal in "${refusals[@]}"; do
     parse /bin/bash "${refusal%%|*}"
     [ "$status" -eq 2 ]

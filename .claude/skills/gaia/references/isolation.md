@@ -100,7 +100,7 @@ when `POLICY` is `always-worktree` and its worktree creation just failed (the fa
 prompt is the decision point.
 
 **A stated answer replaces the prompt.** When the caller passes an answer the operator already gave
-(`/gaia-debt` does, when its arguments named `worktree` or `branch`), do not ask: take that answer exactly as
+(`/gaia-debt` does, when its arguments ended in `worktree` or `branch`), do not ask: take that answer exactly as
 if it had been picked below, and say which mode is running in one line. A stated answer only answers this
 question; the forced-worktree and `always-worktree` arms above still run first and win, and when one of them
 overrides a stated `branch`, say so in one line.
