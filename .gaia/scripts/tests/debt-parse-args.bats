@@ -148,7 +148,7 @@ run_unrecognized() {
 @test "every unrecognized form exits 2 naming the first offending token" {
   run_unrecognized bash
   [ "$UNRECOGNIZED_ROW_COUNT" -eq "$(unrecognized_rows | wc -l | tr -d ' ')" ]
-  [ "$UNRECOGNIZED_ROW_COUNT" -ge 33 ]
+  [ "$UNRECOGNIZED_ROW_COUNT" -ge 35 ]
 }
 
 @test "a bare or trailing [use] worktree|branch names the isolation mode" {
