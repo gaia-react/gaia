@@ -1,5 +1,5 @@
 /**
- * Branch-state helpers for `gaia wiki sync land`.
+ * Branch-state helpers for `gaia wiki chain`.
  *
  * Every helper shells out via `child_process.spawnSync` so that the
  * vitest suite can mock the entire surface with a single `vi.mock`. The

@@ -1,5 +1,5 @@
 /**
- * Strategy mirrors `sync-land.test.ts`: stand up a real (empty) git repo so
+ * Strategy: stand up a real (empty) git repo so
  * `git rev-parse --show-toplevel` resolves the sandbox root, then inject a
  * fake `CommandRunner` that returns canned `SpawnSyncReturns<string>` values
  * keyed off argv. Each test asserts the handler's exit code and the exact
@@ -145,6 +145,22 @@ const tallyCalls = (recorded: RecordedCall[]): RecordedCall[] =>
 
 const cachePathOf = (root: string): string =>
   path.join(root, '.gaia', 'local', 'cache', 'shared', 'update-check.json');
+
+const seedCache = (root: string): string => {
+  mkdirSync(path.dirname(cachePathOf(root)), {recursive: true});
+  const seeded = JSON.stringify({
+    checkedAt: 1_700_000_000,
+    wikiDriftCount: 31,
+  });
+  writeFileSync(cachePathOf(root), seeded, 'utf8');
+
+  return seeded;
+};
+
+const wikiOnlyStatus = {
+  argv: ['status', '--porcelain=v1', '-z', '-uall'],
+  result: okResult(' M wiki/log.md\0'),
+};
 
 const finishLanding = (cwd: string, runner: CommandRunner): number =>
   run(['finish', '--branch-aware'], {
@@ -328,6 +344,10 @@ describe('wiki chain', () => {
       const runner = buildRunner(
         [
           {
+            argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+            result: okResult('feature/x\n'),
+          },
+          {
             argv: ['status', '--porcelain=v1', '-z', '-uall'],
             result: okResult(' M wiki/log.md\0?? wiki/meta/lint-report.md\0'),
           },
@@ -361,6 +381,10 @@ describe('wiki chain', () => {
       const runner = buildRunner(
         [
           {
+            argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+            result: okResult('feature/x\n'),
+          },
+          {
             argv: ['status', '--porcelain=v1', '-z', '-uall'],
             result: okResult(''),
           },
@@ -384,6 +408,10 @@ describe('wiki chain', () => {
       const recorded: RecordedCall[] = [];
       const runner = buildRunner(
         [
+          {
+            argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+            result: okResult('feature/x\n'),
+          },
           {
             argv: ['status', '--porcelain=v1', '-z', '-uall'],
             result: okResult(' M app/foo.ts\0 M wiki/log.md\0'),
@@ -414,6 +442,10 @@ describe('wiki chain', () => {
       const runner = buildRunner(
         [
           {
+            argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+            result: okResult('feature/x\n'),
+          },
+          {
             argv: ['status', '--porcelain=v1', '-z', '-uall'],
             result: okResult(' M wiki/log.md\0'),
           },
@@ -443,6 +475,10 @@ describe('wiki chain', () => {
       const committingRunner = buildRunner(
         [
           {
+            argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+            result: okResult('feature/x\n'),
+          },
+          {
             argv: ['status', '--porcelain=v1', '-z', '-uall'],
             result: okResult(' M wiki/log.md\0'),
           },
@@ -460,6 +496,10 @@ describe('wiki chain', () => {
       const noopRunner = buildRunner(
         [
           {
+            argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+            result: okResult('feature/x\n'),
+          },
+          {
             argv: ['status', '--porcelain=v1', '-z', '-uall'],
             result: okResult(''),
           },
@@ -472,6 +512,175 @@ describe('wiki chain', () => {
         runner: noopRunner,
       });
       expect(tallyCalls(noopRecorded)).toHaveLength(0);
+    });
+
+    test('a successful commit sets checkedAt to 0 and keeps wikiDriftCount', () => {
+      sandbox = setupSandbox();
+      seedCache(sandbox.root);
+      const recorded: RecordedCall[] = [];
+      const runner = buildRunner(
+        [
+          {
+            argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+            result: okResult('feature/x\n'),
+          },
+          wikiOnlyStatus,
+        ],
+        recorded
+      );
+
+      const exit = run(['commit', '--label', 'wiki: sync through abc1234'], {
+        cwd: sandbox.root,
+        runner,
+      });
+      expect(exit).toBe(0);
+      expect(gitCalls(recorded)).toContainEqual({
+        args: ['commit', '-m', 'wiki: sync through abc1234'],
+        command: 'git',
+      });
+      expect(
+        JSON.parse(readFileSync(cachePathOf(sandbox.root), 'utf8'))
+      ).toEqual({checkedAt: 0, wikiDriftCount: 31});
+    });
+
+    test('the non-wiki refusal leaves the cache untouched', () => {
+      sandbox = setupSandbox();
+      const seeded = seedCache(sandbox.root);
+      const recorded: RecordedCall[] = [];
+      const runner = buildRunner(
+        [
+          {
+            argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+            result: okResult('feature/x\n'),
+          },
+          {
+            argv: ['status', '--porcelain=v1', '-z', '-uall'],
+            result: okResult(' M app/foo.ts\0 M wiki/log.md\0'),
+          },
+        ],
+        recorded
+      );
+
+      const exit = run(['commit', '--label', 'wiki: x'], {
+        cwd: sandbox.root,
+        runner,
+      });
+      expect(exit).toBe(1);
+      expect(recorded.find((c) => c.args[0] === 'commit')).toBeUndefined();
+      expect(readFileSync(cachePathOf(sandbox.root), 'utf8')).toBe(seeded);
+    });
+
+    test('the nothing-to-commit no-op leaves the cache untouched', () => {
+      sandbox = setupSandbox();
+      const seeded = seedCache(sandbox.root);
+      const recorded: RecordedCall[] = [];
+      const runner = buildRunner(
+        [
+          {
+            argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+            result: okResult('feature/x\n'),
+          },
+          {
+            argv: ['status', '--porcelain=v1', '-z', '-uall'],
+            result: okResult(''),
+          },
+        ],
+        recorded
+      );
+
+      const exit = run(['commit', '--label', 'wiki: x'], {
+        cwd: sandbox.root,
+        runner,
+      });
+      expect(exit).toBe(0);
+      expect(stdio.outputs.join('')).toContain(
+        'chain commit: nothing to commit'
+      );
+      expect(readFileSync(cachePathOf(sandbox.root), 'utf8')).toBe(seeded);
+    });
+
+    test.each(['main', 'master'])(
+      'on %s: refuses, records no add or commit, leaves the cache untouched',
+      (protectedBranch) => {
+        sandbox = setupSandbox();
+        const seeded = seedCache(sandbox.root);
+        const recorded: RecordedCall[] = [];
+        const runner = buildRunner(
+          [
+            {
+              argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+              result: okResult(`${protectedBranch}\n`),
+            },
+            wikiOnlyStatus,
+          ],
+          recorded
+        );
+
+        const exit = run(['commit', '--label', 'wiki: x'], {
+          cwd: sandbox.root,
+          runner,
+        });
+        expect(exit).toBe(1);
+        expect(stdio.errors.join('')).toContain(
+          `chain commit: refusing to commit on ${protectedBranch}; run /gaia-wiki, whose chain begin --branch-aware cuts a wiki branch, or switch to a non-protected branch`
+        );
+        expect(recorded.find((c) => c.args[0] === 'add')).toBeUndefined();
+        expect(recorded.find((c) => c.args[0] === 'commit')).toBeUndefined();
+        expect(readFileSync(cachePathOf(sandbox.root), 'utf8')).toBe(seeded);
+      }
+    );
+
+    test('a branch read failure exits 2 and commits nothing', () => {
+      sandbox = setupSandbox();
+      const recorded: RecordedCall[] = [];
+      const runner = buildRunner(
+        [
+          {
+            argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+            result: failResult(128, 'fatal: not a git repository'),
+          },
+          wikiOnlyStatus,
+        ],
+        recorded
+      );
+
+      const exit = run(['commit', '--label', 'wiki: x'], {
+        cwd: sandbox.root,
+        runner,
+      });
+      expect(exit).toBe(2);
+      expect(recorded.find((c) => c.args[0] === 'commit')).toBeUndefined();
+    });
+
+    test('a failed git commit leaves the cache untouched and unstages wiki', () => {
+      sandbox = setupSandbox();
+      const seeded = seedCache(sandbox.root);
+      const recorded: RecordedCall[] = [];
+      const runner = buildRunner(
+        [
+          {
+            argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+            result: okResult('feature/x\n'),
+          },
+          wikiOnlyStatus,
+          {
+            argv: ['commit', '-m', 'wiki: x'],
+            result: failResult(1, 'hook rejected'),
+          },
+        ],
+        recorded
+      );
+
+      const exit = run(['commit', '--label', 'wiki: x'], {
+        cwd: sandbox.root,
+        runner,
+      });
+      expect(exit).not.toBe(0);
+      expect(gitCalls(recorded)).toContainEqual({
+        args: ['reset', 'HEAD', '--', 'wiki'],
+        command: 'git',
+      });
+      expect(readFileSync(cachePathOf(sandbox.root), 'utf8')).toBe(seeded);
     });
   });
 

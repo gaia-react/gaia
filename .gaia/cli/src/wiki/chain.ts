@@ -9,16 +9,18 @@
  *   finish  once, after lint           → push + PR + auto-merge, then wait for
  *                                        the merge and clean up locally
  *
- * `begin` runs BEFORE sync on purpose: sync's own Step 7 (`gaia wiki sync land
- * --branch-aware`) then sees a feature branch and commits in place rather than
- * opening its own premature PR. On a feature branch every action degrades to a
- * no-op or a plain in-place commit, so a full chain run from a feature branch
- * leaves its commits there for the developer to land their own way.
+ * `begin` runs BEFORE sync on purpose: every stage's `commit` then sees a
+ * feature branch and commits in place rather than opening its own premature
+ * PR. `commit` refuses on main/master, so a stage that runs after a failed
+ * `begin` cannot commit straight onto the base branch. On a feature branch
+ * every action degrades to a no-op or a plain in-place commit, so a full chain
+ * run from a feature branch leaves its commits there for the developer to land
+ * their own way.
  *
- * Determinism contract mirrors `sync-land.ts`: no prose narration on stdout
- * (one-line summaries only), every git/gh call routes through an injectable
- * `runner`, and exit codes are 0 (ok) / 1 (user-correctable refusal) /
- * 2 (unexpected git/gh process failure, stderr piped through).
+ * Determinism contract: no prose narration on stdout (one-line summaries
+ * only), every git/gh call routes through an injectable `runner`, and exit
+ * codes are 0 (ok) / 1 (user-correctable refusal) / 2 (unexpected git/gh
+ * process failure, stderr piped through).
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
@@ -43,6 +45,7 @@ import {
   UNEXPECTED_EXIT,
 } from './util/land.js';
 import type {PassthroughFailureOptions} from './util/land.js';
+import {invalidateStatuslineCache} from './util/statusline-cache.js';
 
 const WIKI_CHAIN_BRANCH_PREFIX = 'wiki/sync-';
 
@@ -79,8 +82,9 @@ const HELP_TEXT = `Usage: gaia wiki chain <begin|commit|finish> [args]
   begin [--branch-aware]       On main/master: cut wiki/sync-<date>-<sha> so the
                                whole chain lands on one branch + PR. On a feature
                                branch: no-op (the chain commits in place).
-  commit --label "<subject>"   In-place commit of this stage's wiki/ changes.
-                               No-op when nothing changed; refuses non-wiki changes.
+  commit --label "<subject>"   In-place commit of this stage's wiki/ changes, then
+                               invalidates the statusline cache. No-op when nothing
+                               changed; refuses non-wiki changes and main/master.
   finish [--branch-aware]      Push the chain branch, open one PR, enable
                                auto-merge, then wait for the PR to merge and
                                clean up locally (return to base, pull, delete the
@@ -274,6 +278,24 @@ const commit = (argv: readonly string[], options: RunOptions): number => {
 
   if (repoRoot === null) return EXIT_CODES.UNKNOWN_SUBCOMMAND;
 
+  let branch: string;
+
+  try {
+    branch = currentBranch(repoRoot, runner);
+  } catch (error) {
+    process.stderr.write(
+      `chain: ${error instanceof Error ? error.message : String(error)}\n`
+    );
+
+    return UNEXPECTED_EXIT;
+  }
+
+  if (isProtectedBranch(branch)) {
+    return refuse(
+      `chain commit: refusing to commit on ${branch}; run /gaia-wiki, whose chain begin --branch-aware cuts a wiki branch, or switch to a non-protected branch`
+    );
+  }
+
   let workingTree: ReturnType<typeof inspectWorkingTree>;
 
   try {
@@ -291,8 +313,8 @@ const commit = (argv: readonly string[], options: RunOptions): number => {
   }
 
   if (!workingTree.hasWikiChanges) {
-    // A skipped stage (e.g. consolidate gated off) leaves nothing to commit.
-    // Graceful no-op so the chain does not abort.
+    // A stage that changed nothing leaves nothing to commit. Graceful no-op so
+    // the chain does not abort.
     process.stdout.write('chain commit: nothing to commit\n');
 
     return EXIT_CODES.OK;
@@ -312,6 +334,10 @@ const commit = (argv: readonly string[], options: RunOptions): number => {
 
     return passthroughFailure(commitResult, 'git', commitArgs);
   }
+
+  // The nudge reads a cached drift count; without this a feature-branch run
+  // leaves `Run /gaia-wiki` showing until the cache expires on its own.
+  invalidateStatuslineCache(repoRoot);
 
   process.stdout.write(`chain commit: ${parsed.label}\n`);
 

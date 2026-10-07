@@ -20048,13 +20048,13 @@ var run7 = (argv, options = {}) => {
   const driftWindow = resolveDriftWindow(runner, cwd, wikiState);
   if (driftWindow === null) {
     return refuse(
-      `preflight: cannot determine wiki drift from recovery base ${wikiState.suggested_base}; run /gaia-wiki sync first`
+      `preflight: cannot determine wiki drift from recovery base ${wikiState.suggested_base}; run /gaia-wiki first`
     );
   }
   if (driftWindow.count !== 0) {
     if (!isDriftBenign(runner, cwd, driftWindow.base)) {
       return refuse(
-        `preflight: wiki is ${driftWindow.count} commits behind HEAD; run /gaia-wiki sync first`
+        `preflight: wiki is ${driftWindow.count} commits behind HEAD; run /gaia-wiki first`
       );
     }
     process.stderr.write(

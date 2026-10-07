@@ -19,7 +19,6 @@ import {run as runPageIndex} from './page-index.js';
 import {run as runStateBump} from './state-bump.js';
 import {run as runStateInit} from './state-init.js';
 import {run as runState} from './state.js';
-import {run as runSyncLand} from './sync-land.js';
 
 const HELP_TEXT = `Usage: gaia wiki <subcommand> [args]
 
@@ -35,45 +34,13 @@ const HELP_TEXT = `Usage: gaia wiki <subcommand> [args]
   dead-paths [--json]                         Backticked repo paths in wiki/ that don't exist.
   frontmatter [--json]                        Pages missing required frontmatter (type, status).
   empty-sections [--json]                     Headings with no content before the next heading.
-  sync land [--branch-aware]                  Branch-aware landing of staged wiki changes.
   chain <begin|commit|finish>                 One-branch / one-PR orchestration of the
                                               full /gaia-wiki chain.
-`;
-
-const SYNC_HELP_TEXT = `Usage: gaia wiki sync <subcommand> [args]
-
-  land [--branch-aware]                       Land staged wiki changes via the correct
-                                              branch strategy.
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
 type SubcommandHandler = (args: readonly string[]) => number | Promise<number>;
-
-const runSync: SubcommandHandler = async (
-  args: readonly string[]
-): Promise<number> => {
-  const subcommand = args[0];
-  const rest = args.slice(1);
-
-  if (subcommand === undefined || HELP_TOKENS.has(subcommand)) {
-    process.stdout.write(SYNC_HELP_TEXT);
-
-    return EXIT_CODES.OK;
-  }
-
-  if (subcommand === 'land') {
-    return runSyncLand(rest);
-  }
-
-  structuredError({
-    code: 'unknown_subcommand',
-    message: `unknown wiki sync subcommand: ${subcommand}`,
-    subcommand: `wiki sync ${subcommand}`,
-  });
-
-  return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-};
 
 const SUBCOMMAND_HANDLERS: Readonly<
   Partial<Record<string, SubcommandHandler>>
@@ -90,7 +57,6 @@ const SUBCOMMAND_HANDLERS: Readonly<
   state: runState,
   'state-bump': runStateBump,
   'state-init': runStateInit,
-  sync: runSync,
 };
 
 export const run = async (argv: readonly string[]): Promise<number> => {

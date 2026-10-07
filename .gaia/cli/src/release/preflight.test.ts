@@ -597,6 +597,84 @@ describe('release preflight', () => {
     expect(stdio.errors.join('')).toContain('cannot determine wiki drift');
   });
 
+  test('the unresolvable recovery base advice ends with the bare command', () => {
+    const runner = buildRunner(
+      [
+        {
+          argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+          result: okResult('main\n'),
+        },
+        {argv: ['status', '--porcelain=v1', '-uall'], result: okResult('')},
+        {
+          argv: SUGGESTED_REVPARSE,
+          result: {
+            output: ['', '', ''] as never,
+            pid: 0,
+            signal: null,
+            status: 128,
+            stderr: 'fatal: bad revision',
+            stdout: '',
+          },
+        },
+      ],
+      []
+    );
+
+    const exit = run([], {
+      cwd: sandbox.root,
+      runner,
+      wikiStateProbe: () => ({
+        commits_ahead: 0,
+        drift_count: 0,
+        reachable: false,
+        state_sha: STATE_SHA,
+        suggested_base: SUGGESTED_BASE,
+      }),
+    });
+    const refusalLine = stdio.errors
+      .join('')
+      .split('\n')
+      .find((line) => line.includes('cannot determine wiki drift'));
+    expect(exit).toBe(1);
+    expect(refusalLine?.endsWith('; run /gaia-wiki first')).toBe(true);
+  });
+
+  test('the substantive drift advice ends with the bare command', () => {
+    const runner = buildRunner(
+      [
+        {
+          argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+          result: okResult('main\n'),
+        },
+        {argv: ['status', '--porcelain=v1', '-uall'], result: okResult('')},
+        {argv: REVPARSE_ARGS, result: okResult(`${STATE_SHA}\n`)},
+        {
+          argv: ['log', '--format=%s', DRIFT_RANGE],
+          result: okResult('feat: a new thing\nwiki: sync through abc1234\n'),
+        },
+      ],
+      []
+    );
+
+    const exit = run([], {
+      cwd: sandbox.root,
+      runner,
+      wikiStateProbe: () => ({
+        commits_ahead: 2,
+        drift_count: 2,
+        reachable: true,
+        state_sha: STATE_SHA,
+        suggested_base: '',
+      }),
+    });
+    const refusalLine = stdio.errors
+      .join('')
+      .split('\n')
+      .find((line) => line.includes('commits behind HEAD'));
+    expect(exit).toBe(1);
+    expect(refusalLine?.endsWith('; run /gaia-wiki first')).toBe(true);
+  });
+
   test('reachable path ignores suggested_base and uses state_sha', () => {
     // Defensive regression: the recovery branch is gated on `!reachable`. Even
     // if a payload carried suggested_base while reachable, the count must come

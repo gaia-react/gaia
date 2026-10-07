@@ -798,9 +798,9 @@ describe('wiki commit-classify', () => {
 
   // Without a propagated failure, git breaking is indistinguishable from the
   // genuinely empty range the test directly above covers: both answer "there
-  // is nothing to review" with exit 0, so anything downstream of
-  // `/gaia-wiki sync` that trusts a zero count reads a transient git failure
-  // as a clean, up-to-date wiki.
+  // is nothing to review" with exit 0, so anything downstream of the sync
+  // stage of `/gaia-wiki` that trusts a zero count reads a transient git
+  // failure as a clean, up-to-date wiki.
   test('a failing git log reports git_failed, not an empty range', () => {
     // Well-formed but absent from the sandbox, so `git log <sha>..HEAD` exits
     // non-zero rather than resolving. Nothing validates `--since` ahead of the

@@ -56,7 +56,7 @@
 #     converged.
 #   - Backticked repo paths in the page's BODY PROSE are already covered, for
 #     the whole wiki rather than this page, by `gaia wiki dead-paths` behind
-#     `/gaia-wiki lint`. That primitive reads inline code spans, which fence
+#     the lint stage of `/gaia-wiki`. That primitive reads inline code spans, which fence
 #     bodies are not, so the two divide the surface rather than overlap; a
 #     path lens over prose here would be a second copy of it.
 #

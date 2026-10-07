@@ -282,7 +282,7 @@ const resolveDriftWindow = (
 /**
  * True when every commit in the drift window is a wiki-sync squash artifact.
  * Documented bypass (wiki/concepts/Release Workflow.md): a PR squash-merge
- * rewrites the commit SHA, so `/gaia-wiki sync` → merge leaves the state
+ * rewrites the commit SHA, so a `/gaia-wiki` run then a merge leaves the state
  * pointer one commit behind even when the wiki content is current. The
  * `wiki:`-subject prefix is the same marker `gaia wiki commit-classify` uses
  * to flag self-referential sync commits. Substantive (non-`wiki:`) drift is
@@ -359,14 +359,14 @@ export const run = (
 
   if (driftWindow === null) {
     return refuse(
-      `preflight: cannot determine wiki drift from recovery base ${wikiState.suggested_base}; run /gaia-wiki sync first`
+      `preflight: cannot determine wiki drift from recovery base ${wikiState.suggested_base}; run /gaia-wiki first`
     );
   }
 
   if (driftWindow.count !== 0) {
     if (!isDriftBenign(runner, cwd, driftWindow.base)) {
       return refuse(
-        `preflight: wiki is ${driftWindow.count} commits behind HEAD; run /gaia-wiki sync first`
+        `preflight: wiki is ${driftWindow.count} commits behind HEAD; run /gaia-wiki first`
       );
     }
 
