@@ -52,7 +52,7 @@ Keep all shipped `.sh` as path-invoked files. Fold none into the Node binary; bu
 
 ## The one parked option (opportunistic, not scheduled)
 
-If the spec-lifecycle area is already being refactored for other reasons, the roughly one dozen genuinely self-contained scripts under `.gaia/scripts/spec/` (`lint.sh`, `uat-write.sh`, the archive and reconcile leaves) may consolidate into a `gaia spec <sub>` family, motivated purely by code locality, not manifest size. Book these costs up front:
+If the spec-lifecycle area is already being refactored for other reasons, the roughly one dozen genuinely self-contained scripts under `.gaia/scripts/spec/` (`lint.sh`, the renderer, the archive and reconcile leaves) may consolidate into a `gaia spec <sub>` family, motivated purely by code locality, not manifest size. Book these costs up front:
 
 - delete and re-author the release-excluded bats suites into Vitest, accepting loss of bash-native mutex and concurrency coverage;
 - respect the `with-ledger-lock` co-move constraint (the allocator and ledger-update scripts cannot move unless their `.gaia/scripts` consumers move too);

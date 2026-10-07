@@ -8,9 +8,13 @@ This command is the plan-specific case of the Workflow Doctrine (`wiki/concepts/
 
 This reference is longer than one `Read` returns. Page through it with `offset` to the end of step 5 before acting on any step.
 
-- Steps: 1 description (1a SPEC reference); 2 planner model; 3 plan directory; 4 planning agent; 4.5 verify output; 4.6 decomposition audit; 4.7 token tally; 5 report and kickoff prompt
+- Steps: 0 pre-flight sweep; 1 description (1a SPEC reference); 2 planner model; 3 plan directory; 4 planning agent; 4.5 verify output; 4.6 decomposition audit; 4.7 token tally; 5 report and kickoff prompt
 
 ## Steps
+
+### 0. Pre-flight sweep
+
+Read `.claude/skills/gaia/references/spec/lifecycle.md` and run its `## Pre-flight sweep` now. It is best-effort and never blocks planning.
 
 ### 1. Get description
 
@@ -146,6 +150,20 @@ Then write the following files directly to `{PLAN_DIR}/`:
 
 2.  **`{PLAN_DIR}/README.md`**: task graph showing phases, which tasks run in parallel within each phase, and the frozen interface contracts shared across tasks. **Annotate each phase with its execution model** (e.g. `Phase 1 (2 sub-agents, model sonnet)`); Sonnet is the default, so call out any phase you escalate to Opus explicitly and briefly say why. **If `{SPEC_PATH}` was provided** (i.e. this plan was derived from a SPEC), the README MUST open with a `## Source SPEC` section naming the SPEC id and the absolute path, so plan→SPEC discovery is one read away. Format: `Derived from {SPEC-id} ({SPEC_PATH}).` **If `{AUDIT_PATH}` was also provided**, append a second line: `Adversarial audit: {AUDIT_PATH}.`
 
+    **If `{SPEC_PATH}` was provided**, the README MUST also carry a `## UAT routing` section holding this table between its two marker lines, one row per SPEC UAT, every UAT routed to exactly one surface:
+
+    ```
+    <!-- gaia:uat-routing:start -->
+    | uat_id | surface | phase | feature_folder | file_name |
+    |---|---|---|---|---|
+    | <uat_id> | e2e | <owning phase> | <kebab-case feature folder> | <behavior-named-kebab-case>.spec.ts |
+    | <uat_id> | story | <owning phase> | - | - |
+    | <uat_id> | non-ui | <owning phase> | - | - |
+    <!-- gaia:uat-routing:end -->
+    ```
+
+    Route by the rule in the SPEC's clarifications: `e2e` when the then-clause needs a route, navigation, a loader or action, a session, locale negotiation or MSW-backed server state (`frontend/.claude/rules/playwright.md`); `story` when it is observable on one component given props or args (`wiki/concepts/Component Testing.md`); `non-ui` for harness, script or doc behavior. `phase` is the owning phase number. An `e2e` row names a kebab-case feature folder and a kebab-case file name ending `.spec.ts` that describes the behavior; neither carries a SPEC, UAT or plan id. Every other row carries `-` in both. Routing lives in the plan, never in the immutable SPEC. Each `story` row's UAT gets this line, verbatim, in its owning task doc's acceptance criteria: `- Story play-function criterion (<uat_id>): <the UAT's then-clause, verbatim>`.
+
 3.  **`{PLAN_DIR}/ORCHESTRATOR.md`**: instructions for running the plan. Must cover:
     - **Resume detection (cold-start, before the sentinel write).** Before writing this run's RUNNING sentinel, and before the pre-flight isolation below, check for a pre-existing `{PLAN_DIR}/RUNNING`.
       - **No prior sentinel.** This is a fresh first run: skip resume entirely, proceed to the pre-flight isolation, and let it write this run's own sentinel afterward as usual. The detection read MUST precede the sentinel write, or every fresh run would self-detect as a resume.
@@ -156,7 +174,7 @@ Then write the following files directly to `{PLAN_DIR}/`:
           --jq '.[0].state' 2>/dev/null)"
         ```
 
-        If `pr_state` is `MERGED`, do not drive a resume of merged work, `plan-archive.sh`'s fail-closed representation gate can leave a stale RUNNING/PROGRESS on an already-merged plan, surface it and stop. If no PR is found (empty result) or the state is `OPEN`, proceed with resume; the guard degrades to a no-op when there is nothing merged to protect against.
+        If `pr_state` is `MERGED`, do not drive a resume of merged work, the post-merge close's fail-closed archive gate can leave a stale RUNNING/PROGRESS on an already-merged plan, surface it and stop. If no PR is found (empty result) or the state is `OPEN`, proceed with resume; the guard degrades to a no-op when there is nothing merged to protect against.
       - **Reconnect by isolation mode.** Read `branch:` and `mode:` from the sentinel. If `mode:` is absent (a legacy sentinel written before this line existed), derive it from `git worktree list --porcelain`: a `worktree <path>` record whose `branch refs/heads/<branch>` line equals the sentinel branch means worktree mode, otherwise feature-branch isolation. A sentinel written before the isolation reference renamed worktree branches may hold the legacy `worktree-` spelling, so match either the canonical name or its legacy spelling (`worktree-` plus the name with every `/` written as `+`). Reconnect using the matching operation: `git checkout <branch>` for feature-branch isolation, or re-enter the existing worktree for worktree mode with `EnterWorktree({name: "<branch>"})`, the name originally passed (do NOT `git checkout` the worktree-held branch and do NOT create a new worktree); `.claude/skills/gaia/references/isolation.md` (`### Resume`) owns the lookup. Do NOT re-fire the on-main isolation `AskUserQuestion` and do NOT cut a new branch. **Failed reconnect:** if the sentinel branch is genuinely missing or the working tree is dirty, surface the condition and STOP, never silently start a new branch.
       - **Compute the resume point.** Run the helper from the reconnected working context:
 
@@ -171,7 +189,7 @@ Then write the following files directly to `{PLAN_DIR}/`:
         - `Abandon`: stop cleanly without re-running, committing, merging, or deleting anything; the sentinel, `PROGRESS.md`, branch, and prior commits stay intact.
 
         When `K` equals `M+1` (every phase a verified-complete ancestor), resume proceeds straight to the pre-merge Code Audit Team audit with no phase re-run.
-      - **Resumed-run git flow.** A resumed run reuses the already-open PR, it does NOT re-issue `gh pr create`; it updates the existing PR with subsequent commits exactly like an uninterrupted run. Its per-phase commits still tally to the same feature because the branch-keyed token-tally resolver (`.claude/hooks/lib/gaia-active-plan.sh`) matches after reconnect; the pre-merge marker handshake and `plan-archive.sh` cleanup behave unchanged. No code change here, the token-tally hooks are already resume-aware.
+      - **Resumed-run git flow.** A resumed run reuses the already-open PR, it does NOT re-issue `gh pr create`; it updates the existing PR with subsequent commits exactly like an uninterrupted run. Its per-phase commits still tally to the same feature because the branch-keyed token-tally resolver (`.claude/hooks/lib/gaia-active-plan.sh`) matches after reconnect; the pre-merge marker handshake and the post-merge close behave unchanged. No code change here, the token-tally hooks are already resume-aware.
 
     - **Pre-flight isolation.** The generated `ORCHESTRATOR.md` carries this pointer, verbatim, as its pre-flight step:
 
@@ -183,7 +201,7 @@ Then write the following files directly to `{PLAN_DIR}/`:
 
       When `RESOLVED_MODE` is `worktree`, every later step, task sub-agent edits, per-phase commits, `gh pr create`, and the pre-merge Code Audit Team audit, runs from inside the worktree.
 
-      **The plan folder stays in the main checkout.** The worktree shares only the gitignored set the state registry declares (`.gaia/state-registry.json`); the plan folder is not among them, so `{PLAN_DIR}` exists only in the main checkout. Read the task docs and `README.md` from `{PLAN_DIR}` (its main-checkout absolute path) and write `PROGRESS.md` and the `RUNNING` sentinel there, while each task edits the worktree's own copy of the tracked files it touches. Dispatch each task sub-agent with both: `RESOLVED_ROOT` (the worktree's absolute path) for the file to edit, and `{PLAN_DIR}` for the docs to read. Run `plan-archive.sh {PLAN_DIR}` only after `ExitWorktree` returns the session to the main checkout, so the helper's repo-root guard resolves the main checkout rather than the worktree.
+      **The plan folder stays in the main checkout.** The worktree shares only the gitignored set the state registry declares (`.gaia/state-registry.json`); the plan folder is not among them, so `{PLAN_DIR}` exists only in the main checkout. Read the task docs and `README.md` from `{PLAN_DIR}` (its main-checkout absolute path) and write `PROGRESS.md` and the `RUNNING` sentinel there, while each task edits the worktree's own copy of the tracked files it touches. Dispatch each task sub-agent with both: `RESOLVED_ROOT` (the worktree's absolute path) for the file to edit, and `{PLAN_DIR}` for the docs to read. The post-merge close runs its removal and archive steps only after `ExitWorktree` returns the session to the main checkout, so the archive helper's repo-root guard resolves the main checkout rather than the worktree.
 
       **Tool-choice contract: which tool writes `{PLAN_DIR}/PROGRESS.md` and `{PLAN_DIR}/RUNNING` depends on `RESOLVED_MODE`, and is stated only here.** Under `feature-branch` isolation `{PLAN_DIR}` sits inside the acting checkout, so the ordinary `Edit`/`Write` tools write both and nothing below applies. Under `worktree` mode they cannot reach either: the harness isolates the session to the worktree and refuses an `Edit`/`Write` whose `file_path` resolves to the shared checkout, and both spellings of the path land on that same refused target, because a linked worktree reaches `.gaia/local` through one symlink to the main checkout. GAIA's own guard already allows these writes (`.claude/hooks/block-worktree-path-mismatch.sh` exempts main-anchored `.gaia/local` state by registry scope), so editing it will not lift the harness refusal sitting above it. Write both files with `Bash` at their main-checkout absolute paths instead, then read each back and confirm both its content and its location before continuing. The read-back is what makes this fallback safe rather than a dodge, since the failure the discipline exists to prevent is a write landing in the wrong tree. Keep the fallback scoped to these two main-anchored files: a `Bash` redirect is never the way to write into another checkout where the edit tools already work. `.claude/skills/gaia/references/spec.md` states the parallel rule for main-anchored SPEC-folder writes, in its Operational primitives; a change to the harness behavior here needs the same change there.
 
@@ -196,9 +214,58 @@ Then write the following files directly to `{PLAN_DIR}/`:
       mode: <the RESOLVED_MODE the isolation reference exported: feature-branch or worktree>
       ```
 
-      This file is deleted automatically when the plan directory is deleted during final self-cleanup. Its purpose: it marks this plan as the branch's active run, which the execute-phase token-tally hooks (`.claude/hooks/lib/gaia-active-plan.sh`, `.claude/hooks/token-tally-git-op.sh`) read to key each commit's tally to the right feature. The write happens here, after pre-flight isolation, rather than as the very first step: the token-tally resolver (`.claude/hooks/lib/gaia-active-plan.sh:58-59`) matches a sentinel by `^branch:` against the current branch, so a sentinel recording `main` while phase commits land on the feature branch would never match, and a later cold resume would target the wrong branch. `mode:` records the `RESOLVED_MODE` the isolation reference exported, not an answer the orchestrator collected, so a later resume picks the right reconnect operation without re-prompting even when no question was ever asked; the resolver reads only `branch:`/`started:`, so the extra `mode:` line does not disturb it. Resume detection above still runs before pre-flight; only the write of this run's own sentinel moves here. When a spec-less plan folder is KEPT (reduced, not deleted) under the symmetric retention the Final self-cleanup phase describes below, `plan-archive.sh` clears this `RUNNING` sentinel as part of the reduction, so the branch-keyed resolver and the token-tally hooks never mistake a reaped-but-kept folder for a still-live run.
+      This file is deleted automatically when the post-merge close archives the plan directory. Its purpose: it marks this plan as the branch's active run, which the execute-phase token-tally hooks (`.claude/hooks/lib/gaia-active-plan.sh`, `.claude/hooks/token-tally-git-op.sh`) read to key each commit's tally to the right feature. The write happens here, after pre-flight isolation, rather than as the very first step: the token-tally resolver (`.claude/hooks/lib/gaia-active-plan.sh:58-59`) matches a sentinel by `^branch:` against the current branch, so a sentinel recording `main` while phase commits land on the feature branch would never match, and a later cold resume would target the wrong branch. `mode:` records the `RESOLVED_MODE` the isolation reference exported, not an answer the orchestrator collected, so a later resume picks the right reconnect operation without re-prompting even when no question was ever asked; the resolver reads only `branch:`/`started:`, so the extra `mode:` line does not disturb it. Resume detection above still runs before pre-flight; only the write of this run's own sentinel moves here. When a spec-less plan folder is KEPT (reduced, not deleted) under the retention the post-merge close describes below, the archive step clears this `RUNNING` sentinel as part of the reduction, so the branch-keyed resolver and the token-tally hooks never mistake a reaped-but-kept folder for a still-live run.
 
-    - **Phase order** with per-phase quality gates (`pnpm typecheck && pnpm lint`). Name each phase's execution model in the outline (Sonnet by default; see the Sub-agent invocation bullet), so a cold orchestrator sees the model alongside the phase.
+    - **Verbatim step blocks.** Five blocks below carry a sentinel line (`<!-- gaia:orchestrator-step ... -->`) and are copied into the generated `ORCHESTRATOR.md` verbatim, sentinel line first, the way the isolation pointer above is: the UAT render, the owning-phase UAT gate, the pre-audit UAT checks, the wiki promotion and the post-merge close, in that order. `{SPEC_PATH}` and `{PLAN_DIR}` are already absolute in this prompt; the `<...>` placeholders are the orchestrator's to fill at run time. A spec-derived plan carries all five; a spec-less plan omits the three UAT blocks and carries the last two. `/gaia-plan` step 4.5 checks each sentinel and their order with `plan-verify.sh`, so never paraphrase a block, drop its sentinel line or reorder them.
+
+    - **UAT render (spec-derived plans only).** Place this block after the RUNNING sentinel step and before the phase loop:
+
+      ```
+      <!-- gaia:orchestrator-step uat-render -->
+      **UAT render (every start and every resume, before the phase loop).** The resume point counts only `## Phase N` blocks, so this step runs again on every resume, whatever phase the run resumes at. From `RESOLVED_ROOT`:
+
+          bash .gaia/scripts/spec/uat-write.sh {SPEC_PATH} --routing {PLAN_DIR}/README.md
+          bash .gaia/scripts/spec/working-doc-id-scan.sh
+
+      Read `.claude/skills/gaia/references/spec/uat-write.md` for the exit codes. Exit 3 is a conflict: ask the human per its `## Conflicts` section, and rerun with `--overwrite <path>` for each path the human chose to replace. Exit 1 or 2, a non-zero id scan, a conflict with no human present, or a conflict the human keeps: append this block to `{PLAN_DIR}/PROGRESS.md`, choosing one value per line, and stop:
+
+          ## UAT render (HALTED)
+          Reason: UAT render conflict | UAT render failed (exit <1 | 2>) | working-doc id in rendered specs
+          Spec files: <each conflict path and its reason from the JSON details; or each path:line from the id scan; or none>
+          Detail: <the renderer's error message or stderr, one line; omit for a conflict>
+          Next step: <conflict: answer the keep or replace question per uat-write.md "Conflicts", or reconcile the edited file, then resume with KICKOFF.md; exit 1 or 2 or an id hit: fix the named input (a SPEC reopen when the UAT text itself carries the id), then resume with KICKOFF.md>
+
+      Otherwise commit the rendered specs as their own commit (for example `test(e2e): render red UAT specs`) before the Phase 1 commit; a run that changed nothing commits nothing. Then append, choosing one value for the first line:
+
+          ## UAT render
+          Commit: <short-sha> | Commit: none (nothing changed) | Skipped: no e2e-routed UATs
+          Summary: written <n>, rewritten <n>, unchanged <n>, preserved <n>, deleted <n>, conflict <n>
+
+      `Skipped: no e2e-routed UATs` is the line when the routing table has no `e2e` row.
+      ```
+
+    - **Phase order** with per-phase quality gates (`pnpm typecheck && pnpm lint`). Name each phase's execution model in the outline (Sonnet by default; see the Sub-agent invocation bullet), so a cold orchestrator sees the model alongside the phase. For a spec-derived plan, the quality gate also carries this block:
+
+      ```
+      <!-- gaia:orchestrator-step uat-gate -->
+      **Owning-phase UAT gate.** After `pnpm typecheck && pnpm lint` pass for a phase whose number appears in an `e2e` row of `{PLAN_DIR}/README.md`'s UAT routing table, and before that phase commits, run from `RESOLVED_ROOT`:
+
+          bash .gaia/scripts/spec/uat-gate.sh {SPEC_PATH} --routing {PLAN_DIR}/README.md --phase <N>
+
+      Prerequisites, cost and the action for each exit code: `.claude/skills/gaia/references/spec/lifecycle.md` `## Owning-phase UAT gate`. A non-zero exit never commits.
+      ```
+
+    - **Pre-audit UAT checks (spec-derived plans only).** Place this block after the last phase and before the final summary:
+
+      ```
+      <!-- gaia:orchestrator-step uat-pre-audit -->
+      **Pre-audit UAT checks.** After the last phase commits, and before the final summary and the pre-merge Code Audit Team audit, run from `RESOLVED_ROOT`:
+
+          bash .gaia/scripts/spec/uat-gate.sh {SPEC_PATH} --routing {PLAN_DIR}/README.md --all
+
+      then the render-ancestry check, both per `.claude/skills/gaia/references/spec/lifecycle.md` `## Pre-audit UAT checks`. A non-zero exit from either is a HALT, never an audit finding to fix in a fix round.
+      ```
+
     - **Pre-merge Code Audit Team audit (roster-first, non-skippable).** Before any `gh pr merge` call, resolve which Code Audit Team members this branch's diff dispatches:
 
           bash .gaia/scripts/resolve-audit-members.sh
@@ -212,15 +279,19 @@ Then write the following files directly to `{PLAN_DIR}/`:
             Task(
               subagent_type="<member-name>",
               prompt="Working root: <RESOLVED_ROOT>, the absolute path of the checkout under review; the orchestrator substitutes the value it resolved from the isolation reference at dispatch time. Run your definition's root fence with AUDIT_ROOT=<RESOLVED_ROOT> ahead of it, then type <RESOLVED_ROOT> wherever a command in your definition writes <root>, never carrying it in a shell variable. Expected HEAD tree: <EXPECTED_TREE>, the tree captured immediately before this dispatch wave.
+              SPEC path: {SPEC_PATH}
+              UAT routing: {PLAN_DIR}/README.md
               MANDATORY FIRST ACTION, before any review: run `git -C <RESOLVED_ROOT> rev-parse HEAD^{tree}` and compare it to <EXPECTED_TREE>. If that command errors (missing path, git unavailable) OR the value does not match exactly, STOP, do not review, do not write a marker, and return only the mismatch or error as your entire output.
               Only on an exact match, review all changes in <RESOLVED_ROOT>'s current branch compared to main, scoping every git command to `git -C <RESOLVED_ROOT>`. Identify security vulnerabilities, performance issues, code smells, anti-patterns, and refactoring opportunities."
             )
+
+        The `SPEC path:` and `UAT routing:` lines are for a spec-derived plan, absolute and main-anchored: both files live in gitignored main-only folders a worktree cannot see, and `code-audit-frontend` keys its rendered-spec check on them. A spec-less plan's prompt omits both lines.
 
       - **No names** → spawn `code-audit-frontend`, fail-closed. Never treat an empty or unanswerable result as "nothing owed"; an in-scope file no member owns also owes `code-audit-frontend`.
 
       Skip a spawn for a member already cleared for HEAD: its marker exists, or (for the default member) one of the bypass signals in the marker-handshake table already applies to this PR. The spawn set names who *can* be required, not who is still outstanding.
 
-      On a clean pass each member writes its own marker; it does not post the `GAIA-Audit` success status itself, the orchestrator does, per `wiki/concepts/PR Merge Workflow.md` `#### Posting the status last`. The merge deny-hook requires **every** dispatched member's marker, so one member withholding holds the gate shut for all. If a member declines to write its marker, its report names what remains unaddressed; resolve those, commit, push (HEAD moves), then re-spawn the pending members on the new HEAD. A member's marker is keyed to its own content digest (the files it owns plus the shared gate machinery), not to HEAD's sha, so a re-spawn is owed only when the fix touched a path that member owns or gate machinery; an unrelated fix leaves an already-cleared member's marker valid and it is skipped per the rule above (`wiki/concepts/PR Merge Workflow.md` `#### Skipping already-cleared members`). Never hand-write a marker to bypass the gate. Once the `#### Posting the status last` conditions all hold, the orchestrator posts the status itself, `bash .claude/hooks/post-audit-status.sh <path to a current member marker>`, before calling `gh pr merge`.
+      On a clean pass each member writes its own marker; it does not post the `GAIA-Audit` success status itself, the orchestrator does, per `wiki/concepts/PR Merge Workflow.md` `#### Posting the status last`. The merge deny-hook requires **every** dispatched member's marker, so one member withholding holds the gate shut for all. If a member declines to write its marker, its report names what remains unaddressed; resolve those, commit, push (HEAD moves), then re-spawn the pending members on the new HEAD. A member's marker is keyed to its own content digest (the files it owns plus the shared gate machinery), not to HEAD's sha, so a re-spawn is owed only when the fix touched a path that member owns or gate machinery; an unrelated fix leaves an already-cleared member's marker valid and it is skipped per the rule above (`wiki/concepts/PR Merge Workflow.md` `#### Skipping already-cleared members`). Never hand-write a marker to bypass the gate. Once the `#### Posting the status last` conditions all hold, the orchestrator posts the status itself, `bash .claude/hooks/post-audit-status.sh <path to a current member marker>`, after the wiki promotion step's commit and immediately before calling `gh pr merge` (the wiki promotion block below).
 
       A member spawned with nothing in its remit self-skips and writes no marker, so an over-broad spawn is harmless, but an under-broad one deadlocks the merge, which is why the spawn set comes from the resolver and not from a guess.
 
@@ -241,6 +312,17 @@ Then write the following files directly to `{PLAN_DIR}/`:
       > How your run ends: a reply with no tool call ends it, and the orchestrator reads whatever you returned as your finished result. Do not end on a summary that announces a next step, an offer to continue, a list of questions none of which blocks the work, or a progress report because a milestone is done; take the next step instead. Stop only when the task is complete, or when something you cannot resolve blocks it, and then say which.
 
       That names the stops that are not wanted. The failure-triggered STOP under Stop conditions below stays wanted: a sub-agent blocked by something it cannot resolve says so under `### Deviations from plan` and returns.
+
+      **For a spec-derived plan, the prompt template MUST also carry this block verbatim**, because a rendered UAT spec is the SPEC's contract and an executor that rewrites its logic to make it pass silently changes what was agreed:
+
+      ```
+      A rendered UAT spec under `<frontend package>/.playwright/e2e/` carries its contract in the comment at its top. Selectors, labels, copy and layout in the test are yours to edit. A needed change to the UAT's flow, success criteria, error-handling branch, asserted side effect, precondition or post-state (`.claude/skills/gaia/references/spec/uat-divergence.md`) is never made in the test: report it inside `## Notes for orchestrator` under this heading, exactly, and leave the test's logic as rendered:
+
+      ### Logical UAT divergence
+      UAT: <uat_id>
+      Category: <flow | success criteria | error-handling branch | asserted side effect | precondition | post-state>
+      Needed change: <one or two sentences>
+      ```
     - **Orchestrator-owned git flow.** After each phase that produces changes (and only once the quality gate is clean), the orchestrator stages, commits with a Conventional Commits subject (`wiki/decisions/Naming Conventions.md`; enforced by the `commit-msg` hook), and pushes. **Before staging, it checks each task's completion**: compare the files the task's `task-*.md` declares with the files actually changed (`git -C <RESOLVED_ROOT> status --porcelain`). A declared file left untouched, or a `### Deviations from plan` or forward-looking note in the sub-agent's return, means reading that task's diff against its acceptance criteria before committing; the quality gate passes on valid but unfinished code, so it cannot catch this. A miss the sub-agent's notes do not explain is a sub-agent failure under Stop conditions below. The orchestrator opens the PR after the first phase's commit lands on the remote (using `gh pr create`) and updates it with subsequent commits. Never commit a broken state.
     - **Phase findings ledger (`{PLAN_DIR}/PROGRESS.md`).** Append-only file the orchestrator maintains across the run, so sub-agent observations survive context compression, written per the tool-choice contract in the pre-flight isolation bullet above. After each phase, the orchestrator appends a `## Phase N, <title>` block whose first content line is `Commit: <short-sha>`, the machine-readable anchor `.gaia/scripts/plan-resume-point.sh` reads, followed by the merged `Notes for orchestrator` content from every sub-agent in that phase. A phase with no sub-agent notes writes `_No notes._`. **`plan.md` is the single source of truth for this block format**; any other doc or reference page that describes the ledger points here rather than restating the literal `Commit:` line. Example:
 
@@ -254,11 +336,22 @@ Then write the following files directly to `{PLAN_DIR}/`:
 
       A HALTED block carries no `Commit:` anchor: `## Phase N, <title> (HALTED)` (see Stop conditions below), a halt did not commit. Sub-agents do not write to this file directly; the orchestrator owns it.
     - **Stop conditions.** On any sub-agent failure or quality-gate failure: STOP and surface to the user. Do not "fix and continue", do not commit, do not push. Before stopping, append the failure context (which phase, which sub-agent, error) to `PROGRESS.md` under a `## Phase N, <title> (HALTED)` block, written per the tool-choice contract in the pre-flight isolation bullet above, so the user and any follow-up session see the same record.
+
+      A `### Logical UAT divergence` report in any sub-agent's notes is also a stop: the phase halts before committing, because the SPEC's contract no longer matches what the work needs and only a SPEC reopen can change it. Append this block (one per reported UAT) and stop:
+
+      ```
+      ## Phase N, <title> (HALTED)
+      Reason: logical UAT divergence
+      UAT: <uat_id>
+      Needed change: <from the report>
+      Uncommitted edits: this phase's edits remain uncommitted in <RESOLVED_ROOT>; stash or discard them before resuming (resume refuses a dirty tree), and the phase re-runs from its start.
+      Next step: reopen the SPEC (.claude/skills/gaia/references/spec/uat-divergence.md, "Reopen"), then resume with KICKOFF.md.
+      ```
     - **Final summary.** After all implementation phases pass and the final commit is pushed, before awaiting merge confirmation, **read `{PLAN_DIR}/PROGRESS.md`** and print a brief summary to the user: phases completed, sub-agents run, files touched (count), commits pushed (count + short SHAs), PR URL, quality-gate status, and the highest-signal findings/deviations/follow-ups drawn from `PROGRESS.md` so nothing is lost to context compression. Keep it tight, a few lines plus the surfaced notes, not a recap of every change.
 
       **Token tally (execute-time).** Execute-phase token tallies are recorded automatically: a `PreToolUse` hook on the orchestrator's per-phase git commit/push records this session's execute tally to the durable ledger, keyed to the feature (the SPEC id resolved from the active plan folder, or the plan slug when spec-less). Resumed, halted, and worktree sessions are all captured. The orchestrator does not run a manual execute tally, doing so would double-count the phase.
 
-      After every dispatched member's clean-pass marker is written and before the Final self-cleanup phase archives the plan folder, the orchestrator reports the full-cycle cost by running the roll-up reader and reporting exactly one cost line built from its output, not the reader's multi-line block. Substitute the plan's real SPEC id (from the `## Source SPEC` section of `README.md`, or the plan slug if the plan has no SPEC, the spec-less case):
+      After every dispatched member's clean-pass marker is written and before the merge, the orchestrator reports the full-cycle cost by running the roll-up reader and reporting exactly one cost line built from its output, not the reader's multi-line block. Substitute the plan's real SPEC id (from the `## Source SPEC` section of `README.md`, or the plan slug if the plan has no SPEC, the spec-less case):
 
       ```bash
       if [ -x .gaia/scripts/token-rollup.sh ]; then
@@ -271,46 +364,38 @@ Then write the following files directly to `{PLAN_DIR}/`:
 
       A `PostToolUse` hook on `gh pr merge` renders the same roll-up at the merge boundary, so the readout also appears when the merge runs from a fresh top-level session. The reader never blocks and never fabricates a number: the `-x` guard and trailing `|| true` mean a missing or failing helper degrades silently, and an unreadable ledger degrades to a partial or absent figure with a marker.
 
-    - **Consolidation at confirmed-merge (before any plan-folder or `PROGRESS.md` deletion).** After all implementation phases pass and the user confirms the PR is ready to merge, before `plan-archive.sh` touches the plan folder, the orchestrator (warm, on its own session, this is genuine synthesis, not a task sub-agent's job) produces the consolidated `SUMMARY.md` by layered override-resolution: read `SPEC.md`, then `AUDIT.md`, then `PROGRESS.md`, in that precedence, top layer wins on conflict; a spec-less plan has no `SPEC.md`/`AUDIT.md`, so `PROGRESS.md` is its only layer. Ground the result in the merged code and passing tests, write it present-tense as final-state prose, and surface any material narrowing between the stated intent and the shipped scope under an optional `## Divergence` section. This step is deliberately an agent synthesis, not a deterministic template: a mechanical concatenation of the three layers cannot resolve conflicts between them or judge what "materially narrower" means, which is why the design rejects a template. Write the pinned shape (frontmatter `wiki_promote_default` + `wiki_promote_targets`; non-empty H1; non-empty body; optional `## Divergence`, see `README.md`'s frozen contract). A spec-colocated plan's `plan/PROGRESS.md` feeds the SPEC-level `SUMMARY.md` (written beside `SPEC.md`, one directory up from the plan subfolder, once it has fed the consolidation); a spec-less plan's `PROGRESS.md` produces `PLAN-NNN/SUMMARY.md` in place.
+    - **Consolidation and wiki promotion (after audit clearance and the ready-to-merge confirmation, before the merge).** The orchestrator runs this step warm, on its own session: consolidation is synthesis, not a task sub-agent's job. Place this block after the cost line and the human's ready-to-merge confirmation:
 
-      Then verify-gate before removing anything:
+      ```
+      <!-- gaia:orchestrator-step wiki-promotion -->
+      **Consolidation and wiki promotion.** Runs after every dispatched Code Audit Team member has cleared and the human has confirmed the PR is ready to merge, and before the merge.
 
-      ```bash
-      bash .gaia/scripts/summary-verify.sh <SUMMARY.md path>
+      1. Consolidate per `.claude/skills/gaia/references/spec/lifecycle.md` `## Consolidation`. It writes `SUMMARY.md` and runs `summary-verify.sh`, and removes nothing. When its verify fails it records the wiki promotion block itself; skip step 2 and go to step 4.
+      2. Promote per `.claude/skills/gaia/references/spec/wiki-promote.md`. Its Step 2 reads `SUMMARY.md`'s `wiki_promote_default` and `wiki_promote_targets` and decides whether pages are written and which Choice token results; this block does not decide it. A promotion commit holds only `wiki/**` paths, lands on this PR branch, and is pushed before the merge. Nothing writes a defer cache.
+      3. Append the record to `{PLAN_DIR}/PROGRESS.md`, with the Choice token and `Reason:` line exactly as that Step 2 returned them:
+
+             ## Wiki promotion
+             Default: <yes | ask | no>   Choice: <promoted | declined | skipped-unattended | skipped-verify-failed | no>
+             Pages: <paths or none>   Commit: <short-sha or none>
+             Reason: <one line; required whenever Choice is not promoted>
+
+      4. A promotion commit moves HEAD. Confirm every dispatched member's marker is still current (`wiki/concepts/PR Merge Workflow.md` `#### Skipping already-cleared members`); re-spawn any member whose marker rotated, and never hand-write one.
+      5. Post the `GAIA-Audit` status after the promotion commit, immediately before `gh pr merge`: `bash .claude/hooks/post-audit-status.sh <path to a current member marker>`. Then merge.
       ```
 
-      On exit 0, `rm` the folder's `SPEC.md` and `AUDIT.md` (a spec-colocated plan only, their content is now superseded by the verified `SUMMARY.md`; a spec-less plan has none to remove). On non-zero, KEEP `SPEC.md`/`AUDIT.md` and the partial `SUMMARY.md` in place and skip the removal, fail-closed: a malformed consolidation never destroys the only record. `plan-archive.sh`'s own gates (below) re-check for a present, well-formed `SUMMARY.md`, so a skipped removal here also leaves the plan folder itself untouched on the next step.
+    - **Post-merge close.** Place this block after the merge, ahead of the worktree cleanup bullets below:
 
-    - **Final self-cleanup phase (last step before merge).** Now that the consolidation step above has produced (or fail-closed, left in place) the folder's `SUMMARY.md`, the orchestrator disposes of its own plan folder. Run:
-
-      ```bash
-      bash .gaia/scripts/plan-archive.sh {PLAN_DIR}
+      ```
+      <!-- gaia:orchestrator-step post-merge-close -->
+      **Post-merge close.** After `gh pr merge`, follow `.claude/skills/gaia/references/spec/lifecycle.md` `## Post-merge close` in its order: confirm `gh pr view <N> --json state` reports `MERGED`; reconcile the ledger (passing `<N>` to `plan-reconcile.sh` for a spec-less plan); exit the worktree (worktree mode); verify `SUMMARY.md`, and only on a pass remove `SPEC.md` and `AUDIT.md`; then run `bash .gaia/scripts/plan-archive.sh {PLAN_DIR}`. `plan-archive.sh` runs only after `MERGED` is confirmed, never before the merge. Nothing deletes `{PLAN_DIR}` (its UAT routing table, `PROGRESS.md`, `uat-render.json`) before this step.
       ```
 
-      The argument is the plan dir. Pass the cached `{PLAN_DIR}` (absolute) directly, the helper normalizes an absolute-under-repo path to repo-relative. A repo-relative literal (`.gaia/local/specs/<SPEC-ID>/plan[-N]` or `.gaia/local/plans/PLAN-NNN`) is equally valid. The argument shape does NOT affect the permission match here: the allow entry `Bash(bash .gaia/scripts/plan-archive.sh:*)` uses a `:*` wildcard that matches any argument.
+      The archive argument is the cached `{PLAN_DIR}` (absolute); the helper normalizes an absolute-under-repo path to repo-relative, and the allow entry `Bash(bash .gaia/scripts/plan-archive.sh:*)` matches any argument shape. A spec-colocated plan subfolder is deleted and its SPEC folder keeps `SUMMARY.md` and `cost.json`; a spec-less plan folder is reduced to `SUMMARY.md` and `cost.json`. Both stay for the retention `lifecycle.md` `## Post-merge close` states, and the pre-flight sweep reaps them once past it. Both `.gaia/local/plans/` and `.gaia/local/specs/` are gitignored under the GAIA default (`git check-ignore` confirms it), so the archive needs no commit; if a path is tracked, commit and push the change. If the user explicitly asks to keep the plan folder, skip the archive and report.
 
-      For a spec-less plan under `.gaia/local/plans/PLAN-NNN/`, the folder is now REDUCED rather than deleted outright: everything except the consolidated `SUMMARY.md` and its `cost.json` sidecar is removed, including `PROGRESS.md` and the `RUNNING` sentinel, and the row is stamped `merged` + `merged_at`. The reduced folder has no automatic reaper: it is deleted only by hand-running `plan-close`, which delegates to `plan-archive-merged.sh --close` once past cost-representation and promote-drain. For a spec-colocated plan under `.gaia/local/specs/<SPEC-ID>/plan[-N]/`, only that subfolder is deleted, now that it has fed the spec-level consolidation above; the parent SPEC folder is KEPT, now holding the reconciled `SUMMARY.md` (`SPEC.md`/`AUDIT.md` were already removed by the consolidation step above, once verified) plus the SPEC's own `cost.json` sidecar, age-reaped later by the `/gaia-spec` pre-flight sweep's `spec-archive-merged.sh` once past `GAIA_SPEC_RETENTION_DAYS`, cost-represented, and promote-drained (with early-reap-at-close via `spec-close`). Either arm fail-closes: if the consolidation step above never produced a verified `SUMMARY.md`, `plan-archive.sh` leaves the whole folder untouched rather than reducing or deleting it. The helper always exits 0.
-
-      Then check `git check-ignore .gaia/local/plans/` (and, for a colocated plan, `git check-ignore .gaia/local/specs/`): both are gitignored under the GAIA default, so the disposition is invisible to git, skip the commit and report "plan folder reduced/deleted locally; gitignored, no commit needed." If a path is tracked, commit and push the change as the final commit on the PR. If the user explicitly asks to keep the plan folder, skip and report.
-
-      The `PROGRESS.md`/`cost.json` content was already surfaced in the Final summary before the folder is removed.
-
-    - **Post-merge auto-reconcile (both isolation modes).** After the PR merges, before any worktree-discard handoff or isolation-context stop (see the next bullet), the orchestrator reconciles the plan/SPEC ledger. This is its OWN standalone step with its OWN `MERGED` confirmation, separate from the worktree-only cleanup below, and it applies to BOTH feature-branch and worktree isolation modes; a feature-branch run never reaches the worktree-only cleanup, so nesting the reconcile there would silently drop it for the default (Recommended) mode.
-      1. Confirm merge via `gh pr view <N> --json state`. Parse the JSON; require `.state == "MERGED"`. If not merged, do NOT proceed, surface to user and stop.
-      2. **Resolve the main-checkout root; never pass `$PWD`.** In worktree isolation the orchestrator's cwd is the worktree, whose `.gaia/local/specs/` and `.gaia/local/plans/` ledgers are not among the shared paths the state registry declares, so `"$PWD"` resolves a nonexistent ledger and the reconcile silently no-ops. Ask the shared resolver, the one definition of the main-checkout root:
-
-         ```bash
-         main_root="$(bash .gaia/scripts/main-root-lib.sh)"
-         ```
-
-         In a feature-branch run the resolver returns the current checkout, so `main_root` equals `$PWD` and the same call is correct in both modes.
-      3. A spec-colocated plan on a `<type>/spec-NNN-*` branch (legacy `plan/spec-NNN-*`) runs `bash .gaia/scripts/spec/spec-reconcile.sh "$main_root" || true` (flips the SPEC's `specs/ledger.json` row `ready` → `merged`, the unified vocabulary); a spec-less `PLAN-NNN` plan runs `bash .gaia/scripts/spec/plan-reconcile.sh "$main_root" "$PLAN_ID" || true` (flips the `plans/ledger.json` row → `merged`, stamping `merged_at`). Both are best-effort and never block.
-      4. Backstops remain: `spec-reconcile.sh` still runs in the `/gaia-spec` pre-flight sweep (spec arm); `plan-archive.sh`'s pre-gate stamp remains the plan-arm backstop (now stamping `merged` + `merged_at`), so the ledger still converges if the orchestrator is interrupted mid-cleanup. `plan-close` (the spec-less mirror of `spec-close`) is the plan-side manual close path for when this automated step did not run.
-
-      Sequenced BEFORE the worktree-discard handoff / isolation-context stop below, so an isolated worktree run reconciles before it stops to emit its continuation prompt.
+      If the run stops before this step finishes (an interruption, a merge made outside the orchestrator), the pre-flight sweep that `/gaia-spec` and `/gaia-plan` both run (`lifecycle.md` `## Pre-flight sweep`) reconciles the ledger, consolidates the folder and reaps it later.
 
     - **Post-merge worktree cleanup (worktree-mode runs only).** When the orchestrator's pre-flight chose worktree mode (or the run was dispatched into a worktree by upstream tooling), the post-merge phase runs the cleanup procedure below AFTER the user confirms the PR is merged. The procedure detects the squash-merge state and discards the worktree without prompting (the SPEC clarifications.answered confirms pre-consent: the orchestrator told the user "after merge, the worktree will be discarded" before opening the PR; the user merging the PR is the consent).
-      1. Confirm merge via `gh pr view <N> --json state`. Parse the JSON; require `.state == "MERGED"`. If not merged, do NOT proceed, surface to user and stop.
+      1. This procedure is the post-merge close's worktree-exit step: it runs only after that close has confirmed `.state == "MERGED"` through `gh pr view <N> --json state` and reconciled the ledger. If the merge is not confirmed, do NOT proceed, surface to user and stop.
       2. **Isolation-context check (see next bullet).** If the orchestrator is running inside an isolated subagent context, emit a continuation prompt and STOP, do NOT call `ExitWorktree`.
       3. Otherwise, call `ExitWorktree({action: "remove", discard_changes: true})` directly. `discard_changes: true` is safe and correct: a squash-merge absorbs every commit on the worktree branch, but those commits are not reachable as ancestors of `main`. Without `discard_changes: true` the runtime conservatively refuses, treating the unreachable commits as unsynced work. The merged-state confirmation in step 1 proves the work is preserved.
       4. Delete the renamed branch as `.claude/skills/gaia/references/isolation.md` (`### Post-merge removal`) prescribes.
@@ -330,8 +415,10 @@ Then write the following files directly to `{PLAN_DIR}/`:
 
               git worktree remove --force <ABSOLUTE-PATH-TO-WORKTREE>
               git branch -D <branch-name>   # if it still exists
+              bash .gaia/scripts/summary-verify.sh <ABSOLUTE-PATH-TO-SUMMARY.md> && rm <ABSOLUTE-PATH-TO-SPEC-FOLDER>/SPEC.md <ABSOLUTE-PATH-TO-SPEC-FOLDER>/AUDIT.md   # spec-colocated plan only
+              bash .gaia/scripts/plan-archive.sh <ABSOLUTE-PATH-TO-PLAN_DIR>
 
-      Do not emit an `ExitWorktree({...})` call in this continuation prompt. `ExitWorktree` only operates on a worktree created by `EnterWorktree` in the current session: from a fresh session it is a no-op on a prior-session worktree, and its schema requires `action` and rejects a `worktree` parameter. A plain `git worktree remove --force` is the correct session-independent cleanup. No error surfaces, no `ExitWorktree` invocation happens in this branch, and the user pastes the shell commands into any terminal to complete the cleanup without further investigation.
+      The last two commands are the post-merge close's remaining steps (`lifecycle.md` `## Post-merge close`), which an isolated orchestrator cannot run because they need the main checkout. Do not emit an `ExitWorktree({...})` call in this continuation prompt. `ExitWorktree` only operates on a worktree created by `EnterWorktree` in the current session: from a fresh session it is a no-op on a prior-session worktree, and its schema requires `action` and rejects a `worktree` parameter. A plain `git worktree remove --force` is the correct session-independent cleanup. No error surfaces, no `ExitWorktree` invocation happens in this branch, and the user pastes the shell commands into any terminal to complete the cleanup without further investigation.
 
 4.  **`{PLAN_DIR}/KICKOFF.md`**: the orchestrator's kickoff prompt itself, ready to be read and executed verbatim. The file is the prompt, no preamble, no "copy and paste below" instruction, no surrounding commentary, no `---` separators framing the prompt as a quoted block. The opening line addresses the orchestrator directly (e.g. "You are the orchestrator for the {feature} plan…"). Must be fully self-contained with no assumed context: absolute paths to `README.md` and `ORCHESTRATOR.md`, the goal, hard rules, and the execution outline, with exactly one carve-out: the imperative pointer to the shared isolation reference named in the Pre-flight isolation bullet above. The generated files carry that pointer, never a snapshot of the reference's content. The kickoff also includes a one-line reference to the pre-merge Code Audit Team audit obligation (e.g. "Before any `gh pr merge`, resolve the dispatched Code Audit Team members with `bash .gaia/scripts/resolve-audit-members.sh` and spawn each one; see ORCHESTRATOR.md's pre-merge audit section."), a one-line default-execution-model statement (e.g. "Dispatch each task sub-agent as `general-purpose` with `model: \"sonnet\"` unless ORCHESTRATOR.md's phase list escalates that phase to Opus."), and a one-line cold-start resume statement (e.g. "On cold start, before pre-flight, check `{PLAN_DIR}/RUNNING` for a prior run and follow ORCHESTRATOR.md's Resume detection section (reconnect + resume gate) before writing the sentinel."). All three lines ensure a cold-started orchestrator reads the requirement before doing any work, surviving any context compression that drops the ORCHESTRATOR.md content from the first read.
 
@@ -362,7 +449,7 @@ PLAN_REL="${PLAN_DIR#"$ROOT/"}"
 # backstop. If scratch survived (e.g. the planner crashed mid-run), warn instead
 # of force-deleting: .gaia/local/plans/ is gitignored so leftover scratch is
 # harmless clutter, and a verify-only step needs no rm-permission prompt on
-# every run. Remove it by hand if the warning fires.
+# every run. Remove it manually if the warning fires.
 [ -d "$PLAN_REL/.work" ] && echo "WARNING: planner scratch survived at $PLAN_REL/.work; remove it manually if unneeded."
 test -f "$PLAN_DIR/README.md" \
   && test -f "$PLAN_DIR/ORCHESTRATOR.md" \
@@ -371,6 +458,18 @@ test -f "$PLAN_DIR/README.md" \
 ```
 
 If any required file is missing, surface the failure to the user with the planner's return payload. Do not retry silently, the user decides whether to re-spawn or investigate. Never proceed to step 4.6 with an incomplete plan folder.
+
+Then run the deterministic plan check. It confirms the generated `ORCHESTRATOR.md` carries every verbatim step sentinel the plan needs, in order, and for a spec-derived plan that the README's UAT routing table validates against the SPEC and every `story`-routed UAT has its criterion line in a task doc:
+
+```bash
+if [[ -n "${SPEC_PATH:-}" ]]; then
+  bash .gaia/scripts/spec/plan-verify.sh "$PLAN_DIR" --spec "$SPEC_PATH"
+else
+  bash .gaia/scripts/spec/plan-verify.sh "$PLAN_DIR"
+fi
+```
+
+A non-zero exit is handled exactly like a missing file: surface its output to the user, do not retry silently, and do not proceed to step 4.6. `WARN:` lines on a passing run are surfaced too; they flag a UAT that may be misrouted. This check runs even when step 4.6 skips the decomposition audit.
 
 ### 4.6. Adversarial decomposition audit
 

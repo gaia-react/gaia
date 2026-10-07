@@ -17,10 +17,10 @@ Three wiki commands with non-overlapping scopes:
 | Command                                      | Scope                                                                      |
 | -------------------------------------------- | -------------------------------------------------------------------------- |
 | [[Wiki Sync\|`/gaia-wiki sync`]]             | Commit-driven: per-commit updates from code to wiki                        |
-| `wiki-promote` (manual runbook, no automatic trigger) | When a person runs it for a SPEC or plan: promotes its content into wiki domain pages |
+| The wiki promotion step | Before the merge, in the `/gaia-plan` orchestrator: promotes a SPEC or plan's content into wiki domain pages from its `SUMMARY.md` frontmatter |
 | `/gaia-wiki consolidate`                     | Cross-SPEC: detects redundancy and contradiction after multiple SPECs land |
 
-`wiki-promote`, when a person runs it, writes correctly for its SPEC or plan. Consolidate is the "are the combined writes still coherent?" pass.
+The wiki promotion step writes correctly for its SPEC or plan. Consolidate is the "are the combined writes still coherent?" pass.
 
 ## What it detects
 
@@ -56,5 +56,5 @@ Consolidate does NOT commit; it stages edits and hands off to `/gaia-wiki sync` 
 ## Pairs with
 
 - [[Wiki Sync]]: drives the commit and owns the parallel sync-state fields.
-- [[GAIA Spec]]: the workflow that produces SPECs. `wiki-promote` is a manual runbook with no automatic trigger; consolidate audits its writes when a person runs it.
-- [[spec-kit Extension Strategy]]: superseded record of the original extension-plus-preset design. The `wiki-promote` runbook writes `promoted_from` provenance.
+- [[GAIA Spec]]: the workflow that produces SPECs. the wiki promotion step is the orchestrator's pre-merge step; consolidate audits its writes.
+- [[spec-kit Extension Strategy]]: superseded record of the original extension-plus-preset design. The wiki promotion step writes `promoted_from` provenance.

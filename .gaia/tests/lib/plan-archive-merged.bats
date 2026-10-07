@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 # Delete-sweep tests for plan-archive-merged.sh, the plans-side mirror of
 # spec-archive-merged.sh (see spec-archive-merged.bats for the shared design
-# notes: age gate, --close bypass, consolidation gate, representation gate).
+# notes: age gate, consolidation gate, representation gate).
 #
 # Does NOT use helpers/tmp-spec-repo.sh: that shared harness seeds only the
 # specs ledger. Instead mirrors the self-copy sandbox pattern from
@@ -29,8 +29,7 @@ setup() {
   git -C "$SANDBOX" init --quiet
 
   mkdir -p "$SANDBOX/.gaia/scripts/spec" "$SANDBOX/.gaia/scripts" \
-    "$SANDBOX/.gaia/local/plans" "$SANDBOX/.gaia/local/telemetry" \
-    "$SANDBOX/.gaia/local/cache/wiki-promote"
+    "$SANDBOX/.gaia/local/plans" "$SANDBOX/.gaia/local/telemetry"
 
   cp "$ARCHIVE_SOURCE" "$SANDBOX/.gaia/scripts/spec/plan-archive-merged.sh"
   chmod +x "$SANDBOX/.gaia/scripts/spec/plan-archive-merged.sh"
@@ -135,6 +134,26 @@ _clear_merged_at() {
   mv "$temporary_file" "$LEDGER"
 }
 
+# _set_pr_number <plan_id> <number>: stamp the confirmed pr_number on a row.
+_set_pr_number() {
+  local id="$1" number="$2"
+  local temporary_file; temporary_file="$(mktemp)"
+  jq --arg id "$id" --argjson number "$number" \
+    '.plans |= map(if .id == $id then . + {pr_number: $number} else . end)' \
+    "$LEDGER" > "$temporary_file"
+  mv "$temporary_file" "$LEDGER"
+}
+
+# _set_status <plan_id> <status>: rewrite a row's status.
+_set_status() {
+  local id="$1" new_status="$2"
+  local temporary_file; temporary_file="$(mktemp)"
+  jq --arg id "$id" --arg value "$new_status" \
+    '.plans |= map(if .id == $id then . + {status: $value} else . end)' \
+    "$LEDGER" > "$temporary_file"
+  mv "$temporary_file" "$LEDGER"
+}
+
 # _days_ago <days>: portable ISO8601 timestamp that many days in the past, computed with
 # jq (never `date -d`/`date -j`), matching spec-archive-merged.bats.
 _days_ago() {
@@ -186,17 +205,20 @@ _seed_cost_row() {
   [ -d "$PLANS/PLAN-002" ]
 }
 
-# --- 5: skip when a drain cache is pending -----------------------------------
+# --- 5: the retired defer cache no longer blocks a reap ----------------------
 
-@test "5: a merged plan with a pending wiki-promote drain cache is left active" {
+@test "5: a leftover wiki-promote defer cache file beside a reapable plan no longer blocks its reap" {
   _seed_merged_plan PLAN-001
+  mkdir -p "$SANDBOX/.gaia/local/cache/wiki-promote"
   printf '{"branch":"plan-1-x"}\n' > "$SANDBOX/.gaia/local/cache/wiki-promote/PLAN-001.json"
 
   run _archive "$SANDBOX"
   [ "$status" -eq 0 ]
-  refute_contains "Deleted"
+  assert_contains "Deleted 1 merged plan folder(s): PLAN-001"
 
-  [ -f "$PLANS/PLAN-001/SUMMARY.md" ]
+  [ ! -e "$PLANS/PLAN-001" ]
+  # The sweep neither reads nor purges the retired path.
+  [ -f "$SANDBOX/.gaia/local/cache/wiki-promote/PLAN-001.json" ]
 }
 
 
@@ -361,11 +383,12 @@ _seed_cost_row() {
   assert_contains "Deleted 1 merged plan folder(s): PLAN-002"
 }
 
-# --- 19: --close bypasses the age gate only ----------------------------------
+# --- 19: --close is accepted and ignored: no early reap ----------------------
 
-@test "19: --close reaps a within-window PLAN-007; without --close it stays kept" {
+@test "19: a within-window PLAN-007 stays kept with and without --close" {
   _seed_merged_plan PLAN-007
   _set_merged_at PLAN-007 "$(_days_ago 2)"
+  _set_pr_number PLAN-007 2601
   export GAIA_SPEC_RETENTION_DAYS=30
 
   run _archive "$SANDBOX" PLAN-007
@@ -375,10 +398,9 @@ _seed_cost_row() {
 
   run _archive "$SANDBOX" PLAN-007 --close
   [ "$status" -eq 0 ]
-  assert_contains "Deleted 1 merged plan folder(s): PLAN-007"
-  [ ! -e "$PLANS/PLAN-007" ]
+  refute_contains "Deleted"
+  [ -d "$PLANS/PLAN-007" ]
 }
-
 
 @test "20: --close does not bypass the consolidation gate" {
   _seed_merged_plan PLAN-002
@@ -428,4 +450,136 @@ _seed_cost_row() {
   [ "$status" -eq 0 ]
   refute_contains "Deleted"
   assert_contains "consolidation never ran; kept PLAN-001"
+}
+
+# --- 23-24: the two reap arms -----------------------------------------------
+
+@test "23: confirmed arm: a row with pr_number and an aged merged_at is reaped; inside the window it is kept" {
+  _seed_merged_plan PLAN-001
+  _set_pr_number PLAN-001 2601
+  export GAIA_SPEC_RETENTION_DAYS=30
+
+  _set_merged_at PLAN-001 "$(_days_ago 2)"
+  run _archive "$SANDBOX"
+  [ "$status" -eq 0 ]
+  refute_contains "Deleted"
+  [ -d "$PLANS/PLAN-001" ]
+
+  _set_merged_at PLAN-001 "$(_days_ago 45)"
+  run _archive "$SANDBOX"
+  [ "$status" -eq 0 ]
+  assert_contains "Deleted 1 merged plan folder(s): PLAN-001"
+  [ ! -e "$PLANS/PLAN-001" ]
+}
+
+@test "24: legacy arm: a merged row with no pr_number and an aged merged_at is reaped; inside the window it is kept" {
+  _seed_merged_plan PLAN-001
+  [ "$(jq -r '.plans[0].pr_number // "none"' "$LEDGER")" = "none" ]
+  export GAIA_SPEC_RETENTION_DAYS=30
+
+  _set_merged_at PLAN-001 "$(_days_ago 2)"
+  run _archive "$SANDBOX"
+  [ "$status" -eq 0 ]
+  refute_contains "Deleted"
+  [ -d "$PLANS/PLAN-001" ]
+
+  _set_merged_at PLAN-001 "$(_days_ago 45)"
+  run _archive "$SANDBOX"
+  [ "$status" -eq 0 ]
+  assert_contains "Deleted 1 merged plan folder(s): PLAN-001"
+  [ ! -e "$PLANS/PLAN-001" ]
+}
+
+@test "25: a legacy row with a missing merged_at is kept" {
+  _seed_merged_plan PLAN-001
+  _clear_merged_at PLAN-001
+  export GAIA_SPEC_RETENTION_DAYS=0
+
+  run _archive "$SANDBOX"
+  [ "$status" -eq 0 ]
+  refute_contains "Deleted"
+  [ -d "$PLANS/PLAN-001" ]
+}
+
+@test "26: a legacy row with an unparseable merged_at is kept" {
+  _seed_merged_plan PLAN-001
+  _set_merged_at PLAN-001 "last tuesday"
+  export GAIA_SPEC_RETENTION_DAYS=0
+
+  run _archive "$SANDBOX"
+  [ "$status" -eq 0 ]
+  refute_contains "Deleted"
+  [ -d "$PLANS/PLAN-001" ]
+}
+
+@test "27: a ready row (no merged_at) with an otherwise reapable folder is kept, with or without a pr_number" {
+  _seed_merged_plan PLAN-001
+  _clear_merged_at PLAN-001
+  _set_status PLAN-001 ready
+  export GAIA_SPEC_RETENTION_DAYS=0
+
+  run _archive "$SANDBOX"
+  [ "$status" -eq 0 ]
+  refute_contains "Deleted"
+  [ -d "$PLANS/PLAN-001" ]
+
+  _set_pr_number PLAN-001 2601
+  run _archive "$SANDBOX"
+  [ "$status" -eq 0 ]
+  refute_contains "Deleted"
+  [ -d "$PLANS/PLAN-001" ]
+}
+
+@test "27b: a ready row that carries a stale aged merged_at is still never a candidate" {
+  _seed_merged_plan PLAN-001
+  _set_status PLAN-001 ready
+  _set_merged_at PLAN-001 "$(_days_ago 45)"
+  export GAIA_SPEC_RETENTION_DAYS=30
+
+  run _archive "$SANDBOX"
+  [ "$status" -eq 0 ]
+  refute_contains "Deleted"
+  [ -d "$PLANS/PLAN-001" ]
+}
+
+# --- 28: the consolidation gate covers PROGRESS.md --------------------------
+
+@test "28: a confirmed folder holding PROGRESS.md and no SUMMARY.md is kept; with a verified SUMMARY.md it is reaped" {
+  cp "$REPO_ROOT/.gaia/scripts/summary-verify.sh" "$SANDBOX/.gaia/scripts/summary-verify.sh"
+  _seed_merged_plan PLAN-001
+  _set_pr_number PLAN-001 2601
+  _seed_cost_row PLAN-001 sess-1 100 10 5 20
+  summary_text="$(cat "$PLANS/PLAN-001/SUMMARY.md")"
+  rm -f "$PLANS/PLAN-001/SUMMARY.md"
+  printf '## Phase 1\n' > "$PLANS/PLAN-001/PROGRESS.md"
+  export GAIA_SPEC_RETENTION_DAYS=0
+
+  run _archive "$SANDBOX"
+  [ "$status" -eq 0 ]
+  refute_contains "Deleted"
+  assert_contains "consolidation never ran; kept PLAN-001"
+  [ -f "$PLANS/PLAN-001/PROGRESS.md" ]
+
+  printf '%s\n' "$summary_text" > "$PLANS/PLAN-001/SUMMARY.md"
+  run _archive "$SANDBOX"
+  [ "$status" -eq 0 ]
+  assert_contains "Deleted 1 merged plan folder(s): PLAN-001"
+  [ ! -e "$PLANS/PLAN-001" ]
+}
+
+# --- 29: a folder with no SUMMARY.md is never reaped ------------------------
+
+@test "29: an aged, cost-represented folder holding only plan files and no SUMMARY.md is kept" {
+  _seed_merged_plan PLAN-001
+  rm -f "$PLANS/PLAN-001/SUMMARY.md"
+  printf '# Plan\n' > "$PLANS/PLAN-001/PLAN.md"
+  _seed_cost_row PLAN-001 sess-1 100 10 5 20
+  _set_merged_at PLAN-001 "$(_days_ago 45)"
+  export GAIA_SPEC_RETENTION_DAYS=30
+
+  run _archive "$SANDBOX"
+  [ "$status" -eq 0 ]
+  refute_contains "Deleted"
+  assert_contains "consolidation never ran; kept PLAN-001"
+  [ -f "$PLANS/PLAN-001/PLAN.md" ]
 }

@@ -1,0 +1,134 @@
+{
+  "config": {
+    "argv": [
+      "/usr/bin/node",
+      "/work/node_modules/.pnpm/playwright@1.63.0/node_modules/playwright/cli.js",
+      "test",
+      "-c",
+      "/work/pw.config.ts",
+      "checkout",
+      "--reporter=json"
+    ],
+    "configFile": "/work/pw.config.ts",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "id": "",
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "name": "",
+        "outputDir": "/work/frontend/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "testDir": "/work/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.spec.ts"
+        ],
+        "timeout": 30000
+      }
+    ],
+    "quiet": false,
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "reporter": [
+      [
+        "json"
+      ]
+    ],
+    "rootDir": "/work/e2e",
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.63.0",
+    "webServer": null,
+    "workers": 1
+  },
+  "errors": [],
+  "stats": {
+    "duration": 38.89999999999998,
+    "expected": 0,
+    "flaky": 0,
+    "skipped": 1,
+    "startTime": "2026-10-06T23:21:56.480Z",
+    "unexpected": 0
+  },
+  "suites": [
+    {
+      "column": 0,
+      "file": "checkout/guest-checkout-confirms-order.spec.ts",
+      "line": 0,
+      "specs": [
+        {
+          "column": 6,
+          "file": "checkout/guest-checkout-confirms-order.spec.ts",
+          "id": "e351f5ef809c937ccb24-58769be3133f973355bf",
+          "line": 2,
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "annotations": [
+                {
+                  "location": {
+                    "column": 6,
+                    "file": "/work/e2e/checkout/guest-checkout-confirms-order.spec.ts",
+                    "line": 2
+                  },
+                  "type": "fixme"
+                }
+              ],
+              "expectedStatus": "skipped",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "annotations": [
+                    {
+                      "location": {
+                        "column": 6,
+                        "file": "/work/e2e/checkout/guest-checkout-confirms-order.spec.ts",
+                        "line": 2
+                      },
+                      "type": "fixme"
+                    }
+                  ],
+                  "attachments": [],
+                  "duration": 0,
+                  "errors": [],
+                  "parallelIndex": -1,
+                  "retry": 0,
+                  "startTime": "2026-10-06T23:21:56.518Z",
+                  "status": "skipped",
+                  "stderr": [],
+                  "stdout": [],
+                  "workerIndex": -1
+                }
+              ],
+              "status": "skipped",
+              "timeout": 30000
+            }
+          ],
+          "title": "the confirmation page shows the order number"
+        }
+      ],
+      "title": "checkout/guest-checkout-confirms-order.spec.ts"
+    }
+  ]
+}

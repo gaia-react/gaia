@@ -1,11 +1,11 @@
 #!/usr/bin/env bats
 #
 # Bats suite for .gaia/scripts/summary-verify.sh: the deterministic verify-gate
-# every consolidation producer (plan-close / spec-close / pre-flight backstop /
-# the warm orchestrator) calls before removing SPEC.md / AUDIT.md at merge
-# (SPEC-031, AUDIT DEF-05). Exercises the pinned SUMMARY.md shape
-# (plan/README.md frozen contract #2) against every malformed/absent/empty
-# variant plus the optional Divergence section.
+# every consolidation producer (the orchestrator's consolidation step and the
+# pre-flight sweep's cold consolidation) calls before removing SPEC.md /
+# AUDIT.md at merge. Exercises the pinned SUMMARY.md shape against every
+# malformed/absent/empty variant, the optional Divergence section, and the
+# wiki_promote_default vocabulary.
 #
 # Fixtures are inline heredocs written to $BATS_TEST_TMPDIR; this suite never
 # touches real .gaia/local.
@@ -144,4 +144,40 @@ EOF
   run bash "$SCRIPT" "$FIXTURE"
   [ "$status" -eq 1 ]
   grep -qF -- "empty body" <<<"$output"
+}
+
+# --- 10. wiki_promote_default vocabulary ------------------------------------------
+
+_write_with_default() {
+  printf -- '---\nwiki_promote_default: %s\nwiki_promote_targets: [decisions]\n---\n# A title\n\nSome body text.\n' "$1" > "$FIXTURE"
+}
+
+@test "wiki_promote_default accepts yes, ask, no, quoted values and the true/false aliases" {
+  for value in yes ask no '"yes"' "'ask'" true false "'false'" '"no"'; do
+    _write_with_default "$value"
+    run bash "$SCRIPT" "$FIXTURE"
+    [ "$status" -eq 0 ] || { echo "rejected: $value: $output"; return 1; }
+  done
+}
+
+@test "wiki_promote_default outside the vocabulary exits 1 naming the value" {
+  for value in maybe True 1 YES '"yes' "yes'"; do
+    _write_with_default "$value"
+    run bash "$SCRIPT" "$FIXTURE"
+    [ "$status" -eq 1 ] || { echo "accepted: $value"; return 1; }
+    grep -qF -- "wiki_promote_default must be yes, ask or no (got '$value')" <<<"$output" || { echo "message: $output"; return 1; }
+  done
+}
+
+@test "an empty wiki_promote_default value exits 1" {
+  _write_with_default ""
+  run bash "$SCRIPT" "$FIXTURE"
+  [ "$status" -eq 1 ]
+  grep -qF -- "wiki_promote_default must be yes, ask or no (got '')" <<<"$output"
+}
+
+@test "only the first wiki_promote_default line is judged" {
+  printf -- '---\nwiki_promote_default: ask\nwiki_promote_default: maybe\nwiki_promote_targets: []\n---\n# A title\n\nBody.\n' > "$FIXTURE"
+  run bash "$SCRIPT" "$FIXTURE"
+  [ "$status" -eq 0 ]
 }

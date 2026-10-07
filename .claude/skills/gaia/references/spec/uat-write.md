@@ -1,58 +1,88 @@
 ---
-description: 'Manual runbook: render PO-authored UATs into Playwright e2e specs at <package>/.playwright/e2e/spec-NNN/ in the frontend package.'
+description: 'Render step of the generated plan orchestrator: render the routed UATs into red Playwright e2e specs in the frontend package before Phase 1.'
 ---
 
-# UAT write pass
+# UAT render step
 
-**Status:** no automatic trigger. Run it by hand before implementing: read this file and follow it with the SPEC id, or run `bash .gaia/scripts/spec/uat-write.sh <spec-path>`.
+The orchestrator runs this step before Phase 1 on every start and every resume. It renders each e2e-routed UAT of the plan's SPEC into one red Playwright spec (`test.fail()`) under `frontend/.playwright/e2e/` (the e2e directory of the frontend package registered in `.gaia/packages.json`), so a failing harness exists before source is edited. A re-run on an unchanged SPEC changes nothing.
 
-The agent renders the active SPEC's PO-authored UATs into one Playwright e2e spec per UAT, leaving a red-state harness in place before source is edited.
+## Inputs
 
-## Locate the active SPEC
+- `SPEC_PATH`: the absolute, main-anchored path of the plan's `SPEC.md`.
+- The plan `README.md` holding the UAT routing table, absolute and main-anchored. Its table sits between the `gaia:uat-routing` start and end marker lines, one row per UAT with columns `uat_id`, `surface`, `phase`, `feature_folder`, `file_name`.
+- cwd: `RESOLVED_ROOT`, the isolation root the plan runs in.
 
-The render target is the SPEC artifact whose UATs back the upcoming implementation. In a GAIA project that artifact lives at `.gaia/local/specs/SPEC-NNN/SPEC.md`.
-
-Resolve the path in this order:
-
-1. If `$ARGUMENTS` carries an explicit `SPEC-NNN` id or absolute path, use it.
-2. Otherwise pick the most-recent `.gaia/local/specs/SPEC-NNN/SPEC.md` with `status: in-progress`, modified within the last 30 minutes.
-3. Otherwise the single `.gaia/local/specs/SPEC-NNN/SPEC.md` with `status: in-progress` (only if exactly one exists).
-4. Otherwise `AskUserQuestion`: list all in-progress SPECs and ask which one to render. Do NOT guess.
-
-Step 2 covers a SPEC just written by `/gaia-spec`; step 3 handles the common single-feature case.
-
-## Run the render helper
-
-Run using the Bash tool:
+## Run
 
 ```bash
-bash .gaia/scripts/spec/uat-write.sh <resolved-spec-path>
+bash .gaia/scripts/spec/uat-write.sh "$SPEC_PATH" --routing "$PLAN_README"
+bash .gaia/scripts/spec/working-doc-id-scan.sh
 ```
 
-The helper emits a JSON summary on stdout. Capture it verbatim; do NOT pipe through anything else. Exit codes: `0` success, `1` operational failure, `2` usage error.
+Capture the renderer's stdout JSON as is: `{"ok":true,"e2e_directory":"...","summary":{"written":0,"rewritten":0,"unchanged":0,"preserved":0,"deleted":0,"conflict":0},"details":[{"uat_id":"...","path":"...","action":"written"}]}`. A conflict detail also carries `reason`. The renderer validates the routing table and the SPEC before it writes anything, and keeps a render ledger (`uat-render.json`) beside the plan README so a later run finds the spec of a removed or re-routed UAT. The ledger lives in the plan folder and is never committed.
 
-## Surface results
+The id scan checks every path and every file under `frontend/.playwright/` (the frontend package's Playwright directory) for a working-document id. Run it even when the renderer reported nothing changed.
 
-- **Success (`ok: true`).** Emit a one-line summary:
+## Exit codes
 
-  > UAT-write complete: <written> written, <rewritten> rewritten, <deleted> deleted, <fixme> fixme, <unchanged> unchanged. Specs at `<spec_dir>/` (the helper's `spec_dir`, e.g. `frontend/.playwright/e2e/spec-NNN`). Cache: `.gaia/local/cache/uat-write/<SPEC-ID>.json`.
+Renderer:
 
-  Then, if `summary.fixme > 0`, list each fixme'd UAT with its `abstraction_blocker`. The implementer needs to see these on turn 1, those UATs need a SPEC reopen before they can turn green.
+| Exit | Meaning | Orchestrator action |
+|---|---|---|
+| 0 | Success, no conflict | Run the id scan, then `## Record` |
+| 1 | Operational failure (stdout `{"ok":false,"error":"..."}`), nothing written | HALT |
+| 2 | Invalid input: usage, malformed SPEC, invalid routing table, or a working-document id in an e2e-routed UAT (stderr only), nothing written | HALT |
+| 3 | Conflict: every non-conflict action still applied, the summary printed with `"ok":true`, every conflict file left byte-identical | `## Conflicts` |
 
-  Suggest the implementer's first command:
+The id scan exits 0 when clean, 1 printing `<path>:<line>: <match>` per hit, 2 on a usage error. A non-zero id scan HALTs, naming each file and line.
 
-  > Suggested first action: `pnpm pw <spec_dir>/`, confirms red-state baseline.
+Every render-step HALT appends this block to `PROGRESS.md` and stops before Phase 1. The block does not start with `## Phase`, so the resume helper ignores it and the render re-runs on resume.
 
-- **Operational failure (`ok: false`, exit `1`).** Emit the helper's `error` message verbatim, then **stop**, do not proceed to source edits and do not call any further tool. End the turn on the failure so the work halts here rather than relying on a downstream agent to notice and stop.
+```
+## UAT render (HALTED)
+Reason: UAT render conflict   (or)   Reason: UAT render failed (exit <1 | 2>)   (or)   Reason: working-doc id in rendered specs
+Spec files: <each conflict path and its reason from the JSON details; or each path:line from the id scan; or none>
+Detail: <the renderer's error message or stderr, one line; omit for a conflict>
+Next step: <conflict: answer the keep/replace question per uat-write.md "Conflicts", or reconcile the edited file manually, then resume with KICKOFF.md; exit 1 or 2 or an id hit: fix the named input (a SPEC reopen when the UAT text itself carries the id), then resume with KICKOFF.md>
+```
 
-- **Usage error (exit `2`).** Treat as a tooling problem, not a SPEC problem. Report the stderr message and skip. Implementation can continue, but without a generated harness, the implementer should write tests inline as fallback and acknowledge the harness was not available.
+Keep exactly one of the three `Reason:` alternatives. When a UAT's own text carries the id (renderer exit 2 naming the UAT and field), the fix is a SPEC reopen that describes the behavior without the id: see `uat-divergence.md` `## Reopen`.
 
-## Notes
+## Record
 
-- The runbook is **idempotent**: re-running on an unchanged SPEC produces zero file diffs. Per-UAT content hashes are stored in the cache file at `.gaia/local/cache/uat-write/<SPEC-ID>.json`; matching hashes short-circuit the write path.
-- The runbook reads/writes **only** to the `<spec_dir>/` the helper reports (under the `frontend` package registered in `.gaia/packages.json`, `frontend/` by default) plus the cache file under `.gaia/local/cache/uat-write/`. It never edits the SPEC, source, or any other directory.
-- Generated specs carry an inline divergence-rule header pointing to `.claude/skills/gaia/references/spec/uat-divergence.md`. The implementer may make cosmetic edits (selector text, button label, copy) but logical changes (flow, success criteria, error handling) are forbidden.
-- Orphaned spec files (a `uat-NNN.spec.ts` whose `UAT-NNN` no longer appears in the SPEC) are **hard-deleted**, not archived. Git preserves history; an `_archived/` directory would be picked up by CI globs.
-- Pluggability: only Playwright is supported in this SPEC. Vitest e2e / Cypress is a future SPEC.
-- The helper is pure: same SPEC in, same JSON out. Any rendering logic belongs in `.gaia/scripts/spec/uat-write.sh`, never inline in this command body.
-- On completion (success, failure, or skip) it touches only `<spec_dir>/` and its cache file, and performs no other action.
+After exit 0 (or exit 3 once `## Conflicts` is settled and the renderer re-run exits 0) and a clean id scan:
+
+- Stage only the paths the JSON summary names (every `path` whose action is `written`, `rewritten` or `deleted`) and commit them as their own commit, before the Phase 1 commit, with a Conventional Commits subject of type `test(e2e)`, for example `test(e2e): render red specs for the planned user acceptance tests`.
+- Append this block to `PROGRESS.md` with the commit's short SHA:
+
+```
+## UAT render
+Commit: <short-sha>
+Summary: written <n>, rewritten <n>, unchanged <n>, preserved <n>, deleted <n>, conflict <n>
+```
+
+- Nothing changed (no `written`, `rewritten` or `deleted`): no commit; the block carries `Commit: none (nothing changed)`.
+- Zero e2e rows in the routing table: the renderer writes nothing, so record `Skipped: no e2e-routed UATs` in place of the `Commit:` line.
+
+## Conflicts
+
+Each `conflict` detail names a file the renderer left byte-identical, with a `reason`:
+
+- `changed-and-edited`: the UAT text changed and the rendered file was edited since it was rendered.
+- `unmarked-file-at-target`: a file with no contract marker already sits at the path an e2e row resolves to.
+- `removed-or-rerouted-and-edited`: no row claims the file any more and it was edited.
+
+For each conflict, ask the human once with `AskUserQuestion`:
+
+- Keep the edited file: HALT for a manual reconcile.
+- Replace it with the new render (or delete it when no row claims it): re-run the renderer with `--overwrite <repo-relative-path>` for exactly that path. Unnamed conflicts stay conflicts.
+
+With no human present (unattended or auto), or when the human keeps the edited file, HALT with the `## UAT render (HALTED)` block above, `Reason: UAT render conflict`, naming each file and reason on `Spec files:`. Never overwrite or delete without that answer.
+
+## The rendered file
+
+Each spec starts with a contract marker (line 1, `// gaia-uat-contract sha256:<digest>`), then the UAT's canonical `Given`, `When` and `Then` lines, the divergence rule pointer, and a body: a `const outcome = {text: '<then-clause>'}` followed by `test(outcome.text, () => { test.fail(); expect(false, outcome.text).toBe(true); })`. No path, title or comment carries a working-document id.
+
+- The digest covers everything after line 1. A file counts as edited when the digest differs from the file's current content.
+- The renderer rewrites or deletes only a file whose first line is a contract marker. A hand-written file in the same folders, with no marker, is never read for writing and never listed in the summary.
+- The owning phase removes the `test.fail();` call, so the test is a plain `test(`, and writes a real body that drives the app with Playwright in place of the placeholder `expect(false, ...)`. It keeps the contract lines as they are. Cosmetic edits are allowed and logical ones are not: `uat-divergence.md`.

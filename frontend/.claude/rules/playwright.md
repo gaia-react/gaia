@@ -9,7 +9,7 @@ paths:
 ## File locations
 
 - Config: `playwright.config.ts` (repo root)
-- Specs: `.playwright/e2e/*.spec.ts`
+- Specs: `.playwright/e2e/<feature>/<flow>.spec.ts`, grouped in feature folders; a flat `.playwright/e2e/*.spec.ts` stays valid for cross-cutting checks
 - Shared helpers: `.playwright/utils.ts`
 - Output/traces: `.playwright/output/` (gitignored)
 
@@ -23,7 +23,9 @@ pnpm pw-ui      # run with Playwright UI (interactive)
 ## Spec file naming
 
 Match the feature or route: `language-switch.spec.ts`, `things.spec.ts`.
-One spec file per major user flow; one `test.describe` block per scenario group.
+One spec file per UAT-backed flow, inside its feature folder and named for the behavior (`.playwright/e2e/<feature>/<flow>.spec.ts`); one `test.describe` block per scenario group.
+
+A file whose first line is `// gaia-uat-contract sha256:...` was rendered from a SPEC UAT. Its Given/When/Then comment is the contract: make cosmetic edits only (selectors, labels, copy, layout) and report logical changes (`.claude/skills/gaia/references/spec/uat-divergence.md`). The owning phase removes the `test.fail();` call and replaces the placeholder `expect(false, ...)` with a real body that drives the app (`.claude/skills/gaia/references/spec/uat-write.md`).
 
 ## Selectors, prefer semantic over structural
 
@@ -59,6 +61,8 @@ import {hydration} from '../utils';
 await page.goto('/');
 await hydration(page); // waits for <meta name="hydrated" content="true">
 ```
+
+That import is for a flat spec. From a feature folder the helpers are one level further up: `import {hydration} from '../../utils';`.
 
 ## MSW + real dev server
 
