@@ -21,18 +21,24 @@
 # direction. A ~0.6s node start, paid only on a `gh pr create` or `gh pr edit`
 # that carries a title.
 #
-# WHAT IT READS. Every command in the tool call, through the shared
-# shell-word scanner (`gaia_scan_first_command`), so `git push ... && gh pr
-# create --title "..."` is read, and a `;` or a quote inside the title stays
-# title text. Heredoc bodies the arming walk proves are data are masked first.
+# WHAT IT READS. Each top-level command of the tool call (split on list
+# operators and newlines), through the shared shell-word scanner
+# (`gaia_scan_first_command`), so `git push ... && gh pr create --title "..."`
+# is read, and a `;` or a quote inside the title stays title text. Heredoc bodies the arming walk proves are data are masked first.
 # Title spellings: `--title <v>`, `--title=<v>`, `-t <v>`; the last one wins,
 # as in gh.
 #
 # WHAT IT LEAVES TO CI, allowing rather than guessing:
 #   - a title carrying `$` or a backtick, whose value only the shell knows;
 #   - `--repo` / `-R`, a PR in another repository, under that repository's rules;
+#   - a `gh pr create|edit` nested inside a command or process substitution, a
+#     subshell, or a compound-command body (`if`, `while`, `{ }`), which the
+#     top-level read does not enter;
 #   - no commitlint installed (`pnpm install` not run), or an unloadable
-#     hook library.
+#     hook library;
+#   - a commitlint that cannot run (node missing from the hook's PATH, a config
+#     that fails to load): only output carrying commitlint's own problem report
+#     denies, so any other non-zero exit is an internal error, not a bad title.
 #
 # `--fill`, `--fill-first`, `--fill-verbose` and `-f` with no `--title` are
 # DENIED: gh derives that title from commits or the branch name, which this hook
@@ -182,7 +188,11 @@ while [ "$scan_guard" -lt 64 ] && [ "$offset" -lt "${#scan_text}" ]; do
               [ -n "$pr_number" ] || pr_number="$(estimate_next_pr_number)"
               subject="$title (#$pr_number)"
               if ! lint_output=$(printf '%s\n' "$subject" | "$commitlint_binary" --cwd "$repository_root" --color false 2>&1); then
-                deny_title "$subject" "$lint_output"
+                # Only commitlint's problem report proves the title failed; a
+                # crash or config-load error prints none and is left to CI.
+                if grep -Eq 'found [0-9]+ problems' <<<"$lint_output"; then
+                  deny_title "$subject" "$lint_output"
+                fi
               fi
               ;;
           esac

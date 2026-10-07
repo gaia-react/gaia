@@ -188,6 +188,22 @@ assert_allowed() {
   assert_allowed
 }
 
+@test "a commitlint that cannot run is allowed, one that reports problems is blocked" {
+  SCRATCH=$(mktemp -d -t pr-title-hook-XXXXXX)
+  mkdir -p "$SCRATCH/.claude/hooks" "$SCRATCH/node_modules/.bin"
+  cp -R "$REPO_ROOT/.claude/hooks/lib" "$SCRATCH/.claude/hooks/lib"
+  cp "$HOOK" "$SCRATCH/.claude/hooks/"
+  local scratch_hook="$SCRATCH/.claude/hooks/block-invalid-pr-title.sh"
+  local stub="$SCRATCH/node_modules/.bin/commitlint"
+  printf '#!/bin/sh\necho "env: node: No such file or directory" >&2\nexit 127\n' >"$stub"
+  chmod +x "$stub"
+  run_hook 'gh pr create --title "feat: ok" --body x' "$scratch_hook"
+  assert_allowed
+  printf '#!/bin/sh\necho "found 1 problems, 0 warnings"\nexit 1\n' >"$stub"
+  run_hook 'gh pr create --title "feat: ok" --body x' "$scratch_hook"
+  assert_blocked
+}
+
 # --- --fill -------------------------------------------------------------------
 
 @test "--fill without a title is blocked" {
