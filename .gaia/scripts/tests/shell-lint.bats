@@ -36,6 +36,8 @@
 #
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
+# bats file_tags=whole-tree
+
 setup() {
   THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"
@@ -182,6 +184,7 @@ gate_pass_headers() {
   # dialect: shellcheck takes one dialect per invocation, which is why this
   # cannot fold into the *.sh pass.
   grep -qE -- '(^| )-s sh( |$).*\.githooks/pre-commit' "$STUB_DIRECTORY/argv.log"
+  grep -qE -- '(^| )-s sh( |$).*\.githooks/pre-push' "$STUB_DIRECTORY/argv.log"
 }
 
 

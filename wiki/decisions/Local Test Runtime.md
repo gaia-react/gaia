@@ -10,9 +10,10 @@ tags: [decision, testing, performance, shell, bats]
 
 # Decision: Local Test Runtime
 
-The local pre-merge gate, `.gaia/tests/shell-lint.sh`, runs its shellcheck
-passes concurrently rather than in a loop; its folded guards run in a fixed
-serial sequence instead. This page records why the shellcheck passes are
+The local pre-merge gate is the verification runner's branch mode
+(`.gaia/tests/verify-harness.sh`), of which `.gaia/tests/shell-lint.sh` is one
+check. `shell-lint.sh` runs its shellcheck passes concurrently rather than in a
+loop; its folded guards run in a fixed serial sequence instead. This page records why the shellcheck passes are
 parallel, what bounds that concurrency, the negative result on the full bats
 corpus, and the two related non-claims a reader is likely to reach for next.
 
@@ -81,6 +82,10 @@ heaviest, not a scheduling question this decision covers. Nothing here
 schedules the full corpus differently, and re-deriving this as an
 infrastructure task from the raw wall-clock figure alone is the mistake this
 section exists to prevent.
+
+The runner's branch mode does not reopen this: it runs the suites tagged
+`whole-tree` plus the suites the change selector picks for the branch, never
+the full corpus, so the non-goal stands.
 
 One consequence worth carrying forward: the shard-partition suite itself
 forks under `--jobs`, so running it and a full corpus run at the same time

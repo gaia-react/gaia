@@ -1,0 +1,59 @@
+#!/usr/bin/env sh
+# Maintainer-only pre-push verification. Git runs this directly through
+# `core.hooksPath` and feeds it one line per ref on stdin:
+#   <local ref> <local sha> <remote ref> <remote sha>
+#
+# It verifies only the commits a push would put on a remote branch, by handing
+# their shas to the verification runner's `push` mode, which runs the three
+# distribution checks (the release-scrub leak check, 01-files-present and
+# 03-marker-strip) and nothing else. No bats suite and no shell-lint run here;
+# those belong to the runner's branch and round modes. The runner owns every
+# check and every decision about what counts as a failure, so this file holds
+# no check logic and its exit status is the runner's.
+#
+# Tag pushes and ref deletions pass untouched: the SPEC allocator reserves a
+# number by pushing a tag under a short timeout, and a deletion carries no
+# commit to verify. A push that mixes a tag with a branch verifies the branch.
+#
+# No environment variable or flag skips it, on purpose. `git push --no-verify`
+# is the one bypass git itself offers, and `block-no-verify.sh` stops Claude
+# from using it.
+#
+# `.githooks/` ships to adopters, so this file is release-excluded: the runner
+# lives under the release-excluded `.gaia/tests` and an adopter clone would
+# have nothing to call. A missing runner therefore fails open with one line,
+# leaving CI as the remaining check.
+
+ROOT=$(git rev-parse --show-toplevel) || exit 1
+
+BRANCH_SHAS=""
+while read -r _ LOCAL_SHA REMOTE_REF _; do
+  case "$REMOTE_REF" in
+    refs/heads/*) ;;
+    *) continue ;;
+  esac
+  # An all-zeros local sha (40 digits, or 64 under sha256) deletes the branch.
+  case "$LOCAL_SHA" in
+    '' | *[!0]*) ;;
+    *) continue ;;
+  esac
+  case " $BRANCH_SHAS " in
+    *" $LOCAL_SHA "*) ;;
+    *) BRANCH_SHAS="$BRANCH_SHAS $LOCAL_SHA" ;;
+  esac
+done
+
+if [ -z "$BRANCH_SHAS" ]; then
+  printf 'pre-push: no branch update in this push, nothing to verify\n'
+  exit 0
+fi
+
+RUNNER="$ROOT/.gaia/tests/verify-harness.sh"
+if [ ! -f "$RUNNER" ]; then
+  printf 'pre-push: %s is missing, so this push is not verified locally; CI is the remaining check\n' "$RUNNER"
+  exit 0
+fi
+
+# Word splitting is the point: BRANCH_SHAS holds hexadecimal shas only.
+# shellcheck disable=SC2086
+exec bash "$RUNNER" push $BRANCH_SHAS

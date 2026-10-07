@@ -14,6 +14,8 @@
 #     for the `**/` and literal patterns the dotenv checks depend on. The guard
 #     test proves the evaluation can report a dotenv file as included.
 
+# bats file_tags=whole-tree
+
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   DOCKERFILE="$REPO_ROOT/frontend/Dockerfile"

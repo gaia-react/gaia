@@ -29,6 +29,8 @@
 # excluded, so the SPEC traceability above is correct and expected here,
 # unlike in the shipped prose this suite guards.
 
+# bats file_tags=whole-tree
+
 setup() {
   ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
 

@@ -10,6 +10,8 @@
 # The "base" controls are inline copies of the pre-move filters, so the guard
 # is proven able to fail without reading git history (this PR is squash-merged).
 
+# bats file_tags=whole-tree
+
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   TESTS_YML="$REPO_ROOT/.github/workflows/tests.yml"

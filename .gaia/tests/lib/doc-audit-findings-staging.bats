@@ -63,6 +63,8 @@
 #
 # Assertion style: .claude/rules/bats-assertions.md.
 
+# bats file_tags=whole-tree
+
 setup() {
   ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   PROTOCOL_RELATIVE_PATH=".claude/hooks/lib/audit-member-protocol.md"

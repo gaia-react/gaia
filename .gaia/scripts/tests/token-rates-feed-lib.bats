@@ -15,6 +15,8 @@
 #
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
+# bats file_tags=whole-tree
+
 REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
 FEED_LIBRARY="$REPO_ROOT/.gaia/scripts/token-rates-feed-lib.sh"
 FIXTURES="$BATS_TEST_DIRNAME/fixtures/rates-feed"
