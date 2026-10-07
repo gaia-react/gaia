@@ -11,6 +11,7 @@ import type {WithholdAnswer} from './manifest-answers.js';
 export const HELP_TEXT = `Usage: gaia-maintainer release manifest [--out <path>] [--stdout]
                                        [--ship <path>]...
                                        [--withhold <path> --category <N> --reason <text>]...
+                                       [--withdraw <path> --category <N> --reason <text>]...
                                        [--allow-undecided]
        gaia-maintainer release manifest --check [--json]
 
@@ -28,10 +29,15 @@ export const HELP_TEXT = `Usage: gaia-maintainer release manifest [--out <path>]
                        .gaia/release-exclude. Repeatable. Each --withhold
                        must be closed by exactly one --category and exactly
                        one --reason before the next one.
+    --withdraw <path>  Stop shipping <path>, which the committed manifest
+                       already lists: appends it to .gaia/release-exclude
+                       and drops it from the manifest. Repeatable, closed by
+                       --category and --reason exactly like --withhold.
+                       Never answers a newly-shipping file.
     --category <N>     Numbered release-exclude category the open --withhold
-                       is filed under.
+                       or --withdraw is filed under.
     --reason <text>    One-line rationale, written as the comment directly
-                       above the withheld path.
+                       above the withheld or withdrawn path.
     --allow-undecided  Waive the answer requirement; every unanswered file
                        ships. The escape hatch for bootstrapping a manifest
                        and for unattended regeneration.
@@ -61,6 +67,7 @@ export type Flags = {
   outPath: string | undefined;
   ships: string[];
   stdout: boolean;
+  withdraws: WithholdAnswer[];
   withholds: WithholdAnswer[];
 };
 
@@ -75,29 +82,33 @@ type FlagParseSuccess = {
 };
 
 /**
- * A `--withhold <path>` that has not yet been closed by its `--category` and
- * `--reason`. The next `--withhold`, or the end of argv, closes it.
+ * A `--withhold <path>` or `--withdraw <path>` that has not yet been closed by
+ * its `--category` and `--reason`. The next `--withhold` or `--withdraw`, or
+ * the end of argv, closes it.
  */
-type PendingWithhold = {
+type PendingBoundaryAnswer = {
   category: number | undefined;
+  flag: '--withdraw' | '--withhold';
   path: string;
   reason: string | undefined;
 };
 
 /** Returns an error message, or `undefined` once the record is banked. */
-const closeWithhold = (
-  pending: PendingWithhold | undefined,
-  withholds: WithholdAnswer[]
-): string | undefined => {
+const closeBoundaryAnswer = (state: ParseState): string | undefined => {
+  const {pending, withdraws, withholds} = state;
+
   if (pending === undefined) return undefined;
 
   if (pending.category === undefined)
-    return `--withhold ${pending.path} requires a --category`;
+    return `${pending.flag} ${pending.path} requires a --category`;
 
   if (pending.reason === undefined)
-    return `--withhold ${pending.path} requires a --reason`;
+    return `${pending.flag} ${pending.path} requires a --reason`;
 
-  withholds.push({
+  const records = {'--withdraw': withdraws, '--withhold': withholds}[
+    pending.flag
+  ];
+  records.push({
     category: pending.category,
     path: pending.path,
     reason: pending.reason,
@@ -112,9 +123,10 @@ type ParseState = {
   check: boolean;
   json: boolean;
   outPath: string | undefined;
-  pending: PendingWithhold | undefined;
+  pending: PendingBoundaryAnswer | undefined;
   ships: string[];
   stdout: boolean;
+  withdraws: WithholdAnswer[];
   withholds: WithholdAnswer[];
 };
 
@@ -126,10 +138,10 @@ type ValueFlagHandler = (
 
 const applyCategory: ValueFlagHandler = (state, value) => {
   if (state.pending === undefined)
-    return '--category requires a preceding --withhold';
+    return '--category requires a preceding --withhold or --withdraw';
 
   if (state.pending.category !== undefined)
-    return `--withhold ${state.pending.path} carries more than one --category`;
+    return `${state.pending.flag} ${state.pending.path} carries more than one --category`;
 
   if (!/^\d+$/.test(value) || Number(value) === 0)
     return `--category must be a positive integer, got: ${value}`;
@@ -141,25 +153,27 @@ const applyCategory: ValueFlagHandler = (state, value) => {
 
 const applyReason: ValueFlagHandler = (state, value) => {
   if (state.pending === undefined)
-    return '--reason requires a preceding --withhold';
+    return '--reason requires a preceding --withhold or --withdraw';
 
   if (state.pending.reason !== undefined)
-    return `--withhold ${state.pending.path} carries more than one --reason`;
+    return `${state.pending.flag} ${state.pending.path} carries more than one --reason`;
 
   state.pending.reason = value;
 
   return undefined;
 };
 
-const openPendingWithhold: ValueFlagHandler = (state, value) => {
-  const closeError = closeWithhold(state.pending, state.withholds);
+const openPending =
+  (flag: PendingBoundaryAnswer['flag']): ValueFlagHandler =>
+  (state, value) => {
+    const closeError = closeBoundaryAnswer(state);
 
-  if (closeError !== undefined) return closeError;
+    if (closeError !== undefined) return closeError;
 
-  state.pending = {category: undefined, path: value, reason: undefined};
+    state.pending = {category: undefined, flag, path: value, reason: undefined};
 
-  return undefined;
-};
+    return undefined;
+  };
 
 const VALUE_FLAGS: Readonly<Partial<Record<string, ValueFlagHandler>>> = {
   '--category': applyCategory,
@@ -174,7 +188,8 @@ const VALUE_FLAGS: Readonly<Partial<Record<string, ValueFlagHandler>>> = {
 
     return undefined;
   },
-  '--withhold': openPendingWithhold,
+  '--withdraw': openPending('--withdraw'),
+  '--withhold': openPending('--withhold'),
 };
 
 const BARE_FLAGS: Readonly<
@@ -195,15 +210,27 @@ const BARE_FLAGS: Readonly<
 };
 
 const validateFlagCombination = (state: ParseState): FlagParseResult => {
-  const {allowUndecided, check, json, outPath, ships, stdout, withholds} =
-    state;
-  const hasAnswers = allowUndecided || ships.length > 0 || withholds.length > 0;
+  const {
+    allowUndecided,
+    check,
+    json,
+    outPath,
+    ships,
+    stdout,
+    withdraws,
+    withholds,
+  } = state;
+  const hasAnswers =
+    allowUndecided ||
+    ships.length > 0 ||
+    withholds.length > 0 ||
+    withdraws.length > 0;
 
   // `--check` stays read-only: it answers nothing and writes nothing.
   if (check && (outPath !== undefined || stdout || hasAnswers)) {
     return {
       message:
-        '--check is incompatible with --out / --stdout / --ship / --withhold / --allow-undecided',
+        '--check is incompatible with --out / --stdout / --ship / --withhold / --withdraw / --allow-undecided',
       ok: false,
     };
   }
@@ -213,7 +240,16 @@ const validateFlagCombination = (state: ParseState): FlagParseResult => {
   }
 
   return {
-    flags: {allowUndecided, check, json, outPath, ships, stdout, withholds},
+    flags: {
+      allowUndecided,
+      check,
+      json,
+      outPath,
+      ships,
+      stdout,
+      withdraws,
+      withholds,
+    },
     ok: true,
   };
 };
@@ -262,6 +298,7 @@ export const parseFlags = (argv: readonly string[]): FlagParseResult => {
     pending: undefined,
     ships: [],
     stdout: false,
+    withdraws: [],
     withholds: [],
   };
   let index = 0;
@@ -279,9 +316,9 @@ export const parseFlags = (argv: readonly string[]): FlagParseResult => {
     }
   }
 
-  // The last `--withhold` is closed by the end of argv rather than by a
-  // following one.
-  const closeError = closeWithhold(state.pending, state.withholds);
+  // The last `--withhold` or `--withdraw` is closed by the end of argv rather
+  // than by a following one.
+  const closeError = closeBoundaryAnswer(state);
 
   if (closeError !== undefined) return {message: closeError, ok: false};
 

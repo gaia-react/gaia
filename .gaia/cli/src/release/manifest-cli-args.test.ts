@@ -224,8 +224,43 @@ describe('run (answer gate)', () => {
       'a non-numeric --category',
       ['--withhold', 'app/new.ts', '--category', 'one', '--reason', 'r'],
     ],
+    [
+      '--check with --withdraw',
+      [
+        '--check',
+        '--withdraw',
+        'app/foo.ts',
+        '--category',
+        '1',
+        '--reason',
+        'r',
+      ],
+    ],
+    [
+      'a --withdraw with no --category',
+      ['--withdraw', 'app/foo.ts', '--reason', 'r'],
+    ],
+    [
+      'a --withdraw with no --reason',
+      ['--withdraw', 'app/foo.ts', '--category', '1'],
+    ],
+    [
+      'a --withdraw left open by the next --withhold',
+      [
+        '--withdraw',
+        'app/foo.ts',
+        '--withhold',
+        'app/new.ts',
+        '--category',
+        '1',
+        '--reason',
+        'r',
+      ],
+    ],
   ])('rejects %s', (_label, argv) => {
     expect(runGate(argv)).toBe(1);
     expect(stdio.errors.join('')).toContain('invalid_arguments');
+    // Every flag here is known, so an unknown-flag refusal is the wrong reason.
+    expect(stdio.errors.join('')).not.toContain('unknown flag');
   });
 });

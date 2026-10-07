@@ -120,6 +120,12 @@
 .gaia/scripts/audit-light-telemetry.sh
 # Shared report, handshake and sidecar protocol read only by the two maintainer-only code-audit-maintainer-* members, which this category already withholds
 .claude/hooks/lib/audit-member-protocol.md
+# Deterministic lint over GAIA's own framework shell; every runner (shell-lint.sh and its sibling bats suite) is release-excluded, so an adopter clone would carry a check nothing invokes.
+.gaia/scripts/lint-hook-array-guard.sh
+# Invariant check over the audit agent definitions; its only runner is its own release-excluded bats suite, so an adopter clone would carry a check nothing invokes.
+.gaia/scripts/check-audit-key-callers.sh
+# Invariant check that every Code Audit Team member derives one review base; its only runners are release-excluded bats suites, so an adopter clone would carry a check nothing invokes.
+.gaia/scripts/check-audit-base-derivation.sh
 
 # --- 2. Maintainer-only wiki content ---
 # Internal vault administration files and team-specific knowledge that
@@ -145,6 +151,12 @@ wiki/decisions/Local Test Runtime.md
 wiki/decisions/Dependabot Security Updates.md
 # Design rationale for treating Dependabot as a data source and resolving advisories in /update-deps; maintainer kept it internal
 wiki/decisions/Dependabot as a Data Source.md
+# Superseded design history of GAIA's own former GitHub Actions audit workflow, which no longer exists; every claim is about a workflow an adopter does not have.
+wiki/decisions/Dispatched-Check Rollup via Polling.md
+# Superseded design history of how /gaia-spec once ran on GitHub spec-kit; GAIA no longer installs spec-kit, so the page describes GAIA's past rather than anything an adopter runs.
+wiki/decisions/spec-kit Extension Strategy.md
+# Superseded dependency page for spec-kit, which GAIA no longer installs; it describes GAIA's own past design, not anything an adopter runs.
+wiki/dependencies/spec-kit.md
 
 # --- 3. Test harnesses and audit reports ---
 # Smoke / observability harnesses run by maintainers in CI; never invoked
@@ -176,6 +188,10 @@ frontend/.playwright/e2e/react-perf-smoke.spec.ts
 # file excludes, so the store's absence from `.gaia/manifest.json` is a
 # consequence of this line and never the mechanism.
 .gaia/audit-residual-dismissals.jsonl
+# Runs bats under bash 5. Every .bats suite it runs is release-excluded and every shipped mention sits in a maintainer-only block the bundle scrub strips, so it serves only maintainer test runs.
+.gaia/scripts/bats5.sh
+# Assertion-hygiene rule scoped to *.bats files; every .bats suite is release-excluded, so on an adopter clone it guards nothing. Withdrawn with its companion bats5.sh.
+.claude/rules/bats-assertions.md
 
 # --- 4. CLI maintainer source + maintainer binary ---
 # Adopters receive only the bundled adopter binary at .gaia/cli/gaia (and
@@ -319,6 +335,8 @@ CONTRIBUTING.md
 LICENSE
 README.md
 SUPPORTERS.md
+# GAIA's own Sponsor button (github: gaia-react); an adopter's funding is their own, and gaia init strip-branding already deletes it from fresh projects.
+.github/FUNDING.yml
 
 # --- 12. Maintainer-only README assets ---
 # The root README.md (excluded above) is the sole consumer of these brand

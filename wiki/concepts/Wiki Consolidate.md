@@ -56,5 +56,7 @@ Consolidate does NOT commit; it stages edits and hands off to `/gaia-wiki sync` 
 ## Pairs with
 
 - [[Wiki Sync]]: drives the commit and owns the parallel sync-state fields.
-- [[GAIA Spec]]: the workflow that produces SPECs. the wiki promotion step is the orchestrator's pre-merge step; consolidate audits its writes.
-- [[spec-kit Extension Strategy]]: superseded record of the original extension-plus-preset design. The wiki promotion step writes `promoted_from` provenance.
+- [[GAIA Spec]]: the workflow that produces SPECs. the wiki promotion step is the orchestrator's pre-merge step; consolidate audits its writes. The wiki promotion step writes `promoted_from` provenance.
+<!-- gaia:maintainer-only:start -->
+- [[spec-kit Extension Strategy]]: superseded record of the original extension-plus-preset design.
+<!-- gaia:maintainer-only:end -->

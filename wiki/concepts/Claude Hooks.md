@@ -213,7 +213,9 @@ That compounds with the ordinary cost of a `cd`: the working directory it sets p
 
 Ask Claude to add a hook; Claude will drop the script into `.claude/hooks/` and register it in `.claude/settings.json` via the `update-config` skill. **A registered hook owes an entry above.** The inventory in `## Bundled hooks` is what every reader treats as the complete hook layer, and it is hand-kept. Naming convention: `block-{noun}.sh` for blockers, `check-{noun}.sh` for advisory, `pre-{event}-{noun}.sh` for pre-event reminders. Blocker scripts begin with `#!/usr/bin/env bash` + `set -euo pipefail`, read stdin via `jq`, and either `exit 0`/`exit 2` or emit the structured `hookSpecificOutput.permissionDecision` JSON, except `audit-loop-bound.sh`, which opens `set -uo pipefail` because a decision hook must not abort mid-decision: every failure path in it is an explicit deny.
 
+<!-- gaia:maintainer-only:start -->
 `.gaia/scripts/lint-hook-array-guard.sh`, run over `.claude/hooks/` and `.gaia/scripts/`, flags a bare `"${arr[@]}"` / `"${arr[*]}"` expansion in a `set -u` body: on stock macOS `/bin/bash` (3.2.57) that expansion aborts with `unbound variable` over an empty array before any trailing `|| true` can catch it, a failure class a bash-5 test run cannot see. Guard the expansion (`"${arr[@]+"${arr[@]}"}"`) or check the array is non-empty first.
+<!-- gaia:maintainer-only:end -->
 
 <!-- gaia:maintainer-only:start -->
 GAIA's CI runs the lint on every push.

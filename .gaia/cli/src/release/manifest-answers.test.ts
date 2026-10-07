@@ -51,6 +51,7 @@ const withhold = (
 const answers = (overrides: Partial<AnswerSet> = {}): AnswerSet => ({
   allowUndecided: false,
   ships: [],
+  withdraws: [],
   withholds: [],
   ...overrides,
 });
@@ -181,7 +182,7 @@ describe('validateAnswers', () => {
         ships: ['app/new.ts'],
         withholds: [withhold('docs/guide.md')],
       }),
-      missing,
+      {missing, shipped: []},
       CATEGORIES
     );
 
@@ -189,7 +190,11 @@ describe('validateAnswers', () => {
   });
 
   test('unanswered_paths names every unanswered file', () => {
-    const errors = validateAnswers(answers(), missing, CATEGORIES);
+    const errors = validateAnswers(
+      answers(),
+      {missing, shipped: []},
+      CATEGORIES
+    );
 
     expect(codesOf(errors)).toEqual(['unanswered_paths']);
     expect(errors[0]?.paths).toEqual(['app/new.ts', 'docs/guide.md']);
@@ -197,13 +202,17 @@ describe('validateAnswers', () => {
 
   test('--allow-undecided waives exact cover and nothing else', () => {
     expect(
-      validateAnswers(answers({allowUndecided: true}), missing, CATEGORIES)
+      validateAnswers(
+        answers({allowUndecided: true}),
+        {missing, shipped: []},
+        CATEGORIES
+      )
     ).toEqual([]);
 
     // Membership still applies to whatever answers were given.
     const errors = validateAnswers(
       answers({allowUndecided: true, ships: ['app/ghost.ts']}),
-      missing,
+      {missing, shipped: []},
       CATEGORIES
     );
     expect(codesOf(errors)).toEqual(['answer_not_missing']);
@@ -215,7 +224,7 @@ describe('validateAnswers', () => {
         ships: ['app/new.ts'],
         withholds: [withhold('docs', {reason: 'internal'})],
       }),
-      missing,
+      {missing, shipped: []},
       CATEGORIES
     );
 
@@ -228,7 +237,7 @@ describe('validateAnswers', () => {
   test('answer_not_missing collects every offending path, not just the first', () => {
     const errors = validateAnswers(
       answers({ships: ['app/typo.ts', 'docs/typo.md']}),
-      missing,
+      {missing, shipped: []},
       CATEGORIES
     );
 
@@ -241,7 +250,7 @@ describe('validateAnswers', () => {
         allowUndecided: true,
         ships: ['app/new.ts', 'app/new.ts'],
       }),
-      missing,
+      {missing, shipped: []},
       CATEGORIES
     );
     expect(codesOf(twice)).toEqual(['duplicate_answer']);
@@ -253,7 +262,7 @@ describe('validateAnswers', () => {
         ships: ['app/new.ts'],
         withholds: [withhold('app/new.ts')],
       }),
-      missing,
+      {missing, shipped: []},
       CATEGORIES
     );
     expect(codesOf(bothWays)).toEqual(['duplicate_answer']);
@@ -265,7 +274,7 @@ describe('validateAnswers', () => {
         allowUndecided: true,
         withholds: [withhold('docs/notes[1].md')],
       }),
-      ['docs/notes[1].md'],
+      {missing: ['docs/notes[1].md'], shipped: []},
       CATEGORIES
     );
 
@@ -294,7 +303,7 @@ describe('validateAnswers', () => {
   ])('withhold_metacharacter rejects %s', (_label, badPath) => {
     const errors = validateAnswers(
       answers({allowUndecided: true, withholds: [withhold(badPath)]}),
-      [badPath],
+      {missing: [badPath], shipped: []},
       CATEGORIES
     );
 
@@ -313,7 +322,7 @@ describe('validateAnswers', () => {
   ])('allows %s in a withhold path', (_label, goodPath) => {
     const errors = validateAnswers(
       answers({allowUndecided: true, withholds: [withhold(goodPath)]}),
-      [goodPath],
+      {missing: [goodPath], shipped: []},
       CATEGORIES
     );
 
@@ -331,7 +340,7 @@ describe('validateAnswers', () => {
         allowUndecided: true,
         withholds: [withhold('app/new.ts', {reason})],
       }),
-      missing,
+      {missing, shipped: []},
       CATEGORIES
     );
 
@@ -344,7 +353,7 @@ describe('validateAnswers', () => {
         allowUndecided: true,
         withholds: [withhold('app/new.ts', {category: 99})],
       }),
-      missing,
+      {missing, shipped: []},
       CATEGORIES
     );
 
@@ -360,7 +369,7 @@ describe('validateAnswers', () => {
           withhold('docs/*.md', {category: 99, reason: 'bad\nreason'}),
         ],
       }),
-      missing,
+      {missing, shipped: []},
       CATEGORIES
     );
 
@@ -371,5 +380,96 @@ describe('validateAnswers', () => {
       'unknown_category',
       'unanswered_paths',
     ]);
+  });
+});
+
+describe('validateAnswers (withdraw)', () => {
+  const missing = ['app/new.ts'];
+  const shipped = ['.github/FUNDING.yml', 'app/foo.ts'];
+
+  test('withdrawing a shipped path is valid and leaves exact cover to the missing set', () => {
+    expect(
+      validateAnswers(
+        answers({
+          ships: ['app/new.ts'],
+          withdraws: [withhold('.github/FUNDING.yml', {category: 3})],
+        }),
+        {missing, shipped},
+        CATEGORIES
+      )
+    ).toEqual([]);
+
+    // A withdraw answers nothing in `missing`.
+    const errors = validateAnswers(
+      answers({withdraws: [withhold('app/foo.ts')]}),
+      {missing, shipped},
+      CATEGORIES
+    );
+    expect(codesOf(errors)).toEqual(['unanswered_paths']);
+  });
+
+  test('withdraw_not_shipped rejects a path the manifest does not ship, a newly-shipping one included', () => {
+    const errors = validateAnswers(
+      answers({
+        allowUndecided: true,
+        withdraws: [withhold('app/ghost.ts'), withhold('app/new.ts')],
+      }),
+      {missing, shipped},
+      CATEGORIES
+    );
+
+    expect(codesOf(errors)).toEqual(['withdraw_not_shipped']);
+    expect(errors[0]?.paths).toEqual(['app/ghost.ts', 'app/new.ts']);
+  });
+
+  test('a withhold of an already-shipped path is still answer_not_missing', () => {
+    const errors = validateAnswers(
+      answers({
+        allowUndecided: true,
+        withholds: [withhold('app/foo.ts')],
+      }),
+      {missing, shipped},
+      CATEGORIES
+    );
+
+    expect(codesOf(errors)).toEqual(['answer_not_missing']);
+  });
+
+  test('a withdraw passes the same path, reason and category checks as a withhold', () => {
+    const errors = validateAnswers(
+      answers({
+        allowUndecided: true,
+        withdraws: [
+          withhold('app/foo.ts', {category: 99, reason: 'bad\nreason'}),
+        ],
+      }),
+      {missing, shipped: ['app/foo.ts', 'app/[id].ts']},
+      CATEGORIES
+    );
+    expect(codesOf(errors)).toEqual([
+      'withhold_reason_invalid',
+      'unknown_category',
+    ]);
+
+    const bracketed = validateAnswers(
+      answers({allowUndecided: true, withdraws: [withhold('app/[id].ts')]}),
+      {missing, shipped: ['app/[id].ts']},
+      CATEGORIES
+    );
+    expect(codesOf(bracketed)).toEqual(['withhold_metacharacter']);
+  });
+
+  test('duplicate_answer catches a path both withdrawn and shipped', () => {
+    const errors = validateAnswers(
+      answers({
+        allowUndecided: true,
+        ships: ['app/foo.ts'],
+        withdraws: [withhold('app/foo.ts')],
+      }),
+      {missing, shipped},
+      CATEGORIES
+    );
+
+    expect(codesOf(errors)).toContain('duplicate_answer');
   });
 });
