@@ -41,9 +41,6 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Claude Integration]]
 - [[CLI Scaffolding]]: component/hook/route/service generators
 
-## Components
-
-
 ## Flows
 
 - [[Theme Flow]]

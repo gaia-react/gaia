@@ -22,7 +22,7 @@ Dependabot alerts are advisory only. A vulnerable transitive dependency otherwis
 
 ## Shape
 
-The rendered `npm` entry disables version updates with `open-pull-requests-limit: 0` (security-update pull requests are not subject to that limit), groups security fixes with `applies-to: security-updates` into one pull request, and labels them with `dependencies` and `security` where those labels exist in the repository. The exact YAML lives in `.gaia/cli/src/setup-ci/write-dependabot-config.ts`. The merge adds the entry beside any existing ecosystems, and leaves an existing npm entry alone. On that path `/setup-gaia` does not enable the repository settings itself, because an entry without an explicit commit-message prefix can inherit a `chore(deps):` title from the repository's commit history.
+The rendered `npm` entry disables version updates with `open-pull-requests-limit: 0` (security-update pull requests are not subject to that limit), groups security fixes with `applies-to: security-updates` into one pull request, and labels them with `dependencies` and `security` where those labels exist in the repository. The merge adds the entry beside any existing ecosystems, and leaves an existing npm entry alone. On that path `/setup-gaia` does not enable the repository settings itself, because an entry without an explicit commit-message prefix can inherit a `chore(deps):` title from the repository's commit history.
 
 ## The config alone opens nothing
 
