@@ -9,6 +9,8 @@
 #
 # Assertion style follows .claude/rules/bats-assertions.md.
 
+# bats file_tags=whole-tree
+
 setup() {
   REPO_ROOT_REAL="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   SCRIPTS="$REPO_ROOT_REAL/.gaia/scripts/spec"

@@ -25,6 +25,8 @@
 # helper still resolves `typescript` from the home repo's node_modules via
 # createRequire(import.meta.url), so the signal recompute works.
 
+# bats file_tags=whole-tree
+
 # Mirror the repo-relative layout the hook resolves from a tree's own root, in
 # whatever tree a case aims a commit at. Every such tree needs its own copy:
 # the signal helper is invoked by the repo-relative path

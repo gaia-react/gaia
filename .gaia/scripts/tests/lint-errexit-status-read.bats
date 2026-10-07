@@ -35,6 +35,8 @@
 # seed only the kinds they need present, since a seed would answer the very
 # question they ask.
 
+# bats file_tags=whole-tree
+
 setup() {
   THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"

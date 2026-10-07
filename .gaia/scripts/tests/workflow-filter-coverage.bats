@@ -84,6 +84,8 @@
 # malformed directive (SC1073) and fails the lint outright.
 # shellcheck disable=SC2030,SC2031
 
+# bats file_tags=whole-tree
+
 # The workflows this guard reads are a precondition on CI, not a maybe: the job
 # that runs this suite checks the repo out whole, so an absent path there means
 # the directory was renamed and this guard silently stopped guarding. So the CI

@@ -18,6 +18,8 @@
 # library into a tmpdir and require a NAMED test here to red against it. Nothing
 # outside this suite sets either.
 
+# bats file_tags=whole-tree
+
 setup() {
   THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"

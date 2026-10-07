@@ -51,6 +51,8 @@
 # excluded, so a GitHub reference in this header would be correct here; there
 # is none because the tree, not an issue, is this suite's subject.
 
+# bats file_tags=whole-tree
+
 setup() {
   ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
 

@@ -10,6 +10,8 @@
 # the helper. These tests exercise both against the fixture test files under
 # fixtures/red-ledger/.
 
+# bats file_tags=whole-tree
+
 setup() {
   REPO_ROOT=$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)
   # The Node helpers this suite drives resolve `typescript` from node_modules.
