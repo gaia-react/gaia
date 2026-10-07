@@ -17,7 +17,7 @@ The app uses plain React Context+Provider for global state; no Redux, Zustand, e
 
 The template ships with **no global state slices**; `<State>` is a passthrough. It exists as the established hook point so consumers can register their own providers (auth, feature flags, etc.) without touching `root.tsx`.
 
-When TanStack Query is on (`gaia init configure-data-layer --query true`), `<State>` wraps its children in `QueryProvider` (`frontend/app/state/query-provider.tsx`), which obtains the QueryClient once per render tree. That provider is server data, not a state slice; see [[Data Loading]].
+When TanStack Query is on (`gaia init configure-data-layer --query true`), `<State>` wraps its children in `QueryProvider` (`query-provider.tsx` in `frontend/app/state/`, written by that command), which obtains the QueryClient once per render tree. That provider is server data, not a state slice; see [[Data Loading]].
 
 > [!key-insight] Theme is loader-derived, not state
 > Theme is **not** a state slice. It's derived in the loader on every render from a cookie + `Sec-CH-Prefers-Color-Scheme` client hint, so no React state is required. See [[Theme Flow]] and [[Dark Mode Modernization]].

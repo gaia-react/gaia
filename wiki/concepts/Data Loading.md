@@ -82,9 +82,9 @@ The templates are `.gaia/cli/templates/service/requests.ts.tmpl` and `queries.ts
 
 ## QueryClient scope
 
-`frontend/app/query-client.ts` exposes one accessor, `getQueryClient()`. On the server it returns a fresh client on every call; in the browser it returns a lazily built singleton with `staleTime: 30_000`, long enough that a `clientLoader`'s fetch is still fresh when the page reads it. No module exports a client instance, so nothing can capture one at import time.
+`gaia init configure-data-layer --query true` writes `query-client.ts` into `frontend/app/` and `query-provider.tsx` into `frontend/app/state/`, from the templates in `.gaia/cli/templates/data-layer/`; neither file exists until Query is turned on. `query-client.ts` exposes one accessor, `getQueryClient()`. On the server it returns a fresh client on every call; in the browser it returns a lazily built singleton with `staleTime: 30_000`, long enough that a `clientLoader`'s fetch is still fresh when the page reads it. No module exports a client instance, so nothing can capture one at import time.
 
-`frontend/app/state/query-provider.tsx` obtains its client once per render tree (`useState(getQueryClient)`) and is composed inside `<State>` ([[State]]). A server render never shares a cache with another request, because the module-level singleton exists only when `window` does. A module-scope client on the server would serve one user's cached data into another user's HTML.
+`query-provider.tsx` obtains its client once per render tree (`useState(getQueryClient)`) and is composed inside `<State>` ([[State]]). A server render never shares a cache with another request, because the module-level singleton exists only when `window` does. A module-scope client on the server would serve one user's cached data into another user's HTML.
 
 ## Mutations
 

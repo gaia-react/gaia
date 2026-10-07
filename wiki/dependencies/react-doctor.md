@@ -40,7 +40,7 @@ Verdicts:
 - `pnpm remove` at the workspace root works without `-w` on GAIA's pinned pnpm.
 - `pnpm remove` does not return the lockfile to its pre-install state. The install resolves `oxlint` and `@opentelemetry/api` into optional peer slots of `@gaia-react/lint` and `vitest`, and those resolutions survive `pnpm remove`, `pnpm install`, and `pnpm dedupe`. Only restoring a snapshot taken before the install clears them, which is why the install runs inside the strip block.
 - The installer writes the CI workflow even under `--yes`.
-- GAIA never passes `--agent-hooks`. Without that flag `--yes` installs no agent hooks. With it the installer adds a Stop hook to `.claude/settings.json`, `.claude/hooks/react-doctor.mjs`, and Cursor hook files.
+- GAIA never passes `--agent-hooks`. Without that flag `--yes` installs no agent hooks. With it the installer adds a Stop hook to `.claude/settings.json`, a `react-doctor.mjs` script under `.claude/hooks/`, and Cursor hook files.
 - The `.agents/skills/` copy is written for many agents (Codex, Cursor, Gemini CLI, GitHub Copilot, OpenCode, Pi, Warp, and others), not only Copilot and Warp.
 - Known extra: when Factory Droid is installed the installer also writes `.factory/skills/react-doctor/`. GAIA has no strip step for it and leaves it in place; it appears only on a machine with Droid.
 - The audit invocation uses `--scope changed`; `--diff` is a deprecated hidden alias for it. The command lives in `.claude/agents/code-audit-frontend.md`.
