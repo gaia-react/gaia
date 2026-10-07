@@ -49,8 +49,8 @@ The maintainer's copy of this page carries every root file. An adopter's copy ca
 
 | Script | Ships | Invoker | What it is |
 |---|---|---|---|
-| `check-audit-base-derivation.sh` | yes | GAIA's own invariant harness (maintainer-side) | Keeps every Code Audit Team member resolving one review base rather than several. |
-| `check-audit-key-callers.sh` | yes | GAIA's own invariant harness (maintainer-side) | Asserts the agent definitions that name an audit artifact actually call the shared key helper instead of hand-building a path. |
+| `check-audit-base-derivation.sh` | no | GAIA's own invariant harness (maintainer-side) | Keeps every Code Audit Team member resolving one review base rather than several. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
+| `check-audit-key-callers.sh` | no | GAIA's own invariant harness (maintainer-side) | Asserts the agent definitions that name an audit artifact actually call the shared key helper instead of hand-building a path. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `check-cli-workspace-floors.sh` | no | `cli-advisory-scan.yml`, `cli-tests.yml` | Reports security floors that have stopped being applied in a pnpm workspace root outside the repository root. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `check-debt-issue-metadata.sh` | yes | the audit agent, `/gaia-debt` | Validates the label set and dedup key a tech-debt filing carries against the filing rules. |
 | `check-hook-command-rooting.sh` | yes | GAIA's own invariant harness (maintainer-side) | Asserts every hook command in `.claude/settings.json` is rooted at the repository top level rather than at the working directory. |
@@ -80,7 +80,7 @@ The maintainer's copy of this page carries every root file. An adopter's copy ca
 |---|---|---|---|
 | `lint-errexit-status-read.sh` | no | `shell-lint.yml` | Flags `$?` read after a command-substitution assignment under `set -e`, where it reports the wrong command. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `lint-git-path-quoting.sh` | no | `shell-lint.yml` | Flags an executed git listing that names files without `-z`, so a C-quoted path reaches the reader mangled. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
-| `lint-hook-array-guard.sh` | yes | GAIA's own CI (maintainer-side) | Flags unguarded bare array expansions under `set -u` across the framework's own bash, the bash-3.2 empty-array class. |
+| `lint-hook-array-guard.sh` | no | GAIA's own CI (maintainer-side) | Flags unguarded bare array expansions under `set -u` across the framework's own bash, the bash-3.2 empty-array class. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `lint-hook-cwd-relative-loads.sh` | no | GAIA's own shell-lint harness | Flags a hook that locates the framework code it loads from the working directory rather than from its own path. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `lint-hook-jq-availability.sh` | no | GAIA's own shell-lint harness | Flags a blocking hook that parses its payload with jq and fails open when jq is absent. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `lint-sigpipe-readers.sh` | no | `shell-lint.yml`, `audit-ci-tests.yml` | Flags a short-circuiting reader downstream of a pipe under `pipefail`, where the pipeline status inverts on a match. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
@@ -111,7 +111,7 @@ The maintainer's copy of this page carries every root file. An adopter's copy ca
 |---|---|---|---|
 | `assert-no-release-leak.sh` | no | `release.yml` | Proves no release-excluded path survived into the tree that becomes the tarball. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `awk-interp-lib.sh` | no | sourced | Resolves `GAIA_AWK`, the sanctioned awk interpreter (mawk or BWK one-true-awk) the awk-tokenizer guards run under. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
-| `bats5.sh` | yes | the bats runners | Runs bats under a bash 5 when one is available, so local matches CI. |
+| `bats5.sh` | no | the bats runners | Runs bats under a bash 5 when one is available, so local matches CI. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `branch-name-lib.sh` | yes | sourced, and run as a command by the skills | GAIA's branch-naming convention: the one place a branch or worktree name is minted and read back. |
 | `context-checkpoint-lib.sh` | yes | sourced | The one place the context checkpoint line, the statusline bands, the unit round count and the per-session context file are defined, so the bar color and the checkpoint cannot disagree. The header states the override rule. |
 | `chore-deps-skip.sh` | yes | `git grep chore-deps-skip` | The chore(deps) predicate: a dep-bump subject plus a manifest-only changed-file list on stdin. |
@@ -179,6 +179,8 @@ Correct pattern: prove the guard can fail before relying on it (break the constr
 
 Where discovery reads tracked files, the new guard and its suite must be visible to it before the run that validates them: `git add` them first for an index-reading discovery (`git ls-files`, `git grep`); a committed-ref discovery (`git ls-tree HEAD`) needs the commit itself. Run the discovery command on its own and confirm the two new paths appear in its output, which is the only thing distinguishing a clean pass from a pass over a set that never held them.
 
+<!-- gaia:maintainer-only:start -->
 Mechanism-level cases on the `.bats` surface, where an assertion's status never reaches the test result at all, are `.claude/rules/bats-assertions.md`.
+<!-- gaia:maintainer-only:end -->
 
 See [[Claude Hooks]], [[Code Review Audit Agent]], [[PR Merge Workflow]], [[Quality Gate]].

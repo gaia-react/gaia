@@ -66,7 +66,9 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[remix-toast]]
 - [[remix-utils]]: per-helper adopt-vs-hand-roll decision map.
 - [[Serena]]
+<!-- gaia:maintainer-only:start -->
 - [[spec-kit]]: superseded; GAIA no longer installs spec-kit, see [[GAIA Spec]].
+<!-- gaia:maintainer-only:end -->
 - [[Conform]]
 - [[Zod]]
 - [[Ky]]
@@ -100,7 +102,9 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Stories as Tests]]: a story with a `play` is the component test, run by Vitest in headless Chromium; the three Vitest projects, what counts as a test to the harness, the CSF shapes and the exit-7 refusal, and the `languages` prop and router stub conventions.
 - [[Dark Mode Modernization]]
 - [[Content Security Policy]]: per-request nonce CSP; Report-Only pending an upstream React Router fix; documents the `unsafe-inline` and no-`report-uri` trade-offs.
+<!-- gaia:maintainer-only:start -->
 - [[Dispatched-Check Rollup via Polling]]: in-loop pollers stamp dispatched-workflow jobs via the Checks API so they land in `statusCheckRollup`; documents why a `workflow_run` listener is not viable under `GITHUB_TOKEN`.
+<!-- gaia:maintainer-only:end -->
 - [[Composite Action Step Timeouts]]: Node-provisioning steps are bounded by their owning job's `timeout-minutes`; a step-level cap is a per-workflow choice, not a rule.
 - [[Code Audit Team]]: config-driven auditor roster + dispatch resolver; AND-aggregation across dispatched members at the merge gate.
 - [[Deliberate Configuration Asymmetries]]: config that differs from its siblings on purpose; the `.claude/hooks/` Edit carve-out, the skill `model:` pinning criterion, the non-opt-outable update check, and why the agent-teams flag is not enabled.
@@ -118,7 +122,9 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[pnpm]]
 - [[DragonScale Opt-Out]]
 - [[Vendored Third-Party Skills]]: third-party skills are vendored byte-identical with a GAIA-owned version marker; GAIA guidance lives outside the vendored folder; updates re-vendor.
+<!-- gaia:maintainer-only:start -->
 - [[spec-kit Extension Strategy]]: superseded by [[GAIA Spec]]; kept as the record of the extension-plus-preset design.
+<!-- gaia:maintainer-only:end -->
 - [[Wiki Management]]: wiki primitives, state file, deterministic classification
 - [[Claude Integration Fitness]]: check taxonomy + F-to-A+ grading + triage/heal protocol run by `/gaia-fitness`.
 - [[TDD RED Verification]]: mechanical enforcement that a new test was observed failing before commit; RED-observation ledger + two hooks.

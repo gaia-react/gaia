@@ -11,7 +11,10 @@ tags: [concept, claude, skill, orchestration]
 
 `/gaia-spec [description]` is GAIA's script-driven Socratic discovery workflow; no spec-kit runtime is involved. It produces an immutable SPEC artifact at `.gaia/local/specs/SPEC-NNN/SPEC.md` and stops, printing a handoff prompt the human pastes into a fresh [[GAIA Plan]] session. The skill body lives at `.claude/skills/gaia/references/spec.md` (dispatched by the `/gaia-spec` command, which reads this reference).
 
-The workflow runs on GAIA's own scripts in `.gaia/scripts/spec/`, Claude-read prose in `.claude/skills/gaia/references/spec/`, and script-consumed templates in `.gaia/templates/spec/`, called directly by the skill. The superseded record of the earlier extension-plus-preset design is [[spec-kit Extension Strategy]].
+The workflow runs on GAIA's own scripts in `.gaia/scripts/spec/`, Claude-read prose in `.claude/skills/gaia/references/spec/`, and script-consumed templates in `.gaia/templates/spec/`, called directly by the skill.
+<!-- gaia:maintainer-only:start -->
+The superseded record of the earlier extension-plus-preset design is [[spec-kit Extension Strategy]].
+<!-- gaia:maintainer-only:end -->
 
 ## Hard constraints
 
@@ -94,7 +97,9 @@ script instead. A folder's routine reap is not data loss.
 
 ## Pairs with
 
+<!-- gaia:maintainer-only:start -->
 - [[spec-kit Extension Strategy]]: superseded record of the earlier extension-plus-preset design.
 - [[spec-kit]]: superseded; GAIA no longer installs spec-kit.
+<!-- gaia:maintainer-only:end -->
 - [[GAIA Plan]]: the downstream handoff target.
 - [[Task Orchestration]]: what `/gaia-plan` produces.

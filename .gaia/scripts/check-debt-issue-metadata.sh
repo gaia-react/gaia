@@ -451,8 +451,7 @@ run_pre_file() {
   #
   # Written as an `if`, not `grep ... && finding ...`: an AND-list whose left
   # side fails carries a non-zero status, and under `set -e` that aborts the
-  # script on the clean case. The same trap `.claude/rules/bats-assertions.md`
-  # documents for test bodies applies to any `set -e` script.
+  # script on the clean case.
   if grep -qE '^(in-progress|debt:spec-pending|debt:spec-active)$' <<<"$labels"; then
     finding "pre-file" "drain-label-on-new-filing" "\`in-progress\` / \`debt:spec-pending\` / \`debt:spec-active\` are applied once work starts, never by a filing"
   fi

@@ -18,4 +18,7 @@ A guard (test assertion, lint script, CI condition, hook precondition) is only e
 - **Assert the input set is non-empty and the expected size**, derived from the same source the rule binds to.
 - **Stage a new guard and its sibling suite before the run that validates them** (or confirm their paths appear in the discovery output): both are untracked at the moment they are first run, which is exactly when a discovery over tracked files cannot see them, and that first-run "clean" is indistinguishable from a real one.
 
-Full anti-pattern (the three independent stages a guard can lose its power to fail at: discovery, arming, match region) and worked correct-pattern detail: `wiki/concepts/GAIA Scripts.md` ("Why a guard must be able to fail"). Mechanism-level `.bats` cases: `.claude/rules/bats-assertions.md`.
+Full anti-pattern (the three independent stages a guard can lose its power to fail at: discovery, arming, match region) and worked correct-pattern detail: `wiki/concepts/GAIA Scripts.md` ("Why a guard must be able to fail").
+<!-- gaia:maintainer-only:start -->
+Mechanism-level `.bats` cases: `.claude/rules/bats-assertions.md`.
+<!-- gaia:maintainer-only:end -->

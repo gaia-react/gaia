@@ -288,6 +288,7 @@ transforms:
           - "wiki/meta" # wiki lint and consolidate write their reports here.
           - "wiki/entities" # an adopter's wiki grows its own entity pages.
           - ".gaia/audit-residual-dismissals.jsonl" # /gaia-residue writes the adopter's store.
+          - ".github/FUNDING.yml" # an adopter may keep their own; `gaia init` deletes only GAIA's.
         line-allowlist:
           # package.json's `gaia.wikiClassify` source/test path arrays are
           # load-bearing config globs, not prose pointers: an entry naming a
@@ -511,6 +512,7 @@ transforms:
           - "dashboard" # a common noun; the wiki/meta/dashboard.md title is not a followable pointer in prose.
           - "Steven Sacks" # the maintainer's name appears as attribution, not as a page reference.
           - "Release Workflow" # a generic multi-word title; bare-prose form reads as ordinary text, and its [[wikilink]] and path forms stay covered by the sibling checks.
+          - "spec-kit" # a third-party product name that shipped prose uses as a word; its [[wikilink]] and path forms stay covered by the sibling checks.
 
       # ---- Workflow paths-filter denylist syntax ----
       # `paths-ignore:` and inverted `!pattern` entries fail quiet: a new
