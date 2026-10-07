@@ -77,6 +77,9 @@ source_pass_record_helper() {
 
 @test "a clean branch run prints a line per check, writes the record and creates no base worktree" {
   fixture
+  # A Linux host's shape on every host: no Homebrew bash, so the logging bats
+  # shim runs and its lines reach the log.
+  vhf_empty_candidates
   printf 'x two\n' >src/x-input.txt
   vhf_commit "a change the x suite names"
   vhf_main_change upstream.txt "upstream" "a commit on main after the branch point"
@@ -98,7 +101,19 @@ source_pass_record_helper() {
   [ "$status" -eq 0 ]
   lacks 'PRE-EXISTING'
   [ "$(worktree_count)" -eq 1 ]
-  [ -z "$(awk -F'|' -v root="$VHF_ROOT" '$NF != root' "$VERIFY_FIXTURE_LOG")" ]
+  # Every check and fixture test ran in the fixture itself. The logging bats
+  # shim's own "bats-process|<arguments>" lines carry no root: bats5.sh puts a
+  # Homebrew bash first on PATH and so bypasses the shim on macOS, but on a
+  # host without Homebrew the shim runs and logs.
+  local elsewhere
+  grep -q '^bats-process|' "$VERIFY_FIXTURE_LOG"
+  elsewhere="$(awk -F'|' -v root="$VHF_ROOT" '$1 != "bats-process" && $NF != root' "$VERIFY_FIXTURE_LOG")"
+  [ -z "$elsewhere" ] || {
+    printf 'entries logged outside %s:\n%s\n--- full log ---\n' "$VHF_ROOT" "$elsewhere" >&2
+    cat "$VERIFY_FIXTURE_LOG" >&2
+    return 1
+  }
+  [ -n "$(awk -F'|' -v root="$VHF_ROOT" '$1 != "bats-process" && $NF == root' "$VERIFY_FIXTURE_LOG")" ]
 }
 
 @test "the staleness line names the merge base and how far origin/main is ahead of it" {
