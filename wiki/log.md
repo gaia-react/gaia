@@ -11,6 +11,74 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-10-07 341d2d24 SKIP - wiki pages updated in the PR itself, no further edit needed (touches wiki-heavy domain)
+- 2026-10-07 3d40fdb9 SKIP - chore: generic chore
+- 2026-10-07 88a50c9e SKIP - wiki pages updated in the PR itself, no further edit needed (touches wiki-heavy domain)
+- 2026-10-07 bfc79546 SKIP - wiki pages updated in the PR itself, no further edit needed (touches wiki-heavy domain)
+- 2026-10-07 6cb6212d SKIP - wiki pages updated in the PR itself, no further edit needed (touches wiki-heavy domain)
+- 2026-10-07 3fe6f0d7 SKIP - docs: prose-only
+- 2026-10-07 ea8588d8 SKIP - behavior covered by command/script docs and tests, no wiki page describes it (feat/fix/perf/refactor/debt: source-bearing path (non-test))
+- 2026-10-07 9a7ee022 SKIP - behavior covered by command/script docs and tests, no wiki page describes it (feat/fix/perf/refactor/debt: source-bearing path (non-test))
+- 2026-10-07 835754a8 SKIP - wiki pages updated in the PR itself, no further edit needed (touches wiki-heavy domain)
+- 2026-10-07 3c765e35 SKIP - wiki pages updated in the PR itself, no further edit needed (touches wiki-heavy domain)
+- 2026-10-07 ba516326 SKIP - wiki pages updated in the PR itself, no further edit needed (touches wiki-heavy domain)
+- 2026-10-07 f4f65eb0 SKIP - wiki pages updated in the PR itself, no further edit needed (touches wiki-heavy domain)
+- 2026-10-07 e5f0bf13 SKIP - wiki pages updated in the PR itself, no further edit needed (touches wiki-heavy domain)
+- 2026-10-07 5b65e3e2 SKIP - test: test-only change
+- 2026-10-07 b1afb1ab SKIP - wiki pages updated in the PR itself, no further edit needed (touches wiki-heavy domain)
+- 2026-10-07 95ea8b65 SKIP - wiki pages updated in the PR itself, no further edit needed (touches wiki-heavy domain)
+- 2026-10-07 f53d1251 SKIP - wiki pages updated in the PR itself, no further edit needed (breaking change signal)
+- 2026-10-07 fbc97cd0 SKIP - test: test-only change
+- 2026-10-07 99957964 SKIP - behavior covered by command/script docs and tests, no wiki page describes it (feat/fix/perf/refactor/debt: source-bearing path (non-test))
+- 2026-10-07 54441294 SKIP - behavior covered by command/script docs and tests, no wiki page describes it (feat/fix/perf/refactor/debt: source-bearing path (non-test))
+- 2026-10-07 3e835870 SKIP - wiki pages updated in the PR itself, no further edit needed (touches wiki-heavy domain)
+- 2026-10-07 1280f607 SKIP - behavior covered by command/script docs and tests, no wiki page describes it (feat/fix/perf/refactor/debt: source-bearing path (non-test))
+- 2026-10-07 f8a46d74 SKIP - wiki pages updated in the PR itself, no further edit needed (breaking change signal)
+- 2026-10-07 a638da38 SKIP - test: test-only change
+- 2026-10-07 1a863fab SKIP - test: test-only change
+- 2026-10-07 2e98e76e SKIP - wiki pages updated in the PR itself, no further edit needed (touches wiki-heavy domain)
+- 2026-10-07 e4c2d49b SKIP - behavior covered by command/script docs and tests, no wiki page describes it (feat/fix/perf/refactor/debt: source-bearing path (non-test))
+- 2026-10-07 945011b6 SKIP - wiki pages updated in the PR itself, no further edit needed (breaking change signal)
+- 2026-10-07 69c37068 SKIP - behavior covered by command/script docs and tests, no wiki page describes it (feat/fix/perf/refactor/debt: source-bearing path (non-test))
+- 2026-10-07 5a15e9ad SKIP - wiki pages updated in the PR itself, no further edit needed (touches wiki-heavy domain)
+- 2026-10-07 4d62811b SKIP - wiki pages updated in the PR itself, no further edit needed (touches wiki-heavy domain)
+- 2026-10-07 17f3fee5 SKIP - test: test-only change
+- 2026-10-07 a86b4c9a SKIP - wiki pages updated in the PR itself, no further edit needed (touches wiki-heavy domain)
+- 2026-10-07 ea218f6e SKIP - behavior covered by command/script docs and tests, no wiki page describes it (feat/fix/perf/refactor/debt: source-bearing path (non-test))
+- 2026-10-07 34d4f9da SKIP - wiki pages updated in the PR itself, no further edit needed (touches wiki-heavy domain)
+- 2026-10-07 4d2387ec SKIP - wiki pages updated in the PR itself, no further edit needed (touches wiki-heavy domain)
+- 2026-10-07 fff100cd SKIP - wiki pages updated in the PR itself, no further edit needed (breaking change signal)
+- 2026-10-07 7b692ae4 SKIP - chore: generic chore
+- 2026-10-07 8672a51b SKIP - wiki pages updated in the PR itself, no further edit needed (touches wiki-heavy domain)
+- 2026-10-07 e6525fb0 SKIP - wiki pages updated in the PR itself, no further edit needed (touches wiki-heavy domain)
+- 2026-10-07 4bf382ee SKIP - behavior covered by command/script docs and tests, no wiki page describes it (feat/fix/perf/refactor/debt: source-bearing path (non-test))
+- 2026-10-07 88a5a53c SKIP - wiki pages updated in the PR itself, no further edit needed (touches wiki-heavy domain)
+- 2026-10-07 926c0f6e SKIP - wiki pages updated in the PR itself, no further edit needed (touches wiki-heavy domain)
+- 2026-10-07 92151a3b SKIP - wiki pages updated in the PR itself, no further edit needed (breaking change signal)
+- 2026-10-07 f3aa707a SKIP - test: test-only change
+- 2026-10-07 74dfc848 SKIP - test: test-only change
+- 2026-10-07 d5ca0299 SKIP - test: test-only change
+- 2026-10-07 a50e666a SKIP - wiki pages updated in the PR itself, no further edit needed (breaking change signal)
+- 2026-10-07 1639c77f SKIP - test: test-only change
+- 2026-10-07 7b086344 SKIP - wiki pages updated in the PR itself, no further edit needed (breaking change signal)
+- 2026-10-07 9826097e SKIP - behavior covered by command/script docs and tests, no wiki page describes it (feat/fix/perf/refactor/debt: source-bearing path (non-test))
+- 2026-10-07 64ae87d9 SKIP - wiki pages updated in the PR itself, no further edit needed (touches wiki-heavy domain)
+- 2026-10-07 13faf677 SKIP - wiki pages updated in the PR itself, no further edit needed (touches wiki-heavy domain)
+- 2026-10-07 5e744c1d SKIP - wiki pages updated in the PR itself, no further edit needed (breaking change signal)
+- 2026-10-07 bb8d9ea7 SKIP - test: test-only change
+- 2026-10-07 3c01a29a SKIP - wiki pages updated in the PR itself, no further edit needed (breaking change signal)
+- 2026-10-07 d30e7e36 SKIP - wiki pages updated in the PR itself, no further edit needed (touches wiki-heavy domain)
+- 2026-10-07 aa9abb88 SKIP - wiki pages updated in the PR itself, no further edit needed (touches wiki-heavy domain)
+- 2026-10-07 54f977ae SKIP - test: test-only change
+- 2026-10-07 ea048821 SKIP - wiki pages updated in the PR itself, no further edit needed (touches wiki-heavy domain)
+- 2026-10-07 13113179 SKIP - wiki pages updated in the PR itself, no further edit needed (touches wiki-heavy domain)
+- 2026-10-07 525d47af SKIP - wiki pages updated in the PR itself, no further edit needed (breaking change signal)
+- 2026-10-07 913134ba SKIP - wiki pages updated in the PR itself, no further edit needed (touches wiki-heavy domain)
+- 2026-10-07 ed7ba4ab SKIP - wiki pages updated in the PR itself, no further edit needed (touches wiki-heavy domain)
+- 2026-10-07 e26efb59 SKIP - wiki pages updated in the PR itself, no further edit needed (touches wiki-heavy domain)
+- 2026-10-07 a0ad1fa1 SKIP - wiki pages updated in the PR itself, no further edit needed (touches wiki-heavy domain)
+- 2026-10-07 07590dfa SKIP - wiki pages updated in the PR itself, no further edit needed (touches wiki-heavy domain)
+- 2026-10-07 13218586 SKIP - wiki pages updated in the PR itself, no further edit needed (touches wiki-heavy domain)
 - 2026-10-05 added the [[React Compiler]] decision page: compiler on by default, measured cost verdicts, adopter steps and rollback
 - 2026-10-03 2e3d776 SKIP - integration upgrades, wiki already updated in the commit
 - 2026-10-03 986bc4d SKIP - working-doc id sweep, wiki already updated in the commit
