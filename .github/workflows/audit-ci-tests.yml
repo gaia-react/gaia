@@ -595,6 +595,17 @@ jobs:
               # reader those steps call.
               - '.github/workflows/pr-conventions.yml'
               - '.gaia/scripts/branch-name-lib.sh'
+              # The PreToolUse hook that runs the same title lint before a PR
+              # exists, the libraries it loads, the registration it is checked
+              # against, and the helper that check sources.
+              - '.claude/hooks/block-invalid-pr-title.sh'
+              - '.claude/hooks/lib/jq-availability.sh'
+              - '.claude/hooks/lib/verb-arming.sh'
+              - '.claude/hooks/lib/verb-arming-walk.sh'
+              - '.claude/hooks/lib/repo-scope.sh'
+              - '.claude/settings.json'
+              - '.gaia/tests/helpers/hook-registration.sh'
+              - '.gaia/scripts/hook-registration-lib.sh'
               # The install inputs: commitlint and its shared config are root
               # devDependencies, so a bump of either, of the toolchain, or of the
               # workspace settings the frozen install obeys changes what the
