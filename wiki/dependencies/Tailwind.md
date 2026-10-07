@@ -4,7 +4,7 @@ status: active
 package: tailwindcss
 role: styling
 created: 2026-04-20
-updated: 2026-10-05
+updated: 2026-10-07
 tags: [dependency, styling]
 ---
 
@@ -15,7 +15,6 @@ Utility-first CSS framework. GAIA ships **Tailwind v4** with the Vite plugin.
 ## Companion packages
 
 - `@tailwindcss/vite`: v4 Vite plugin
-- `@tailwindcss/typography`: official plugin
 - `tw-animate-css`: animation utilities the vendored ui components use ([[shadcn]])
 - `cn`: runtime class composition and conflict merging (see `package.json`)
 

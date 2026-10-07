@@ -31609,7 +31609,6 @@ var GROUP_RULES = [
   },
   {
     exactNames: [
-      "@tailwindcss/typography",
       "@tailwindcss/vite",
       "prettier-plugin-tailwindcss",
       "tailwindcss"
