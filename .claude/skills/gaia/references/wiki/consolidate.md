@@ -4,11 +4,11 @@ Dispatched by the `/gaia-wiki` router (`references/wiki.md` → "Consolidate"). 
 
 ## Playbook
 
-This workflow complements but does not replace the `wiki-promote` runbook (per-SPEC writes, run by hand), `/gaia-wiki sync` (commit-driven updates), or `/gaia-wiki lint` (broken-thing detection). It detects **redundancy and contradiction** across the wiki and proposes merges so the wiki stays an accurate "today's state of the app" snapshot.
+This workflow complements but does not replace the orchestrator's wiki promotion step (per-SPEC writes, before the merge, acting on `SUMMARY.md` frontmatter), `/gaia-wiki sync` (commit-driven updates), or `/gaia-wiki lint` (broken-thing detection). It detects **redundancy and contradiction** across the wiki and proposes merges so the wiki stays an accurate "today's state of the app" snapshot.
 
 **Follow `.claude/rules/wiki-style.md` when writing prose during apply actions.** Present tense; no UAT-NNN, SPEC-NNN, PR-number, or commit-SHA references in body prose. The `## Historical context (from <older-title>)` archival heading defined in Step 4 is a deliberate exception, it labels content lifted from a superseded page so it remains discoverable.
 
-Wiki pages emitted by the `wiki-promote` runbook, when run, carry `promoted_from: SPEC-NNN` and `promoted_at: <ISO>` frontmatter. Those fields are the consolidation seam, they tie pages back to source SPECs and let the audit detect when newer SPECs have superseded older ones.
+Wiki pages emitted by the wiki promotion step carry `promoted_from: SPEC-NNN` and `promoted_at: <ISO>` frontmatter. Those fields are the consolidation seam, they tie pages back to source SPECs and let the audit detect when newer SPECs have superseded older ones.
 
 ## Step 1, Build the page index
 
@@ -152,7 +152,7 @@ Process findings in this order: **supersession → reversed → near-collision �
 3. Update older page's frontmatter: `status: superseded`, `superseded_by: <newer-slug>`, `superseded_at: <ISO>`. Preserve `created`, `promoted_from`, `promoted_at`.
 4. Move older page: `mkdir -p wiki/_archived/ && git mv <older-path> wiki/_archived/<older-slug>.md`. (Use `mv` if `git mv` fails due to staging state.)
 5. Update `wiki/index.md`: remove the older page's entry from its domain section. The wikilink in any newer page's "Related" section becomes a broken link, `/gaia-wiki lint` will surface and the maintainer can fix on the next lint pass; do not autofix here (consolidate is conservative about page-body edits beyond the targeted merge).
-6. Update newer page's `promoted_from`: if currently a string, convert to a list `[<old_provenance>, <new_provenance>]` so future runs of the `wiki-promote` runbook treat it as a known consolidated page. If already a list, append.
+6. Update newer page's `promoted_from`: if currently a string, convert to a list `[<old_provenance>, <new_provenance>]` so future runs of the wiki promotion step treat it as a known consolidated page. If already a list, append.
 
 **Near-collision:**
 
@@ -204,7 +204,7 @@ If any HIGH-severity supersession or reversed-decision was applied, prefix the s
 
 ## Notes
 
-- **Boundary with `wiki-promote`.** The `wiki-promote` runbook, when run, writes per-SPEC; consolidate merges across SPECs. After a merge action, the canonical page's `promoted_from` becomes a list so future `wiki-promote` runs treat it as a known consolidated page (no `foreign-collision` skip).
+- **Boundary with the wiki promotion step.** The wiki promotion step writes per-SPEC; consolidate merges across SPECs. After a merge action, the canonical page's `promoted_from` becomes a list so future promotion runs treat it as a known consolidated page (no `foreign-collision` skip).
 - **Boundary with lint.** Lint finds broken things (dead links, missing frontmatter, stale claims). Consolidate finds redundant things (two pages with competing claims). Run lint before consolidate so structural issues don't get misinterpreted as content redundancy.
 - **`wiki/_archived/`** is excluded from the index and from future consolidation candidacy. Pages there remain readable but are out of the live spec.
 - **Idempotence.** Re-running consolidate on the same wiki state surfaces the same findings, minus those acknowledged via `consolidation_ack`. Apply actions are not idempotent (they mutate); the apply guard is "did the user already say apply", implicit in "the older page is no longer in its original domain," which the page index would reflect on the next run.
