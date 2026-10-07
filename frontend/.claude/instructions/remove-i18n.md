@@ -33,8 +33,6 @@ For every match in `frontend/app/` (excluding `frontend/app/i18n.ts`, `frontend/
 
 The seeded list of files known to use `t()` (verify against the grep output, add any newcomers, drop any that have already been unwrapped):
 
-- `frontend/app/routes/_legal.terms.tsx`
-- `frontend/app/routes/_legal.privacy.tsx`
 - `frontend/app/routes/_public._index.tsx`
 - `frontend/app/pages/index/page.tsx`
 - `frontend/app/routes/resources.theme-switch.tsx`

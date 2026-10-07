@@ -8,7 +8,7 @@ depends_on:
   - '[[fs-routes]]'
   - '[[React Router]]'
 created: 2026-04-20
-updated: 2026-10-04
+updated: 2026-10-07
 tags: [module, routing]
 ---
 
@@ -22,7 +22,6 @@ Routes are flat, dot-delimited files directly in `frontend/app/routes/`; there a
 
 - `_public`: home, marketing, public content (no auth)
 - `_session`: hook point for auth-guarded app (intentionally a stub)
-- `_legal`: terms of service, privacy
 - `actions`: root-level form actions (no UI), e.g. `actions.set-language.ts`
 - `resources`: no-UI resource routes that handle a form submission and write a cookie or return data, e.g. `resources.theme-switch.tsx`
 

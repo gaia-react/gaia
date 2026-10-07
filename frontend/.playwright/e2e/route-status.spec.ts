@@ -1,7 +1,6 @@
 import type {Page} from '@playwright/test';
 import {ACTION_PATHS} from '../../app/action-paths';
 import common from '../../app/languages/en/common';
-import legal from '../../app/languages/en/pages/legal';
 import {expect, test} from '../fixtures';
 import {hydration} from '../utils';
 
@@ -20,22 +19,6 @@ const PAGES: readonly PageContent[] = [
       ).toBeVisible();
     },
     path: '/',
-  },
-  {
-    expectContent: async (page) => {
-      await expect(
-        page.getByText(legal.privacy.paragraphs[0], {exact: true})
-      ).toBeVisible();
-    },
-    path: '/privacy',
-  },
-  {
-    expectContent: async (page) => {
-      await expect(
-        page.getByText(legal.terms.paragraphs[0], {exact: true})
-      ).toBeVisible();
-    },
-    path: '/terms',
   },
 ];
 

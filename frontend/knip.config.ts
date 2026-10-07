@@ -23,7 +23,6 @@ export default {
     '@epic-web/invariant',
     '@msw/data',
     '@storybook/addon-docs',
-    '@tailwindcss/typography',
     'lru-cache',
     'nanoid',
     // shadcn and tw-animate-css are imported only from CSS (tailwind.css), so knip cannot see them.

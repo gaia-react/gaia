@@ -58,7 +58,6 @@ const GROUP_RULES: readonly GroupRule[] = [
   },
   {
     exactNames: [
-      '@tailwindcss/typography',
       '@tailwindcss/vite',
       'prettier-plugin-tailwindcss',
       'tailwindcss',
