@@ -692,7 +692,7 @@ Two steps come first, in this order:
      --jq '.[] | select(.name | endswith("(advisory)")) | select(.bucket != "pass" and .bucket != "skipping") | "\(.bucket)\t\(.name)"'
    ```
 
-   Empty output clears the step. A `pending` row has not concluded yet: wait for it rather than merging past it. For every other row, either fix what the check flagged on this branch (a new commit moves HEAD, so the markers and `GAIA-Audit` must cover it again), or record it in the PR body under `## Red advisory checks at merge`, one line per check naming it and why it stays red. Keep the checks advisory: `.github/workflows/cli-tests.yml` states the leak check must not become a required context.
+   Empty output clears the step. A `pending` row has not concluded yet: wait for it with `gh pr checks <N> --watch` rather than merging past it. That wait ends once every check concludes, so it cannot spin on a conflict the way a hand-rolled loop can, and `.claude/hooks/block-handrolled-pr-poll.sh` denies such a loop; a conflict still surfaces in the merge wait below. For every other row, either fix what the check flagged on this branch (a new commit moves HEAD, so the markers and `GAIA-Audit` must cover it again), or record it in the PR body under `## Red advisory checks at merge`, one line per check naming it and why it stays red. Keep the checks advisory: `.github/workflows/cli-tests.yml` states the leak check must not become a required context.
 <!-- gaia:maintainer-only:end -->
 
 Once **every dispatched member's** marker exists for HEAD and the `GAIA-Audit` status is posted (see [[#Posting the status last]]), run `gh pr merge`. The hook short-circuits to allow the call.
