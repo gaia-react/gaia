@@ -213,7 +213,7 @@ make_scratch_tree() {
 
 @test "UAT-007: the scanned set is non-empty and includes both committed CLI bundles" {
   local tracked
-  tracked="$(git -C "$REPO_ROOT" ls-files -- .gaia/cli/gaia .gaia/cli/gaia-maintainer)"
+  tracked="$(git -C "$REPO_ROOT" ls-files -z -- .gaia/cli/gaia .gaia/cli/gaia-maintainer | tr '\0' '\n')"
   [[ "$tracked" == *".gaia/cli/gaia"$'\n'* ]]
   [[ "$tracked" == *".gaia/cli/gaia-maintainer" ]]
   [ "$(printf '%s\n' "$tracked" | wc -l | tr -d ' ')" -eq 2 ]
