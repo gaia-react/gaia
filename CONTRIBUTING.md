@@ -92,6 +92,8 @@ bats .gaia/tests/hooks/                 # one suite directory
 
 Requires `bats-core` (`brew install bats-core`); `--jobs` also needs GNU parallel (`brew install parallel`). Tests are deterministic, run in tmp git repos, take a few seconds total. Add to your local commit hook if you want them on every commit.
 
+Before opening a pull request, run `bash .gaia/tests/verify-harness.sh branch`: shell-lint, the distribution checks, the `whole-tree`-tagged suites and the change-selected suites, with a failure that also fails on the merge base with `origin/main` reported as pre-existing. It refuses to start (exit 3) on uncommitted tracked changes or a detached HEAD, so commit first, and it is the last step before the first audit dispatch. The pre-push hook (`.githooks/pre-push`) separately runs the distribution checks on every branch push.
+
 The hooks directory covers the bulk of the wiki system: drift math, marker file behavior, hook input parsing, edge cases (missing state, unreachable SHA, malformed JSON). The other five directories cover the audit helpers, the shipped `.gaia/scripts`, the SPEC-ledger libs, forensics, and the statusline.
 
 CI reaches the same partition through a different entry point. The `GAIA: Audit CI Tests` workflow's `shards` matrix runs `bash .gaia/tests/bats-shards.sh run <shard-id>` once per leg, each shard on its own runner, so the slowest leg sets the wall clock rather than the sum. The sharder discovers `.bats` files at run time, so a new suite file joins a shard with no matrix edit. See `.github/workflows/audit-ci-tests.yml` and `wiki/decisions/Sharded CI Test Matrix.md`.

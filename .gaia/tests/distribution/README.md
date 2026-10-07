@@ -10,6 +10,7 @@ Maintainer-only validation of the post-scrub GAIA tarball. Excluded from the rel
   - `.gaia/release-exclude`
   - `.github/workflows/release.yml`
   - `.gaia/manifest.ts`
+- Automatically: the pre-push hook runs `01-files-present`, the build-staging leak check and `03-marker-strip` on every branch push, and the verification runner's branch and round modes (`bash .gaia/tests/verify-harness.sh`) run them too.
 
 ## Layout
 
@@ -33,7 +34,8 @@ bash .gaia/tests/distribution/01-files-present.sh
 
 ## Prerequisites
 
-- `.gaia/cli/gaia` binary built and present; scenarios shell out to it directly, not to `pnpm -C .gaia/cli`.
+- An executable `.gaia/cli/gaia-maintainer` binary: every scenario builds its staging tree through `build-staging.sh`, which refuses without it.
+- `.gaia/cli/gaia` binary built and present; the adopter-flow scenarios shell out to it directly, not to `pnpm -C .gaia/cli`.
 - Host has `git`, `tar`, `rsync`, `pnpm` on PATH (Layer 0).
 
 ## Layered isolation
