@@ -184,6 +184,7 @@ gate_pass_headers() {
   # dialect: shellcheck takes one dialect per invocation, which is why this
   # cannot fold into the *.sh pass.
   grep -qE -- '(^| )-s sh( |$).*\.githooks/pre-commit' "$STUB_DIRECTORY/argv.log"
+  grep -qE -- '(^| )-s sh( |$).*\.githooks/pre-push' "$STUB_DIRECTORY/argv.log"
 }
 
 

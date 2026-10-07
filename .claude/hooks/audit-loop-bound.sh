@@ -110,6 +110,12 @@
 #                                  records nothing new.
 #   `BLOCKED: audit dispositions`  the dispositions check failed; its
 #                                  violation lines follow; records nothing.
+# gaia:maintainer-only:start
+#   `BLOCKED: audit verify`        the first member or unit dispatch on a
+#                                  branch with no verification pass record for
+#                                  this HEAD (maintainer repo only); records
+#                                  nothing.
+# gaia:maintainer-only:end
 #   any other `BLOCKED:`           a fail-loud deny (below).
 #
 # STATED FAILURE MODES, honestly:
@@ -651,6 +657,32 @@ run_decision() {
   fi
 
   used=$(jq -r '.history.rounds | length' <<<"$WORKING_STATE")
+  # gaia:maintainer-only:start
+  # The first audit dispatch on a branch is the most expensive round, so it
+  # waits for the verification runner's branch mode to pass for this HEAD. The
+  # maintainer-rule file marks the maintainer repo, the same predicate the
+  # audit-loop evaluator uses, so fixture repositories in this hook's other
+  # suites are unaffected. A helper that will not load, or any answer other
+  # than a matching record, denies: this gate never allows on an unknown.
+  if { [ "$kind" = member ] || [ "$kind" = unit ]; } && [ "$used" -eq 0 ] &&
+    [ -f "$main/.claude/rules/maintainers/harness-triage-threshold.md" ]; then
+    verify_short=$(printf '%.8s' "$commit")
+    verify_tests_directory=.gaia/tests
+    verify_step="run bash $verify_tests_directory/verify-harness.sh branch from $root (in the background, output to a log), then retry the dispatch"
+    # shellcheck source=/dev/null
+    . "$scripts/../tests/helpers/verify-pass-record.sh" 2>/dev/null ||
+      finish_deny "BLOCKED: audit verify: branch $BRANCH_KEY at $verify_short cannot be checked because $scripts/../tests/helpers/verify-pass-record.sh will not load. Fail-loud, not fail-open: restore it, then $verify_step."
+    verify_status=0
+    verify_recorded=$(gaia_verify_pass_record_check "$main" "$BRANCH_KEY" "$commit" 2>/dev/null) || verify_status=$?
+    case "$verify_status" in
+      0) ;;
+      1) finish_deny "BLOCKED: audit verify: branch $BRANCH_KEY at $verify_short has no verification pass record, so the first audit dispatch is refused. Nothing was recorded. Step: $verify_step." ;;
+      2) finish_deny "BLOCKED: audit verify: branch $BRANCH_KEY at $verify_short has a verification pass record for $(printf '%.8s' "$verify_recorded"), not this HEAD, so the first audit dispatch is refused. Nothing was recorded. Step: $verify_step." ;;
+      5) finish_deny "BLOCKED: audit verify: branch $BRANCH_KEY at $verify_short has an unreadable verification pass record at $(gaia_verify_pass_record_path "$main" "$BRANCH_KEY"). Nothing was recorded. Step: $verify_step, which replaces the record." ;;
+      *) finish_deny "BLOCKED: audit verify: branch $BRANCH_KEY at $verify_short could not be checked against its verification pass record (check exit $verify_status; 6 means jq is missing). Fail-loud, not fail-open. Nothing was recorded. Step: fix that, then $verify_step." ;;
+    esac
+  fi
+  # gaia:maintainer-only:end
   if [ "$used" -eq 0 ]; then
     snapshot=null
   else
