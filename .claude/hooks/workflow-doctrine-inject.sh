@@ -26,7 +26,9 @@
 # echoes the input event. The key line (a branch key or a session key, with the
 # command that links or binds research to it) precedes the doctrine and is
 # omitted, never rewritten, when the key fails the ledger's ref grammar or is a
-# hashed off-grammar branch. Nothing is written to stderr and every path exits
+# hashed off-grammar branch. On EnterWorktree onto the harness's worktree
+# spelling, a line naming the rename to the canonical branch precedes the key
+# line. Nothing is written to stderr and every path exits
 # 0: any failure means no injection.
 #
 # Dedupe: a per-session marker under <main root>/.gaia/local/cache holds the
@@ -271,9 +273,25 @@ case "$raw" in
     ;;
 esac
 
+# EnterWorktree({name}) lands on the harness's `worktree-<name>` spelling, and
+# GAIA's rename to the canonical name lives only in the isolation reference a
+# skill reads. A session that called EnterWorktree on its own would push the
+# spelling, fail the head-branch conventions check, and need a new pull
+# request, since GitHub cannot rename a pull request's head. Naming the rename
+# here covers that path; the hook does not run it, because only the main thread
+# changes git state. Agent worktrees are the harness's own and keep their name.
+rename_line=""
+if [ "$tool" = EnterWorktree ]; then
+  case "$raw" in
+    worktree-agent-* | *[!A-Za-z0-9._/+-]*) ;;
+    worktree-?*) rename_line="This branch is the worktree spelling the harness assigns; rename it to its canonical name before the first push: git -C \"$tree\" branch -m $raw $normalized_branch_name" ;;
+  esac
+fi
+
 if [ "$use_marker" = 1 ]; then
   resolve_marker || exit 0
-  if [ "$refresh" = 0 ] && [ -f "$marker" ]; then
+  # A pending rename is not deduped: re-entering an unrenamed worktree repeats it.
+  if [ "$refresh" = 0 ] && [ -z "$rename_line" ] && [ -f "$marker" ]; then
     last=""
     IFS= read -r last <"$marker" || true
     [ "$last" = "$key" ] && exit 0
@@ -290,6 +308,9 @@ if gaia_usage_valid_reference "$key"; then
     branch:*) keyline="Branch key: $key. Link its initiative once with: $run .gaia/scripts/usage.sh link $key research:<topic>-<date> (or issue:<n>)" ;;
     session:*) keyline="Session key: $key. Bind research with: $run .gaia/scripts/usage.sh declare research:<topic>-<date> --session $session_id" ;;
   esac
+fi
+if [ -n "$rename_line" ]; then
+  if [ -n "$keyline" ]; then keyline="$rename_line"$'\n'"$keyline"; else keyline="$rename_line"; fi
 fi
 
 if [ "$have_jq" = 1 ]; then

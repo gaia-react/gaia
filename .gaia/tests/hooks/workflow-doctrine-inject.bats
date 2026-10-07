@@ -157,6 +157,45 @@ assert_silent() {
   assert_silent
 }
 
+@test "EnterWorktree onto the harness's worktree spelling names the exact rename to the canonical branch first" {
+  local rename_line
+  git -C "$REPO" worktree add -q -b "worktree-fix+foo" "$TEMPORARY_DIRECTORY/wtr"
+  rename_line="This branch is the worktree spelling the harness assigns; rename it to its canonical name before the first push: git -C \"$TEMPORARY_DIRECTORY/wtr\" branch -m worktree-fix+foo fix/foo"
+
+  run_hook "$(post_tool_enter_worktree_payload r1 "$REPO" "$TEMPORARY_DIRECTORY/wtr")"
+  assert_envelope PostToolUse
+  [ "$(head -n 1 "$TEMPORARY_DIRECTORY/ctx")" = "$rename_line" ]
+  tail -n +2 "$TEMPORARY_DIRECTORY/ctx" >"$TEMPORARY_DIRECTORY/keyed"
+  case "$(head -n 1 "$TEMPORARY_DIRECTORY/keyed")" in "Branch key: branch:fix/foo. "*) ;; *) return 1 ;; esac
+  tail -n +2 "$TEMPORARY_DIRECTORY/keyed" >"$TEMPORARY_DIRECTORY/rest"
+  cmp "$TEMPORARY_DIRECTORY/rest" "$DOCTRINE_PATH"
+
+  # The marker does not suppress the rename while the branch still needs it.
+  run_hook "$(post_tool_enter_worktree_payload r1 "$REPO" "$TEMPORARY_DIRECTORY/wtr")"
+  assert_envelope PostToolUse
+  [ "$(head -n 1 "$TEMPORARY_DIRECTORY/ctx")" = "$rename_line" ]
+
+  # Controls: SessionStart in the same tree, an agent worktree, and the renamed branch carry no rename line.
+  run_hook "$(session_start_payload r2 startup "$TEMPORARY_DIRECTORY/wtr")"
+  assert_injects_keyed SessionStart "Branch key: branch:fix/foo. "
+
+  git -C "$REPO" worktree add -q -b worktree-agent-abc123 "$TEMPORARY_DIRECTORY/wta"
+  run_hook "$(post_tool_enter_worktree_payload r3 "$REPO" "$TEMPORARY_DIRECTORY/wta")"
+  assert_injects_keyed PostToolUse "Session key: session:r3. "
+
+  git -C "$TEMPORARY_DIRECTORY/wtr" branch -m worktree-fix+foo fix/foo
+  run_hook "$(post_tool_enter_worktree_payload r4 "$REPO" "$TEMPORARY_DIRECTORY/wtr")"
+  assert_injects_keyed PostToolUse "Branch key: branch:fix/foo. "
+
+  # An off-grammar worktree spelling is never echoed into a rename line.
+  git -C "$REPO" worktree add -q -b "$(printf 'worktree-fix+a\140b')" "$TEMPORARY_DIRECTORY/wto"
+  run_hook "$(post_tool_enter_worktree_payload r5 "$REPO" "$TEMPORARY_DIRECTORY/wto")"
+  assert_envelope PostToolUse
+  grep -q 'rename it' "$TEMPORARY_DIRECTORY/ctx" && return 1
+  grep -qF '`' "$TEMPORARY_DIRECTORY/ctx" && return 1
+  true
+}
+
 @test "UAT-006: a non-Bash, non-EnterWorktree PostToolUse tool is silent in a tree that would inject" {
   git -C "$REPO" checkout -q -b feat/9-x
   run_hook "$(jq -nc --arg working_directory "$REPO" '{hook_event_name:"PostToolUse",session_id:"t1",tool_name:"Read",tool_input:{},tool_response:{},cwd:$working_directory}')"

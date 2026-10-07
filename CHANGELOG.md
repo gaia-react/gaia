@@ -172,6 +172,7 @@ On GAIA 1.6.1? Choose Abort, then paste the prompt from https://gaiareact.com/mi
 
 ### Fixed
 
+- Entering a worktree directly with `EnterWorktree`, outside a GAIA skill, now tells you the exact command to rename its `worktree-<name>` branch to the canonical name before the first push. Before, nothing prompted the rename, so the branch was pushed under the harness spelling, failed the head-branch conventions check, and needed a new PR (#2578)
 - The `/gaia-wiki` statusline nudge now clears as soon as a landed wiki chain reaches your main checkout, however it gets there. Before, pulling `main` by hand after a chain whose auto-merge was still queued left the old commit count showing for up to six hours (#2576)
 - `/gaia-wiki consolidate` no longer leaves broken wikilinks behind when it archives a superseded page or renames a near-duplicate: links to the old page, aliased and anchored ones included, now point at the page that holds its content. Before, they stayed broken unnoticed, because no lint check detects a broken wikilink (#2574)
 - `/gaia-wiki lint` now fixes what it finds instead of only reporting it. Frontmatter gaps, orphan pages, and renamed dead paths are fixed directly; a dead path with no successor or an empty section is fixed after asking you, or left if you choose; narrative refs in instruction files are filed as tech-debt. In the full chain the fixes land before the PR opens, so the wiki that merges is the clean one, and the chain PR no longer needs a follow-up push that stalls its auto-merge (#2573)
