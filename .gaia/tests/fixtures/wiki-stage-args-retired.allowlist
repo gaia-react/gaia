@@ -1,0 +1,12 @@
+# Paths allowed to still name a retired `/gaia-wiki sync` style stage invocation
+# (a stage name, a `[sync|consolidate|lint]` menu, a `<stage>` placeholder, or an
+# `(any sub-command)` note after the command). One repo-relative path or glob
+# per line. Used by .gaia/tests/lib/wiki-stage-args-retired.bats, which also
+# fails on an entry that matches no hit, so the list never grows stale.
+#
+# History that is never rewritten.
+CHANGELOG.md
+wiki/meta/**
+# The guard and this list.
+.gaia/tests/lib/wiki-stage-args-retired.bats
+.gaia/tests/fixtures/wiki-stage-args-retired.allowlist

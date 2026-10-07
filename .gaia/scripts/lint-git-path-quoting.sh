@@ -101,10 +101,9 @@
 # A fenced code block on a tracked markdown page IS on the declared surface, and
 # the reason is that several of them are executed instruction rather than
 # illustration: an always-loaded rule tells the agent to run that page's steps as
-# written, so the snippet is a live call site. Three carried this class at once,
-# in the quality gate's own skip check, in the wiki-sync added-page count feeding
-# the consolidate trigger, and in the health runbook's staging-tree discovery,
-# and no check could see any of them.
+# written, so the snippet is a live call site. Two carried this class at once,
+# in the quality gate's own skip check and in the health runbook's staging-tree
+# discovery, and no check could see either of them.
 #
 # The discriminator is FENCE STATE, never a path glob enumerating which pages are
 # executed. A glob is an enumeration, and an enumeration goes one page short the

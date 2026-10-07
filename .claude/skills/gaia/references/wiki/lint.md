@@ -4,7 +4,7 @@ Dispatched by the `/gaia-wiki` router (`references/wiki.md` → "Lint", stage 1)
 
 ## Playbook
 
-Standalone GAIA-native wiki lint. Builds its own report shell, then writes GAIA-specific checks: **#11: Wiki drift check**, **#12: Dead repo-relative paths**, **#13: UAT/SPEC narrative-ref drift**, **#14: Orphan pages**, **#15: Frontmatter gaps**, and **#16: Empty sections**. Every check re-derives from a live `.gaia/cli/gaia wiki` CLI primitive on each run; the report is plain markdown that GAIA owns end to end.
+GAIA-native wiki lint. Builds its own report shell, then writes GAIA-specific checks: **#11: Wiki drift check**, **#12: Dead repo-relative paths**, **#13: UAT/SPEC narrative-ref drift**, **#14: Orphan pages**, **#15: Frontmatter gaps**, **#16: Empty sections**, and **#17: Broken wikilinks**. Every check re-derives from a live `.gaia/cli/gaia wiki` CLI primitive on each run; the report is plain markdown that GAIA owns end to end.
 
 ## Step 1: Create the report shell
 
@@ -38,7 +38,7 @@ status: developing
 EOF
 ```
 
-Use `wiki/meta/lint-report-$DATE.md` as the canonical report path for every subsequent step and the Step 8 summary. The GAIA checks below write into this same file: each **replaces** its own `## #NN` section if one already exists, otherwise appends it at the bottom. Never trust or carry over a pre-existing GAIA section: every check re-derives from its live CLI primitive on each run.
+Use `wiki/meta/lint-report-$DATE.md` as the canonical report path for every subsequent step and the Step 9 summary. The GAIA checks below write into this same file: each **replaces** its own `## #NN` section if one already exists, otherwise appends it at the bottom. Never trust or carry over a pre-existing GAIA section: every check re-derives from its live CLI primitive on each run.
 
 ## Step 2: GAIA check #11: Wiki drift
 
@@ -55,7 +55,7 @@ The CLI returns a JSON object with `drift_severity` (`none` | `low` | `medium` |
 ```markdown
 ## #11: Wiki drift check
 
-⚠ `wiki/.state.json` missing: system has never run sync. Run `/gaia-wiki sync` to initialize.
+⚠ `wiki/.state.json` missing: system has never run sync. Run `/gaia-wiki` to initialize.
 ```
 
 Then stop the drift check.
@@ -65,7 +65,7 @@ If `reachable === false`, the recorded SHA was orphaned (the squash-merge flow r
 ```markdown
 ## #11: Wiki drift check
 
-⚠ `wiki/.state.json` `last_evaluated_sha` (`<state_sha>`) is not reachable from HEAD (squashed/rewritten history). Run `/gaia-wiki sync`: it resolves a recovery baseline (`<suggested_base>`) and evaluates the un-evaluated window.
+⚠ `wiki/.state.json` `last_evaluated_sha` (`<state_sha>`) is not reachable from HEAD (squashed/rewritten history). Run `/gaia-wiki`: its sync stage resolves a recovery baseline (`<suggested_base>`) and evaluates the un-evaluated window.
 ```
 
 When `suggested_base` is empty (no recoverable baseline), drop the parenthetical and say `it re-anchors to HEAD.` instead. Then stop.
@@ -77,9 +77,9 @@ Map the CLI's `drift_severity` and `commits_ahead` to the report section:
 | `drift_severity` | Section to append                                                                                                          |
 | ---------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | `none`           | `✓ Wiki in sync with HEAD ({head_short}).`                                                                                 |
-| `low`            | `ℹ {commits_ahead} commits behind HEAD. Run /gaia-wiki sync at next opportunity.`                                          |
-| `medium`         | `⚠ {commits_ahead} commits behind HEAD. Run /gaia-wiki sync soon.` + recent commits list                                   |
-| `high`           | `✗ {commits_ahead} commits behind HEAD. Wiki is significantly out of date. Run /gaia-wiki sync now.` + recent commits list |
+| `low`            | `ℹ {commits_ahead} commits behind HEAD. Run /gaia-wiki at next opportunity.`                                               |
+| `medium`         | `⚠ {commits_ahead} commits behind HEAD. Run /gaia-wiki soon.` + recent commits list                                        |
+| `high`           | `✗ {commits_ahead} commits behind HEAD. Wiki is significantly out of date. Run /gaia-wiki now.` + recent commits list      |
 
 For **medium** and **high**, list up to 5 of the `recent_commits` from the CLI output as `  - <sha> <subject>`.
 
@@ -88,7 +88,7 @@ Example WARN (`medium`) section:
 ```markdown
 ## #11: Wiki drift check
 
-⚠ 7 commits behind HEAD. Run `/gaia-wiki sync` soon. Recent unsynced commits:
+⚠ 7 commits behind HEAD. Run `/gaia-wiki` soon. Recent unsynced commits:
 
 - a1b2c3d feat: add new module
 - d4e5f6g fix: edge case in router
@@ -100,7 +100,7 @@ Example ERROR (`high`) section:
 ```markdown
 ## #11: Wiki drift check
 
-✗ 14 commits behind HEAD. Wiki is significantly out of date. Run `/gaia-wiki sync` now. Recent unsynced commits:
+✗ 14 commits behind HEAD. Wiki is significantly out of date. Run `/gaia-wiki` now. Recent unsynced commits:
 
 - a1b2c3d feat: ...
 - d4e5f6g fix: ...
@@ -307,12 +307,47 @@ Otherwise:
 
 List every empty section (one per line) as `` - `wiki/path.md:42` → `## Heading` ``.
 
-## Step 8: Surface to the user
+## Step 8: GAIA check #17: Broken wikilinks
+
+Run the broken-links primitive and append a `## #17: Broken wikilinks` section, replacing any existing `## #17` section. Detects `[[wikilinks]]` whose target matches no live wiki page.
+
+### 8a. Run the primitive
+
+```bash
+.gaia/cli/gaia wiki broken-links --json
+```
+
+Returns `{ "broken": [{ "path": "...", "line": N, "target": "..." }, ...] }`. Empty array means clean.
+
+### 8b. Append the section
+
+If `broken.length === 0`:
+
+```markdown
+## #17: Broken wikilinks
+
+✓ No broken wikilinks detected.
+```
+
+Otherwise:
+
+```markdown
+## #17: Broken wikilinks
+
+⚠ {broken.length} broken wikilink(s):
+
+- `wiki/concepts/A.md:7` → `[[Gone]]`
+- `wiki/modules/B.md:31` → `[[Missing Page]]`
+```
+
+List every broken link (one per line) as `` - `wiki/path.md:7` → `[[Target]]` ``.
+
+## Step 9: Surface to the user
 
 Print to the user:
 
 1. The report path (e.g. `wiki/meta/lint-report-2026-05-03.md`).
-2. A one-line summary that includes the drift severity and count, plus dead-path count, orphan count, frontmatter-gap count, and empty-section count when any of those is non-zero, plus narrative-ref count if non-zero.
+2. A one-line summary that includes the drift severity and count, plus dead-path count, orphan count, frontmatter-gap count, empty-section count, and broken-link count when any of those is non-zero, plus narrative-ref count if non-zero.
 
 If `drift_severity` is **`high`**, surface it prominently (separate line, prefixed with `WIKI DRIFT:`).
 If `dead.length > 0`, surface as a separate line prefixed with `WIKI DEAD-PATHS:` followed by the count.
@@ -320,6 +355,7 @@ If narrative-ref findings > 0, surface as a separate line prefixed with `UAT-SPE
 If `orphans.length > 0`, surface as a separate line prefixed with `WIKI ORPHANS:` followed by the count.
 If `gaps.length > 0`, surface as a separate line prefixed with `WIKI FRONTMATTER:` followed by the count.
 If `empty.length > 0`, surface as a separate line prefixed with `WIKI EMPTY-SECTIONS:` followed by the count.
+If `broken.length > 0`, surface as a separate line prefixed with `WIKI BROKEN-LINKS:` followed by the count.
 
 ## Notes
 

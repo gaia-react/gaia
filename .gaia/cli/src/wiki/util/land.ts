@@ -1,11 +1,10 @@
 import {z} from 'zod';
 /**
- * Shared landing primitives for the wiki `sync land` and `chain` commands.
+ * Shared landing primitives for the wiki `chain` command.
  *
- * Both commands shell out through an injected `CommandRunner` and translate
- * git/gh outcomes into the CLI's exit-code contract: 0 (ok) / 1 (refusal) /
- * 2 (unexpected). These leaf helpers keep that translation identical across
- * the two surfaces.
+ * They shell out through an injected `CommandRunner` and translate git/gh
+ * outcomes into the CLI's exit-code contract: 0 (ok) / 1 (refusal) /
+ * 2 (unexpected).
  */
 import type {SpawnSyncReturns} from 'node:child_process';
 import {EXIT_CODES} from '../../exit.js';
@@ -393,8 +392,7 @@ export type FinalizeMergeOptions = MergeWaitOptions & {
  * on the auto-merge, then either clean up locally (on `MERGED`) or return to
  * `base` and leave the local catch-up to the session-start janitor (on
  * timeout). Writes a one-line
- * `prefix`-tagged summary and returns `EXIT_CODES.OK`. Shared by `chain finish`
- * and `sync land`'s protected-branch path.
+ * `prefix`-tagged summary and returns `EXIT_CODES.OK`. Used by `chain finish`.
  */
 export const finalizeMerge = (options: FinalizeMergeOptions): number => {
   const {base, branch, cwd, prefix, runner} = options;

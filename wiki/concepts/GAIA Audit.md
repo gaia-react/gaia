@@ -60,7 +60,7 @@ Each report carries a `status:` field. Stage 1 writes it as `draft`; Stage 2 fli
 - **Promotable memory**: durable knowledge stuck in machine-local memory → moves to a specific wiki page
 - **Auto-load bloat**: flags `wiki/hot.md`, `CLAUDE.md`, and rules over budget
 - **Stale entries** referencing removed code, branches, or features
-- Wiki-internal redundancy and broken links are not fixed here (that is [[Wiki Management]], consolidate / lint), but they are no longer dropped: each is filed as a `tech-debt` issue whose suggested fix names the right `/gaia-wiki` command, or, for a broken wikilink, which no `/gaia-wiki` check detects, the link to repoint.
+- Wiki-internal redundancy and broken links are not fixed here (that is [[Wiki Management]], consolidate / lint), but they are no longer dropped: each is filed as a `tech-debt` issue whose suggested fix names the right `/gaia-wiki` command, or, for a broken wikilink, which `/gaia-wiki` detects and fixes through its lint stage's check #17, `/gaia-wiki`.
 
 Guardrails and portability details live in `.claude/skills/gaia/references/audit.md`. Key invariants: Stage 2 never deletes unless Stage 1 named the wiki target; Stage 2 never runs `git add` / `git commit` (the main conversation's publish step commits after it returns); the audit files out-of-scope findings but never fixes them; reports gitignored under `.gaia/local/audit/`.
 

@@ -91,7 +91,7 @@ export const isReachable = (sha: string, cwd: string): boolean => {
  * not. It is an improvement, not a soundness proof — a sync run from a branch
  * that did not contain a trunk merge predating its own timestamp can still
  * leave that merge's contents outside the recovered window. That is the case
- * `/gaia-wiki sync`'s main-only rule already forbids, and the same case that
+ * `/gaia-wiki`'s main-only rule already forbids, and the same case that
  * orphans the marker to begin with.
  */
 export const ancestorBefore = (isoTimestamp: string, cwd: string): string => {

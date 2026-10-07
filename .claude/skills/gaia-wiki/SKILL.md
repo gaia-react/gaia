@@ -1,6 +1,6 @@
 ---
 name: gaia-wiki
-description: GAIA wiki maintenance, sync, consolidate, lint. Runs the full chain with no sub-arg, or a single stage when named (sync | consolidate | lint). Trigger on `/gaia-wiki <stage>` or natural-language asks like "sync the wiki", "run the wiki maintenance chain", "consolidate the wiki", or "lint the wiki".
+description: GAIA wiki maintenance. Runs the full wiki maintenance chain (sync, consolidate, lint with fixes) in one command. Trigger on `/gaia-wiki` or natural-language asks like "sync the wiki", "run wiki maintenance", "consolidate the wiki", or "lint the wiki".
 ---
 
 Run the GAIA **wiki** maintenance workflow with these arguments: `$ARGUMENTS`
@@ -18,4 +18,4 @@ gaia_refuse_if_worktree "/gaia-wiki" || exit 1
 
 If the detection does not fire, fall through to the workflow dispatch line below.
 
-Read `.claude/skills/gaia/references/wiki.md` from the project root and follow it exactly. That reference is written to consume an argument string, treat the arguments above as that input (a stage name such as `sync`, `consolidate`, or `lint`). If no arguments were provided, follow the reference's full-chain path.
+Read `.claude/skills/gaia/references/wiki.md` from the project root and follow it exactly. The reference takes no arguments; when arguments were given above, it prints one notice naming them and runs the full chain anyway.

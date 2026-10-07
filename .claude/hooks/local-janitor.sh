@@ -3,7 +3,7 @@
 # working state.
 #
 # Side-effect only. A wiki landing whose merge outlasts the CLI's own bounded
-# wait (`gaia wiki chain finish` / `wiki sync land` cuts a throwaway branch,
+# wait (`gaia wiki chain finish` cuts a throwaway branch,
 # pushes it, and enables auto-merge with `gh pr merge --auto`, a call that
 # returns BEFORE the merge lands) leaves both a local wiki/sync-<date>-<sha>
 # branch (or a legacy wiki-sync/<date>-<sha> one, the shape older CLIs cut)

@@ -508,10 +508,6 @@ chain_prefix() {
   sed -nE "s/^const WIKI_CHAIN_BRANCH_PREFIX = '([^']*)';\$/\\1/p" "$1"
 }
 
-land_prefix() {
-  sed -nE 's/^[[:space:]]*const branchName = `([^$`]*)\$\{.*$/\1/p' "$1"
-}
-
 forensics_prefix() {
   sed -nE 's/^[[:space:]]*branch="([^$"]*)\$\{ISSUE_NUMBER\}.*$/\1/p' "$1"
 }
@@ -527,28 +523,19 @@ prefix_conforms() {
   gaia_branch_validate "$sample" 2>/dev/null
 }
 
-@test "lockstep: the CLI wiki chain and sync-land mint one prefix, and it classifies and validates" {
-  local chain_value land_value
+@test "lockstep: the CLI wiki chain mints one prefix, and it classifies and validates" {
+  local chain_value
   chain_value="$(chain_prefix "$REPO_ROOT/.gaia/cli/src/wiki/chain.ts")"
-  land_value="$(land_prefix "$REPO_ROOT/.gaia/cli/src/wiki/sync-land.ts")"
   [ -n "$chain_value" ]
-  [ "$chain_value" = "$land_value" ] || {
-    printf 'chain.ts mints %s, sync-land.ts mints %s\n' "$chain_value" "$land_value" >&2
-    return 1
-  }
   prefix_conforms "$chain_value" "2026-09-20-abc1234"
   expect_classify "${chain_value}2026-09-20-abc1234" "maintenance sync-2026-09-20-abc1234"
 }
 
 @test "the wiki lockstep can fail: a source file with a different prefix literal is reported" {
-  local scratch_chain="$BATS_TEST_TMPDIR/chain.ts" scratch_land="$BATS_TEST_TMPDIR/sync-land.ts"
+  local scratch_chain="$BATS_TEST_TMPDIR/chain.ts"
   sed "s#WIKI_CHAIN_BRANCH_PREFIX = 'wiki/sync-'#WIKI_CHAIN_BRANCH_PREFIX = 'wiki-chain/'#" \
     "$REPO_ROOT/.gaia/cli/src/wiki/chain.ts" >"$scratch_chain"
-  sed 's#const branchName = `wiki/sync-#const branchName = `wiki-land/#' \
-    "$REPO_ROOT/.gaia/cli/src/wiki/sync-land.ts" >"$scratch_land"
   [ "$(chain_prefix "$scratch_chain")" = "wiki-chain/" ]
-  [ "$(land_prefix "$scratch_land")" = "wiki-land/" ]
-  [ "$(chain_prefix "$scratch_chain")" != "$(land_prefix "$scratch_land")" ]
   # A prefix the table does not know is refused by the same helper the real
   # lockstep calls.
   prefix_conforms "wiki-chain/" "2026-09-20-abc1234" && return 1

@@ -279,12 +279,21 @@ assert_wiki_icon() {
   grep -qF -- "🧠$1" <<<"$plain"
 }
 
-# Run the real CLI's `wiki sync land` in <directory>, with sleeps disabled.
-run_land() {
-  local directory="$1"
-  shift
+# Run the real CLI's chain landing in <directory> with sleeps disabled: begin,
+# one commit of the staged wiki change, then finish, stopping at the first
+# non-zero exit. <mode> is `--branch-aware` on main; empty on a feature branch,
+# where begin and finish are in-place no-ops.
+run_chain_landing() {
+  local directory="$1" mode="${2:-}"
   run env HOME="$TEMPORARY_HOME" NODE_OPTIONS="--require $NO_SLEEP" \
-    bash -c "cd '$directory' && '$REAL_GAIA' wiki sync land $*"
+    bash -c '
+      set -e
+      cd "$1"
+      "$2" wiki chain begin $3
+      short_head=$(git rev-parse --short HEAD)
+      "$2" wiki chain commit --label "wiki: sync through $short_head"
+      "$2" wiki chain finish $3
+    ' _ "$directory" "$REAL_GAIA" "$mode"
 }
 
 # Stage the change a sync makes: state advanced to the current HEAD.
@@ -512,7 +521,7 @@ refresh_within_ttl() {
   [ "$(cached_wiki_count)" = "99" ]
 }
 
-# ---------- UAT-006 through a real land ----------
+# ---------- UAT-006 through a real chain landing ----------
 
 # Seed the nudge at 20 and stage the state advance a sync makes.
 seed_nudge_and_stage_sync() {
@@ -535,11 +544,11 @@ assert_land_cleared_nudge() {
   [ "$(jq -r '.last_evaluated_sha' "$directory/wiki/.state.json")" = "$landed_sha" ]
 }
 
-@test "a real land on main clears the nudge and fast-forwards the main checkout's state" {
+@test "a real chain landing on main clears the nudge and fast-forwards the main checkout's state" {
   make_repo
   seed_nudge_and_stage_sync
   landed_sha=$(git -C "$REPOSITORY_FIXTURE" rev-parse HEAD)
-  run_land "$REPOSITORY_FIXTURE" --branch-aware
+  run_chain_landing "$REPOSITORY_FIXTURE" --branch-aware
   [ "$status" -eq 0 ]
   grep -qF -- "merged PR" <<<"$output"
   grep -qF -- "statuses/" "$GH_LOG"
@@ -547,23 +556,22 @@ assert_land_cleared_nudge() {
   assert_land_cleared_nudge "$REPOSITORY_FIXTURE" "$landed_sha"
 }
 
-@test "a real land on a feature branch clears the nudge" {
+@test "a real chain landing on a feature branch clears the nudge" {
   make_repo
   git -C "$REPOSITORY_FIXTURE" checkout --quiet -b feature
   seed_nudge_and_stage_sync
   landed_sha=$(git -C "$REPOSITORY_FIXTURE" rev-parse HEAD)
-  run_land "$REPOSITORY_FIXTURE"
+  run_chain_landing "$REPOSITORY_FIXTURE"
   [ "$status" -eq 0 ]
-  grep -qF -- "in-place commit" <<<"$output"
+  grep -qF -- "chain commit: wiki: sync through" <<<"$output"
   git -C "$REPOSITORY_FIXTURE" log -1 --format=%s | grep -q '^wiki: sync through '
   assert_land_cleared_nudge "$REPOSITORY_FIXTURE" "$landed_sha"
 }
 
-@test "a deferred land leaves the nudge showing after the refresher runs" {
+@test "a deferred chain landing leaves the nudge showing after the refresher runs" {
   make_repo
   seed_nudge_and_stage_sync
-  run env MOCK_GH_MERGE=defer HOME="$TEMPORARY_HOME" NODE_OPTIONS="--require $NO_SLEEP" \
-    bash -c "cd '$REPOSITORY_FIXTURE' && '$REAL_GAIA' wiki sync land --branch-aware"
+  MOCK_GH_MERGE=defer run_chain_landing "$REPOSITORY_FIXTURE" --branch-aware
   [ "$status" -eq 0 ]
   grep -qF -- "auto-merge queued" <<<"$output"
   [ "$(jq -r '.checkedAt' "$REPOSITORY_FIXTURE/.gaia/local/cache/shared/update-check.json")" = "0" ]
@@ -573,12 +581,12 @@ assert_land_cleared_nudge() {
   assert_wiki_nudge 20
 }
 
-# A protected-branch land runs where its branch is checked out. `main` cannot be
+# A protected-branch landing runs where its branch is checked out. `main` cannot be
 # checked out in two trees, so the main checkout parks on `holding` and a linked
 # worktree takes `main`. The CLI fast-forwards the worktree's `main`, never the
 # main checkout, so the refresher's answer, a main-checkout fact, clears only
 # once the main checkout itself catches up.
-@test "a real land from a linked worktree invalidates the shared cache and clears once the main checkout catches up" {
+@test "a real chain landing from a linked worktree invalidates the shared cache and clears once the main checkout catches up" {
   make_repo
   add_drift 20
   git -C "$REPOSITORY_FIXTURE" checkout --quiet -b holding
@@ -589,7 +597,7 @@ assert_land_cleared_nudge() {
 
   stage_state_advance "${REPOSITORY_FIXTURE}-wt"
   landed_sha=$(git -C "${REPOSITORY_FIXTURE}-wt" rev-parse HEAD)
-  run_land "${REPOSITORY_FIXTURE}-wt" --branch-aware
+  run_chain_landing "${REPOSITORY_FIXTURE}-wt" --branch-aware
   [ "$status" -eq 0 ]
   [ "$(jq -r '.checkedAt' "$REPOSITORY_FIXTURE/.gaia/local/cache/shared/update-check.json")" = "0" ]
   [ "$(jq -r '.last_evaluated_sha' "${REPOSITORY_FIXTURE}-wt/wiki/.state.json")" = "$landed_sha" ]

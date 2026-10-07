@@ -177,8 +177,8 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[GAIA Handoff]]: `/gaia-handoff`: session handoff doc.
 - [[GAIA Pickup]]: `/gaia-pickup`: resume from the latest handoff.
 - [[GAIA Audit]]: `/gaia-audit`: two-stage knowledge-store hygiene sweep.
-- [[Wiki Sync]]: `/gaia-wiki sync` and the statusline drift nudge: keep the wiki convergent with code without spawned sub-Claudes.
-- [[Wiki Consolidate]]: `/gaia-wiki consolidate`: cross-SPEC redundancy and contradiction audit; surfaces supersession candidates, reversed decisions, near-collision slugs, and subject-orphans.
+- [[Wiki Sync]]: the sync stage of `/gaia-wiki` and the statusline drift nudge: keep the wiki convergent with code without spawned sub-Claudes.
+- [[Wiki Consolidate]]: the consolidate stage of `/gaia-wiki`: cross-SPEC redundancy and contradiction audit; surfaces supersession candidates, reversed decisions, near-collision slugs, and subject-orphans.
 - [[GAIA Init Workflow]]: `/gaia init` subcommands: strip-branding, configure-i18n, rename, wire-statusline, write-project-config, finalize, resume.
 - [[GAIA CLI]]: the `.gaia/cli/` workspace, the `.gaia/cli/gaia` bundled binary, and the adoption ping (`gaia ping`) sent on `/gaia-init`, `/setup-gaia`, and `/update-gaia` completion.
 - [[Token Cost Readout]]: per-action token-to-dollar pricing off one shared pricing lib; the `by_model` field, the machine-local rate table seeded from the distributed `token-rates.json` and healed from the public feed, the roll-up's read-time dollar block, and the tally's own per-phase `dollars` snapshot in the `cost.json` sidecar record, each with its degrade markers.
