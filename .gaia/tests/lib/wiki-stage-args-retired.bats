@@ -16,6 +16,8 @@
 # forms below are written as literals on purpose: an allowlist entry for this
 # file must match a hit, so the suite carries the forms it forbids.
 
+# bats file_tags=whole-tree
+
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   ALLOWLIST="$REPO_ROOT/.gaia/tests/fixtures/wiki-stage-args-retired.allowlist"
