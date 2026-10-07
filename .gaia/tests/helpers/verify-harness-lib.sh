@@ -18,7 +18,9 @@
 #   base_worktree_map_file   "<merge-base> <path>" for each base worktree
 #   skipped_list_file        "<label>: <reason>" per SKIP, for the pass record
 #   preexisting_list_file    "<label>" per PRE-EXISTING, for the pass record
+#   flaky_list_file          "<suite path>: <test name>" per FLAKY, for the record
 #   new_failure_count        checks with at least one failure absent on the base
+#   jq_missing, rsync_missing  the runner's tool probes, read by the distribution step
 #
 # Pre-existing classification never downgrades on doubt: an item counts as
 # reproduced only when the merge-base re-run positively shows it. A suite
@@ -327,4 +329,45 @@ verify_run_check() {
   fi
   verify_report_outcome "$label" "$elapsed" "$head_items" "$base_items" "$base_status" "$base_elapsed" \
     "$short_base" "$output_file" "$reproduce_prefix$(verify_reproduce_for "$kind")"
+}
+
+tool_missing() {
+  ! command -v "$1" >/dev/null 2>&1
+}
+warn_missing_tool() {
+  printf 'WARN  %s not found: install with %s; CI remains the only check for %s\n' "$1" "$2" "$3"
+}
+
+# verify_maintainer_binary_missing <tree>: warn when the tree cannot build a
+# staging tree.
+verify_maintainer_binary_missing() {
+  [ -x "$1/.gaia/cli/gaia-maintainer" ] && return 1
+  warn_missing_tool .gaia/cli/gaia-maintainer 'pnpm -C .gaia/cli bundle' \
+    'release-scrub leak check, 01-files-present, 03-marker-strip'
+  return 0
+}
+
+# verify_run_distribution <tree> <merge-base|""> <label-suffix> <reproduce-prefix> <binary-missing>
+verify_run_distribution() {
+  local tree="$1" merge_base="$2" label_suffix="$3" reproduce_prefix="$4" binary_missing="$5" reason="" kind
+  [ "$rsync_missing" -eq 1 ] && reason="rsync not found"
+  [ "$binary_missing" -eq 1 ] && reason=".gaia/cli/gaia-maintainer not found or not executable"
+  if [ -n "$reason" ]; then
+    for kind in leak files-present marker-strip; do
+      verify_skip "$(verify_label_for "$kind")$label_suffix" "$reason"
+    done
+    return
+  fi
+  verify_run_check leak "$tree" "$merge_base" "$label_suffix" "$reproduce_prefix"
+  if [ "$verify_last_check_status" -ne 0 ]; then
+    verify_skip "01-files-present$label_suffix" "staging build failed (see release-scrub leak check)"
+    verify_skip "03-marker-strip$label_suffix" "staging build failed (see release-scrub leak check)"
+    return
+  fi
+  if [ "$jq_missing" -eq 1 ]; then
+    verify_skip "01-files-present$label_suffix" "jq not found"
+  else
+    verify_run_check files-present "$tree" "$merge_base" "$label_suffix" "$reproduce_prefix"
+  fi
+  verify_run_check marker-strip "$tree" "$merge_base" "$label_suffix" "$reproduce_prefix"
 }

@@ -127,6 +127,8 @@ source_pass_record_helper() {
   has_line '^FAIL  bats selected \([0-9]+s\)$'
   block_after 'FAIL  bats selected' | grep -qF 'suites/x.bats: x input'
   has '  reproduce: bash .gaia/scripts/bats5.sh suites/x.bats < /dev/null'
+  # Both fail again when re-run alone at HEAD, so neither is flaky.
+  lacks 'FLAKY'
   [ ! -e "$VHF_RECORD" ]
 
   vhf_control x-input ""
@@ -137,6 +139,45 @@ source_pass_record_helper() {
   no_fail_line
   [ "$(jq -r .head "$VHF_RECORD")" = "$(vhf_git rev-parse HEAD)" ]
   [ "$(jq -c .preexisting "$VHF_RECORD")" = '["bats whole-tree"]' ]
+}
+
+# write_flaky_suite: a whole-tree suite whose one test fails on its first
+# attempt in a run and passes on any later one, the shape of a wall-clock
+# budget test that fails under parallel load and passes alone.
+write_flaky_suite() {
+  {
+    printf '#!/usr/bin/env bats\n'
+    printf '# bats %s\n' 'file_tags=whole-tree'
+    printf '@test "flaky budget" {\n'
+    printf '  attempts="${VERIFY_FIXTURE_LOG%%/*}/flaky-attempts"\n'
+    printf '  if [ ! -e "$attempts" ]; then : >"$attempts"; return 1; fi\n'
+    printf '}\n'
+  } >"$VHF_ROOT/suites/flaky.bats"
+}
+
+@test "a test that fails under load and passes alone is flaky, recorded, and does not fail the run" {
+  fixture
+  write_flaky_suite
+  vhf_commit "a load-sensitive whole-tree suite"
+  run_runner branch
+  [ "$status" -eq 0 ]
+  local pass_line flaky_line
+  pass_line="$(grep -n '^PASS  bats whole-tree ([0-9]*s)$' <<<"$output" | cut -d: -f1)"
+  flaky_line="$(grep -nxF 'FLAKY  bats whole-tree: suites/flaky.bats: flaky budget failed under parallel load and passed when re-run alone' <<<"$output" | cut -d: -f1)"
+  [ -n "$pass_line" ] && [ -n "$flaky_line" ]
+  [ "$flaky_line" -eq $((pass_line + 1)) ]
+  no_fail_line
+  lacks 'PRE-EXISTING'
+  [ "$(jq -c .flaky "$VHF_RECORD")" = '["suites/flaky.bats: flaky budget"]' ]
+  [ "$(jq -r .head "$VHF_RECORD")" = "$(vhf_git rev-parse HEAD)" ]
+
+  # Round mode, where the new suite is the HEAD commit's selection.
+  rm -f "$BATS_TEST_TMPDIR/flaky-attempts"
+  run_runner round
+  [ "$status" -eq 0 ]
+  has 'FLAKY  bats selected: suites/flaky.bats: flaky budget failed under parallel load and passed when re-run alone'
+  has_line '^PASS  bats selected \([0-9]+s\)$'
+  no_fail_line
 }
 
 @test "a new failing test in a suite main already fails is reported, not masked" {
@@ -151,6 +192,7 @@ source_pass_record_helper() {
   [ "$status" -eq 1 ]
   block_after 'PRE-EXISTING  bats whole-tree' | grep -qxF '  suites/whole.bats: whole one'
   block_after 'PRE-EXISTING  bats whole-tree' | grep -qF 'whole two' && return 1
+  lacks 'FLAKY'
   has_line '^FAIL  bats whole-tree \([0-9]+s\)$'
   block_after 'FAIL  bats whole-tree' | grep -qxF '  suites/whole.bats: whole two'
   # The base re-run ran only the failing names, in the base worktree.

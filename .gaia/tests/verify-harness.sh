@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# File-wide: the verify_* globals come from the sourced private library, and
-# the single-quoted jq program and reproduce text are jq or shell text printed
-# for a person, not expansions here.
-# shellcheck disable=SC2154,SC2016
+# File-wide: the verify_* globals come from the sourced private library, the
+# probe flags set here are read there, and the single-quoted jq program and
+# reproduce text are jq or shell text printed for a person, not expansions.
+# shellcheck disable=SC2154,SC2016,SC2034
 # verify-harness.sh: run the checks that turn a maintainer pull request red on
 # CI before the push or the audit dispatch, not after.
 #
@@ -25,6 +25,18 @@
 # ("main is red") and does not fail the run. The ref is never fetched; a
 # missing one is a WARN naming `git fetch origin main`, and then every failure
 # counts as new.
+#
+# A failing bats test is first re-run alone at HEAD, in the same tree, filtered
+# to the failing names the way the base re-run is. A wall-clock budget suite
+# can fail under the step's parallel load and pass alone, while the base
+# re-run always runs alone, so without this a load flake would read as new.
+# A test the isolated report shows passing prints
+#   FLAKY  <label>: <suite path>: <test name> failed under parallel load and passed when re-run alone
+# goes into the pass record's `flaky` array, and does not fail the run. A step
+# whose only failures were flaky prints its PASS line followed by its FLAKY
+# lines. A test that fails again alone, or whose isolated re-run produced no
+# report or did not run it, goes on to the merge-base comparison unchanged:
+# a missing signal never downgrades a failure.
 #
 # A missing tool skips only the steps that need it, with a WARN naming the
 # install command; a skipped step never prints PASS.
@@ -125,11 +137,13 @@ symlink_list_file="$run_temporary_directory/symlinks"
 base_worktree_map_file="$run_temporary_directory/base-worktrees"
 skipped_list_file="$run_temporary_directory/skipped"
 preexisting_list_file="$run_temporary_directory/preexisting"
+flaky_list_file="$run_temporary_directory/flaky"
 : >"$worktree_list_file"
 : >"$symlink_list_file"
 : >"$base_worktree_map_file"
 : >"$skipped_list_file"
 : >"$preexisting_list_file"
+: >"$flaky_list_file"
 new_failure_count=0
 
 # Invoked through the EXIT trap.
@@ -178,12 +192,6 @@ if [ "$mode" = branch ]; then
 fi
 
 # Tool probes, before any check runs.
-tool_missing() {
-  ! command -v "$1" >/dev/null 2>&1
-}
-warn_missing_tool() {
-  printf 'WARN  %s not found: install with %s; CI remains the only check for %s\n' "$1" "$2" "$3"
-}
 shellcheck_missing=0
 jq_missing=0
 rsync_missing=0
@@ -208,40 +216,6 @@ if [ "$mode" != push ] && tool_missing bats; then
   bats_missing=1
   warn_missing_tool bats 'brew install bats-core' 'bats whole-tree, bats selected'
 fi
-
-# verify_maintainer_binary_missing <tree>: warn when the tree cannot build a
-# staging tree.
-verify_maintainer_binary_missing() {
-  [ -x "$1/.gaia/cli/gaia-maintainer" ] && return 1
-  warn_missing_tool .gaia/cli/gaia-maintainer 'pnpm -C .gaia/cli bundle' \
-    'release-scrub leak check, 01-files-present, 03-marker-strip'
-  return 0
-}
-
-# verify_run_distribution <tree> <merge-base|""> <label-suffix> <reproduce-prefix> <binary-missing>
-verify_run_distribution() {
-  local tree="$1" merge_base="$2" label_suffix="$3" reproduce_prefix="$4" binary_missing="$5" reason="" kind
-  [ "$rsync_missing" -eq 1 ] && reason="rsync not found"
-  [ "$binary_missing" -eq 1 ] && reason=".gaia/cli/gaia-maintainer not found or not executable"
-  if [ -n "$reason" ]; then
-    for kind in leak files-present marker-strip; do
-      verify_skip "$(verify_label_for "$kind")$label_suffix" "$reason"
-    done
-    return
-  fi
-  verify_run_check leak "$tree" "$merge_base" "$label_suffix" "$reproduce_prefix"
-  if [ "$verify_last_check_status" -ne 0 ]; then
-    verify_skip "01-files-present$label_suffix" "staging build failed (see release-scrub leak check)"
-    verify_skip "03-marker-strip$label_suffix" "staging build failed (see release-scrub leak check)"
-    return
-  fi
-  if [ "$jq_missing" -eq 1 ]; then
-    verify_skip "01-files-present$label_suffix" "jq not found"
-  else
-    verify_run_check files-present "$tree" "$merge_base" "$label_suffix" "$reproduce_prefix"
-  fi
-  verify_run_check marker-strip "$tree" "$merge_base" "$label_suffix" "$reproduce_prefix"
-}
 
 if [ "$mode" = push ]; then
   pushed_count="${#pushed_shas[@]}"
@@ -415,9 +389,11 @@ if [ "$mode" = branch ]; then
         --arg written_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
         --rawfile skipped "$skipped_list_file" \
         --rawfile preexisting "$preexisting_list_file" \
+        --rawfile flaky "$flaky_list_file" \
         '{schema: 1, branch: $branch, head: $head, written_at: $written_at,
           skipped: ($skipped | split("\n") | map(select(length > 0))),
-          preexisting: ($preexisting | split("\n") | map(select(length > 0)))}' >"$record_temporary" \
+          preexisting: ($preexisting | split("\n") | map(select(length > 0))),
+          flaky: ($flaky | split("\n") | map(select(length > 0)))}' >"$record_temporary" \
       && mv -f "$record_temporary" "$record_path"; then
       printf 'Pass record written: %s\n' "$record_path"
     else

@@ -13,6 +13,7 @@ verify_whole_tree_mark_pattern='^# bats file_tags=([^,]*,)*whole-tree(,|$)'
 
 # verify_junit <mode> <suites-file> <report-file>
 #   failures: "<suite path>\t<test name>" per failing testcase
+#   passes:   "<suite path>\t<test name>" per testcase that ran and passed
 #   missing:  each suite with no testsuite entry in the report
 # The report names a suite relative to the common directory of the suites run
 # and a testcase by its classname, so a failure maps back to its suite path
@@ -49,15 +50,18 @@ verify_junit() {
     /<testsuite / { reported[unescape(attribute($0, "name"))] = 1 }
     /<testcase / {
       classname = unescape(attribute($0, "classname")); test_name = unescape(attribute($0, "name"))
-      open = ($0 !~ /\/>[[:space:]]*$/); failed = 0; failure_path = ""
+      open = ($0 !~ /\/>[[:space:]]*$/); failed = 0; skipped = 0; failure_path = ""
+      if (!open && mode == "passes") print suite_for(classname, "") "\t" test_name
     }
     open && (/<failure/ || /<error/) { failed = 1 }
+    open && /<skipped/ { skipped = 1 }
     open && failed && failure_path == "" && match($0, /in test file [^,]*, line/) {
       failure_path = unescape(substr($0, RSTART + 13, RLENGTH - 19))
     }
     /<\/testcase>/ {
       if (open && failed && mode == "failures") print suite_for(classname, failure_path) "\t" test_name
-      open = 0; failed = 0
+      if (open && !failed && !skipped && mode == "passes") print suite_for(classname, "") "\t" test_name
+      open = 0; failed = 0; skipped = 0
     }
     END {
       if (mode != "missing") exit
@@ -91,12 +95,61 @@ verify_escape_regex() {
   printf '%s\n' "$1" | sed -e 's/[][\.^$*+?(){}|]/\\&/g'
 }
 
+# verify_name_filter <failures-file>: one anchored --filter over every failing
+# test name, so a re-run runs exactly those tests and nothing else.
+verify_name_filter() {
+  local test_name filter=""
+  while IFS= read -r test_name; do
+    filter="$filter${filter:+|}$(verify_escape_regex "$test_name")"
+  done < <(awk -F'\t' '{ print $2 }' "$1" | LC_ALL=C sort -u)
+  printf '^(%s)$\n' "$filter"
+}
+
+# verify_isolate_flaky <tree> <failures-file> <head-items> <flaky-items>
+# Re-runs the failing names alone at HEAD, in the same tree, the way the base
+# re-run runs them. A wall-clock budget test can fail under the step's parallel
+# load and pass alone, and comparing that load failure with a base re-run that
+# runs alone would read a flake as new. A test is flaky only when the isolated
+# report shows it ran and passed; one that fails again, was not run, or sits
+# in a report that never appeared stays a failure. Flaky tests go to
+# <flaky-items> and leave the failures and head-items files, edited in place.
+verify_isolate_flaky() {
+  local tree="$1" failures_file="$2" head_items="$3" flaky_items="$4"
+  local isolated_suites isolated_report isolated_output isolated_error passed_items
+  isolated_suites="$(mktemp "$run_temporary_directory/suites.XXXXXX")"
+  isolated_report="$(mktemp -d "$run_temporary_directory/junit.XXXXXX")"
+  isolated_output="$(mktemp "$run_temporary_directory/output.XXXXXX")"
+  isolated_error="$(mktemp "$run_temporary_directory/error.XXXXXX")"
+  passed_items="$(mktemp "$run_temporary_directory/items.XXXXXX")"
+  awk -F'\t' '{ print $1 }' "$failures_file" | LC_ALL=C sort -u >"$isolated_suites"
+  verify_invoke_bats "$tree" "$isolated_suites" "$isolated_report" "$isolated_output" "$isolated_error" \
+    "$(verify_name_filter "$failures_file")"
+  verify_junit passes "$isolated_suites" "$isolated_report/report.xml" \
+    | awk -F'\t' '{ print $1 ": " $2 }' | LC_ALL=C sort -u >"$passed_items"
+  LC_ALL=C comm -12 "$head_items" "$passed_items" >"$flaky_items"
+  [ -s "$flaky_items" ] || return 0
+  cat "$flaky_items" >>"$flaky_list_file"
+  LC_ALL=C comm -23 "$head_items" "$flaky_items" >"$head_items.kept"
+  mv "$head_items.kept" "$head_items"
+  awk -F'\t' 'FNR == NR { flaky[$0] = 1; next } !(($1 ": " $2) in flaky)' "$flaky_items" "$failures_file" \
+    >"$failures_file.kept"
+  mv "$failures_file.kept" "$failures_file"
+}
+
+# verify_print_flaky <label> <flaky-items>: one loud line per flaky test.
+verify_print_flaky() {
+  local flaky_item
+  while IFS= read -r flaky_item; do
+    printf 'FLAKY  %s: %s failed under parallel load and passed when re-run alone\n' "$1" "$flaky_item"
+  done <"$2"
+}
+
 # verify_run_bats_step <label> <tree> <suites-file> <merge-base|"">
 verify_run_bats_step() {
   local label="$1" tree="$2" suites_file="$3" merge_base="$4"
   local report_directory output_file error_file status start_seconds elapsed failures_file
   local head_items base_items base_tree base_suites base_report base_output base_error base_status=""
-  local base_elapsed=0 short_base="" suite_path test_name filter="" load_failure=0 reproduce_suites
+  local base_elapsed=0 short_base="" suite_path filter="" load_failure=0 reproduce_suites flaky_items
   report_directory="$(mktemp -d "$run_temporary_directory/junit.XXXXXX")"
   output_file="$(mktemp "$run_temporary_directory/output.XXXXXX")"
   error_file="$(mktemp "$run_temporary_directory/error.XXXXXX")"
@@ -123,6 +176,16 @@ verify_run_bats_step() {
     awk '{ print $0 ": suite failed to run (see bats output)" }' "$failures_file" | LC_ALL=C sort -u >"$head_items"
     cat "$error_file" >>"$output_file"
   fi
+  flaky_items="$(mktemp "$run_temporary_directory/items.XXXXXX")"
+  # A load failure names no test to re-run alone, so it goes straight to the
+  # base comparison.
+  [ "$load_failure" -eq 0 ] && verify_isolate_flaky "$tree" "$failures_file" "$head_items" "$flaky_items"
+  if [ ! -s "$head_items" ]; then
+    printf 'PASS  %s (%ss)\n' "$label" "$elapsed"
+    verify_print_flaky "$label" "$flaky_items"
+    return 0
+  fi
+  verify_print_flaky "$label" "$flaky_items"
   verify_no_base_reason="no merge base with refs/remotes/origin/main"
   if [ -n "$merge_base" ]; then
     if base_tree="$(verify_base_worktree "$merge_base")"; then
@@ -135,12 +198,7 @@ verify_run_bats_step() {
       awk -F'\t' '{ print $1 }' "$failures_file" | LC_ALL=C sort -u | while IFS= read -r suite_path; do
         [ -f "$base_tree/$suite_path" ] && printf '%s\n' "$suite_path"
       done >"$base_suites"
-      if [ "$load_failure" -eq 0 ]; then
-        while IFS= read -r test_name; do
-          filter="$filter${filter:+|}$(verify_escape_regex "$test_name")"
-        done < <(awk -F'\t' '{ print $2 }' "$failures_file" | LC_ALL=C sort -u)
-        filter="^($filter)\$"
-      fi
+      [ "$load_failure" -eq 0 ] && filter="$(verify_name_filter "$failures_file")"
       if [ -s "$base_suites" ]; then
         start_seconds="$SECONDS"
         verify_invoke_bats "$base_tree" "$base_suites" "$base_report" "$base_output" "$base_error" "$filter"
