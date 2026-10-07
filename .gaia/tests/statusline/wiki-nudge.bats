@@ -477,6 +477,41 @@ stage_state_advance() {
   assert_wiki_nudge 20
 }
 
+# Run the refresher without staling the cache first, so the TTL gate decides.
+refresh_within_ttl() {
+  run env HOME="$TEMPORARY_HOME" bash "$REPOSITORY_FIXTURE/.gaia/scripts/check-updates.sh"
+  [ "$status" -eq 0 ]
+}
+
+# The main checkout's state file can advance by any route (a hand `git pull`,
+# a merge cleanup), none of which touches the cache, so the gate itself must
+# notice: a cache computed against an older state is stale whatever its age.
+@test "a state file advanced under a fresh cache clears the nudge with no invalidation" {
+  make_repo
+  add_drift 20
+  refresh
+  render_fix
+  assert_wiki_nudge 20
+
+  write_state "$(git -C "$REPOSITORY_FIXTURE" rev-parse HEAD)"
+  git -C "$REPOSITORY_FIXTURE" add wiki/.state.json
+  git -C "$REPOSITORY_FIXTURE" commit --quiet -m "wiki: sync through $(git -C "$REPOSITORY_FIXTURE" rev-parse --short HEAD)"
+  refresh_within_ttl
+  [ "$(cached_wiki_count)" -lt 20 ]
+  render_fix
+  assert_no_wiki_nudge
+}
+
+@test "a fresh cache whose wiki state is unchanged is held by the TTL" {
+  make_repo
+  add_drift 20
+  refresh
+  local cache="$REPOSITORY_FIXTURE/.gaia/local/cache/shared/update-check.json"
+  jq '.wikiDriftCount = 99' "$cache" > "$cache.tmp" && mv "$cache.tmp" "$cache"
+  refresh_within_ttl
+  [ "$(cached_wiki_count)" = "99" ]
+}
+
 # ---------- UAT-006 through a real land ----------
 
 # Seed the nudge at 20 and stage the state advance a sync makes.
