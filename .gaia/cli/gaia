@@ -16984,7 +16984,6 @@ var ClassSummarySchema = external_exports.object({
 });
 var ReviewSnapshotSchema = external_exports.object({
   version: external_exports.literal(1),
-  // eslint-disable-next-line perfectionist/sort-objects -- serialization order load-bearing, version-first
   audited_pr_count: external_exports.number().int().nonnegative(),
   classes: external_exports.record(external_exports.string().min(1), ClassSummarySchema),
   reviewed_at: external_exports.iso.datetime(),
@@ -17053,7 +17052,6 @@ var snapshotFromTally = (tally, now) => {
   }
   return {
     version: 1,
-    // eslint-disable-next-line perfectionist/sort-objects -- serialization order load-bearing, version-first
     audited_pr_count: tally.audited_pr_count,
     classes,
     reviewed_at: now.toISOString(),

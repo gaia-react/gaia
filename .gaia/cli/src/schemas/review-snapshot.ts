@@ -32,9 +32,9 @@ const ClassSummarySchema = z.object({
 
 // `version` is declared first so JSON serialization emits it first, matching
 // the ledger schemas' frozen shape convention.
+/* eslint-disable perfectionist/sort-objects -- serialization order load-bearing, version-first */
 export const ReviewSnapshotSchema = z.object({
   version: z.literal(1),
-  // eslint-disable-next-line perfectionist/sort-objects -- serialization order load-bearing, version-first
   audited_pr_count: z.number().int().nonnegative(),
   classes: z.record(z.string().min(1), ClassSummarySchema),
   reviewed_at: z.iso.datetime(),
@@ -42,6 +42,7 @@ export const ReviewSnapshotSchema = z.object({
   unclassified: ClassSummarySchema.nullable(),
   window_days: z.number().int().positive(),
 });
+/* eslint-enable perfectionist/sort-objects */
 
 export type ReadReviewSnapshotResult =
   | {error: string; status: 'malformed'}
@@ -140,9 +141,9 @@ export const snapshotFromTally = (
     };
   }
 
+  /* eslint-disable perfectionist/sort-objects -- serialization order load-bearing, version-first */
   return {
     version: 1,
-    // eslint-disable-next-line perfectionist/sort-objects -- serialization order load-bearing, version-first
     audited_pr_count: tally.audited_pr_count,
     classes,
     reviewed_at: now.toISOString(),
@@ -156,4 +157,5 @@ export const snapshotFromTally = (
         },
     window_days: tally.window_days,
   };
+  /* eslint-enable perfectionist/sort-objects */
 };
