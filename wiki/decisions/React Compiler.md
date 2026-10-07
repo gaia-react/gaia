@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-10-05
 created: 2026-10-05
-updated: 2026-10-05
+updated: 2026-10-07
 tags: [decision, react, compiler, build, performance]
 ---
 
@@ -51,7 +51,7 @@ Every GAIA-owned component and hook the client build loads compiles in the build
 
 Preconditions: React 19 or later, `@vitejs/plugin-react` 6.x, and no `react()` call in your app config.
 
-1. Install the dev dependencies at the versions GAIA pins: `pnpm --dir frontend add -D babel-plugin-react-compiler@1.0.0 @rolldown/plugin-babel@0.2.4 @babel/core@7.29.7`.
+1. Install the dev dependencies at the versions GAIA pins: `pnpm --dir frontend add -D babel-plugin-react-compiler@1.0.0 @rolldown/plugin-babel@0.2.4 @babel/core@8.0.6`.
 2. Grep your code for react-hooks `eslint-disable` comments and rule overrides. The compiler can change behavior for code that evades those rules.
 3. Run `pnpm lint`.
 4. Run the build once with `GAIA_REACT_COMPILER_REPORT` set and review skipped or failed files.
