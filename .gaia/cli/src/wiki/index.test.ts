@@ -14,6 +14,7 @@ const EXPECTED_SUBCOMMANDS = [
   'dead-paths',
   'frontmatter',
   'empty-sections',
+  'broken-links',
   'chain',
 ];
 

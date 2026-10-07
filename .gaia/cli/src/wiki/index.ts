@@ -7,6 +7,7 @@
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {lookupOwn} from '../util/argv.js';
+import {run as runBrokenLinks} from './broken-links.js';
 import {run as runChain} from './chain.js';
 import {run as runCommitClassify} from './commit-classify.js';
 import {run as runDeadPaths} from './dead-paths.js';
@@ -34,7 +35,8 @@ const HELP_TEXT = `Usage: gaia wiki <subcommand> [args]
   dead-paths [--json]                         Backticked repo paths in wiki/ that don't exist.
   frontmatter [--json]                        Pages missing required frontmatter (type, status).
   empty-sections [--json]                     Headings with no content before the next heading.
-  chain <begin|commit|finish>                 One-branch / one-PR orchestration of the
+  broken-links [--json]                       Wikilinks whose target page does not exist.
+  chain <begin|commit|finish>               One-branch / one-PR orchestration of the
                                               full /gaia-wiki chain.
 `;
 
@@ -45,6 +47,7 @@ type SubcommandHandler = (args: readonly string[]) => number | Promise<number>;
 const SUBCOMMAND_HANDLERS: Readonly<
   Partial<Record<string, SubcommandHandler>>
 > = {
+  'broken-links': runBrokenLinks,
   chain: runChain,
   'commit-classify': runCommitClassify,
   'dead-paths': runDeadPaths,
