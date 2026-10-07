@@ -286,6 +286,11 @@
             "type": "command",
             "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-audit-loop-write.sh\"",
             "statusMessage": "Checking audit loop state guard…"
+          },
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-invalid-pr-title.sh\"",
+            "statusMessage": "Checking PR title…"
           }
         ]
       },

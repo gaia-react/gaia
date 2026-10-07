@@ -10,7 +10,7 @@ tags: [decision, git, conventions]
 
 # Decision: Naming Conventions
 
-Commit subjects, PR titles, and branch names follow one convention, enforced by tooling at three points so a person or Claude never has to remember it. This page is where the convention is read; each file it points at owns the detail.
+Commit subjects, PR titles, and branch names follow one convention, enforced by the tooling under Enforcement below so a person or Claude never has to remember it. This page is where the convention is read; each file it points at owns the detail.
 
 ## Commits and PR titles
 
@@ -20,7 +20,7 @@ Conventional Commits 1.0.0: `type(scope)!: summary`, a lowercase imperative summ
 - **Scope.** Optional, lowercase kebab, open vocabulary.
 - **Breaking change.** `!` after the type or scope, plus a `BREAKING CHANGE:` footer.
 - **Issue links.** `Closes #N` belongs in the PR body only. A squash merge concatenates commit bodies into the merge message, and GitHub closes issues from that message.
-- **PR title.** The title becomes the squash subject on `main` with ` (#N)` appended, which is why the CI check lints that exact string. Dependabot's titles are exempt from the title lint.
+- **PR title.** The title becomes the squash subject on `main` with ` (#N)` appended, which is why the CI check lints that exact string. The suffix counts toward the 100: with a four-digit PR number a title has 92 characters, so a commit subject reused as the title can pass the commit-msg hook and still fail CI. Dependabot's titles are exempt from the title lint.
 
 ## Type versus branch prefix
 
@@ -41,6 +41,7 @@ The harness names a worktree branch `worktree-<name>` with each `/` in the name 
 ## Enforcement
 
 - `.githooks/commit-msg`: local, every commit; refuses a message that does not conform and names this page.
+- `.claude/hooks/block-invalid-pr-title.sh`: local, before Claude opens or retitles a PR; runs the same commitlint on the title with its ` (#N)` suffix.
 - `.github/workflows/pr-conventions.yml` (`PR Conventions`): lints the PR title and validates the head branch, with a canary that proves the commitlint config is live so an inert config cannot pass the check. The job is advisory.
 - `.gaia/scripts/branch-name-lib.sh validate <branch>`: the branch rules, run by the workflow and callable by hand.
 
