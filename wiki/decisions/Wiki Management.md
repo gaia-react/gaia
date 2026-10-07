@@ -42,6 +42,8 @@ The wiki is critical infrastructure; it decays when drift between code and docum
 
 Standalone `/gaia-wiki sync`, `/gaia-wiki consolidate`, and `/gaia-wiki lint` are unaffected; the chain commands are invoked only by the no-arg `/gaia-wiki` full-chain wrapper.
 
+`/gaia-wiki lint` fixes what it finds, standalone and in the chain. After the detection subagent writes its report, a parent-side fix loop resolves each finding (mechanically where one answer is right, by asking where the fix needs judgment), files the narrative-ref findings in instruction files as tech-debt because `chain commit` refuses non-wiki changes, then re-runs detection so the report describes the fixed wiki. In the chain, the fixes and the final report land in the lint commit, so `finish` opens a PR on a wiki that is clean or whose remaining findings the user explicitly accepted. The loop's rules live in `.claude/skills/gaia/references/wiki/lint-fix.md`.
+
 <!-- gaia:maintainer-only:start -->
 ## Shipped-surface boundary check
 

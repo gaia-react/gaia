@@ -125,7 +125,7 @@ GAIA ships a complete, opinionated Claude Code workflow. Everything is wired in 
 <tr><td><code>/gaia-handoff</code></td><td>Generate a comprehensive session handoff document so you can clear context with confidence that nothing gets lost</td></tr>
 <tr><td><code>/gaia-pickup</code></td><td>Restore context from a handoff and continue work</td></tr>
 <tr><td><code>/gaia-audit</code></td><td>Audit memory, wiki, and autoloaded files for duplication, conflicting instructions, and bloat</td></tr>
-<tr><td><code>/gaia-wiki</code></td><td>Run the full wiki maintenance chain: sync new commits into wiki pages, consolidate redundant or superseded content, then lint for orphans, dead links, and drift</td></tr>
+<tr><td><code>/gaia-wiki</code></td><td>Run the full wiki maintenance chain: sync new commits into wiki pages, consolidate redundant or superseded content, then lint for orphans, dead links, and drift and fix what it finds</td></tr>
 <tr><td><code>/gaia-forensics</code></td><td>When a GAIA workflow misfires, capture a redacted, classified, filing-ready report in one run. Self-diagnoses user-config issues inline; probable bugs file to GAIA's GitHub with one prompt</td></tr>
 <tr><td><code>/gaia-fitness</code></td><td>Health-check and auto-heal the project's Claude integration: triage, heal, verify, then report an F-to-A+ grade</td></tr>
 <tr><td><code>/gaia-react-perf</code></td><td>Diagnose React render performance. Drives a micro-interaction, captures real renders, and surfaces memo-defeating reference instability, then recommends a structural fix. Measure-only: it reports a ranked diagnosis, it never auto-fixes</td></tr>
