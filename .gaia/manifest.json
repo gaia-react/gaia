@@ -27,6 +27,7 @@
     ".claude/hooks/block-eslint-config-edit.sh": "owned",
     ".claude/hooks/block-fork-pr-checkout.sh": "owned",
     ".claude/hooks/block-handrolled-pr-poll.sh": "owned",
+    ".claude/hooks/block-invalid-pr-title.sh": "owned",
     ".claude/hooks/block-main-destructive-git.sh": "owned",
     ".claude/hooks/block-manifest-write.sh": "owned",
     ".claude/hooks/block-no-verify.sh": "owned",
@@ -682,7 +683,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-10-07T02:32:10.509Z",
+  "generated": "2026-10-07T06:52:56.359Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",
