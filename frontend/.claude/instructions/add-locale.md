@@ -31,7 +31,6 @@ Files to create (mirroring the `en/` tree):
 - `frontend/app/languages/{{LOCALE_CODE}}/index.ts`
 - `frontend/app/languages/{{LOCALE_CODE}}/pages/_index.ts`
 - `frontend/app/languages/{{LOCALE_CODE}}/pages/index.ts`
-- `frontend/app/languages/{{LOCALE_CODE}}/pages/legal.ts`
 
 Translation rules:
 

@@ -74,7 +74,6 @@
     "@storybook/addon-links": "10.6.1",
     "@storybook/addon-vitest": "10.6.1",
     "@storybook/react-vite": "10.6.1",
-    "@tailwindcss/typography": "0.5.20",
     "@tailwindcss/vite": "4.3.3",
     "@types/accept-language-parser": "1.5.8",
     "@types/lodash-es": "4.17.12",
