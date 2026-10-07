@@ -4,7 +4,7 @@ Dispatched by the `/gaia-wiki` router (`references/wiki.md` → "Consolidate"). 
 
 ## Playbook
 
-This workflow complements but does not replace the orchestrator's wiki promotion step (per-SPEC writes, before the merge, acting on `SUMMARY.md` frontmatter), `/gaia-wiki sync` (commit-driven updates), or `/gaia-wiki lint` (broken-thing detection). It detects **redundancy and contradiction** across the wiki and proposes merges so the wiki stays an accurate "today's state of the app" snapshot.
+This workflow complements but does not replace the orchestrator's wiki promotion step (per-SPEC writes, before the merge, acting on `SUMMARY.md` frontmatter), `/gaia-wiki sync` (commit-driven updates), or `/gaia-wiki lint` (broken-thing detection and repair). It detects **redundancy and contradiction** across the wiki and proposes merges so the wiki stays an accurate "today's state of the app" snapshot.
 
 **Follow `.claude/rules/wiki-style.md` when writing prose during apply actions.** Present tense; no UAT-NNN, SPEC-NNN, PR-number, or commit-SHA references in body prose. The `## Historical context (from <older-title>)` archival heading defined in Step 4 is a deliberate exception, it labels content lifted from a superseded page so it remains discoverable.
 
@@ -151,14 +151,15 @@ Process findings in this order: **supersession → reversed → near-collision �
 2. If non-empty unique content: append to newer page under H2 `## Historical context (from <older-title>)`. The heading itself is the archival label; do NOT add a SPEC-NNN reference in the preamble (per `.claude/rules/wiki-style.md`).
 3. Update older page's frontmatter: `status: superseded`, `superseded_by: <newer-slug>`, `superseded_at: <ISO>`. Preserve `created`, `promoted_from`, `promoted_at`.
 4. Move older page: `mkdir -p wiki/_archived/ && git mv <older-path> wiki/_archived/<older-slug>.md`. (Use `mv` if `git mv` fails due to staging state.)
-5. Update `wiki/index.md`: remove the older page's entry from its domain section. The wikilink in any newer page's "Related" section becomes a broken link, `/gaia-wiki lint` will surface and the maintainer can fix on the next lint pass; do not autofix here (consolidate is conservative about page-body edits beyond the targeted merge).
-6. Update newer page's `promoted_from`: if currently a string, convert to a list `[<old_provenance>, <new_provenance>]` so future runs of the wiki promotion step treat it as a known consolidated page. If already a list, append.
+5. Update `wiki/index.md`: remove the older page's entry from its domain section.
+6. Repoint every wikilink to the older page at the newer page, which now holds its content. Find them with `grep -rnF "[[<older-title>" wiki/ --include="*.md"`, skipping `wiki/_archived/`, `wiki/meta/`, and `wiki/log.md` (archived pages and history ledgers keep their record). A match is a link to the older page only when `]]`, `|`, or `#` follows the title. Replace the title with `<newer-title>`, keeping any `|alias`; drop a `#heading` anchor the newer page has no matching heading for. A link that would now point the newer page at itself is removed, along with its list item when it is the item's only content. No lint check detects a broken wikilink, so a link this step leaves dangling stays broken.
+7. Update newer page's `promoted_from`: if currently a string, convert to a list `[<old_provenance>, <new_provenance>]` so future runs of the wiki promotion step treat it as a known consolidated page. If already a list, append.
 
 **Near-collision:**
 
 1. Surface a follow-up `AskUserQuestion`: `Which slug should be canonical?` with options for each candidate slug. (Do not assume newer wins, slug choice is editorial.)
 2. Rename the non-canonical page: `git mv <non-canonical-path> <canonical-domain>/<canonical-slug>.md`.
-3. Run a wikilink update: `grep -rn "\[\[<old-title>\]\]" wiki/ --include="*.md"` and replace with `[[<canonical-title>]]` across all matches.
+3. Repoint every wikilink from `<old-title>` to `<canonical-title>` by the matching rules of the supersession step that repoints links, aliased and anchored links included.
 4. Update `wiki/index.md` to drop the old entry and ensure the canonical entry is present.
 
 **Subject-orphan:**
@@ -205,7 +206,7 @@ If any HIGH-severity supersession or reversed-decision was applied, prefix the s
 ## Notes
 
 - **Boundary with the wiki promotion step.** The wiki promotion step writes per-SPEC; consolidate merges across SPECs. After a merge action, the canonical page's `promoted_from` becomes a list so future promotion runs treat it as a known consolidated page (no `foreign-collision` skip).
-- **Boundary with lint.** Lint finds broken things (dead links, missing frontmatter, stale claims). Consolidate finds redundant things (two pages with competing claims). Run lint before consolidate so structural issues don't get misinterpreted as content redundancy.
+- **Boundary with lint.** Lint finds and fixes broken things (dead repo paths, orphan pages, missing frontmatter, empty sections). Consolidate finds redundant things (two pages with competing claims). The full chain runs lint after consolidate, so lint's checks see the pages consolidate moved, renamed, or archived; a broken wikilink is not among those checks, which is why the apply actions above repoint links themselves.
 - **`wiki/_archived/`** is excluded from the index and from future consolidation candidacy. Pages there remain readable but are out of the live spec.
 - **Idempotence.** Re-running consolidate on the same wiki state surfaces the same findings, minus those acknowledged via `consolidation_ack`. Apply actions are not idempotent (they mutate); the apply guard is "did the user already say apply", implicit in "the older page is no longer in its original domain," which the page index would reflect on the next run.
 - **Auto-invocation via the sync gate.** Sync runs a cheap precheck after every sync (including no-op syncs) and invokes consolidate automatically when its threshold trips (the gate mechanic lives in the sync playbook's Step 9c, `references/wiki/sync.md`). Manual invocation remains available, `/gaia-wiki consolidate` shows ALL current findings regardless of trigger source. Findings the user `Skip`s on a gate-triggered run will not auto-resurface until new pages accumulate; revisit them by running `/gaia-wiki consolidate` manually.
