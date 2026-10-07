@@ -351,7 +351,7 @@ One fenced YAML block per finding:
   line: {integer line the finding anchors to}
   severity: {critical | important | suggestion, using the code-audit-frontend tier meaning; most knowledge-hygiene findings are suggestion, a genuine cross-page contradiction is important}
   failure_mode: {one line, concrete: what is wrong and the bad outcome}
-  suggested_fix: {one line, e.g. "run /gaia-wiki consolidate" for wiki-internal redundancy or a page-vs-page conflict, "run /gaia-wiki lint" for a broken link, or a specific rewrite}
+  suggested_fix: {one line, e.g. "run /gaia-wiki consolidate" for wiki-internal redundancy or a page-vs-page conflict, "run /gaia-wiki lint" for a dead repo path, "repoint [[<title>]] at <page>" for a broken wikilink, or a specific rewrite}
   footprint: {narrow | wide, narrow when the fix is a single logical unit confined to one file with no cross-module ripple, else wide}
   difficulty: {easy | medium | hard, graded against the rubric in .claude/skills/file-tech-debt/SKILL.md, assigned at filing time, not by a later pass}
   security_sensitive: {true only if the finding's CONTENT reads as a security concern or is secret-shaped, else false; see the divergence note in "## Dispose out-of-scope findings"}
