@@ -340,6 +340,7 @@ pinned_labels() {
   grep -qF -- 'Run `/clear`, then paste the prompt below.' <<<"$section_text" || return 1
   grep -qF -- 'Press Ctrl+C, run `claude` (with any needed environment variable), then paste the prompt below.' <<<"$section_text" || return 1
   grep -qF -- 'would run stale without a fresh launch' <<<"$section_text" || return 1
+  grep -qF -- 'In a worktree, Claude Code may ask whether to keep or remove it as it exits: choose keep.' <<<"$section_text" || return 1
   fence="$(awk '/^```text$/ { open = 1; next } /^```$/ { open = 0 } open { print }' <<<"$section_text")"
   grep -qF -- 'Resume the PR merge workflow for PR #<N>' <<<"$fence" || return 1
   grep -qF -- 'audit-loop-eval.sh next-unit --root <RESOLVED_ROOT>' <<<"$fence" || return 1

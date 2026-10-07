@@ -352,6 +352,7 @@ if [ "$kind" = grant ]; then
       claude_context="$claude_context Use 'Press Ctrl+C, run \`claude\` (with any needed environment variable), then paste the prompt below.' instead only when the next audit unit would run stale without a fresh launch: it needs an environment variable this session lacks, or the branch changed, since this session started, an agent definition the unit dispatches (.claude/agents/) or hook wiring in .claude/settings.json that the audit loop or merge gate runs through."
       claude_context="$claude_context Edited skills, rules, CLAUDE.md, wiki pages and hook script bodies are read fresh after \`/clear\`, and launch-time changes the audit does not exercise do not matter, so neither calls for Ctrl+C."
       claude_context="$claude_context Print whichever line applies on its own line, verbatim, never folded into a sentence or paragraph."
+      claude_context="$claude_context When the Ctrl+C line applies and this session runs in a linked worktree, print one more line under it: 'In a worktree, Claude Code may ask whether to keep or remove it as it exits: choose keep.'"
       ;;
   esac
 else
