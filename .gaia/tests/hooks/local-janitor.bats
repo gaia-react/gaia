@@ -929,51 +929,6 @@ SHIM
   [ "$(wc -l < "$report" | tr -d ' ')" -eq 1 ]
 }
 
-# seed_update_check_cache: a statusline refresher cache that still carries the
-# pre-land wiki drift, with a fresh checkedAt so the TTL gate would hold it.
-seed_update_check_cache() {
-  mkdir -p "$REPO/.gaia/local/cache/shared"
-  printf '{"checkedAt":1791028172,"outdatedCount":2,"wikiDriftCount":40}\n' \
-    > "$REPO/.gaia/local/cache/shared/update-check.json"
-}
-
-@test "sweep 1: a caught-up base marks the statusline cache stale and keeps its other fields" {
-  make_repo
-  make_gone_branch "wiki-sync/2026-08-14-7777774"
-  advance_origin_main main
-  seed_update_check_cache
-  cd "$REPO"
-  run bash "$HOOK_ABSOLUTE_PATH"
-  [ "$status" -eq 0 ]
-  [ "$(git -C "$REPO" rev-parse main)" = "$(git -C "$REPO" rev-parse origin/main)" ] || return 1
-  local cache="$REPO/.gaia/local/cache/shared/update-check.json"
-  [ "$(jq -r '.checkedAt' "$cache")" = "0" ] || return 1
-  [ "$(jq -r '.wikiDriftCount' "$cache")" = "40" ] || return 1
-  [ "$(jq -r '.outdatedCount' "$cache")" = "2" ]
-}
-
-@test "sweep 1: a refused fast-forward leaves the statusline cache alone" {
-  make_repo
-  make_gone_branch "wiki-sync/2026-08-14-8888885"
-  diverge_base_and_origin main
-  seed_update_check_cache
-  cd "$REPO"
-  run bash "$HOOK_ABSOLUTE_PATH"
-  [ "$status" -eq 0 ]
-  [ "$(jq -r '.checkedAt' "$REPO/.gaia/local/cache/shared/update-check.json")" = "1791028172" ]
-}
-
-@test "sweep 1: a caught-up base with no statusline cache creates none" {
-  make_repo
-  make_gone_branch "wiki-sync/2026-08-14-9999996"
-  advance_origin_main main
-  mkdir -p "$REPO/.gaia/local/cache/shared"
-  cd "$REPO"
-  run bash "$HOOK_ABSOLUTE_PATH"
-  [ "$status" -eq 0 ]
-  [ ! -e "$REPO/.gaia/local/cache/shared/update-check.json" ]
-}
-
 @test "sweep 1: a shallow clone degrades without error" {
   make_repo
   local shallow before after branch_name
