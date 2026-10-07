@@ -476,4 +476,60 @@ describe('run (answer gate)', () => {
       expect(stdio.errors.join('')).toContain('withhold_reason_invalid');
     }
   );
+
+  test('--withdraw stops shipping an already-shipped path, leaving no drift', () => {
+    seedWithUnanswered({}, {'app/old.ts': 'export {};\n'});
+    expect(readManifestFiles()['app/old.ts']).toBe('owned');
+
+    expect(
+      runGate([
+        '--withdraw',
+        'app/old.ts',
+        '--category',
+        '2',
+        '--reason',
+        'superseded history',
+      ])
+    ).toBe(0);
+
+    const lines = readFileSync(excludePath(), 'utf8').split('\n');
+    const pathIndex = lines.indexOf('app/old.ts');
+
+    expect(pathIndex).toBeGreaterThan(
+      lines.findIndex((line) => line.startsWith('# --- 2.'))
+    );
+    expect(lines[pathIndex - 1]).toBe('# superseded history');
+    expect(readManifestFiles()['app/old.ts']).toBeUndefined();
+
+    stdio.outputs.length = 0;
+    expect(runGate(['--check'])).toBe(0);
+    expect(stdio.outputs.join('')).toContain('clean');
+  });
+
+  test('--withdraw refuses a path the manifest does not ship and writes nothing', () => {
+    const before = seedWithUnanswered({}, {'app/old.ts': 'export {};\n'});
+
+    expect(
+      runGate([
+        '--withdraw',
+        'app/ghost.ts',
+        '--category',
+        '1',
+        '--reason',
+        'r',
+      ])
+    ).toBe(1);
+    expect(readBoundaryAndManifest()).toEqual(before);
+    expect(stdio.errors.join('')).toContain('withdraw_not_shipped');
+  });
+
+  test('--withhold still refuses an already-shipped path', () => {
+    const before = seedWithUnanswered({}, {'app/old.ts': 'export {};\n'});
+
+    expect(
+      runGate(['--withhold', 'app/old.ts', '--category', '1', '--reason', 'r'])
+    ).toBe(1);
+    expect(readBoundaryAndManifest()).toEqual(before);
+    expect(stdio.errors.join('')).toContain('answer_not_missing');
+  });
 });

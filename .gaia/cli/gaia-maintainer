@@ -15507,11 +15507,16 @@ var parseCategoryLines = (lines) => lines.flatMap((line, headerLineIndex) => {
   return [{ headerLineIndex, number: Number(numberText), title }];
 });
 var parseExcludeCategories = (text) => parseCategoryLines(text.split("\n"));
-var validateAnswers = (answers, missing, categories) => {
+var validateAnswers = (answers, snapshot, categories) => {
+  const { missing, shipped } = snapshot;
   const errors = [];
   const withholdPaths = answers.withholds.map((withhold) => withhold.path);
+  const withdrawPaths = answers.withdraws.map((withdraw) => withdraw.path);
   const answered = [...answers.ships, ...withholdPaths];
+  const boundaryAnswers = [...answers.withholds, ...answers.withdraws];
+  const boundaryPaths = [...withholdPaths, ...withdrawPaths];
   const missingSet = new Set(missing);
+  const shippedSet = new Set(shipped);
   const notMissing = uniqueSorted(
     answered.filter((candidate) => !missingSet.has(candidate))
   );
@@ -15522,7 +15527,17 @@ var validateAnswers = (answers, missing, categories) => {
       paths: notMissing
     });
   }
-  const duplicates = findDuplicates(answered);
+  const notShipped = uniqueSorted(
+    withdrawPaths.filter((candidate) => !shippedSet.has(candidate))
+  );
+  if (notShipped.length > 0) {
+    errors.push({
+      code: "withdraw_not_shipped",
+      message: `withdrawn path is not in the shipped manifest: ${notShipped.join(", ")}`,
+      paths: notShipped
+    });
+  }
+  const duplicates = findDuplicates([...answered, ...withdrawPaths]);
   if (duplicates.length > 0) {
     errors.push({
       code: "duplicate_answer",
@@ -15531,7 +15546,7 @@ var validateAnswers = (answers, missing, categories) => {
     });
   }
   const rejectedPaths = uniqueSorted(
-    withholdPaths.filter((candidate) => isRejectedWithholdPath(candidate))
+    boundaryPaths.filter((candidate) => isRejectedWithholdPath(candidate))
   );
   if (rejectedPaths.length > 0) {
     errors.push({
@@ -15541,7 +15556,7 @@ var validateAnswers = (answers, missing, categories) => {
     });
   }
   const badReasonPaths = uniqueSorted(
-    answers.withholds.filter((withhold) => isRejectedReason(withhold.reason)).map((withhold) => withhold.path)
+    boundaryAnswers.filter((withhold) => isRejectedReason(withhold.reason)).map((withhold) => withhold.path)
   );
   if (badReasonPaths.length > 0) {
     errors.push({
@@ -15554,7 +15569,7 @@ var validateAnswers = (answers, missing, categories) => {
     categories.map((category) => category.number)
   );
   const unknownCategoryPaths = uniqueSorted(
-    answers.withholds.filter((withhold) => !knownCategories.has(withhold.category)).map((withhold) => withhold.path)
+    boundaryAnswers.filter((withhold) => !knownCategories.has(withhold.category)).map((withhold) => withhold.path)
   );
   if (unknownCategoryPaths.length > 0) {
     errors.push({
@@ -19124,6 +19139,7 @@ import path8 from "node:path";
 var HELP_TEXT5 = `Usage: gaia-maintainer release manifest [--out <path>] [--stdout]
                                        [--ship <path>]...
                                        [--withhold <path> --category <N> --reason <text>]...
+                                       [--withdraw <path> --category <N> --reason <text>]...
                                        [--allow-undecided]
        gaia-maintainer release manifest --check [--json]
 
@@ -19141,10 +19157,15 @@ var HELP_TEXT5 = `Usage: gaia-maintainer release manifest [--out <path>] [--stdo
                        .gaia/release-exclude. Repeatable. Each --withhold
                        must be closed by exactly one --category and exactly
                        one --reason before the next one.
+    --withdraw <path>  Stop shipping <path>, which the committed manifest
+                       already lists: appends it to .gaia/release-exclude
+                       and drops it from the manifest. Repeatable, closed by
+                       --category and --reason exactly like --withhold.
+                       Never answers a newly-shipping file.
     --category <N>     Numbered release-exclude category the open --withhold
-                       is filed under.
+                       or --withdraw is filed under.
     --reason <text>    One-line rationale, written as the comment directly
-                       above the withheld path.
+                       above the withheld or withdrawn path.
     --allow-undecided  Waive the answer requirement; every unanswered file
                        ships. The escape hatch for bootstrapping a manifest
                        and for unattended regeneration.
@@ -19163,13 +19184,15 @@ var HELP_TEXT5 = `Usage: gaia-maintainer release manifest [--out <path>] [--stdo
     2  unexpected (filesystem / git failure)
 `;
 var HELP_TOKENS5 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
-var closeWithhold = (pending, withholds) => {
+var closeBoundaryAnswer = (state) => {
+  const { pending, withdraws, withholds } = state;
   if (pending === void 0) return void 0;
   if (pending.category === void 0)
-    return `--withhold ${pending.path} requires a --category`;
+    return `${pending.flag} ${pending.path} requires a --category`;
   if (pending.reason === void 0)
-    return `--withhold ${pending.path} requires a --reason`;
-  withholds.push({
+    return `${pending.flag} ${pending.path} requires a --reason`;
+  const records = { "--withdraw": withdraws, "--withhold": withholds }[pending.flag];
+  records.push({
     category: pending.category,
     path: pending.path,
     reason: pending.reason
@@ -19178,9 +19201,9 @@ var closeWithhold = (pending, withholds) => {
 };
 var applyCategory = (state, value) => {
   if (state.pending === void 0)
-    return "--category requires a preceding --withhold";
+    return "--category requires a preceding --withhold or --withdraw";
   if (state.pending.category !== void 0)
-    return `--withhold ${state.pending.path} carries more than one --category`;
+    return `${state.pending.flag} ${state.pending.path} carries more than one --category`;
   if (!/^\d+$/.test(value) || Number(value) === 0)
     return `--category must be a positive integer, got: ${value}`;
   state.pending.category = Number(value);
@@ -19188,16 +19211,16 @@ var applyCategory = (state, value) => {
 };
 var applyReason = (state, value) => {
   if (state.pending === void 0)
-    return "--reason requires a preceding --withhold";
+    return "--reason requires a preceding --withhold or --withdraw";
   if (state.pending.reason !== void 0)
-    return `--withhold ${state.pending.path} carries more than one --reason`;
+    return `${state.pending.flag} ${state.pending.path} carries more than one --reason`;
   state.pending.reason = value;
   return void 0;
 };
-var openPendingWithhold = (state, value) => {
-  const closeError = closeWithhold(state.pending, state.withholds);
+var openPending = (flag) => (state, value) => {
+  const closeError = closeBoundaryAnswer(state);
   if (closeError !== void 0) return closeError;
-  state.pending = { category: void 0, path: value, reason: void 0 };
+  state.pending = { category: void 0, flag, path: value, reason: void 0 };
   return void 0;
 };
 var VALUE_FLAGS = {
@@ -19211,7 +19234,8 @@ var VALUE_FLAGS = {
     state.ships.push(value);
     return void 0;
   },
-  "--withhold": openPendingWithhold
+  "--withdraw": openPending("--withdraw"),
+  "--withhold": openPending("--withhold")
 };
 var BARE_FLAGS = {
   "--allow-undecided": (state) => {
@@ -19228,11 +19252,20 @@ var BARE_FLAGS = {
   }
 };
 var validateFlagCombination = (state) => {
-  const { allowUndecided, check: check2, json: json3, outPath, ships, stdout, withholds } = state;
-  const hasAnswers = allowUndecided || ships.length > 0 || withholds.length > 0;
+  const {
+    allowUndecided,
+    check: check2,
+    json: json3,
+    outPath,
+    ships,
+    stdout,
+    withdraws,
+    withholds
+  } = state;
+  const hasAnswers = allowUndecided || ships.length > 0 || withholds.length > 0 || withdraws.length > 0;
   if (check2 && (outPath !== void 0 || stdout || hasAnswers)) {
     return {
-      message: "--check is incompatible with --out / --stdout / --ship / --withhold / --allow-undecided",
+      message: "--check is incompatible with --out / --stdout / --ship / --withhold / --withdraw / --allow-undecided",
       ok: false
     };
   }
@@ -19240,7 +19273,16 @@ var validateFlagCombination = (state) => {
     return { message: "--json requires --check", ok: false };
   }
   return {
-    flags: { allowUndecided, check: check2, json: json3, outPath, ships, stdout, withholds },
+    flags: {
+      allowUndecided,
+      check: check2,
+      json: json3,
+      outPath,
+      ships,
+      stdout,
+      withdraws,
+      withholds
+    },
     ok: true
   };
 };
@@ -19270,6 +19312,7 @@ var parseFlags4 = (argv) => {
     pending: void 0,
     ships: [],
     stdout: false,
+    withdraws: [],
     withholds: []
   };
   let index = 0;
@@ -19283,7 +19326,7 @@ var parseFlags4 = (argv) => {
       index = outcome.nextIndex;
     }
   }
-  const closeError = closeWithhold(state.pending, state.withholds);
+  const closeError = closeBoundaryAnswer(state);
   if (closeError !== void 0) return { message: closeError, ok: false };
   return validateFlagCombination(state);
 };
@@ -19432,7 +19475,10 @@ var trySnapshotOrReport = (cwd, generatedAt) => {
       excludeText,
       expected,
       missing: computeMissing(expected, actual),
-      repoRoot
+      repoRoot,
+      shipped: Object.keys(actual.files).filter(
+        (candidate) => Object.hasOwn(expected.files, candidate)
+      )
     };
   } catch (error51) {
     structuredError({
@@ -19539,13 +19585,22 @@ var run5 = (argv, options = {}) => {
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
   const cwd = options.cwd ?? process.cwd();
-  const { allowUndecided, check: check2, json: json3, outPath, ships, stdout, withholds } = parsed.flags;
+  const {
+    allowUndecided,
+    check: check2,
+    json: json3,
+    outPath,
+    ships,
+    stdout,
+    withdraws,
+    withholds
+  } = parsed.flags;
   if (check2) return runCheck(cwd, options.generatedAt, json3);
   const snapshot = trySnapshotOrReport(cwd, options.generatedAt);
   if (snapshot === null) return UNEXPECTED_EXIT5;
   const errors = validateAnswers(
-    { allowUndecided, ships, withholds },
-    snapshot.missing,
+    { allowUndecided, ships, withdraws, withholds },
+    snapshot,
     parseExcludeCategories(snapshot.excludeText)
   );
   if (errors.length > 0) {
@@ -19566,7 +19621,7 @@ var run5 = (argv, options = {}) => {
     generatedAt: options.generatedAt,
     snapshot,
     target,
-    withholds
+    withholds: [...withholds, ...withdraws]
   });
 };
 

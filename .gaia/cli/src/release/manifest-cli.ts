@@ -1,6 +1,6 @@
 /**
  * `gaia-maintainer release manifest` CLI: flag dispatch and the
- * emit/answer-gate path (`--ship`/`--withhold`/`--allow-undecided`,
+ * emit/answer-gate path (`--ship`/`--withhold`/`--withdraw`/`--allow-undecided`,
  * `--out`/`--stdout`).
  *
  * Flag grammar (argv parsing, flag-combination validation, `--help` text)
@@ -75,6 +75,8 @@ type ManifestSnapshot = {
   expected: ManifestShape;
   missing: string[];
   repoRoot: string;
+  /** Paths the committed manifest lists that the current build still ships. */
+  shipped: string[];
 };
 
 const trySnapshotOrReport = (
@@ -112,6 +114,9 @@ const trySnapshotOrReport = (
       expected,
       missing: computeMissing(expected, actual),
       repoRoot,
+      shipped: Object.keys(actual.files).filter((candidate) =>
+        Object.hasOwn(expected.files, candidate)
+      ),
     };
   } catch (error) {
     // The `.gaia/release-exclude` read lives inside this try (not at the top
@@ -217,6 +222,7 @@ type EmitOptions = {
   snapshot: ManifestSnapshot;
   /** `undefined` means `--stdout`: the manifest goes to stdout, not to a file. */
   target: string | undefined;
+  /** Withholds and withdraws alike: both are boundary lines. */
   withholds: readonly WithholdAnswer[];
 };
 
@@ -291,8 +297,16 @@ export const run = (
   }
 
   const cwd = options.cwd ?? process.cwd();
-  const {allowUndecided, check, json, outPath, ships, stdout, withholds} =
-    parsed.flags;
+  const {
+    allowUndecided,
+    check,
+    json,
+    outPath,
+    ships,
+    stdout,
+    withdraws,
+    withholds,
+  } = parsed.flags;
 
   if (check) return runCheck(cwd, options.generatedAt, json);
 
@@ -301,8 +315,8 @@ export const run = (
   if (snapshot === null) return UNEXPECTED_EXIT;
 
   const errors = validateAnswers(
-    {allowUndecided, ships, withholds},
-    snapshot.missing,
+    {allowUndecided, ships, withdraws, withholds},
+    snapshot,
     parseExcludeCategories(snapshot.excludeText)
   );
 
@@ -336,6 +350,6 @@ export const run = (
     generatedAt: options.generatedAt,
     snapshot,
     target,
-    withholds,
+    withholds: [...withholds, ...withdraws],
   });
 };

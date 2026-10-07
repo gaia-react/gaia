@@ -12,6 +12,11 @@
  * produce a manifest in any output mode. `--allow-undecided` waives the
  * exact-cover requirement, and nothing else.
  *
+ * `--withdraw` is the one answer aimed at a file that already ships: it moves
+ * a manifest path behind the boundary through the same exclude-line writer a
+ * withhold uses, so a re-audit can reverse an earlier ship decision without a
+ * hand edit of `.gaia/release-exclude`.
+ *
  * Nothing here touches the filesystem, and nothing here imports from
  * `manifest.ts` (no cycle).
  */
@@ -27,12 +32,15 @@ export type AnswerErrorCode =
   | 'duplicate_answer'
   | 'unanswered_paths'
   | 'unknown_category'
+  | 'withdraw_not_shipped'
   | 'withhold_metacharacter'
   | 'withhold_reason_invalid';
 
 export type AnswerSet = {
   allowUndecided: boolean;
   ships: readonly string[];
+  /** Already-shipped paths to move behind the boundary; same record as a withhold. */
+  withdraws: readonly WithholdAnswer[];
   withholds: readonly WithholdAnswer[];
 };
 
@@ -203,22 +211,36 @@ export const parseExcludeCategories = (text: string): ExcludeCategory[] =>
   parseCategoryLines(text.split('\n'));
 
 /**
- * Validate the WHOLE answer set against a `missing` snapshot. An empty array
+ * Paths awaiting an answer (`missing`) and paths the committed manifest lists
+ * that the current build still ships (`shipped`, the only withdrawable set).
+ */
+export type ShippingSnapshot = {
+  missing: readonly string[];
+  shipped: readonly string[];
+};
+
+/**
+ * Validate the WHOLE answer set against a shipping snapshot. An empty array
  * means the set is valid. Returns every error found, not just the first: a
  * caller who answered three paths wrongly should see all three.
  *
- * Order: membership → duplicates → metacharacter → reason → category →
- * exact-cover.
+ * Order: membership → withdraw membership → duplicates → metacharacter →
+ * reason → category → exact-cover.
  */
 export const validateAnswers = (
   answers: AnswerSet,
-  missing: readonly string[],
+  snapshot: ShippingSnapshot,
   categories: readonly ExcludeCategory[]
 ): AnswerError[] => {
+  const {missing, shipped} = snapshot;
   const errors: AnswerError[] = [];
   const withholdPaths = answers.withholds.map((withhold) => withhold.path);
+  const withdrawPaths = answers.withdraws.map((withdraw) => withdraw.path);
   const answered = [...answers.ships, ...withholdPaths];
+  const boundaryAnswers = [...answers.withholds, ...answers.withdraws];
+  const boundaryPaths = [...withholdPaths, ...withdrawPaths];
   const missingSet = new Set(missing);
+  const shippedSet = new Set(shipped);
 
   // Membership is what stops a bare directory (`wiki/decisions`) from standing
   // in for its whole subtree: a directory carries no metacharacter, but
@@ -235,7 +257,21 @@ export const validateAnswers = (
     });
   }
 
-  const duplicates = findDuplicates(answered);
+  // `shipped` and `missing` are disjoint by construction, so a newly-shipping
+  // path fails here too and is left to --withhold.
+  const notShipped = uniqueSorted(
+    withdrawPaths.filter((candidate) => !shippedSet.has(candidate))
+  );
+
+  if (notShipped.length > 0) {
+    errors.push({
+      code: 'withdraw_not_shipped',
+      message: `withdrawn path is not in the shipped manifest: ${notShipped.join(', ')}`,
+      paths: notShipped,
+    });
+  }
+
+  const duplicates = findDuplicates([...answered, ...withdrawPaths]);
 
   if (duplicates.length > 0) {
     errors.push({
@@ -246,7 +282,7 @@ export const validateAnswers = (
   }
 
   const rejectedPaths = uniqueSorted(
-    withholdPaths.filter((candidate) => isRejectedWithholdPath(candidate))
+    boundaryPaths.filter((candidate) => isRejectedWithholdPath(candidate))
   );
 
   // Six distinct conditions reach this one branch, and they are not
@@ -263,7 +299,7 @@ export const validateAnswers = (
   }
 
   const badReasonPaths = uniqueSorted(
-    answers.withholds
+    boundaryAnswers
       .filter((withhold) => isRejectedReason(withhold.reason))
       .map((withhold) => withhold.path)
   );
@@ -280,7 +316,7 @@ export const validateAnswers = (
     categories.map((category) => category.number)
   );
   const unknownCategoryPaths = uniqueSorted(
-    answers.withholds
+    boundaryAnswers
       .filter((withhold) => !knownCategories.has(withhold.category))
       .map((withhold) => withhold.path)
   );
