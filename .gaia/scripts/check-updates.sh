@@ -24,6 +24,8 @@
 #   - wikiDriftCount (non-bookkeeping commits the wiki trails HEAD by, from
 #                     `gaia wiki state --json` drift_count; feeds the
 #                     /gaia-wiki nudge)
+#   - wikiStateSha   (the main checkout's wiki/.state.json last_evaluated_sha
+#                     that wikiDriftCount was computed against)
 #   - auditNudge / auditNudgeReason / auditLastAppliedAt / auditMemoryCount /
 #                  auditMemoryBaseline (knowledge-audit drift signals)
 #   - securityCount  (distinct open security advisories from `gaia update-deps
@@ -36,7 +38,8 @@
 # TTL is 6 hours (21600s). Re-runs within the TTL exit immediately so the
 # statusline can start this in the background on every render without paying
 # the cost each time. A cache with no securitySource key is treated as past its
-# TTL once, so the first refresh after an upgrade fills the security fields.
+# TTL once, so the first refresh after an upgrade fills the security fields. A
+# cache whose wikiStateSha differs from the state file's is past its TTL too.
 #
 # Partial failures are tolerated; exit 0 even if some fields could not be
 # refreshed. Do NOT add `set -e`.
@@ -179,6 +182,19 @@ fi
 if [ -f "$CACHE_FILE" ] && command -v jq >/dev/null 2>&1 \
   && ! jq -e 'has("securitySource")' "$CACHE_FILE" >/dev/null 2>&1; then
   previous_checked_at=0
+fi
+
+# The wiki state file advances by routes that never touch this cache (a hand
+# `git pull`, a merge cleanup), so a cache computed against another state is
+# stale whatever its age. Compared as a value, not a timestamp: the skills'
+# cache-busts rewrite checkedAt and carry this field across unchanged.
+wiki_state_sha=""
+if command -v jq >/dev/null 2>&1; then
+  wiki_state_sha=$(jq -r '.last_evaluated_sha // ""' "$STATE_ROOT/wiki/.state.json" 2>/dev/null)
+  if [ -f "$CACHE_FILE" ] \
+    && [ "$(jq -r '.wikiStateSha // ""' "$CACHE_FILE" 2>/dev/null)" != "$wiki_state_sha" ]; then
+    previous_checked_at=0
+  fi
 fi
 
 # TTL gate.
@@ -704,6 +720,7 @@ if command -v jq >/dev/null 2>&1; then
     --arg hardenNudgeReason "$harden_reason" \
     --argjson residueCandidateCount "$residue_count" \
     --argjson wikiDriftCount "$wiki_drift_count" \
+    --arg wikiStateSha "$wiki_state_sha" \
     --argjson auditNudge "$audit_nudge" \
     --arg auditNudgeReason "$audit_nudge_reason" \
     --argjson auditLastAppliedAt "$audit_last_applied_at" \
@@ -713,7 +730,7 @@ if command -v jq >/dev/null 2>&1; then
     --argjson securityCount "$security_count" \
     --arg securitySource "$security_source" \
     --arg securityUnavailableReason "$security_reason" \
-    '{checkedAt: $checkedAt, outdatedCount: $outdatedCount, gaiaCurrent: $gaiaCurrent, gaiaLatest: $gaiaLatest, gaiaHasUpdate: $gaiaHasUpdate, hardenCandidateCount: $hardenCandidateCount, hardenUnclassifiedCount: $hardenUnclassifiedCount, hardenNudgeReason: $hardenNudgeReason, residueCandidateCount: $residueCandidateCount, wikiDriftCount: $wikiDriftCount, auditNudge: $auditNudge, auditNudgeReason: $auditNudgeReason, auditLastAppliedAt: $auditLastAppliedAt, auditMemoryCount: $auditMemoryCount, auditMemoryBaseline: $auditMemoryBaseline, serenaLangDrift: $serenaLangDrift, securityCount: $securityCount, securitySource: $securitySource, securityUnavailableReason: $securityUnavailableReason}' \
+    '{checkedAt: $checkedAt, outdatedCount: $outdatedCount, gaiaCurrent: $gaiaCurrent, gaiaLatest: $gaiaLatest, gaiaHasUpdate: $gaiaHasUpdate, hardenCandidateCount: $hardenCandidateCount, hardenUnclassifiedCount: $hardenUnclassifiedCount, hardenNudgeReason: $hardenNudgeReason, residueCandidateCount: $residueCandidateCount, wikiDriftCount: $wikiDriftCount, wikiStateSha: $wikiStateSha, auditNudge: $auditNudge, auditNudgeReason: $auditNudgeReason, auditLastAppliedAt: $auditLastAppliedAt, auditMemoryCount: $auditMemoryCount, auditMemoryBaseline: $auditMemoryBaseline, serenaLangDrift: $serenaLangDrift, securityCount: $securityCount, securitySource: $securitySource, securityUnavailableReason: $securityUnavailableReason}' \
     > "$temporary_file" 2>/dev/null
 else
   # jq not available; emit valid JSON via printf. serenaLangDrift is empty:
