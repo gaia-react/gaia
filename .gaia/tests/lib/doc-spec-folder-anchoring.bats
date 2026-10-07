@@ -16,9 +16,10 @@
 #
 # THE READ SIDE IS THE SAME CLASS. Once the writes land in main, a read that
 # still builds a relative `.gaia/local/specs` path looks into a tree that holds
-# no SPECs at all. Three read sites in spec.md build the path themselves rather
-# than handing it to a library: step 2's cold-consolidation sweep (the ledger
-# scan plus the per-candidate folder), step 2's resume-point recency comparison
+# no SPECs at all. Three read sites build the path themselves rather than
+# handing it to a library: the pre-flight sweep's cold-consolidation candidate
+# scan in spec/lifecycle.md (the ledger scan plus the per-candidate folder),
+# spec.md step 2's resume-point recency comparison
 # (the canonical `SPEC.md` half of it; the draft cache is per-tree and stays in
 # the acting worktree), and step 9.2's read of the `dollars` field from the
 # SPEC folder's `cost.json` sidecar -- whose write, one block above it, is
@@ -69,6 +70,7 @@
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   SPEC_MD="$REPO_ROOT/.claude/skills/gaia/references/spec.md"
+  LIFECYCLE_MD="$REPO_ROOT/.claude/skills/gaia/references/spec/lifecycle.md"
 
   MAIN="$BATS_TEST_TMPDIR/main"
   WORKTREE="$BATS_TEST_TMPDIR/worktree"
@@ -268,17 +270,14 @@ seed_decoy() {
     > "$WORKTREE_PHYSICAL_PATH/.gaia/local/specs/ledger.json"
 }
 
-@test "R1: step 2's cold-consolidation sweep reads the ledger and folders from main" {
-  # End anchor is the retention-sweep paragraph, not the "For each candidate
-  # id" one: the latter's wording is prose that names the per-candidate folder
-  # variable and is free to change, while this heading-like sentence opens the
-  # next distinct pass. The intervening paragraph carries no ```bash fence, so
-  # widening the range does not change which fence bash_fence_of selects.
-  block="$(range_between "$SPEC_MD" 'Then, for any merged row whose folder still holds' 'Then delete any merged SPEC folder')"
+@test "R1: the pre-flight sweep's cold-consolidation scan reads the ledgers and folders from main" {
+  # Both anchors are the sweep's own pass labels, the stable structure of the
+  # section; the candidate fence is the only ```bash fence between them.
+  block="$(range_between "$LIFECYCLE_MD" '**2. Cold consolidation.**' '**3. Reap past retention.**')"
   fence="$(bash_fence_of "$block")"
 
   if ! printf '%s\n' "$fence" | grep -qF 'ledger.json'; then
-    printf "step 2's cold-consolidation sweep has no shell block that reads the SPEC ledger\n" >&2
+    printf "the pre-flight sweep's cold-consolidation scan has no shell block that reads the SPEC ledger\n" >&2
     return 1
   fi
 
@@ -348,7 +347,7 @@ seed_decoy() {
 }
 
 @test "negative space: no bare relative .gaia/local/specs/ read survives at the three converted read sites" {
-  sweep_range="$(range_between "$SPEC_MD" 'Then, for any merged row whose folder still holds' 'Then delete any merged SPEC folder')"
+  sweep_range="$(range_between "$LIFECYCLE_MD" '**2. Cold consolidation.**' '**3. Reap past retention.**')"
   resume_range="$(range_between "$SPEC_MD" 'Before prompting, gather context' 'Before presenting the resume choice')"
   session_helper_range="$(range_between "$SPEC_MD" 'The helper reads `CLAUDE_CODE_SESSION_ID`' '**Auto-mode:** the tally fires identically')"
 

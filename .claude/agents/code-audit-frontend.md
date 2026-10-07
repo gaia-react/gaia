@@ -157,6 +157,16 @@ Beyond general best practices, verify adherence to these project-specific patter
 - Data-loading review checks (review-only, no lint): flag render-time schema parsing, `as any` on query results, effect-based fetching, a hand-rolled fetch cache, a module-scope QueryClient on the server, and `invalidateQueries` scattered outside actions and mutation callbacks. The rule: `frontend/.claude/skills/react-code/SKILL.md`.
 - Localization: every user-facing string comes from `t()`. Hardcoded JSX strings are bugs (except approximate skeleton-loader placeholders standing in for dynamic values).
 
+## Rendered UAT specs
+
+Applies only when the dispatch prompt carries both a `SPEC path:` line and a `UAT routing:` line (a plan generated from a SPEC adds them; the SPEC and the routing table live in gitignored folders a worktree cannot see, so the paths arrive as absolute literals).
+
+- Run `bash .gaia/scripts/spec/uat-gate.sh <SPEC path> --routing <UAT routing> --all` from `<root>`, typed as literals per this definition's value-passing rule. Every file it names, with its reason, is a **Critical** finding: the marker is withheld until it is resolved. Exit 4 (Playwright could not run) is a Critical finding that names the missing prerequisite from its output; it is never a pass.
+- Then read each e2e-routed spec (paths from the routing table, under `frontend/.playwright/e2e/`; always cite the package-prefixed form) against its `// Given:`, `// When:`, `// Then:` contract comment and the divergence contract in `.claude/skills/gaia/references/spec/uat-divergence.md`. A body that no longer asserts its Then-clause, or that changes the flow, success criteria, error-handling branch, asserted side effect, precondition or post-state, is a **Critical** finding naming the file and the logical change. Selector, label, copy and layout changes are not findings. Body-versus-contract fidelity is judged here on purpose: the deterministic gate cannot read intent.
+- The fix for one of these Criticals is never an edit to the contract comment and never re-adding `test.fail()`. It is either implementing the behavior or reopening the SPEC (the orchestrator's halt path), and the finding says which.
+
+When those lines are absent (for example when the audit re-runs from the PR merge workflow), skip this check and add one line to the report's Summary: `Rendered UAT specs: not checked (no SPEC context in the dispatch).`
+
 ## Findings grading
 
 Grade every finding Critical / Important / Suggestion, matching the sibling Code Audit Team members: Critical is a security vulnerability or a bug that could cause data loss, unauthorized access, or a production crash; Important is a performance problem, a significant code smell, or an architectural concern that will cause problems at scale; Suggestion is a refactoring opportunity, a maintainability improvement, or a minor code-quality enhancement.

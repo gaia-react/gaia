@@ -1,88 +1,54 @@
 ---
-description: Promote merged SPEC or plan content into the GAIA wiki.
+description: Promote a consolidated SPEC or plan summary into the GAIA wiki, pre-merge, as a wiki-only commit on the open PR's branch.
 ---
 
 # Wiki Promote
 
-**Status:** no automatic trigger. Run it by hand: read this file and follow it with the SPEC or plan id.
-
-Takes a `SPEC-NNN` id for the spec arm, or a `PLAN-NNN` id for the plan arm (from `plan-close`, on an accepted promotion offer). Reads the consolidated `SUMMARY.md`, detects whether the implementing PR has merged, and either promotes content into `wiki/` or persists a defer flag.
+The orchestrator runs this step after consolidation, once the audit has cleared and the human confirmed ready to merge, on the open PR's branch. It takes a `SPEC-NNN` id for the spec arm (`.gaia/local/specs/SPEC-NNN/SUMMARY.md`) or a `PLAN-NNN` id for the plan arm (`.gaia/local/plans/PLAN-NNN/SUMMARY.md`), both resolved through the main checkout. It reads the consolidated `SUMMARY.md`, writes pages into `wiki/` in the working tree, and returns the page list and one Choice token for the orchestrator to record and commit.
 
 ## Step 1 - Resolve the source
 
-For the spec arm, the person running this runbook supplies the SPEC id. For the plan arm, the caller (`plan-close`) passes the `PLAN-NNN` id directly as the invocation argument.
+The orchestrator passes the `SPEC-NNN` or `PLAN-NNN` id as the invocation argument. Resolve the source path by id shape, anchored at the main checkout (`main_root="$(bash .gaia/scripts/main-root-lib.sh)"`), because the gitignored `.gaia/local/` tree lives there and not in an isolation worktree:
 
-Identify the id from the invocation argument or the person's instruction. If ambiguous on the spec arm, fall back to the most-recently-modified `.gaia/local/specs/SPEC-*/SUMMARY.md` (or `SPEC.md` under the legacy fallback below), deriving the SPEC ID from the parent folder name (excluding `-revised-contracts` and `-refit-decision` suffixes).
-
-Resolve the source path by id shape:
-
-- `SPEC-NNN` → `.gaia/local/specs/SPEC-NNN/SUMMARY.md`
-- `PLAN-NNN` → `.gaia/local/plans/PLAN-NNN/SUMMARY.md`
+- `SPEC-NNN` → `$main_root/.gaia/local/specs/SPEC-NNN/SUMMARY.md`
+- `PLAN-NNN` → `$main_root/.gaia/local/plans/PLAN-NNN/SUMMARY.md`
 
 Read the consolidated `SUMMARY.md` frontmatter. Required fields: `wiki_promote_default`, `wiki_promote_targets` (may be an empty list).
 
 **Legacy fallback (pre-consolidation SPECs):** if `SUMMARY.md` is absent but a legacy `SPEC.md` still exists in the same folder, fall back to reading `SPEC.md`'s frontmatter and body instead; downstream steps (title, body, routing) source from whichever file resolved here.
 
-If neither `SUMMARY.md` nor a legacy `SPEC.md` exists, exit with: `wiki-promote: no consolidated SUMMARY.md or SPEC artifact found; nothing to promote.`
+If neither `SUMMARY.md` nor a legacy `SPEC.md` exists, return Choice `no`, `Pages: none`, `Reason: no consolidated SUMMARY.md or SPEC artifact found; nothing to promote`.
 
 ## Step 2 - Read promotion gate
 
-Branch on `wiki_promote_default`:
+This step is the one place that states the promotion gate semantics. The orchestrator's wiki-promotion block and `lifecycle.md` point here and do not restate them.
 
-- `no` → exit silently with: `wiki-promote: SPEC-NNN skipped per frontmatter (wiki_promote_default: no).`
-- `ask` → surface `AskUserQuestion`:
-  - Question: `Promote SPEC-NNN to wiki? (default yes)`
-  - Options: `Yes, promote now` / `No, skip silently` / `Preview pages without writing`
-  - On `Yes` → continue to Step 3.
-  - On `No` → exit silently with the skip report.
-  - On `Preview` → render the candidate pages (call Step 4 + Step 5 in dry-run mode), print to stdout, exit without writing. Mark this branch with `--preview` for downstream tasks.
-- `yes` → continue to Step 3.
-- Any other value → emit warning `wiki-promote: unrecognized wiki_promote_default '<value>'; treating as 'no'.` and exit silently.
+First normalize `wiki_promote_default`: a legacy `true` is `yes` and a legacy `false` is `no` (an old-template consolidation may have copied a boolean, and `summary-verify.sh` accepts both as aliases). Then branch, returning exactly one Choice token per branch, with the `Reason:` line the orchestrator records:
 
-## Step 3 - Detect merged PR
+| `wiki_promote_default` | Condition | Choice | Pages | `Reason:` |
+|---|---|---|---|---|
+| `yes` | `wiki_promote_targets` non-empty | continue to Step 3; ends `promoted` | the pages written | omitted |
+| `yes` | `wiki_promote_targets` empty or absent | `no` | `none` | `yes with no wiki_promote_targets; nothing to promote` |
+| `ask` | human present | ask once with `AskUserQuestion` (`Promote <id> to the wiki?`, options `Promote` / `Skip`); `Promote` continues to Step 3 and ends `promoted`; `Skip` returns `declined` | none on `declined` | `declined`: the human chose to skip |
+| `ask` | no human present (unattended or auto) | `skipped-unattended`, without asking | `none` | `ask with no human present` |
+| `no` | any | `no` | `none` | `wiki_promote_default is no` |
+| any other value | any | `no` | `none` | names the value: `unrecognized wiki_promote_default '<value>'` |
 
-Determine the current branch using the Bash tool:
+An empty or absent `wiki_promote_targets` with `yes` is a recorded no-op and never falls back to a default target. Consolidation always stamps a non-empty list, so this arises only for a legacy SUMMARY. `skipped-verify-failed` is a consolidation outcome (the verify failed before promotion ran); this step never returns it.
 
-```bash
-current_branch=$(git rev-parse --abbrev-ref HEAD)
-```
+## Step 3 - Resolve the open PR
 
-Probe for a merged PR matching the branch using the Bash tool:
+Promotion runs pre-merge, so the implementing PR is open. Take its number and URL from the current branch:
 
 ```bash
-pr_json=$(gh pr list --head "$current_branch" --state merged --json number,mergedAt,url,body --limit 1 2>/dev/null || echo '[]')
+gh pr view --json number,url
 ```
 
-If `$pr_json` is `[]` (no merged PR for this branch):
-
-1. Write defer flag to `.gaia/local/cache/wiki-promote/<id>.json` (`<id>` is the `SPEC-NNN` or `PLAN-NNN` resolved in Step 1):
-
-   ```json
-   {
-     "id": "<id>",
-     "branch": "<current_branch>",
-     "deferred_at": "<now ISO 8601 UTC>",
-     "status": "awaiting-merge"
-   }
-   ```
-
-   (Cache directory creation: `mkdir -p .gaia/local/cache/wiki-promote/`. The `.gaia/local/` line in `.gitignore` covers this path.)
-
-2. Exit with: `wiki-promote: <id> deferred, awaiting PR merge for branch <current_branch>. Drain by reading `.claude/skills/gaia/references/spec/spec-close.md` (or `plan-close.md`, matching the id shape) and following it after merge.`
-
-If `$pr_json` contains a merged PR:
-
-1. Capture `pr_number`, `pr_url`, `pr_body`, `merged_at` for downstream steps.
-2. Continue to Step 4 (routing, Phase 3).
-3. If a defer flag exists at `.gaia/local/cache/wiki-promote/<id>.json`, delete it (the wait is over).
-
-If `gh` is not installed or not authenticated, treat as "no merged PR", write the defer flag with an additional field `gh_unavailable: true` and exit. This handles GAIA's framework-neutrality (offline, GitLab, Bitbucket users).
+Capture `pr_number` and `pr_url` for downstream steps. If `gh` is unavailable, unauthenticated or finds no PR for the branch, return Choice `no`, `Pages: none`, `Reason: no open pull request found for this branch; nothing promoted`; the orchestrator does not guess a PR.
 
 ## Step 4 - Route to wiki destinations
 
-Read `wiki_promote_targets` from the resolved source's frontmatter (`SUMMARY.md`, or the legacy `SPEC.md` under the Step 1 fallback).
-
-If empty or absent: default to `[decisions]`. This is also the routing default for the plan arm: a plan's consolidated `SUMMARY.md` seeds `wiki_promote_targets` to `[decisions]` unless the closer picked targets at close time, so the same fallback applies without a plan-specific branch.
+Read `wiki_promote_targets` from the resolved source's frontmatter (`SUMMARY.md`, or the legacy `SPEC.md` under the Step 1 fallback). Step 2 guarantees it is non-empty here.
 
 Allowed subdomain values:
 
@@ -92,15 +58,15 @@ Allowed subdomain values:
 
 Validate the list:
 
-- Empty list `[]` (or field absent) → fall back to `[decisions]`.
 - Any value not in the allowed set → emit warning `wiki-promote: unrecognized target '<value>' in wiki_promote_targets; skipped.` and drop that value.
-- All values invalid after filtering → fall back to `[decisions]`.
+- All values invalid after filtering → write nothing and return Choice `no`, `Pages: none`, `Reason: no valid wiki_promote_targets after filtering`.
 
 Compute `<slug>` once for this run:
 
 1. Read the resolved source's H1 heading (the first `# ` line in the body).
 2. Lowercase it, strip non-ASCII, replace any run of non-alphanumeric characters with a single hyphen, trim leading/trailing hyphens.
-3. If no H1 is found or the slug ends up empty, fall back to the id itself (e.g. `SPEC-004` or `PLAN-004`).
+3. If no H1 is found or the slug ends up empty, fall back to the id itself (e.g. `SPEC-NNN` or `PLAN-NNN`).
+
 
 For each valid target subdomain:
 
@@ -117,9 +83,8 @@ For each valid target subdomain:
      promoted_from_match: <bool>
    ```
 
-If no valid targets remain after validation (should not happen given the `[decisions]` fallback, but guard for it), emit warning and exit silently, do not write any pages. Append a log line `WARN: <id> had no valid wiki_promote_targets; skipped.`.
 
-The routing plan is the input to Step 5 (page rendering). The `wiki/index.md` and per-domain `_index.md` files are updated in Step 5 (one batch update per subdomain).
+The routing plan is the input to Step 5 (page rendering). The `wiki/index.md` update runs in Step 5 (one batch per subdomain).
 
 ## Step 5 - Render and write pages
 
@@ -134,25 +99,21 @@ For each tuple in the routing plan from Step 4, classify the page status, render
 For each tuple:
 
 1. **New page** (`exists_already: false`) → status `new`.
-2. **Existing page, our promotion** (`exists_already: true` AND `promoted_from_match: true`) → run hand-edit detection:
-   1. Read the current file's frontmatter to extract `promoted_at`.
-   2. Run `git log --format='%H %s' -- wiki/<subdomain>/<slug>.md` to list commits touching this file.
-   3. For each commit whose author timestamp is later than `promoted_at`, inspect the commit subject. A commit is a "promotion commit" if its subject contains `wiki-promote` or `wiki-sync` (case-insensitive). Otherwise it is a hand-edit.
-   4. If any hand-edit commit is found → status `hand-edited`.
-   5. If no hand-edit commits are found → status `our-update`.
-   6. If `git log` returns no commits at all (file is staged but never committed), treat as `our-update`, the existing file is from the current uncommitted run and a re-render is safe.
+2. **Existing page, our promotion** (`exists_already: true` AND `promoted_from_match: true`) → run hand-edit detection with a content hash, which survives a squash merge (a commit subject does not):
+   1. Read the page's frontmatter `promoted_hash` (`sha256:<hex>`, written at render time).
+   2. Hash the page's current body, everything below the closing `---` of the frontmatter, and compare.
+   3. Hashes equal → status `our-update`. Hashes differ → status `hand-edited`.
+   4. No `promoted_hash` field (the page was promoted before the field existed) → status `hand-edited`. This fails safe: a page whose provenance cannot be proven is never overwritten.
 3. **Existing page, NOT our promotion** (`exists_already: true` AND `promoted_from_match: false`) → status `foreign-collision`.
 
 ### Action per status
 
-| Status              | Action                                                                                                                                                                                                                                                                                                                                  |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `new`               | Render frontmatter + body (per Step 5b). Write file. Append to `pages_written`.                                                                                                                                                                                                                                                         |
-| `our-update`        | Read existing frontmatter, preserve `created`. Render fresh frontmatter (advancing `updated` and `promoted_at` to today/now) + body. Write file. Append to `pages_updated`.                                                                                                                                                             |
-| `hand-edited`       | Do NOT write. Emit warning to stdout: `wiki-promote: skipped wiki/<subdomain>/<slug>.md (hand-edited since last promotion).`. Append a log line `WARN: skipped wiki/<subdomain>/<slug>.md (hand-edited since last promotion)`. Append the path to `pages_skipped`.                                                                     |
-| `foreign-collision` | Do NOT write. Emit warning to stdout: `wiki-promote: target wiki/<subdomain>/<slug>.md exists with no promoted_from match; skipped to avoid clobbering hand-authored content.`. Append a log line `WARN: skipped wiki/<subdomain>/<slug>.md (foreign-collision; no promoted_from match)`. Append the path to `pages_skipped`.          |
-
-If `--preview` was set in Step 2, render but do NOT write. Print each rendered page (path + content) to stdout, classified by status. Skip the `wiki/log.md` append.
+| Status              | Action |
+| ------------------- | ------ |
+| `new`               | Render frontmatter + body (per Step 5b). Write file. Append to `pages_written`. |
+| `our-update`        | Read existing frontmatter, preserve `created`. Render fresh frontmatter (advancing `updated`, `promoted_at` and `promoted_hash`) + body. Write file. Append to `pages_updated`. |
+| `hand-edited`       | Do NOT write. Emit warning to stdout: `wiki-promote: skipped wiki/<subdomain>/<slug>.md (hand-edited since last promotion).`. Append a log line `WARN: skipped wiki/<subdomain>/<slug>.md (hand-edited since last promotion)`. Append the path to `pages_skipped`. |
+| `foreign-collision` | Do NOT write. Emit warning to stdout: `wiki-promote: target wiki/<subdomain>/<slug>.md exists with no promoted_from match; skipped to avoid clobbering hand-authored content.`. Append a log line `WARN: skipped wiki/<subdomain>/<slug>.md (foreign-collision; no promoted_from match)`. Append the path to `pages_skipped`. |
 
 ### Frontmatter rendering
 
@@ -167,14 +128,16 @@ Emit YAML frontmatter at the top of the file matching the contract. Map `subdoma
 | `components`   | `component`  |
 | `dependencies` | `dependency` |
 
+
 Fields:
 
 - `type`: from the table above.
-- `status`: `active` (always; `superseded` handling is out of scope for this task).
+- `status`: `active` (always).
 - `created`: for `new`, today's ISO date (`YYYY-MM-DD`). For `our-update`, preserve the value from the existing file's frontmatter.
 - `updated`: today's ISO date.
 - `promoted_from`: the folder id (`SPEC-NNN` for the spec arm, `PLAN-NNN` for the plan arm).
 - `promoted_at`: current ISO 8601 UTC timestamp.
+- `promoted_hash`: `sha256:<hex of the body below the frontmatter>`, computed over the final rendered body (Step 5b) after it is complete. Render the body first, hash it, then write the frontmatter.
 - `pr_number`: from Step 3.
 - `pr_url`: from Step 3.
 - `tags`: copied from the resolved source's frontmatter `tags` if present and non-empty; otherwise `[promoted, <subdomain>]`.
@@ -186,11 +149,10 @@ After all pages have been processed (and at least one was written or updated), p
 Line format:
 
 ```
-- <YYYY-MM-DD> <pr_short_sha> - PROMOTED: <id> → <comma-separated paths>
+- <YYYY-MM-DD> PROMOTED: <id> → <comma-separated paths>
 ```
 
 - `<YYYY-MM-DD>`: today.
-- `<pr_short_sha>`: short SHA of the merge commit. Resolve via `gh pr view <pr_number> --json mergeCommit --jq '.mergeCommit.oid' | cut -c1-7`. If unavailable, fall back to `current` (a literal placeholder is acceptable for the deferred-then-drained path; the orchestrator covers this).
 - `<comma-separated paths>`: union of `pages_written` and `pages_updated`, in the order they were processed. If the union is empty (everything skipped), do NOT append a `PROMOTED:` line, instead append `WARN: <id> promotion produced no writes; see warnings above.`.
 
 If `wiki/log.md` does not contain a `## [Unreleased]` section, prepend the section header above the existing first `## ` heading. (Defensive, the file should already have one per the existing wiki convention.)
@@ -225,7 +187,7 @@ Render the body in the following sections, in order, immediately after the closi
    ## References
 
    - Source: [<id>](<relative-path>) (local artifact, gitignored, link does not resolve from GitHub web view; removed once the folder reaps, the PR link and `promoted_from` below are the durable provenance)
-   - Implementing PR: [PR #NNN](https://github.com/<owner>/<repo>/pull/NNN)
+   - Implementing PR: [PR #NNN](<pr_url>)
    - Promoted at: <ISO 8601 UTC>
    ```
 
@@ -244,7 +206,7 @@ Render the body in the following sections, in order, immediately after the closi
 
      If both methods fail (no `gh`, no `origin` remote), substitute the literal `<owner>/<repo>` placeholder and emit a warning `wiki-promote: could not resolve repo slug; PR URL placeholder left in references.`. The wiki-sync handoff will surface this for manual fix.
 
-   - `NNN`, `pr_number` from Step 3.
+   - `NNN` and `<pr_url>`, the open PR's `pr_number` and `pr_url` from Step 3.
    - `<ISO 8601 UTC>`, same value as `promoted_at` in the page frontmatter.
 
    The "(local artifact, gitignored, ...)" note appears on this first-occurrence line only. If the source backlink is referenced again later in the body, omit the parenthetical.
@@ -279,32 +241,27 @@ The wiki-sync handoff (Step 6) will pick up the modified `wiki/index.md` along w
 
 Match the existing wiki voice: declarative, no preamble, concrete examples where useful. End the file with a single trailing newline.
 
-## Step 6 - Hand off to wiki-sync
+## Step 6 - Return the page list
 
-The wiki-promote command does NOT commit or push. The existing `/gaia-wiki sync` skill handles branch-aware commits.
-
-Emit a structured payload to stdout (the next agent reads it as conversation context):
+This command does NOT commit or push; the orchestrator does. Return a structured payload the orchestrator reads as conversation context:
 
 ```json
 {
   "source": "wiki-promote",
   "id": "<SPEC-NNN or PLAN-NNN>",
+  "choice": "promoted",
   "pr_number": <NNN>,
   "pr_url": "<full URL>",
   "pages_written": ["wiki/<subdomain>/<slug>.md", ...],
   "pages_updated": [...],
   "pages_skipped": [...],
-  "log_line": "<YYYY-MM-DD> <short_pr_sha> - PROMOTED: <id> → <comma-separated paths>"
+  "log_line": "<YYYY-MM-DD> PROMOTED: <id> → <comma-separated paths>"
 }
 ```
 
-Then run `/gaia-wiki sync`; do not merely print the line below, it states the intent, it is not the run:
+The orchestrator stages exactly the `pages_written` and `pages_updated` paths plus `wiki/index.md` and `wiki/log.md`, commits them with a `wiki:` Conventional Commits subject (`.gaia/conventional-commits.json` has a `wiki` type), and pushes. The commit must contain only `wiki/**` paths: `wiki/**` is outside every Code Audit Team member's scope, and that is what keeps the members' already-posted markers valid. A commit that touches any other path invalidates them.
 
-> Invoking `/gaia-wiki sync` to handle the branch-aware commit step for these pages.
-
-(`/gaia-wiki sync` will read the staged-but-uncommitted wiki changes from `git status`, write to `wiki/log.md` and `wiki/.state.json`, then commit per its branch-aware rules.)
-
-If `/gaia-wiki sync` fails or refuses, exit with the warning `wiki-promote: pages staged but wiki-sync handoff failed. Run /gaia-wiki sync manually.` Do NOT attempt to commit from this command body.
+When every page was skipped (the union of `pages_written` and `pages_updated` is empty), return Choice `no`, `Pages: none` and `Reason: every target page was skipped; see warnings`, and the orchestrator makes no commit.
 
 ## Step 7 - Report
 
@@ -317,26 +274,6 @@ Wiki promote complete for <id>.
   Pages written:    <count> (<comma-separated paths>)
   Pages updated:    <count> (<comma-separated paths>)
   Pages skipped:    <count> (<comma-separated paths with reason>)
-  Wiki-sync:        invoked
 ```
 
-If any pages were skipped due to hand-edit detection, include a one-line note:
-
-`Hand-edited skips can be resolved by reading `.claude/skills/gaia/references/spec/spec-close.md` (or `plan-close.md` for a PLAN-NNN id) and following it with `--force` (TBD; for now resolve manually).`
-
-## Step 8 - Chain to close (immediate-merge path only)
-
-This step fires only when Step 3 found a merged PR and Steps 4–7 ran full. On the deferred path, Step 3 exits before reaching here. On the silent-skip path (`wiki_promote_default: no`) and the preview path (`--preview`), Step 2 exits before reaching here. So an unconditional invoke at this step is safe, the only way to land here is the immediate-merge full-run.
-
-**Suppression guard.** If wiki-promote was re-run from `spec-close.md`'s or `plan-close.md`'s Step 2 drain (deferred path), the closer passes the literal flag `drained: true` in the instruction that triggered this run. Skip this step **only when** the instruction contains the exact string `drained: true`, match the literal token; do not infer "drained" from the surrounding conversation or from the fact that a cache was cleared. When `drained: true` is present, the closer is the parent and will handle disposition itself once wiki-promote returns; skip Step 8.
-
-Otherwise, route by id shape and run the matching closer directly, the lines below state the intent, they are not a substitute for the run:
-
-- `SPEC-NNN` → read `.claude/skills/gaia/references/spec/spec-close.md` and follow it, with `<id>`.
-- `PLAN-NNN` → read `.claude/skills/gaia/references/spec/plan-close.md` and follow it, with `<id>`.
-
-> Running the closer matching this id. wiki-promote completed inline; the cache is already cleared. The closer will skip drain and go straight to the disposition prompt.
-
-This presents the user with the close flow's disposition prompt. The wiki content is already committed (Step 6's wiki-sync handoff); the disposition only affects `.gaia/local/specs/<id>/` (spec arm) or `.gaia/local/plans/<id>/` (plan arm).
-
-If the closer fails or refuses, exit with the warning `wiki-promote: pages staged and committed; close chain failed. Read `.claude/skills/gaia/references/spec/spec-close.md` or `plan-close.md` and follow it with `<id>` manually to dispose of the artifact.` Do NOT retry the chain, the wiki side is already settled.
+If any pages were skipped due to hand-edit detection, include a one-line note: `Skipped pages stay as they are; reconcile them manually in a follow-up.`

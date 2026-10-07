@@ -120,11 +120,11 @@ The self-review (step 6) and adversarial audit (step 7) route their finding, ver
 
 **Audit cache directory** `.gaia/local/cache/audit-<spec_id>/`. Every file the self-review and audit produce lands here:
 
-- `findings/<LENS>.json` — one per dispatched lens, written even when the findings array is empty (so the file count equals the dispatched-lens count deterministically).
-- `findings/self-review.json` — the step-6 self-review (6a schema).
-- `findings/completeness.json` — the Deep completeness critic (7a findings schema).
-- `verdicts/<finding-id>.json` — a Standard single-refuter verdict, or a batched refuter's verdict on either tier (7b-i, above the cap).
-- `verdicts/<finding-id>-<refuter-lens>.json` — a Deep verdict, one per refuter lens. The refuter lens is **slugified**: `correctness` stays `correctness`, `security/safety` maps to `security-safety`, `reproduces-as-described` stays as is. The completeness critic's single-refuter verdicts use the same naming.
+- `findings/<LENS>.json`: one per dispatched lens, written even when the findings array is empty (so the file count equals the dispatched-lens count deterministically).
+- `findings/self-review.json`: the step-6 self-review (6a schema).
+- `findings/completeness.json`: the Deep completeness critic (7a findings schema).
+- `verdicts/<finding-id>.json`: a Standard single-refuter verdict, or a batched refuter's verdict on either tier (7b-i, above the cap).
+- `verdicts/<finding-id>-<refuter-lens>.json`: a Deep verdict, one per refuter lens. The refuter lens is **slugified**: `correctness` stays `correctness`, `security/safety` maps to `security-safety`, `reproduces-as-described` stays as is. The completeness critic's single-refuter verdicts use the same naming.
 
 Per-lens and per-finding-plus-lens filenames avoid write collisions in the parallel fan-out: each agent owns exactly one path, so many agents write the cache concurrently without contending.
 
@@ -134,7 +134,7 @@ Per-lens and per-finding-plus-lens filenames avoid write collisions in the paral
 
 An **id-less** entry carries its `revision` text inline (free-text revision mode); the applier applies it directly with no findings-file lookup (gate-2 free-form edits route this way).
 
-The applier **reads every findings and verdict file in the cache** (not just the decision-list ids). For each id-carrying `apply`/`revise` entry it looks the fix up **by id in the findings files** — main never holds the recommendation text. For each id-less entry it applies the inline `revision` (free-text mode, no findings-file lookup). It folds every applicable fix into the draft cache in **one Write** and returns a one-line summary:
+The applier **reads every findings and verdict file in the cache** (not just the decision-list ids). For each id-carrying `apply`/`revise` entry it looks the fix up **by id in the findings files**; main never holds the recommendation text. For each id-less entry it applies the inline `revision` (free-text mode, no findings-file lookup). It folds every applicable fix into the draft cache in **one Write** and returns a one-line summary:
 
     { "folded": [<ids>], "directives": [<ids>]?, "revised": [<ids>]?, "counts": { "folded": <int>, "directives": <int>, "revised": <int> } }
 
@@ -225,36 +225,11 @@ Otherwise, ask: **"What do you want to spec?"** and wait for the response before
 
 ### 2. Resume-vs-start-new prompt (pre-flight)
 
-First, best-effort reconcile any finalized-but-open SPEC against git, so a SPEC whose implementing PR has already merged is recorded as `merged` rather than lingering. This never blocks and is a no-op when nothing is reconcilable (no `gh` call unless the ledger holds a finalized-unmerged row).
+First, read `.claude/skills/gaia/references/spec/lifecycle.md` and run its `## Pre-flight sweep` now. It reconciles finalized rows whose PR has merged, cold-consolidates any merged folder whose layers were never consolidated, and reaps merged folders past the retention window. Its writes into a SPEC folder follow the tool-choice contract in Operational primitives.
+
+Then delete any SPEC folder already at `abandoned` status past the same retention window (`GAIA_SPEC_RETENTION_DAYS`, default 30 days) and cost-represented in `cost.jsonl`; no consolidation gate applies, since nothing about an abandoned draft is ever promoted. Then sweep any never-authored draft older than the guard age to the terminal `abandoned` status, so a ghost allocation (no SPEC.md, no draft cache, no gate-1 snapshot) stops re-surfacing on this very prompt. Both passes are best-effort and fail-open:
 
 ```bash
-bash .gaia/scripts/spec/spec-reconcile.sh "$PWD" 2>/dev/null || true
-```
-
-Then, for any merged row whose folder still holds `SPEC.md` or `AUDIT.md` with no well-formed consolidated `SUMMARY.md`, an out-of-band merge that never ran the close flow's consolidation, cold-consolidate it before the delete sweep below runs. This pass is the producer for `spec-archive-merged.sh`'s consolidation gate, which keeps any folder still holding unconsolidated layers; without this pass those folders would never clear that gate. Identify candidates:
-
-```bash
-MAIN_ROOT="$(bash .gaia/scripts/main-root-lib.sh)"
-if [ -z "$MAIN_ROOT" ]; then
-  echo "gaia-spec: cannot resolve the main checkout; skipping the cold-consolidation sweep" >&2
-else
-  jq -r '.specs[] | select(.status == "merged") | .id' "${MAIN_ROOT}/.gaia/local/specs/ledger.json" 2>/dev/null | while read -r id; do
-    folder="${MAIN_ROOT}/.gaia/local/specs/${id}"
-    { [ -f "${folder}/SPEC.md" ] || [ -f "${folder}/AUDIT.md" ]; } || continue
-    bash .gaia/scripts/summary-verify.sh "${folder}/SUMMARY.md" >/dev/null 2>&1 && continue
-    echo "$id"
-  done
-fi
-```
-
-The ledger and the SPEC folders are main-anchored state (state registry `specs-main`), so this sweep resolves the main checkout before reading either (see Operational primitives for the resolver's fail-closed contract; the `else` arm above is that contract applied here).
-
-For each candidate id, let `SPEC_FOLDER="${MAIN_ROOT}/.gaia/local/specs/<id>"` (`MAIN_ROOT` from the resolver in the block above), then run a cold consolidation (agent synthesis, not a script) against it: read the layers in precedence `SPEC.md` → `AUDIT.md` → plan `PROGRESS.md` (top wins), grounded in the merged code and passing tests, and write `${SPEC_FOLDER}/SUMMARY.md` (per the tool-choice contract in Operational primitives) in the pinned shape (present-tense body, `wiki_promote_default` + `wiki_promote_targets` frontmatter, non-empty H1, optional `## Divergence`). Then gate the layer removal on the verify script: `bash .gaia/scripts/summary-verify.sh ${SPEC_FOLDER}/SUMMARY.md`; on exit 0, `rm ${SPEC_FOLDER}/SPEC.md ${SPEC_FOLDER}/AUDIT.md`; on exit 1, leave the layers in place and move to the next candidate. This pass never destroys a layer it failed to replace, and a candidate whose synthesis or verify fails is simply left for a future pass, never blocking this prompt.
-
-Then delete any merged SPEC folder that is past the retention window (`GAIA_SPEC_RETENTION_DAYS`, default 30 days), whose layers are consolidated (the pass above), and whose cost is fully represented in `cost.jsonl`, the safety net for a PR that merged out-of-band or a close that never ran (an unparseable or unrepresented cost sidecar phase blocks that folder's deletion rather than risking an unrecoverable loss; a folder still within the window is kept regardless of representation). Delete any SPEC folder already at `abandoned` status past the same retention window and cost-represented too, no consolidation gate applies since nothing about an abandoned draft is ever promoted. Then sweep any never-authored draft older than the guard age to the terminal `abandoned` status, so a ghost allocation (no SPEC.md, no draft cache, no gate-1 snapshot) stops re-surfacing on this very prompt. All three passes are best-effort and fail-open:
-
-```bash
-bash .gaia/scripts/spec/spec-archive-merged.sh "$PWD" 2>/dev/null || true
 bash .gaia/scripts/spec/spec-archive-abandoned.sh "$PWD" 2>/dev/null || true
 bash .gaia/scripts/spec/spec-abandon-empty.sh "$PWD" 2>/dev/null || true
 # Best-effort sweep of stale audit caches left by "Start new" or abandoned exits.
@@ -520,7 +495,7 @@ Spawn a `general-purpose` Agent with this prompt (interpolate `<DRAFT_PATH>` and
 >
 > Lead with a tool call, not prose: your first action is a Read of the artifact under audit, and you emit your structured result before any prose. Read `<DRAFT_PATH>` first, before any other action.
 >
-> **Write** your full findings to `.gaia/local/cache/audit-<spec_id>/findings/self-review.json` (the fully-qualified path — never a bare `findings/self-review.json`, which from the repo-root cwd would resolve outside the cache and be orphaned, off the `.gaia/local/cache/**` allowlist). Each finding is one object under this schema, and every finding carries an `id` of the form `SR-NNN`, which you assign sequentially as you record each one:
+> **Write** your full findings to `.gaia/local/cache/audit-<spec_id>/findings/self-review.json` (the fully-qualified path, never a bare `findings/self-review.json`, which from the repo-root cwd would resolve outside the cache and be orphaned, off the `.gaia/local/cache/**` allowlist). Each finding is one object under this schema, and every finding carries an `id` of the form `SR-NNN`, which you assign sequentially as you record each one:
 >
 >     {
 >       "id": "SR-NNN",
@@ -680,9 +655,9 @@ From the 7a thin digests, main selects every **material** finding id (severity �
 
 The cap exists because the per-finding shapes grow with finding volume: a broad Deep audit that raises 87 material findings would pay 261 refuters. High volume is also where per-finding refutation buys least, since a defect several lenses raised independently already carries the cross-check the extra refuters add. Batched, the dispatch count is bounded by the lens count however many findings the lenses raise.
 
-Main dispatches each refuter keyed by `{ finding_id, findings_file, refuter_lens? }` — **no finding fields interpolated** — where `findings_file` is the lens's `.gaia/local/cache/audit-<spec_id>/findings/<LENS>.json` and `verdict_file` is the refuter's output path (`verdicts/<finding-id>.json` for Standard, `verdicts/<finding-id>-<slug-lens>.json` for Deep, slug per the frozen mapping). The refuter reads the finding body from the file itself. Before dispatch, pre-clear `<verdict_file>` (`rm -f`) so its presence is a fresh-write signal.
+Main dispatches each refuter keyed by `{ finding_id, findings_file, refuter_lens? }`, **no finding fields interpolated**, where `findings_file` is the lens's `.gaia/local/cache/audit-<spec_id>/findings/<LENS>.json` and `verdict_file` is the refuter's output path (`verdicts/<finding-id>.json` for Standard, `verdicts/<finding-id>-<slug-lens>.json` for Deep, slug per the frozen mapping). The refuter reads the finding body from the file itself. Before dispatch, pre-clear `<verdict_file>` (`rm -f`) so its presence is a fresh-write signal.
 
-Refuter prompt (interpolate `<finding_id>`, `<findings_file>`, `<verdict_file>`, `<DRAFT_PATH>`, `<repo_root>` — no finding fields inline):
+Refuter prompt (interpolate `<finding_id>`, `<findings_file>`, `<verdict_file>`, `<DRAFT_PATH>`, `<repo_root>`; no finding fields inline):
 
 > Verify finding `<finding_id>`, recorded in `<findings_file>`, against the SPEC draft at `<DRAFT_PATH>` (repo root `<repo_root>`). Read the finding there; its severity, location, issue, evidence, and recommendation all live in that file.
 >
@@ -694,7 +669,7 @@ Refuter prompt (interpolate `<finding_id>`, `<findings_file>`, `<verdict_file>`,
 
 A batched refuter is keyed by `{ finding_ids, findings_file }` and uses the same prompt with three substitutions: it verifies every id in `<finding_ids>` rather than one, it writes one verdict file per id to `verdicts/<finding-id>.json` (the Standard naming, on either tier), and it returns a JSON array of thin verdict lines, one per id. Pre-clear every one of those verdict files before dispatch. Main counts the returned lines against the batch's ids, re-dispatches the batch once for any id missing a line, and carries an id still missing one forward unrefuted at its auditor severity.
 
-Verdict schema — the **file** the refuter writes to `verdicts/<finding-id>.json` (Standard) or `verdicts/<finding-id>-<slug-lens>.json` (Deep). `disposition` is consulted only for surviving findings:
+Verdict schema: the **file** the refuter writes to `verdicts/<finding-id>.json` (Standard) or `verdicts/<finding-id>-<slug-lens>.json` (Deep). `disposition` is consulted only for surviving findings:
 
     {
       "verdict": "confirmed" | "partial" | "refuted",
@@ -747,7 +722,7 @@ AUDIT_MD="${SPEC_DIR}/AUDIT.md"
 
 Route each surviving finding by its `disposition`, read from the **thin verdict lines** (main never opens the verdict files):
 
-- **Plan-time directive** (the SPEC's contract is already satisfied; the fix is an implementation instruction). No change folds into the draft — it stays byte-identical — but the finding gains a plan-time-directive entry in `AUDIT.md` (7d) so `/gaia-plan` and the implementer honor it.
+- **Plan-time directive** (the SPEC's contract is already satisfied; the fix is an implementation instruction). No change folds into the draft (it stays byte-identical), but the finding gains a plan-time-directive entry in `AUDIT.md` (7d) so `/gaia-plan` and the implementer honor it.
 - **SPEC contract defect** (a UAT or the intent is itself wrong, gameable, or missing). The draft is not yet saved, so the fix folds straight into the draft cache with NO reopen ceremony.
 
 **Interactive.** Main reads only the handful of **material** (severity ≠ `low`) spec-defect survivors from the findings files to surface them to the user, mirroring step 6b's high-finding prompt (issue, evidence, recommendation; apply / keep / revise). No numeric cap or paging. This is the second bounded interactive carve-out where a finding body legitimately reaches main. Collect the user's apply/keep/revise decisions into the delegated-fold decision list. **Low** spec-defect fixes are never read into main; the applier folds them directly from the on-disk findings files (it reads the full cache), and refuter verdict text is never read into main. (Low findings skip refutation and carry no verdict line, so the sourcing of a low finding's `disposition` is a pre-existing question the audit's logic leaves unchanged here; the applier folds only the low spec-defects an inline fold would fold.)

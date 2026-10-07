@@ -104,7 +104,7 @@ if [ -f "$orchestrator" ]; then
     index=0
     while [ "$index" -lt "${#sentinels[@]}" ]; do
       if [ "$line" = "${sentinels[$index]}" ] && [ "${first_lines[$index]}" -eq 0 ]; then
-        first_lines[$index]=$line_number
+        first_lines[index]=$line_number
       fi
       index=$((index + 1))
     done
@@ -177,7 +177,7 @@ if [ -n "$spec_path" ] && [ -f "$readme" ]; then
       esac
       case "$surface" in
         story | non-ui)
-          if printf '%s' "$then_clause" | grep -qiE 'route|navigat|redirect|session|server[ -]?(side )?state|(^|[^a-z])urls?([^a-z]|$)'; then
+          if grep -qiE 'route|navigat|redirect|session|server[ -]?(side )?state|(^|[^a-z])urls?([^a-z]|$)' <<<"$then_clause"; then
             printf 'WARN: %s is routed %s but its then-clause reads like a route, navigation, URL, redirect, session or server-state check; confirm it is not an e2e UAT\n' "$uat_id" "$surface" >&2
           fi
           ;;

@@ -389,8 +389,8 @@ jobs:
               # the suite, matching the test-dir + source-dir pairing the
               # filters above use (.gaia/tests/hooks/** + .claude/hooks/**;
               # .gaia/tests/forensics/** + .github/forensics/**).
-              # spec-archive-merged.bats reads references/spec/spec-close.md,
-              # which the .claude/skills/**/*.md glob above covers.
+              # The .claude/skills/**/*.md glob above also covers the
+              # skill reference pages that the spec-ledger suites read.
               - '.claude/skills/gaia/references/forensics*'
               - '.github/forensics/**'
               # The statusline suite (.gaia/tests/statusline/) exercises the
@@ -954,28 +954,29 @@ jobs:
           # keying the store cache on the root lockfile as well would rebuild
           # the cache on bumps this leg does not consume.
           cache-dependency-path: .gaia/cli/pnpm-lock.yaml
-      # The story-name equality suite runs the real storybook Vitest project in
-      # Chromium, so the leg that holds it owes a browser install. The
-      # condition is derived from the sharder for the reason the floor-check
-      # step above gives: the suite moves between legs as the weighted split
+      # Two suites run a real Chromium: the story-name equality suite (the
+      # storybook Vitest project) and the UAT lifecycle suite (Playwright over
+      # a rendered spec), so the leg that holds either owes a browser install.
+      # The condition is derived from the sharder for the reason the floor-check
+      # step above gives: a suite moves between legs as the weighted split
       # re-balances, and a hard-coded shard name would arm the install on the
-      # wrong leg. Only the legs that install the root workspace can hold it,
-      # and the suite fails rather than skips when Chromium is absent.
+      # wrong leg. Only the legs that install the root workspace can hold them,
+      # and both suites fail rather than skip when Chromium is absent.
       - if: contains(fromJSON('["hooks-2", "hooks-3", "hooks-4"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
         id: needs-chromium
-        name: Ask the sharder whether this shard holds the story-name equality suite
+        name: Ask the sharder whether this shard holds a Chromium suite
         env:
           SHARD: ${{ matrix.shard }}
         run: |
           set -euo pipefail
           shard_files="$(bash .gaia/tests/bats-shards.sh files "$SHARD")"
-          if grep -qF 'extract-test-signals-stories-reporter.bats' <<<"$shard_files"; then
+          if grep -qF -e 'extract-test-signals-stories-reporter.bats' -e 'uat-lifecycle-e2e.bats' <<<"$shard_files"; then
             printf 'needed=1\n' >> "$GITHUB_OUTPUT"
           else
             printf 'needed=0\n' >> "$GITHUB_OUTPUT"
           fi
       - if: steps.needs-chromium.outputs.needed == '1'
-        name: Install Chromium for the story-name equality suite
+        name: Install Chromium for the Chromium suites
         run: pnpm -C frontend exec playwright install --with-deps chromium
       # `${{ matrix.shard }}` reaches the script only through `env:`, never
       # interpolated into the run: body text itself -- the shape this repo's
