@@ -148,7 +148,7 @@ declined() {
   [ "$status" -eq 0 ]
   jq -e --argjson unit_rounds "$UNIT_ROUNDS" --arg option_label "$(session_label)" \
     '.allowance.answers[0] | .kind == "grant" and .n == $unit_rounds and .source == "ask" and .option == $option_label and (keys | sort) == ["at","checkpoint","kind","n","nonce","option","session_id","source"]' "$ALF_STATE"
-  printf '%s' "$output" | jq -e '.hookSpecificOutput.additionalContext | contains("Run `/clear`, then paste the prompt below.") and contains("Kill this session with Ctrl+C, start a new one") and contains("only a fresh launch provides") and contains("fenced continuation prompt") and contains("and stop")'
+  printf '%s' "$output" | jq -e '.hookSpecificOutput.additionalContext | contains("Run `/clear`, then paste the prompt below.") and contains("Press Ctrl+C, run `claude`") and contains("would run stale without a fresh launch") and contains("on its own line") and contains("In a worktree, Claude Code may ask whether to keep or remove it as it exits: choose keep.") and contains("fenced continuation prompt") and contains("and stop")'
 }
 
 @test "the recommended label records the grant, with and without the suffix the pin carries, and the option keeps what was selected" {

@@ -338,8 +338,9 @@ pinned_labels() {
   section_text="$(section "$CHECKPOINT")" || return 1
   sentences <<<"$section_text" | grep -qF -- 'for the human to paste into a fresh session' || return 1
   grep -qF -- 'Run `/clear`, then paste the prompt below.' <<<"$section_text" || return 1
-  grep -qF -- 'Kill this session with Ctrl+C, start a new one (`claude`, with any needed environment variable), then paste the prompt below.' <<<"$section_text" || return 1
-  grep -qF -- 'only a fresh launch provides' <<<"$section_text" || return 1
+  grep -qF -- 'Press Ctrl+C, run `claude` (with any needed environment variable), then paste the prompt below.' <<<"$section_text" || return 1
+  grep -qF -- 'would run stale without a fresh launch' <<<"$section_text" || return 1
+  grep -qF -- 'In a worktree, Claude Code may ask whether to keep or remove it as it exits: choose keep.' <<<"$section_text" || return 1
   fence="$(awk '/^```text$/ { open = 1; next } /^```$/ { open = 0 } open { print }' <<<"$section_text")"
   grep -qF -- 'Resume the PR merge workflow for PR #<N>' <<<"$fence" || return 1
   grep -qF -- 'audit-loop-eval.sh next-unit --root <RESOLVED_ROOT>' <<<"$fence" || return 1
