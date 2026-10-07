@@ -19,7 +19,9 @@
 #   .claude/skills/gaia/references/spec/lifecycle.md. Candidates are rows with
 #   status "ready", or "merged" with no pr_number. Each is matched to the
 #   newest merged PR (the 200 most recent, one gh call) whose head branch
-#   names that plan (.gaia/scripts/branch-name-lib.sh) and patched with
+#   names that plan (.gaia/scripts/branch-name-lib.sh) and that merged no
+#   earlier than the row's allocated_at (plan numbers are machine-local, so an
+#   older PR from another clone can borrow a number), and patched with
 #   status, the PR's mergedAt and its pr_number. A missing gh, jq, network or
 #   unmatched row leaves the ledger as it was. The 200-PR window is a backstop
 #   only: the warm path stamps pr_number at close.
@@ -49,7 +51,7 @@ if [ "$#" -eq 1 ]; then
 
   # Candidate rows (local, cheap): not yet merged, or merged without the PR number.
   candidates="$(jq -r '
-    .plans[] | select(.status == "ready" or (.status == "merged" and ((.pr_number // "") == ""))) | .id
+    .plans[] | select(.status == "ready" or (.status == "merged" and ((.pr_number // "") == ""))) | "\(.id)\t\(.allocated_at // "")"
   ' "$ledger_path" 2>/dev/null || true)"
   [ -n "$candidates" ] || exit 0
 
@@ -64,11 +66,15 @@ if [ "$#" -eq 1 ]; then
   prs_rows="$(printf '%s' "$prs_json" \
     | jq -r '.[] | "\(.mergedAt)\t\(.number)\t\(.headRefName)"' 2>/dev/null || true)"
 
-  while IFS= read -r candidate_id; do
+  while IFS='	' read -r candidate_id candidate_allocated_at; do
     [ -n "$candidate_id" ] || continue
     candidate_number="$(printf '%s' "$candidate_id" | sed -nE 's|^PLAN-0*([0-9]+)$|\1|p')"
     [ -n "$candidate_number" ] || continue
 
+    # A PR merged before the row was allocated cannot be this plan's work:
+    # plan numbers are machine-local, so another clone's older PR can borrow
+    # the number. Such a PR is skipped; a row with no allocated_at skips
+    # nothing.
     # Latest merge wins, so merged_at reflects when the work fully landed;
     # ISO-8601 timestamps sort chronologically as strings. The test is a
     # builtin prefilter so a head branch that cannot name a plan skips the
@@ -78,6 +84,9 @@ if [ "$#" -eq 1 ]; then
     match="$(printf '%s\n' "$prs_rows" \
       | while IFS='	' read -r listed_merged_at listed_pr_number head; do
         if [[ "$head" == *plan-* ]]; then
+          if [ -n "$candidate_allocated_at" ] && [[ "$listed_merged_at" < "$candidate_allocated_at" ]]; then
+            continue
+          fi
           [ "$(gaia_branch_plan_number "$head")" = "$candidate_number" ] && printf '%s\t%s\n' "$listed_merged_at" "$listed_pr_number"
         fi
       done | LC_ALL=C sort | tail -n 1 || true)"

@@ -25,7 +25,7 @@ pnpm pw-ui      # run with Playwright UI (interactive)
 Match the feature or route: `language-switch.spec.ts`, `things.spec.ts`.
 One spec file per UAT-backed flow, inside its feature folder and named for the behavior (`.playwright/e2e/<feature>/<flow>.spec.ts`); one `test.describe` block per scenario group.
 
-A file whose first line is `// gaia-uat-contract sha256:...` was rendered from a SPEC UAT. Its Given/When/Then comment is the contract: make cosmetic edits only (selectors, labels, copy, layout) and report logical changes (`.claude/skills/gaia/references/spec/uat-divergence.md`). The owning phase replaces `test.fail(` with `test(`.
+A file whose first line is `// gaia-uat-contract sha256:...` was rendered from a SPEC UAT. Its Given/When/Then comment is the contract: make cosmetic edits only (selectors, labels, copy, layout) and report logical changes (`.claude/skills/gaia/references/spec/uat-divergence.md`). The owning phase removes the `test.fail();` call and replaces the placeholder `expect(false, ...)` with a real body that drives the app (`.claude/skills/gaia/references/spec/uat-write.md`).
 
 ## Selectors, prefer semantic over structural
 

@@ -283,3 +283,27 @@ EOF
   [ "$status" -eq 0 ]
   grep -qF "usage: plan-reconcile.sh <repo_root> [<plan_id> [<pr_number>]]" <<<"$stderr"
 }
+
+@test "7f: scan mode ignores a same-number PR merged before the row was allocated and leaves the row ready" {
+  cat > "$SANDBOX/$LEDGER_RELATIVE_PATH" <<'JSON'
+{"version": 1, "plans": [{"id": "PLAN-031", "allocated_at": "2026-03-10T00:00:00Z", "source": "allocated", "subject": "a", "status": "ready"}]}
+JSON
+  _gh_stub_listing
+  before="$(snapshot_file "$SANDBOX/$LEDGER_RELATIVE_PATH")"
+  run _reconcile_scan
+  [ "$status" -eq 0 ]
+  after="$(snapshot_file "$SANDBOX/$LEDGER_RELATIVE_PATH")"
+  assert_files_identical "$before" "$after"
+  [ "$(_row_field PLAN-031 status)" = "ready" ]
+}
+
+@test "7g: scan mode still matches a same-number PR merged after the row was allocated when an older one shares the number" {
+  cat > "$SANDBOX/$LEDGER_RELATIVE_PATH" <<'JSON'
+{"version": 1, "plans": [{"id": "PLAN-031", "allocated_at": "2026-03-03T00:00:00Z", "source": "allocated", "subject": "a", "status": "ready"}]}
+JSON
+  _gh_stub_listing
+  run _reconcile_scan
+  [ "$status" -eq 0 ]
+  [ "$(_row_field PLAN-031 status)" = "merged" ]
+  jq -e '.plans[] | select(.id == "PLAN-031") | .pr_number == 101' "$SANDBOX/$LEDGER_RELATIVE_PATH"
+}

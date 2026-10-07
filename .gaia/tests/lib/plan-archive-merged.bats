@@ -566,3 +566,20 @@ _seed_cost_row() {
   assert_contains "Deleted 1 merged plan folder(s): PLAN-001"
   [ ! -e "$PLANS/PLAN-001" ]
 }
+
+# --- 29: a folder with no SUMMARY.md is never reaped ------------------------
+
+@test "29: an aged, cost-represented folder holding only plan files and no SUMMARY.md is kept" {
+  _seed_merged_plan PLAN-001
+  rm -f "$PLANS/PLAN-001/SUMMARY.md"
+  printf '# Plan\n' > "$PLANS/PLAN-001/PLAN.md"
+  _seed_cost_row PLAN-001 sess-1 100 10 5 20
+  _set_merged_at PLAN-001 "$(_days_ago 45)"
+  export GAIA_SPEC_RETENTION_DAYS=30
+
+  run _archive "$SANDBOX"
+  [ "$status" -eq 0 ]
+  refute_contains "Deleted"
+  assert_contains "consolidation never ran; kept PLAN-001"
+  [ -f "$PLANS/PLAN-001/PLAN.md" ]
+}

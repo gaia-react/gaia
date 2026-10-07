@@ -13,9 +13,11 @@
 # Sweep criteria, per row: a .gaia/local/plans/ledger.json row is a delete
 # candidate when ALL hold:
 #   - the row is a merged row on one of two arms:
-#       confirmed arm: a non-empty pr_number (stamped only from a
-#         GitHub-confirmed merged PR) and a parseable merged_at that has aged
-#         past the retention window
+#       confirmed arm: a non-empty pr_number (stamped by the orchestrator's
+#         post-merge close, or by plan-reconcile.sh's scan, which matches a
+#         merged PR by plan number and creation time, not by confirmed
+#         identity) and a parseable merged_at that has aged past the
+#         retention window
 #       legacy arm: no pr_number, status == "merged", and a parseable
 #         merged_at that has aged past the same window; rows written before
 #         pr_number existed age out here
@@ -23,10 +25,10 @@
 #     unparseable, is never a candidate on either arm.
 #   - an active artifact folder exists at .gaia/local/plans/<id>/ (the folder
 #     is the deletion unit; siblings go with it)
-#   - the folder holds no PROGRESS.md/SPEC.md/AUDIT.md with an absent,
-#     empty or malformed SUMMARY.md (the consolidation gate below);
-#     consolidation never ran, so those layers are the sole record and are
-#     never destroyed
+#   - the folder holds a well-formed SUMMARY.md (the consolidation gate
+#     below); a folder with an absent, empty or malformed SUMMARY.md never
+#     went through consolidation, so whatever it holds is the sole record and
+#     is never destroyed
 # A merged row with no active folder (already gone, or never had one) is
 # skipped.
 #
@@ -37,9 +39,10 @@
 # is no early reap: --close is accepted and ignored. A missing or unparseable
 # merged_at keeps the folder rather than reading as infinitely old.
 #
-# Consolidation gate: a folder that still holds PROGRESS.md, SPEC.md or
-# AUDIT.md with no verified SUMMARY.md has never been through consolidation,
-# so those layers are its sole record and reaping them would be destructive.
+# Consolidation gate: a folder with no verified SUMMARY.md has never been
+# through consolidation (a plan that was never executed holds only its plan
+# files), so its contents are the sole record and reaping them would be
+# destructive.
 # This delegates to .gaia/scripts/summary-verify.sh when present (exit 0 =
 # well-formed); absent that script, a plain non-empty SUMMARY.md is the
 # floor.
@@ -104,14 +107,12 @@ _age_past_window() {
   [ "$age_days" -ge "$retention_days" ] && return 0 || return 1
 }
 
-# _consolidation_gate_pass <folder>: 0 iff the folder holds none of
-# PROGRESS.md, SPEC.md or AUDIT.md, or its SUMMARY.md is present and well-formed (consolidation
-# ran). 1 keeps the folder: those layers are its sole record and consolidation
-# never produced a SUMMARY.md to replace them. Prefers summary-verify.sh when
+# _consolidation_gate_pass <folder>: 0 iff the folder's SUMMARY.md is present
+# and well-formed (consolidation ran). 1 keeps the folder: consolidation never
+# produced a SUMMARY.md to replace its contents. Prefers summary-verify.sh when
 # present; falls back to a plain non-empty-file check.
 _consolidation_gate_pass() {
   local folder="$1"
-  [ -f "${folder}/PROGRESS.md" ] || [ -f "${folder}/SPEC.md" ] || [ -f "${folder}/AUDIT.md" ] || return 0
   local summary="${folder}/SUMMARY.md" verify="${repo_root}/.gaia/scripts/summary-verify.sh"
   if [ -f "$verify" ]; then
     bash "$verify" "$summary" >/dev/null 2>&1
@@ -174,8 +175,8 @@ while IFS='	' read -r plan_id merged_at; do
   # Skip merged rows with no active folder (already gone, or never had one).
   [ -d "$folder" ] || continue
 
-  # Consolidation gate: a folder still holding SPEC.md/AUDIT.md with no
-  # consolidated SUMMARY.md is never reaped; those layers are its sole record.
+  # Consolidation gate: a folder with no consolidated SUMMARY.md is never
+  # reaped; its contents are the sole record.
   if ! _consolidation_gate_pass "$folder"; then
     echo "plan-archive-merged: consolidation never ran; kept $plan_id" >&2
     continue
