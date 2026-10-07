@@ -49,4 +49,4 @@ wiki/
 ## Operations
 
 - Query: ask any question - Claude reads `hot.md` → `index.md` → drills in
-- Lint: `/gaia-wiki lint` for a health check
+- Maintenance: `/gaia-wiki` runs sync, consolidate, and lint with fixes, and opens one PR when run from `main`

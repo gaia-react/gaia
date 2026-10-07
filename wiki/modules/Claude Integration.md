@@ -49,7 +49,7 @@ Hooks are bash scripts wired through `.claude/settings.json`. See its `hooks` ke
 > [!key-insight] Why GAIA owns the wiki hooks
 > The `claude-obsidian` plugin does not commit `wiki/` edits on its own, and its own `hot.md` load is opt-in and fails closed on GAIA's layout. GAIA's `wiki-hot-inject.sh` loads `wiki/hot.md` at session start and after compaction, and the `wiki-session-start.sh` + `wiki-session-stop.sh` pair prompts the refresh when `wiki/` changed, committed or not. No hook commits wiki edits on its own.
 
-The sync design is convergent: hooks never spawn `claude -p` sub-processes. No hook surfaces drift: the `🧠 Run /gaia-wiki` statusline nudge is the only signal, and the user's session reconciles the wiki via `/gaia-wiki sync`. See [[Wiki Sync]].
+The sync design is convergent: hooks never spawn `claude -p` sub-processes. No hook surfaces drift: the `🧠 Run /gaia-wiki` statusline nudge is the only signal, and the user's session reconciles the wiki via `/gaia-wiki`. See [[Wiki Sync]].
 
 ### Statusline (no hook)
 

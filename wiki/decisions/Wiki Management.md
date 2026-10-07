@@ -18,9 +18,9 @@ The wiki is critical infrastructure; it decays when drift between code and docum
 
 **`gaia wiki commit-classify`**: Evaluates commits since a baseline SHA. For each commit, outputs `suggestion` (`WORTHY` or `SKIP`) based on subject and file paths. WORTHY commits warrant deep-read and wiki update; SKIP commits can be logged without wiki edits. The classification is deterministic; same commit always produces the same suggestion. A git failure while reading the range propagates as a `git_failed` error rather than resolving to an empty commit list, so a transient failure is distinguishable from a genuinely empty `<since>..HEAD` range.
 
-**`gaia wiki state-init <sha>`**: Creates `wiki/.state.json` seeded from `<sha>`; refuses if the file already exists. Bootstrap primitive used during repo onboarding before the first `/gaia-wiki sync`.
+**`gaia wiki state-init <sha>`**: Creates `wiki/.state.json` seeded from `<sha>`; refuses if the file already exists. Bootstrap primitive used during repo onboarding before the first `/gaia-wiki` run.
 
-**`gaia wiki state-bump <field> <value>`**: Atomically updates `wiki/.state.json`, preserving sibling fields and key order. Used by `/gaia-wiki sync` to advance `last_evaluated_sha` and `last_evaluated_at`; used by `/gaia-wiki consolidate` to advance `last_consolidated_sha`.
+**`gaia wiki state-bump <field> <value>`**: Atomically updates `wiki/.state.json`, preserving sibling fields and key order. Used by the sync stage of `/gaia-wiki` to advance `last_evaluated_sha` and `last_evaluated_at`; used by its consolidate stage to advance `last_consolidated_sha`.
 
 **`gaia wiki log-prepend`**: Appends a single line to `wiki/log.md` in the format `- <YYYY-MM-DD> <sha> <decision> - <reason>`. Atomic insertion after frontmatter, newest entries on top. One call per commit.
 
@@ -28,26 +28,26 @@ The wiki is critical infrastructure; it decays when drift between code and docum
 
 **`gaia wiki orphans`**: Lists pages with zero inbound links (newline-separated). Candidates for archival or cross-linking.
 
-**`gaia wiki near-collisions`**: Groups pages per domain (decisions, concepts, modules, etc.) and finds near-duplicate titles using Levenshtein distance. Used by `/gaia-wiki consolidate` to surface redundancy.
+**`gaia wiki near-collisions`**: Groups pages per domain (decisions, concepts, modules, etc.) and finds near-duplicate titles using Levenshtein distance. Used by the consolidate stage of `/gaia-wiki` to surface redundancy.
 
-**`gaia wiki dead-paths`**: Lists backticked repo paths in `wiki/` body prose that don't exist on disk. Used by `/gaia-wiki lint` to catch zombie filename references after merges and renames. The scanner owns its exemptions; any absent path outside them is reported, including one absent by design, such as a gitignored machine-local file.
+**`gaia wiki dead-paths`**: Lists backticked repo paths in `wiki/` body prose that don't exist on disk. Used by the lint stage of `/gaia-wiki` to catch zombie filename references after merges and renames. The scanner owns its exemptions; any absent path outside them is reported, including one absent by design, such as a gitignored machine-local file.
 
-**`gaia wiki sync land`**: Branch-aware landing of staged wiki changes: commits in place on a feature branch; on `main`, stages a branch, opens a PR, queues auto-merge, and takes one bounded wait on it. When the merge lands inside that wait the command cleans up locally (returns to base, pulls, deletes the branch, prunes); on the common path the merge gate outlasts any wait that fits in a single invocation, so it returns with the local cleanup outstanding and the session-start janitor completes it. Used by `/gaia-wiki sync` as the deterministic write step.
+**`gaia wiki broken-links`**: Lists wikilinks whose target page does not exist, with file and line (`--json` for a machine-readable list). A target resolves by slug or H1 title against every page outside `wiki/_archived/`. Used by the lint stage of `/gaia-wiki` for check #17.
 
-**`gaia wiki chain <begin|commit|finish>`**: Manages the branch lifecycle for the `/gaia-wiki` full chain so all stages (sync, consolidate, lint) land in one PR rather than opening separate PRs.
+**`gaia wiki chain <begin|commit|finish>`**: Manages the branch lifecycle for `/gaia-wiki` so every stage (sync, consolidate, lint) lands in one PR rather than opening separate PRs.
 
 - `begin` (before sync): cuts a `wiki/sync-<date>-<sha>` branch from `main`; no-op on a feature branch, where stages commit in place.
-- `commit` (after each stage): commits that stage's `wiki/` changes in place; gracefully no-ops when nothing changed; refuses non-wiki changes.
+- `commit` (after each stage): commits that stage's `wiki/` changes in place; gracefully no-ops when nothing changed; refuses non-wiki changes; refuses on `main` and `master`; invalidates the statusline cache after a successful commit.
 - `finish` (after lint): pushes the branch, opens one PR for all stage commits, enables auto-merge, and takes one bounded wait on the merge. When it lands inside that wait, `finish` cleans up locally; on the common path the merge gate outlasts the wait, so it returns to base with the local cleanup outstanding for the session-start janitor. Drops the branch if it is empty. Leaves an aborted dirty tree in place for review. No-op for in-place runs on a feature branch.
 
-Standalone `/gaia-wiki sync`, `/gaia-wiki consolidate`, and `/gaia-wiki lint` are unaffected; the chain commands are invoked only by the no-arg `/gaia-wiki` full-chain wrapper.
+`/gaia-wiki` takes no stage argument; the chain commands are how every run lands.
 
-`/gaia-wiki lint` fixes what it finds, standalone and in the chain. After the detection subagent writes its report, a parent-side fix loop resolves each finding (mechanically where one answer is right, by asking where the fix needs judgment), files the narrative-ref findings in instruction files as tech-debt because `chain commit` refuses non-wiki changes, then re-runs detection so the report describes the fixed wiki. In the chain, the fixes and the final report land in the lint commit, so `finish` opens a PR on a wiki that is clean or whose remaining findings the user explicitly accepted. The loop's rules live in `.claude/skills/gaia/references/wiki/lint-fix.md`.
+`/gaia-wiki`'s lint stage fixes what it finds. After the detection subagent writes its report, a parent-side fix loop resolves each finding (mechanically where one answer is right, by asking where the fix needs judgment), files the narrative-ref findings in instruction files as tech-debt because `chain commit` refuses non-wiki changes, then re-runs detection so the report describes the fixed wiki. The fixes and the final report land in the lint commit, so `finish` opens a PR on a wiki that is clean or whose remaining findings the user explicitly accepted. The loop's rules live in `.claude/skills/gaia/references/wiki/lint-fix.md`.
 
 <!-- gaia:maintainer-only:start -->
 ## Shipped-surface boundary check
 
-`wiki/` ships, so a page `/gaia-wiki sync` authors is a newly-shipping file the moment it's created. Before landing, sync stages its own authored pages and runs the release-staging build against them, the same check CI's advisory shipped-surface leak check runs, moved ahead of the pull request rather than discovered after it's open. It repairs what a page's own prose caused (a pointer at a release-excluded path, a wikilink to a release-excluded page), bounded at three attempts, and records what it can't repair or what a newly-created page still owes the distribution manifest in the sync summary instead of staying silent about it.
+`wiki/` ships, so a page the sync stage of `/gaia-wiki` authors is a newly-shipping file the moment it's created. Before landing, sync stages its own authored pages and runs the release-staging build against them, the same check CI's advisory shipped-surface leak check runs, moved ahead of the pull request rather than discovered after it's open. It repairs what a page's own prose caused (a pointer at a release-excluded path, a wikilink to a release-excluded page), bounded at three attempts, and records what it can't repair or what a newly-created page still owes the distribution manifest in the sync summary instead of staying silent about it.
 <!-- gaia:maintainer-only:end -->
 
 ## State file
@@ -64,10 +64,10 @@ Standalone `/gaia-wiki sync`, `/gaia-wiki consolidate`, and `/gaia-wiki lint` ar
 }
 ```
 
-Two commands own disjoint subsets:
+Two stages own disjoint subsets:
 
-- `/gaia-wiki sync` owns `last_evaluated_sha` and `last_evaluated_at`
-- `/gaia-wiki consolidate` owns `last_consolidated_sha` and `last_consolidated_at`
+- the sync stage of `/gaia-wiki` owns `last_evaluated_sha` and `last_evaluated_at`
+- the consolidate stage owns `last_consolidated_sha` and `last_consolidated_at`
 
 Each writer uses `state-bump` to preserve the other's fields. Hooks and other commands are read-only consumers.
 
