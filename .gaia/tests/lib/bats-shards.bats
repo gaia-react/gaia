@@ -26,6 +26,8 @@
 # Maintainer-only. `.gaia/tests` is wholesale release-excluded via
 # `.gaia/release-exclude`, so this never reaches an adopter.
 
+# bats file_tags=whole-tree
+
 setup() {
   SCRIPT="$BATS_TEST_DIRNAME/../bats-shards.sh"
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"

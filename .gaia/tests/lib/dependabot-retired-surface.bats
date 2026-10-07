@@ -10,6 +10,8 @@
 #
 # Run via: bash .gaia/scripts/bats5.sh .gaia/tests/lib/dependabot-retired-surface.bats < /dev/null
 
+# bats file_tags=whole-tree
+
 setup() {
   REPOSITORY_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   RETIRED_NAMES=(

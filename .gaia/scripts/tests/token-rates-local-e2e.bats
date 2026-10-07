@@ -37,6 +37,8 @@
 #
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
+# bats file_tags=whole-tree
+
 bats_require_minimum_version 1.5.0
 
 setup_file() {

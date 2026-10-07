@@ -27,6 +27,8 @@
 # The hook always exits 0; allow vs deny is carried in stdout: a deny emits
 # `"permissionDecision": "deny"`, an allow emits nothing.
 
+# bats file_tags=whole-tree
+
 # Mirror the repo-relative layout the hook resolves from a tree's own root, in
 # whatever tree a case aims a merge at. Every such tree needs its own copy: the
 # signal helper is invoked by the repo-relative path red_ledger_signal_script

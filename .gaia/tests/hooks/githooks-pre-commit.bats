@@ -23,6 +23,8 @@
 # what it asserts and stays green once the live registry points at `frontend`.
 # The one test that reads the live descriptor says so.
 
+# bats file_tags=whole-tree
+
 setup() {
   REPO_ROOT=$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)
   HOOK_ABSOLUTE_PATH="$REPO_ROOT/.githooks/pre-commit"

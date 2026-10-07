@@ -12,6 +12,8 @@
 # The matcher is one function over an explicit root and allowlist, so the real
 # tree and the scratch trees that prove it can fail run the same code.
 
+# bats file_tags=whole-tree
+
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   ALLOWLIST="$REPO_ROOT/.gaia/tests/fixtures/ci-automation-removed.allowlist"

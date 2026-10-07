@@ -4,7 +4,7 @@
 
 **The audit gate is a merge gate, not an incremental check.** Read `wiki/concepts/PR Merge Workflow.md` (`#### Before the first dispatch: verify your own work`) before the first member dispatch: run the deterministic checks and adversarial fixtures it describes, and prove every new guard can fail before relying on it; do not merge-gate from memory.
 <!-- gaia:maintainer-only:start -->
-In this repo that means `bash .gaia/tests/shell-lint.sh`, plus every bats suite `bash .gaia/scripts/bats-suites-for-change.sh` prints (the suites referencing a file the PR edits or deletes), with `--jobs 8`; run bats the way `.claude/rules/bats-assertions.md` prescribes, so local matches CI's bash 5.
+In this repo that means `bash .gaia/tests/verify-harness.sh branch`, the last step before the first member or `audit-loop-unit` dispatch: commit first (exit 3 means uncommitted tracked changes or a detached HEAD), and run it in the background with output redirected to a log, since it takes minutes. The dispatch is refused until it has passed for the current HEAD, so any commit after the pass needs a new pass. Each audit round's gate then runs `bash .gaia/tests/verify-harness.sh round`. Its bats steps run the way `.claude/rules/bats-assertions.md` prescribes, so local matches CI's bash 5.
 <!-- gaia:maintainer-only:end -->
 
 ## Merging

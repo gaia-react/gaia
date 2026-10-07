@@ -147,6 +147,8 @@
 # takes its normal not-armed fast exit right after the arming call, so no
 # fixture here needs the audit-clearance/resolver machinery real merges need.
 
+# bats file_tags=whole-tree
+
 bats_require_minimum_version 1.5.0
 
 setup() {

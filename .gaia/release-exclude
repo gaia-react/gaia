@@ -192,6 +192,8 @@ frontend/.playwright/e2e/react-perf-smoke.spec.ts
 .gaia/scripts/bats5.sh
 # Assertion-hygiene rule scoped to *.bats files; every .bats suite is release-excluded, so on an adopter clone it guards nothing. Withdrawn with its companion bats5.sh.
 .claude/rules/bats-assertions.md
+# The maintainer's pre-push verification. It only calls the verification runner under .gaia/tests, which is release-excluded above, so on an adopter clone it would run nothing. The other .githooks entries ship; this one does not.
+.githooks/pre-push
 
 # --- 4. CLI maintainer source + maintainer binary ---
 # Adopters receive only the bundled adopter binary at .gaia/cli/gaia (and

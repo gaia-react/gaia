@@ -17,6 +17,8 @@
 # The pinned literals carry backticks as literal Markdown.
 # shellcheck disable=SC2016
 
+# bats file_tags=whole-tree
+
 setup() {
   ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   AGENT="${GAIA_AUDIT_LOOP_UNIT_AGENT:-$ROOT/.claude/agents/audit-loop-unit.md}"

@@ -61,6 +61,8 @@
 # jq-availability arm, which a blocking hook may not run without; that refusal
 # is asserted as its own outcome rather than exempted, in the test below.
 
+# bats file_tags=whole-tree
+
 setup() {
   REPO_ROOT=$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)
   HOOKS_DIRECTORY="$REPO_ROOT/.claude/hooks"

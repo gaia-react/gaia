@@ -42,6 +42,8 @@
 # every fixture is a real git repository with its files added. That is also
 # what pins the untracked-file test below: an untracked script is not scanned.
 
+# bats file_tags=whole-tree
+
 setup() {
   THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"

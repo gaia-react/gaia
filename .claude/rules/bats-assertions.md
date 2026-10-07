@@ -43,3 +43,15 @@ A different axis from everything above. Those sections decide whether an asserti
 **The rule: a guard over a set derives the set from the artifact that owns it and asserts per element. It never asserts one element and names itself for the set.**
 
 - **A short read is more dangerous than an empty one.** A derivation that yields nothing trips a non-empty guard. A derivation that yields three of four entries does not: the guard stays satisfied and the suite drives a subset while its names still say "every". Count the entries the derivation should have produced, compare against the names it actually read, and fail on the difference. Symmetrically, a per-element claim over an empty set is true without meaning anything, so a derivation that can legitimately come back empty reports that as a failure, never as a pass.
+
+## Mark a whole-tree suite with `# bats file_tags=whole-tree`
+
+The change selector picks a suite only when the suite names a changed file. A suite whose outcome depends on tracked files it does not name (an invariant over every agent file, every shell script, every workflow) is never picked, so it goes red on CI after the push. Mark such a suite with the bats-native file tag, on a line of its own after the header comment and before `setup`, `setup_file` and the first `@test`:
+
+```bash
+# bats file_tags=whole-tree
+```
+
+If the suite already carries tags, `whole-tree` joins the comma list (`# bats file_tags=foo,whole-tree`). The verification runner (`.gaia/tests/verify-harness.sh`) always runs every marked suite in branch mode, and in round mode whenever a harness path changed; the marked set is `git grep -l -E '^# bats file_tags=([^,]*,)*whole-tree(,|$)' -- '*.bats'`.
+
+`.gaia/tests/whole-tree-mark-guard.sh` flags an unmarked suite that enumerates the real tracked tree through an idiom it recognizes; its header lists the idioms. It does not see enumeration delegated to a script the suite calls (a lint script, a roster check), so mark such a suite by hand. A suite that writes fixture suites carrying the tag assembles the line at run time (`printf '# bats %s\n' 'file_tags=whole-tree'`) so it never holds the line at column 0 itself.

@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 #
 # Prints every bats suite that references a file the change edits or deletes,
-# one repo-relative path per line, sorted and de-duplicated: the suite set the
-# pre-merge "verify your own work" step (no argument, the whole branch) and
-# each audit round's verification (`HEAD`, that round's staged delta) run
-# through bats5.sh.
+# one repo-relative path per line, sorted and de-duplicated: the change-selected
+# part of the suite set the pre-merge "verify your own work" step (no argument,
+# the whole branch) and each audit round's verification (`HEAD`, that round's
+# staged delta) run through bats5.sh. The verification runner
+# (.gaia/tests/verify-harness.sh) unions this output with the suites tagged
+# `whole-tree`: always in branch mode, and in round mode when the delta touches
+# a harness path.
 #
 # A suite is selected when it contains a changed file's match text as a fixed
 # string, or when it is itself a changed suite that still exists. The match

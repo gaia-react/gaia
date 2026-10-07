@@ -33,6 +33,8 @@
 # The gate resolves its scan surface with `git ls-files` relative to cwd, so
 # every fixture is a real git repository with its files added.
 
+# bats file_tags=whole-tree
+
 setup() {
   THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"
