@@ -349,7 +349,9 @@ if [ "$kind" = grant ]; then
     *"in a new session")
       claude_context="$claude_context Print one instruction line, then the fenced continuation prompt for a fresh session with the branch, PR and run folder, and stop: do not start another round in this session."
       claude_context="$claude_context The line is 'Run \`/clear\`, then paste the prompt below.' by default."
-      claude_context="$claude_context Use 'Kill this session with Ctrl+C, start a new one (\`claude\`, with any needed environment variable), then paste the prompt below.' instead when the next session needs something only a fresh launch provides: an environment variable, or an agent, hook or settings change that loads at session start, such as the branch having edited .claude/agents/, .claude/hooks/ or .claude/settings.json since this session started."
+      claude_context="$claude_context Use 'Press Ctrl+C, run \`claude\` (with any needed environment variable), then paste the prompt below.' instead only when the next audit unit would run stale without a fresh launch: it needs an environment variable this session lacks, or the branch changed, since this session started, an agent definition the unit dispatches (.claude/agents/) or hook wiring in .claude/settings.json that the audit loop or merge gate runs through."
+      claude_context="$claude_context Edited skills, rules, CLAUDE.md, wiki pages and hook script bodies are read fresh after \`/clear\`, and launch-time changes the audit does not exercise do not matter, so neither calls for Ctrl+C."
+      claude_context="$claude_context Print whichever line applies on its own line, verbatim, never folded into a sentence or paragraph."
       ;;
   esac
 else
