@@ -99,8 +99,10 @@
 #   gaia_loop_decide_member, in a unit: used >= 10 denies `cap` first unless
 #   the latest unit runs past round 10 (an answer admitted it there); then
 #   the latest unit's through_round must reach s, else `deny window`; then a
-#   denying signal unanswered denies as in step 2; else `allow`. Inline (no
-#   unit, nesting unavailable): gaia_loop_decide_unit with k = 1.
+#   denying signal unanswered denies as in step 2; else `allow`. A member
+#   dispatched outside a unit is judged by gaia_loop_decide_unit with k = 1, a
+#   fail-safe bound on a stray direct dispatch, not a supported way to run
+#   the loop.
 #   A window can start off a 3-round boundary after a unit stops early;
 #   nothing here assumes alignment.
 #

@@ -486,7 +486,7 @@ uat017_files() {
   local relative_path token_script
   for relative_path in "wiki/concepts/Token Cost Readout.md" "wiki/concepts/Cost Data Contract.md" \
     "wiki/concepts/GAIA Scripts.md" "wiki/concepts/Worktrees.md" "wiki/concepts/GAIA CLI.md" \
-    "wiki/index.md" ".gaia/cli/health/comprehensive/lenses/DIST.md" "CHANGELOG.md"; do
+    "wiki/index.md" "CHANGELOG.md"; do
     printf '%s\n' "$REAL_ROOT/$relative_path"
   done
   for token_script in "$REAL_ROOT"/.gaia/scripts/token-*.sh; do
@@ -537,10 +537,10 @@ uat017_unallowed() {
 @test "UAT-017: docs and comments no longer say the per-tree or committed table prices, and carry the new literals" {
   local files=() scanned_file
   while IFS= read -r scanned_file; do files+=("$scanned_file"); done < <(uat017_files)
-  # 8 named files plus every token-*.sh; a short read would shrink the scan.
+  # 7 named files plus every token-*.sh; a short read would shrink the scan.
   local script_count
   script_count="$(find "$REAL_SCRIPTS" -maxdepth 1 -name 'token-*.sh' | wc -l | tr -d ' ')"
-  [ "${#files[@]}" -eq "$((8 + script_count))" ]
+  [ "${#files[@]}" -eq "$((7 + script_count))" ]
   [ "$script_count" -ge 4 ]
   for scanned_file in "${files[@]}"; do
     [ -s "$scanned_file" ] || { echo "missing or empty: $scanned_file" >&2; return 1; }
@@ -569,7 +569,6 @@ uat017_unallowed() {
   grep -F '| `rate_table_id`' "$REAL_ROOT/wiki/concepts/Cost Data Contract.md" | grep -qF 'The bytes of the table that priced the row'
 
   grep -qF -- 'GAIA_RATES_FEED_DISABLE' "$REAL_ROOT/wiki/concepts/GAIA CLI.md"
-  grep -qF -- 'GAIA_RATES_FEED_DISABLE' "$REAL_ROOT/.gaia/cli/health/comprehensive/lenses/DIST.md"
 
   local unreleased
   unreleased="$(awk '/^## \[Unreleased\]/{on=1; next} /^## \[/{on=0} on' "$REAL_ROOT/CHANGELOG.md")"

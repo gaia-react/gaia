@@ -233,12 +233,14 @@ anchors_resolve() {
 @test "the unit section maps every stop_reason and every deny class the agent classifies" {
   local section_text reason
   section_text="$(section "$UNIT")" || return 1
-  for reason in clean window-end checkpoint-deny dispositions-check-failed needs-human failure nesting-unavailable; do
+  for reason in clean window-end checkpoint-deny dispositions-check-failed needs-human failure; do
     grep -qF -- "\`$reason\`" <<<"$section_text" || { echo "stop_reason missing: $reason" >&2; return 1; }
   done
   grep -qF -- 'PreToolUse:Agent hook error: BLOCKED: ...' <<<"$section_text" || return 1
   grep -qF -- '`BLOCKED: audit checkpoint` maps to `checkpoint-deny`, `BLOCKED: audit window` to `window-end`, `BLOCKED: audit dispositions` to `dispositions-check-failed`, and any other `BLOCKED:` to `failure`' <<<"$section_text" || return 1
   grep -qF -- "audit-loop-bound.sh\`'s header owns the deny text" <<<"$section_text" || return 1
+  grep -qF -- 'A unit that finds the Agent tool absent stops `needs-human` and its `stop_detail` names Claude Code 2.1.287 or later and the upgrade step (`claude update`, then relaunch the session).' <<<"$section_text" || return 1
+  ! grep -qF -- 'nesting-''unavailable' <<<"$section_text" || return 1
   grep -qF -- 'audit-dispositions-check.sh check-all --root <RESOLVED_ROOT> --run-folder <RUN_FOLDER>' <<<"$section_text" || return 1
 }
 
@@ -247,7 +249,7 @@ anchors_resolve() {
   section_text="$(section "$UNIT")" || return 1
   grep -qF -- 'only when its payload carries an `agent_id` and its `agent_type` is `audit-loop-unit`' <<<"$section_text" || return 1
   sentences <<<"$section_text" | grep -qF -- "Any other member dispatch, the main thread's included, is judged inline as a one-round unit" || return 1
-  sentences <<<"$section_text" | grep -qF -- 'An answered checkpoint is spent once a later round is recorded, so in the fallback one grant admits the next round, not every dispatch up to the cap.' || return 1
+  ! grep -qF -- 'fallback' <<<"$section_text" || return 1
 }
 
 @test "the unit section builds the waiver table from the dispositions files and binds a veto to the next unit's rounds" {
@@ -289,7 +291,7 @@ anchors_resolve() {
   sentences <<<"$section_text" | grep -qF -- 'runs the `drift` check above on any `baseline-<r>.json` that has no `fixer-<r>-audit.json`: exit 1 stops it `needs-human`.' || return 1
   grep -qF -- '**Unit recovery.**' <<<"$section_text" || return 1
   sentences <<<"$section_text" | grep -qF -- 'the unit calls `audit-loop-record.sh` itself' || return 1
-  sentences <<<"$section_text" | grep -qF -- 'The procedure each round runs, inside the unit (or on the main thread in the nesting-unavailable fallback), in this order.' || return 1
+  sentences <<<"$section_text" | grep -qF -- 'The procedure each round runs, inside the unit, in this order.' || return 1
 }
 
 # pinned_labels: the option labels the evaluator's pinned question can carry,

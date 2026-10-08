@@ -13,6 +13,8 @@
 # live in .gaia/scripts/context-checkpoint-lib.sh; the state file shape and
 # its writers live in .gaia/scripts/audit-loop-state-lib.sh's header. This
 # file restates none of them.
+# The hook never reads `unit-<u>.json`, so a leftover unit file of any stop
+# reason has no effect on what it allows; the window rule decides.
 #
 # WHY A HOOK AND NOT PROSE. The audit loop's fix-and-re-audit cycle has no
 # stop of its own: every round's fixes buy the next dispatch, so an

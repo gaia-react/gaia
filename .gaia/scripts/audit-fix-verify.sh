@@ -54,8 +54,7 @@
 # Run-folder file shapes (this header is their single owner), all under
 # <MAIN>/.gaia/local/runs/<B>/:
 #
-#   dispositions-<r>.json (the round's orchestrator: the unit, or the main
-#   thread in the nesting-unavailable fallback):
+#   dispositions-<r>.json (the round's orchestrator: the unit):
 #     {"schema":1,"round":r,"tree":"<hex>","root":"<abs resolved root>",
 #      "enforcement_paths_allowed":["<path>"],
 #      "entries":[{"member","finding_class","path","line","severity","title",
@@ -78,7 +77,7 @@
 #     {"version":1,"unit":u,"start_round":s,"through_round":t,"k":K,
 #      "rounds":[{"round":r,"opened":true|false,...}],
 #      "marker_state":{"<member>":"cleared|pending|declined"},
-#      "stop_reason":"clean|window-end|checkpoint-deny|dispositions-check-failed|needs-human|nesting-unavailable|failure",
+#      "stop_reason":"clean|window-end|checkpoint-deny|dispositions-check-failed|needs-human|failure",
 #      "stop_detail":"...","dispositions_files":["<path>"],
 #      "waiver_table":"<markdown, informational>","residual_path":"..."}
 #     A unit that opened no round writes one element

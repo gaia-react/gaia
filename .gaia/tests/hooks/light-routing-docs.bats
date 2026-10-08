@@ -92,7 +92,6 @@ light_section() {
   done
   assert_pinned "$UNIT" 'The light-marker script is the only light writer.'
   assert_pinned "$UNIT" 'is not re-dispatched'
-  assert_pinned "$UNIT" 'every member dispatches Full.'
 }
 
 @test "unit hands the reply over as a scratchpad file, not as stdin through a heredoc" {

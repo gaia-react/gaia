@@ -428,8 +428,6 @@ run_in_registry_repo() {
     "cache/some-run/renders.json:ephemeral"
     "audit/KNOWLEDGE-2026-07-23.md:ephemeral"
     "audit/issue-body-abc.md:ephemeral"
-    "audit/comprehensive/gauge.json:ephemeral"
-    "audit/archived/2026-07-23:ephemeral"
     "mentorship.json:residue"
     "telemetry/cloud/x.json:residue"
     "telemetry/analytics/x.json:residue"

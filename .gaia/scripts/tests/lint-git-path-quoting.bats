@@ -606,13 +606,13 @@ run_linter() {
   grep -qF -- ".claude/skills/gaia/references/wiki/sync.md:4" <<<"$output"
 }
 
-@test "reds against the pre-fix health-runbook staging discovery" {
+@test "reds against the pre-fix runbook staging discovery" {
   fixture_repo
-  fixture_file .gaia/cli/health/runbook.md \
+  fixture_file .gaia/cli/fixture/runbook.md \
     $'```bash\nALL_TRACKED="/tmp/gaia-audit-all"\ngit ls-files > "$ALL_TRACKED"\n```'
   run_linter
   [ "$status" -eq 1 ]
-  grep -qF -- ".gaia/cli/health/runbook.md:3" <<<"$output"
+  grep -qF -- ".gaia/cli/fixture/runbook.md:3" <<<"$output"
 }
 
 # The fence rule in both directions. Outside a fence nothing is scanned, which

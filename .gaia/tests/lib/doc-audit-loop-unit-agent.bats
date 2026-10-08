@@ -78,10 +78,10 @@ assert_pinned() {
   assert_pinned '#### Cross-remit findings'
 }
 
-@test "agent names all seven stop_reason values" {
+@test "agent names every stop_reason value" {
   local reason
   for reason in clean window-end checkpoint-deny dispositions-check-failed \
-    needs-human nesting-unavailable failure; do
+    needs-human failure; do
     assert_pinned "\`$reason\`"
   done
 }
@@ -95,7 +95,11 @@ assert_pinned() {
 
 @test "agent classifies the marker as a substring after the harness prefix" {
   assert_pinned 'PreToolUse:Agent hook error: BLOCKED: audit'
-  assert_pinned 'A `BLOCKED:` deny is never `nesting-unavailable`.'
+  assert_pinned 'A nested Agent call that errors with no `BLOCKED:` anywhere is `failure`.'
+}
+
+@test "agent stops needs-human naming the Agent tool, the version floor and the upgrade step when the Agent tool is absent" {
+  assert_pinned 'Absent: write the unit file with `stop_reason: "needs-human"` and a `stop_detail` that names the missing Agent tool, Claude Code 2.1.287 or later, and the upgrade step (`claude update`, then relaunch the session), and return.'
 }
 
 @test "agent reads the closing field and runs the closing round with no fixer" {

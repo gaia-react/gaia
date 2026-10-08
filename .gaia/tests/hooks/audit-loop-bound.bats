@@ -1432,7 +1432,7 @@ veto_rounds() {
   [ "$(state_field '.history.units // [] | length')" -eq 0 ]
 }
 
-@test "a window left by a unit that returned nesting-unavailable does not cover a main-thread or non-unit member over the line" {
+@test "a leftover unit file of any stop reason does not cover a main-thread or non-unit member over the line" {
   alf_sequence 6 5
   alf_state_edit '.history.units = [{unit: 1, start_round: 3, k: 3, through_round: 5, admitted_on: "context",
     after_checkpoint: 0, recorded_at: "2026-01-01T00:00:00Z", session_id: $session_id}]' --arg session_id "$SIDU"

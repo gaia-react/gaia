@@ -14,7 +14,7 @@ Pass `Working root: <abs>` verbatim into every member dispatch, with the expecte
 
 ## First actions
 
-1. Confirm the Agent tool is available to you before round 1. Absent: write the unit file with `stop_reason: "nesting-unavailable"` and return.
+1. Confirm the Agent tool is available to you before round 1. Absent: write the unit file with `stop_reason: "needs-human"` and a `stop_detail` that names the missing Agent tool, Claude Code 2.1.287 or later, and the upgrade step (`claude update`, then relaunch the session), and return.
 2. Read K from `.gaia/scripts/context-checkpoint-lib.sh` (`GAIA_CONTEXT_UNIT_ROUNDS`). Never hard-code it.
 3. Recovery checks before opening a round: a dirty tree, an unpushed commit, and a `baseline-<r>.json` in `<run>` with no `fixer-<r>-audit.json`. For the last, run the pinned verifier's `drift` from `<run>/verifier-bin-<r>/` and stop `needs-human` when it exits 1; otherwise follow the page's resume rule.
 4. Republish the `## Audit rounds` record (`audit-loop-eval.sh record-values` into `audit-loop-record.sh`) before round 1.
@@ -38,7 +38,7 @@ A member dispatch is denied with text that carries a `BLOCKED:` marker after a h
 | `BLOCKED: audit dispositions` | `dispositions-check-failed` (no commit for the round) |
 | any other `BLOCKED:` | `failure` |
 
-A nested Agent call that errors with no `BLOCKED:` anywhere is `nesting-unavailable` when no round has opened yet, and `failure` after one has. A `BLOCKED:` deny is never `nesting-unavailable`.
+A nested Agent call that errors with no `BLOCKED:` anywhere is `failure`.
 
 ## Routing each member
 
@@ -50,7 +50,7 @@ For every member the wave would dispatch that is not already cleared for its cur
 4. On `light-cleared` the member is cleared for this digest: do not dispatch it. On any `full` line or a non-zero exit, dispatch the member on the same tree in this round; the bound hook counts that dispatch as a round as usual. A no-op, empty, or malformed reply is not re-dispatched, unlike the single re-dispatch `.claude/rules/subagent-dispatch.md` prescribes for a no-op agent artifact: the full member is strictly more coverage than a second light attempt, so falling back to it is the retry.
 5. The light-marker script is the only light writer. Never write a verdict, route record, or marker by any other route.
 
-Light routing happens only in this unit's member wave. When the PR Merge Workflow's main thread runs the member wave itself (no subagent nesting), every member dispatches Full.
+Light routing happens only in this unit's member wave.
 
 ## Per round
 
@@ -77,7 +77,7 @@ Follow the page in this order: `#### The audit loop unit` for the unit's shape, 
 
 ## When to stop
 
-Stop when every member marker is cleared (`clean`), when you finish round `through_round` (`window-end`), or on any stop above. The `stop_reason` is one of `clean`, `window-end`, `checkpoint-deny`, `dispositions-check-failed`, `needs-human`, `nesting-unavailable`, `failure`.
+Stop when every member marker is cleared (`clean`), when you finish round `through_round` (`window-end`), or on any stop above. The `stop_reason` is one of `clean`, `window-end`, `checkpoint-deny`, `dispositions-check-failed`, `needs-human`, `failure`.
 
 Write `<run>/unit-<u>.json` with Bash at the main-checkout absolute path, and read it back. Shape: `version`, `unit`, `start_round`, `through_round`, `k`, `rounds[]`, `marker_state`, `stop_reason`, `stop_detail`, `dispositions_files`, `waiver_table` (from `audit-dispositions-check.sh waiver-table` over the rounds you ran), `residual_path`. Each `rounds[]` element carries `round`, `opened`, `tree`, `commit`, `dispatched_at`, `verdict`, `A`, `members`, `fix_count`, `committed`, `record_published`. A unit that opened no round writes one element `{"round":<start>,"opened":false,"reason":"<stop_reason>"}`. Return only a short digest: rounds run, `stop_reason`, the file path.
 
@@ -92,6 +92,6 @@ Write `<run>/unit-<u>.json` with Bash at the main-checkout absolute path, and re
 
 ## Requirements
 
-Claude Code with subagent nesting, version 2.1.287 or later. Members' own specialists and refuters run one level deeper than you; no spawn-depth variable is set.
+Claude Code 2.1.287 or later (subagent nesting). Members' own specialists and refuters run one level deeper than you; no spawn-depth variable is set.
 
 How your run ends: a reply with no tool call ends it, and the orchestrator reads whatever you returned as your finished result. Do not end on a summary that announces a next step, an offer to continue, a list of questions none of which blocks the work, or a progress report because a milestone is done; take the next step instead. Stop only when the task is complete, or when something you cannot resolve blocks it, and then say which.

@@ -184,15 +184,12 @@ jobs:
               - '.gaia/scripts/**'
               # The shell lint suites (.gaia/scripts/tests/lint-*.bats) scan
               # the real tree's tracked shell, lint-errexit-status-read.bats
-              # among them, and comprehensive-gauge.bats exercises
-              # .gaia/cli/health/comprehensive/gauge.sh directly. That gauge is
-              # a tracked shell file matching no narrower pattern here, outside
-              # '.gaia/cli/src/**' further down. Without this line a pull
-              # request editing it would report `code=false`, skip every bats
-              # step, and green the job having run none of those suites. The
-              # glob is the suites' own input rather than an enumeration of the
-              # files it currently reaches, so it self-maintains when shell
-              # appears somewhere new.
+              # among them. A tracked shell file matching no narrower pattern
+              # here, outside '.gaia/cli/src/**' further down, would otherwise
+              # report `code=false`, skip every bats step, and green the job
+              # having run none of those suites. The glob is the suites' own
+              # input rather than an enumeration of the files it currently
+              # reaches, so it self-maintains when shell appears somewhere new.
               - '**/*.sh'
               # check-main-root-derivation.bats (.gaia/scripts/tests/) scans
               # tracked source for a hand-rolled main-checkout derivation, and
@@ -252,11 +249,11 @@ jobs:
               # carriers by searching the whole tree, so a statement or
               # paragraph added to a new dispatch prompt reds it. Each glob
               # below is a root that holds dispatch prompts:
-              # the health runbooks, the .claude skills, commands and agents, and
+              # the .claude skills, commands and agents, and
               # the spec workflow templates. The three .claude roots are supersets of
               # the narrower file entries around them, which stay listed so each
               # suite's own sources remain armed if a root is ever narrowed; the
-              # health and spec-template roots match no other entry (the spec
+              # spec-template root matches no other entry (the spec
               # prose templates and runbooks live under .claude/skills/, so the
               # skills root already covers them). Without these
               # roots, adding a carrier there skips every bats step and greens the
@@ -267,7 +264,6 @@ jobs:
               # catch-all, so listing it here is redundant with that entry, kept
               # so this suite's own source stays named if the catch-all is ever
               # narrowed.
-              - '.gaia/cli/health/**/*.md'
               - 'wiki/decisions/Claude Integration Fitness.md'
               - '.claude/skills/**/*.md'
               - '.claude/commands/**/*.md'
