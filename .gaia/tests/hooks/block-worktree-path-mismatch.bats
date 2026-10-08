@@ -60,7 +60,7 @@ make_repo() {
 # fixture-main-dir, that exists only to prove the guard's arm consumes the
 # whole main-only-dir set rather than a hand-listed pair), one main-only FILE
 # (cache/gh-artifact-pr.json) that must NOT exempt its cache/ segment, and one
-# per-tree dir (handoff) representing the keyed entries the flip protects.
+# per-tree dir (forensics) representing the keyed entries the flip protects.
 write_registry() {
   mkdir -p "$REPO/.gaia"
   cat >"$REPO/.gaia/state-registry.json" <<'JSON'
@@ -77,7 +77,7 @@ write_registry() {
     { "id": "plans", "path": "plans/", "match": "prefix", "kind": "dir", "scope": "main-only" },
     { "id": "fixture-main-dir", "path": "fixture-main-dir/<name>/", "match": "prefix", "kind": "dir", "scope": "main-only" },
     { "id": "gh-cache", "path": "cache/gh-artifact-pr.json", "match": "exact", "kind": "file", "scope": "main-only" },
-    { "id": "handoff", "path": "handoff/", "match": "prefix", "kind": "dir", "scope": "per-tree" }
+    { "id": "forensics", "path": "forensics/", "match": "prefix", "kind": "dir", "scope": "per-tree" }
   ],
   "residue": []
 }
@@ -224,9 +224,9 @@ run_hook_edit() {
 }
 
 # link-worktree.sh now symlinks the worktree's whole .gaia/local wholesale to
-# main's own .gaia/local, so a write into ANY subpath of it -- handoff/
+# main's own .gaia/local, so a write into ANY subpath of it -- forensics/
 # included -- physically resolves to main and would otherwise look like the
-# #841 silent-wrong-write. handoff/ is per-tree scope, so its protection is no
+# #841 silent-wrong-write. forensics/ is per-tree scope, so its protection is no
 # longer "was this write symlinked in", it is "does the path carry the ACTING
 # tree's own key" (gaia_tree_key, .gaia/scripts/main-root-lib.sh). The three
 # cases below are the guard's whole remaining per-tree contract: the acting
@@ -234,25 +234,25 @@ run_hook_edit() {
 # tree's keyed subtree, or the bare unkeyed container, is exactly the
 # #841-shaped mistake and stays denied.
 
-@test "a worktree-mode write to its own keyed handoff subtree in the main checkout is allowed" {
+@test "a worktree-mode write to its own keyed forensics subtree in the main checkout is allowed" {
   make_repo
   make_worktree "debt/15-foo" "debt/15-foo"
   own_key="$(own_tree_key "$WORKTREE")"
-  mkdir -p "$REPO/.gaia/local/handoff/$own_key"
+  mkdir -p "$REPO/.gaia/local/forensics/$own_key"
   cd "$WORKTREE"
-  run_hook_edit "Write" "$REPO/.gaia/local/handoff/$own_key/HANDOFF-2026-01-01.md"
+  run_hook_edit "Write" "$REPO/.gaia/local/forensics/$own_key/2026-01-01-report.md"
   assert_allowed_by_json
 }
 
-@test "a worktree-mode write to a PEER tree's keyed handoff subtree in the main checkout is denied" {
+@test "a worktree-mode write to a PEER tree's keyed forensics subtree in the main checkout is denied" {
   make_repo
   make_worktree "debt/15b-foo" "debt/15b-foo"
   peer_key="deadbeefdeadbeef"
   own_key="$(own_tree_key "$WORKTREE")"
   [ "$peer_key" != "$own_key" ]
-  mkdir -p "$REPO/.gaia/local/handoff/$peer_key"
+  mkdir -p "$REPO/.gaia/local/forensics/$peer_key"
   cd "$WORKTREE"
-  run_hook_edit "Write" "$REPO/.gaia/local/handoff/$peer_key/HANDOFF-2026-01-01.md"
+  run_hook_edit "Write" "$REPO/.gaia/local/forensics/$peer_key/2026-01-01-report.md"
   assert_denied_by_json
   # The refusal has to name the key, not repeat the generic stale-path advice.
   # Re-resolving the repository root does not move a path that reaches main
@@ -264,12 +264,12 @@ run_hook_edit() {
   return 0
 }
 
-@test "a worktree-mode write to the bare unkeyed handoff container in the main checkout is denied" {
+@test "a worktree-mode write to the bare unkeyed forensics container in the main checkout is denied" {
   make_repo
   make_worktree "debt/15c-foo" "debt/15c-foo"
-  mkdir -p "$REPO/.gaia/local/handoff"
+  mkdir -p "$REPO/.gaia/local/forensics"
   cd "$WORKTREE"
-  run_hook_edit "Write" "$REPO/.gaia/local/handoff/HANDOFF-2026-01-01.md"
+  run_hook_edit "Write" "$REPO/.gaia/local/forensics/2026-01-01-report.md"
   assert_denied_by_json
 }
 

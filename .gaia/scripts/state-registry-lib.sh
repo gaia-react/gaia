@@ -52,7 +52,7 @@
 #   is one symlink to main's now, so there is no per-path set left to
 #   enumerate for that purpose. This function stays as a
 #   diagnostic/regression-guard read: it is what proves a per-tree entry
-#   (red-ledger, forensics, handoff) is genuinely NOT shared, the concrete
+#   (red-ledger, forensics) is genuinely NOT shared, the concrete
 #   check the concurrency meter's cutover-risk scenarios run
 #   against the shipped registry rather than asserting by hand. Prints
 #   nothing and returns 1 when the registry cannot be read (see

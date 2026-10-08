@@ -606,7 +606,7 @@ test("adds two numbers c407", () => {
   return 0
 }
 
-@test "C4-08: one tree's handoff and forensics reports are not another tree's to clear" {
+@test "C4-08: one tree's forensics reports are not another tree's to read" {
   MAIN="$(gaia_new_main gaia-c408-main)"
   gaia_copy_real "$MAIN" \
     .gaia/scripts/main-root-lib.sh \
@@ -622,9 +622,9 @@ test("adds two numbers c407", () => {
 
   # WHY this scenario exists and why it is not folded into C4-06 or C4-04:
   # those two guard the RED ledger and the worthiness ledger, each of which is
-  # addressed by a shipped shell function. `forensics/` and `handoff/` have no
-  # function and no script at all -- they are instruction prose an agent
-  # executes, which PROGRAM.md section 6 calls a fifth execution surface. Until
+  # addressed by a shipped shell function. `forensics/` has no function and no
+  # script at all -- it is instruction prose an agent executes, which
+  # PROGRAM.md section 6 calls a fifth execution surface. Until
   # the cutover their separation came free from each worktree owning a separate
   # physical .gaia/local, so nothing had to be right for it to hold. After the
   # cutover their separation IS the tree key, resolved by an agent following
@@ -634,9 +634,9 @@ test("adds two numbers c407", () => {
   # The mechanism the prose depends on, asked of the shipped code exactly as
   # the prose asks for it: `bash .gaia/scripts/main-root-lib.sh --tree-key`,
   # run from inside the tree. Not sourced -- the executable entry is what
-  # forensics.md step 7 and handoff.md step 0 actually invoke, so a regression
-  # in the CLI dispatch (as opposed to the function) is a real break for these
-  # two surfaces and must fail here.
+  # the forensics prose actually invokes, so a regression in the CLI dispatch
+  # (as opposed to the function) is a real break for that surface and must
+  # fail here.
   run run_in "$WORKTREE_A" -- bash .gaia/scripts/main-root-lib.sh --tree-key
   [ "$status" -eq 0 ]
   KEY_A="$output"
@@ -651,25 +651,22 @@ test("adds two numbers c407", () => {
   [ "$KEY_A" != "$KEY_B" ]
 
   # Mechanism check for TODAY's per-entry linking, mirroring C4-06: the
-  # registry classifies both entries per-tree and the linker's own shared-set
-  # function names neither, so neither is symlinked into main. A registry edit
-  # that started calling either one shared -- the precise cutover risk -- fails
+  # registry classifies the entry per-tree and the linker's own shared-set
+  # function does not name it, so it is not symlinked into main. A registry
+  # edit that started calling it shared -- the precise cutover risk -- fails
   # here rather than silently merging two trees' reports.
-  for entry in forensics handoff; do
-    classify="$(run_in "$WORKTREE_A" -- bash -c \
-      ". .gaia/scripts/state-registry-lib.sh; gaia_registry_classify $entry/x.md" 2>/dev/null)"
-    [ "$classify" = "per-tree" ]
-  done
+  classify="$(run_in "$WORKTREE_A" -- bash -c \
+    ". .gaia/scripts/state-registry-lib.sh; gaia_registry_classify forensics/x.md" 2>/dev/null)"
+  [ "$classify" = "per-tree" ]
 
   linkable="$(run_in "$WORKTREE_A" -- bash -c \
     '. .gaia/scripts/state-registry-lib.sh; gaia_registry_linkable_paths' 2>/dev/null)"
   [ -n "$linkable" ]
   grep -qxF forensics <<<"$linkable" && return 1
-  grep -qxF handoff <<<"$linkable" && return 1
 
   # Positive control on the linker, in the same form C4-06 uses and for the
   # same reason: link-worktree.sh always exits 0 by contract, so a run that
-  # linked NOTHING would leave forensics/ and handoff/ unlinked too and every
+  # linked NOTHING would leave forensics/ unlinked too and every
   # isolation check below would pass for the wrong reason. Stated as resolution
   # rather than as "is a symlink", and asked of `.gaia/local` itself, which is
   # what the cutover made the shared thing -- the same restatement C4-06
@@ -682,16 +679,10 @@ test("adds two numbers c407", () => {
   # Both trees do what the prose tells an agent to do: resolve the key, then
   # write under it. The paths are built from the key the SHIPPED code just
   # returned, never from a literal the fixture invented -- a fixture that
-  # hand-built the keyed shape would be re-stating the thing under test, which
-  # is the defect M-1 was written to remove from C4-06.
-  HANDOFF_A="$WORKTREE_A/.gaia/local/handoff/$KEY_A/HANDOFF-2026-07-25-treeA.md"
-  HANDOFF_B="$WORKTREE_B/.gaia/local/handoff/$KEY_B/HANDOFF-2026-07-25-treeB.md"
+  # hand-built the keyed shape would be re-stating the thing under test.
   FORENSICS_A="$WORKTREE_A/.gaia/local/forensics/$KEY_A/20260725T120000Z-hook-misfire.md"
   FORENSICS_B="$WORKTREE_B/.gaia/local/forensics/$KEY_B/20260725T120000Z-hook-misfire.md"
-  mkdir -p "$(dirname "$HANDOFF_A")" "$(dirname "$HANDOFF_B")" \
-    "$(dirname "$FORENSICS_A")" "$(dirname "$FORENSICS_B")"
-  printf '%s\n' 'handoff-body-treeA' > "$HANDOFF_A"
-  printf '%s\n' 'handoff-body-treeB' > "$HANDOFF_B"
+  mkdir -p "$(dirname "$FORENSICS_A")" "$(dirname "$FORENSICS_B")"
   printf '%s\n' 'forensics-body-treeA' > "$FORENSICS_A"
   printf '%s\n' 'forensics-body-treeB' > "$FORENSICS_B"
 
@@ -702,51 +693,20 @@ test("adds two numbers c407", () => {
   # through the very flip it guards. Physical resolution is what catches a lost
   # key: the two trees' directories must be different real directories, and
   # neither may be the unkeyed parent that the pre-cutover prose named.
-  PHYSICAL_HANDOFF_PATH_A="$(cd "$(dirname "$HANDOFF_A")" && pwd -P)"
-  PHYSICAL_HANDOFF_PATH_B="$(cd "$(dirname "$HANDOFF_B")" && pwd -P)"
   PHYSICAL_FORENSICS_PATH_A="$(cd "$(dirname "$FORENSICS_A")" && pwd -P)"
   PHYSICAL_FORENSICS_PATH_B="$(cd "$(dirname "$FORENSICS_B")" && pwd -P)"
-  [ "$PHYSICAL_HANDOFF_PATH_A" != "$PHYSICAL_HANDOFF_PATH_B" ]
   [ "$PHYSICAL_FORENSICS_PATH_A" != "$PHYSICAL_FORENSICS_PATH_B" ]
-  [ "$PHYSICAL_HANDOFF_PATH_A" != "$MAIN/.gaia/local/handoff" ]
-  [ "$PHYSICAL_HANDOFF_PATH_B" != "$MAIN/.gaia/local/handoff" ]
   [ "$PHYSICAL_FORENSICS_PATH_A" != "$MAIN/.gaia/local/forensics" ]
   [ "$PHYSICAL_FORENSICS_PATH_B" != "$MAIN/.gaia/local/forensics" ]
 
-  # ---------------------------------------------------------------------------
-  # The harm, driven rather than described. handoff.md step 0 is a DELETE:
-  # "Delete any existing handoff before writing: rm -f
-  # .gaia/local/handoff/<tree_key>/HANDOFF-*.md", and settings.json carries a
-  # permission entry for exactly that glob. It is the one instruction in either
-  # prose surface that destroys data, so it is the one whose blast radius has
-  # to be bounded to the acting tree. Run it from A, with A's key, and B's
-  # handoff must survive untouched. If a future change drops the key segment
-  # from that line -- or from the permission glob, which would push an agent
-  # toward the unkeyed form -- this is what reds.
-  # ---------------------------------------------------------------------------
-  run run_in "$WORKTREE_A" -- bash -c "rm -f .gaia/local/handoff/$KEY_A/HANDOFF-*.md"
-  [ "$status" -eq 0 ]
-
-  if [ -e "$HANDOFF_A" ]; then
-    echo "the documented clear-prior step did not delete the acting tree's own handoff" >&2
-    return 1
-  fi
-  [ -f "$HANDOFF_B" ]
-  grep -qF handoff-body-treeB "$HANDOFF_B"
-
   # Neither tree can read the other's report through its own keyed path, and
-  # the unkeyed parent -- the path both prose surfaces used before the
-  # re-keying, and the one an agent falls back to if the key step is skipped --
-  # holds nothing in either tree.
+  # the unkeyed parent -- the path an agent falls back to if the key step is
+  # skipped -- holds nothing in either tree.
   grep -qF forensics-body-treeB "$FORENSICS_A" && return 1
   grep -qF forensics-body-treeA "$FORENSICS_B" && return 1
   for tree in "$WORKTREE_A" "$WORKTREE_B" "$MAIN"; do
     if find "$tree/.gaia/local/forensics" -maxdepth 1 -type f -name '*.md' 2>/dev/null | grep -q .; then
       echo "a forensics report landed at the unkeyed path in $tree" >&2
-      return 1
-    fi
-    if find "$tree/.gaia/local/handoff" -maxdepth 1 -type f -name 'HANDOFF-*.md' 2>/dev/null | grep -q .; then
-      echo "a handoff landed at the unkeyed path in $tree" >&2
       return 1
     fi
   done
@@ -796,48 +756,26 @@ test("adds two numbers c407", () => {
   return 0
 }
 
-@test "C5-02: wiki hooks are live in a worktree" {
+@test "C5-02: the wiki session-start hook is live in a worktree" {
   MAIN="$(gaia_new_main gaia-c502-main)"
+  # local-janitor.sh is deliberately not copied: the hook skips the janitor
+  # step, so it cannot consume the seeded report before the print.
   gaia_copy_real "$MAIN" \
-    .claude/hooks/janitor-report-drain.sh \
-    .claude/hooks/lib/wiki-dirty-fingerprint.sh \
-    .claude/hooks/wiki-session-stop.sh \
+    .claude/hooks/wiki-session-start.sh \
     .gaia/scripts/main-root-lib.sh
-  mkdir -p "$MAIN/wiki"
-  jq -n --arg sha "$(git -C "$MAIN" rev-parse HEAD)" \
-    '{version: 1, last_evaluated_sha: $sha, last_evaluated_at: "2026-01-01T00:00:00Z"}' \
-    > "$MAIN/wiki/.state.json"
   gaia_commit_all "$MAIN" "add wiki hooks"
 
   WORKTREE_B="$(gaia_add_worktree "$MAIN" treeB treeB)"
 
-  # Advance treeB by one commit and remember this point as the session-start
-  # marker for hook 2 below.
-  echo more >> "$WORKTREE_B/README.md"
-  git -C "$WORKTREE_B" add README.md
-  git -C "$WORKTREE_B" commit -q -m "drift commit"
-  session_start_sha="$(git -C "$WORKTREE_B" rev-parse HEAD)"
-
   dead=""
 
-  # 1. janitor-report-drain.sh: a report seeded under the main checkout
-  # surfaces once when the prompt is submitted from the worktree.
+  # wiki-session-start.sh: a report seeded under the main checkout surfaces
+  # when the session starts in the worktree.
   mkdir -p "$MAIN/.gaia/local/cache/shared"
   printf '[wiki base] seeded report line\n' > "$MAIN/.gaia/local/cache/shared/wiki-base-catchup.report"
   json="$(jq -n '{session_id: "S1"}')"
-  hook_output="$(run_in "$WORKTREE_B" -- gaia_deliver_hook "$json" "$MAIN/.claude/hooks/janitor-report-drain.sh")"
-  grep -qF '[wiki base] seeded report line' <<< "$hook_output" || dead="$dead janitor-report-drain"
-
-  # 2. wiki-session-stop.sh: a session-start marker recording HEAD before a
-  # commit that touched wiki/ was made; a live hook nudges to refresh hot.md.
-  git_directory_b="$(run_in "$WORKTREE_B" -- git rev-parse --git-dir)"
-  echo "$session_start_sha" > "$git_directory_b/claude-session-start"
-  echo page > "$WORKTREE_B/wiki/page.md"
-  git -C "$WORKTREE_B" add wiki/page.md
-  git -C "$WORKTREE_B" commit -q -m "wiki page"
-  json="$(jq -n '{session_id: "S1"}')"
-  hook_output="$(run_in "$WORKTREE_B" -- gaia_deliver_hook "$json" "$MAIN/.claude/hooks/wiki-session-stop.sh")"
-  grep -qF 'WIKI_CHANGED' <<< "$hook_output" || dead="$dead wiki-session-stop"
+  hook_output="$(run_in "$WORKTREE_B" -- gaia_deliver_hook "$json" "$MAIN/.claude/hooks/wiki-session-start.sh")"
+  grep -qF '[wiki base] seeded report line' <<< "$hook_output" || dead="$dead wiki-session-start"
 
   # Target: none silently dead -- each either fires correctly or refuses out
   # loud. A hook that still gated repository detection on a bare

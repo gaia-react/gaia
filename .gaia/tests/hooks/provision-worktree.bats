@@ -549,22 +549,6 @@ SH
   [ "$(cat "$backup_directory/forensics/20260101T000000Z-hook.md")" = "stale-report" ]
 }
 
-# ---------- 22. handoff/: the fourth entry, same directory shape as forensics ----------
-@test "unkeyed handoff data is carried forward to the keyed subdirectory" {
-  make_main
-  WORKTREE_PATH="$(add_worktree feat-carry-handoff)"
-  mkdir -p "$WORKTREE_PATH/.gaia/local/handoff"
-  echo handoff-body > "$WORKTREE_PATH/.gaia/local/handoff/HANDOFF-2026-01-01-x.md"
-
-  run bash "$HOOK_ABSOLUTE_PATH" "$WORKTREE_PATH"
-  [ "$status" -eq 0 ]
-
-  key="$(tree_key_for "$WORKTREE_PATH")"
-  [ "$(cat "$WORKTREE_PATH/.gaia/local/handoff/$key/HANDOFF-2026-01-01-x.md")" = "handoff-body" ]
-  [ -e "$WORKTREE_PATH/.gaia/local/handoff/HANDOFF-2026-01-01-x.md" ] && return 1
-  return 0
-}
-
 # ---------- 23. migrate_keyed_subtrees_to_main: the cutover-migration half ----------
 # A linked worktree still holding a REAL .gaia/local (pre-cutover, already
 # tree-keyed by an earlier session) must have its keyed per-tree subtrees

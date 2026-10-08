@@ -21,7 +21,7 @@ Conventions for GAIA's Claude Code config surface: extension points, monorepo re
 | `.claude/commands/`     | Slash commands (e.g. `/gaia-init`, `/gaia-plan`)                                                                              | Manual (slash invocation)    |
 | `.claude/hooks/`        | Bash scripts wired in `settings.json`                                                                                         | Auto on matched tool events  |
 | `.claude/rules/`        | Coding rules; optionally path-scoped via `paths:` frontmatter                                                                 | Auto (global) or path-scoped |
-| `.claude/skills/`       | Skills: both context-triggered (`react-code`, `typescript`) and user-invoked (`gaia-handoff`, `new-component`, `update-deps`) | Auto on context/intent match |
+| `.claude/skills/`       | Skills: both context-triggered (`react-code`, `typescript`) and user-invoked (`gaia-wiki`, `new-component`, `update-deps`) | Auto on context/intent match |
 | `.claude/agent-memory/` | Ephemeral per-agent scratch (gitignored by GAIA's shipped `.gitignore`, not source of truth)                                   | Auto per named agent         |
 | `wiki/`                 | Knowledge base: architecture, decisions, patterns (source of truth)                                                           | Manual (on-demand fetch)     |
 
@@ -34,7 +34,7 @@ GAIA does **not** vendor the `claude-obsidian` plugin into the repo. The plugin 
 What this means in practice:
 
 - **Wiki mode** is declared as `Mode: B (Codebase) + E (Research)` in `wiki/README.md`. The string matches upstream's `skills/wiki/references/modes.md` catalog so any agent reading the upstream skill picks the right scaffolding rules. Mode is a documentation contract; there is no runtime toggle in the plugin.
-- **Wiki hooks are GAIA-owned** (in `.claude/hooks/wiki-*.sh`), not delegated to the upstream plugin's `hooks.json`. Reasons: the 2.x plugin does not auto-commit wiki edits, so GAIA's Stop hook checks both committed and uncommitted `wiki/` changes; the plugin's own `hot.md` load is opt-in (`CLAUDE_OBSIDIAN_SESSION_CONTEXT` stays unset) and its vault discovery fails closed on GAIA's layout, so `wiki-hot-inject.sh` owns the load. Upstream's Stop-hook prompt assumes a 500-word hot cache; GAIA enforces ~200 words.
+- **Wiki hooks are GAIA-owned** (in `.claude/hooks/wiki-*.sh`), not delegated to the upstream plugin's `hooks.json`. Reasons: the 2.x plugin does not auto-commit wiki edits, and no GAIA hook commits them either; the plugin's own session-context load stays off (`CLAUDE_OBSIDIAN_SESSION_CONTEXT` stays unset) and its vault discovery fails closed on GAIA's layout.
 - **DragonScale is opt-out.** The plugin ships an optional memory layer (fold operator, deterministic addresses, semantic tiling, boundary-first autoresearch) that GAIA declines. See [[DragonScale Opt-Out]] for the per-mechanism reasoning and the opt-in path for a project that wants it.
 - **Plugin upgrades require uninstall + install.** A plain `claude plugin marketplace update` does not re-pin the cache. Run `claude plugin list`, then `claude plugin uninstall <the id it shows>` (an older install is registered under an older id, so the id comes from the list), then `claude plugin marketplace add AgriciDaniel/claude-obsidian` and `claude plugin install claude-obsidian@agricidaniel-claude-obsidian` to flip `installPath` to the new version. This is a Claude Code plugin CLI quirk worth remembering when upgrading the plugin. `.claude/commands/setup-gaia.md` owns the baseline version.
 - **Python 3.11+ is a prerequisite.** The plugin's hooks run through `python3` on `PATH`, so a machine without Python 3.11 or newer cannot run them.
@@ -110,7 +110,7 @@ Steps (all mechanical):
 2. **Update scaffolding templates**: in `.claude/skills/new-*/SKILL.md` (and any `references/`), path outputs must become `{CONTAINER}/{APP}/app/…`.
 3. **Split CLAUDE.md**: add a per-app `CLAUDE.md` at `{CONTAINER}/{APP}/CLAUDE.md` with stack-specific commands; keep root `CLAUDE.md` as the monorepo overview (see §10).
 4. **Verify hook scripts**: confirm no script hardcodes a specific container folder name. If found, fix.
-5. **Leave wiki hooks alone**: `wiki-hot-inject.sh`, `wiki-session-start.sh`, and `wiki-session-stop.sh` are git-level and path-agnostic.
+5. **Leave wiki hooks alone**: `wiki-session-start.sh` is git-level and path-agnostic.
 
 ## 7. External-service rule pattern
 

@@ -22,7 +22,6 @@ Created: 2026-04-20
 wiki/
 ├── index.md            # master catalog (/gaia-wiki maintains it)
 ├── log.md              # change ledger (gaia wiki log-prepend writes it, newest at TOP)
-├── hot.md              # ~200-word recent context cache (wiki-hot-inject.sh loads it, the Stop hook prompts the refresh)
 ├── overview.md         # executive summary
 ├── modules/            # major architectural areas (routing, auth, i18n, etc.)
 ├── components/         # reusable UI components (Form, Toast, Layout, etc.)
@@ -48,5 +47,5 @@ wiki/
 
 ## Operations
 
-- Query: ask any question - Claude reads `hot.md` → `index.md` → drills in
+- Query: ask any question - Claude reads `index.md` first → drills in
 - Maintenance: `/gaia-wiki` runs sync, consolidate, and lint with fixes, and opens one PR when run from `main`

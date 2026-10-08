@@ -26,7 +26,7 @@ Reactivity is biased toward action: more alarm, more fixes, more scope, never le
 
 `wiki/` is the committed, shared knowledge base for architecture and dev practices. The machine-local auto-memory is neither committed nor visible to other developers, so durable knowledge goes to `wiki/` or `.claude/rules/` and only machine-local prefs stay in memory.
 
-Fetch wiki pages on demand, never preloaded: start at `wiki/index.md`, take only the page you need, and stay in your domain (technical work is `wiki/{modules,concepts,decisions,components,flows,dependencies}/`). `wiki/hot.md` auto-loads as a 200-word "where we left off" cache, not a fact store; don't bloat it.
+Fetch wiki pages on demand, never preloaded: start at `wiki/index.md`, take only the page you need, and stay in your domain (technical work is `wiki/{modules,concepts,decisions,components,flows,dependencies}/`).
 
 Wiki prose follows `.claude/rules/wiki-style.md` and code comments follow `.claude/rules/code-comments.md`; both auto-load on the paths they govern, and neither covers every path this repo edits.
 

@@ -129,7 +129,6 @@ The report you produce is a **contract** to a Sonnet-level executor. Assume it c
 | Wiki README                                    | `$PROJECT_ROOT/wiki/README.md`                  | On demand only                                              |
 | Project rules                                  | `$PROJECT_ROOT/.claude/rules/*.md`              | Auto by `paths:` frontmatter match                          |
 | Project commands                               | `$PROJECT_ROOT/.claude/commands/*.md`           | On invocation only                                          |
-| Wiki hot cache                                 | `$PROJECT_ROOT/wiki/hot.md`                     | Auto at session start                                       |
 | Wiki index                                     | `$PROJECT_ROOT/wiki/index.md`                   | On demand                                                   |
 | Wiki domain pages                              | `$PROJECT_ROOT/wiki/<domain>/`                  | On demand                                                   |
 | Nested `CLAUDE.md` files (any monorepo layout) | any `$PROJECT_ROOT/**/CLAUDE.md` below the root | Auto when cwd matches                                       |
@@ -180,7 +179,7 @@ find "$PROJECT_ROOT/wiki" -type f -name "*.md"
 find "$PROJECT_ROOT" -maxdepth 3 -name CLAUDE.md -not -path '*/node_modules/*'
 
 # Word counts for auto-loaded files
-wc -w "$PROJECT_ROOT"/CLAUDE.md "$PROJECT_ROOT"/wiki/hot.md "$PROJECT_ROOT"/.claude/rules/*.md 2>/dev/null
+wc -w "$PROJECT_ROOT"/CLAUDE.md "$PROJECT_ROOT"/.claude/rules/*.md 2>/dev/null
 ```
 
 Record per file: path, word count, last-modified. Compute totals per store.
@@ -218,7 +217,6 @@ Targets (flag anything over):
 
 | File                                                                               | Budget     | Rationale                                  |
 | ---------------------------------------------------------------------------------- | ---------- | ------------------------------------------ |
-| `wiki/hot.md`                                                                      | ≤200 words | Cache discipline per `wiki/hot.md` comment |
 | `CLAUDE.md` (root)                                                                 | ≤500 words | Routing, principles, standing conduct      |
 | `wiki/README.md`                                                                   | n/a        | On demand, no auto-load budget needed      |
 | Any nested `CLAUDE.md` discovered in Step 1 (monorepo package, subapp, docs, etc.) | ≤400 words | Scoped routing                             |
@@ -513,7 +511,7 @@ Before printing the summary, verify each flipped action actually landed. This is
    - Then verify the source per `source_action`: `delete` → confirm `source_path` is gone; `replace` → confirm `source_after` appears in `source_path` **and** that the file's sha256 now differs from `source_expect_sha256`; `keep` → nothing to verify. The `replace` arm asserts no absence, matching the `body` check above: `source_before` can legitimately survive elsewhere in the file, so asserting its absence would downgrade a correct apply. The sha is what carries the other half, since `source_after` is typically a wikilink the file may already contain, which would pass a bare presence check whether or not the edit landed.
    - On **any** failure, downgrade the checkbox `[x]` → `[!]`, note `promote unverified` on the checkbox line, and the report's terminal `status` is `applied-partial`.
 2. **Every `delete` / `delete-entry` flipped `[x]`:** confirm the path (delete) or the `expect` block (delete-entry) is gone. On failure, downgrade to `[!]`, note `delete unverified`, terminal `status` = `applied-partial`.
-3. **If a `shrink`/`replace` ran on `wiki/hot.md` or root `CLAUDE.md`:** recompute `wc -w`; if still over budget, note `still over budget` (informational only, does NOT downgrade the checkbox or change status).
+3. **If a `shrink`/`replace` ran on root `CLAUDE.md`:** recompute `wc -w`; if still over budget, note `still over budget` (informational only, does NOT downgrade the checkbox or change status).
 
 This verification is the single authority for the report's terminal `status`: after running it, `status` is `applied` only if every action is `[x]`, and `applied-partial` if any action ended `[~]` skipped or `[!]` failed (including a `promote`/`delete` downgraded to `[!]` here).
 

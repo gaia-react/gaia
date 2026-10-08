@@ -17,7 +17,7 @@
 # task, so it ships nowhere just like /gaia-release. /health-audit is the
 # maintainer-only autonomous audit + auto-heal loop (runbook lives under
 # .gaia/cli/health/, already excluded wholesale via category 10). Other
-# /gaia-* commands (plan, handoff, pickup, audit) are adopter-useful and
+# /gaia-* commands (plan, audit) are adopter-useful and
 # must NOT be added here. The two code-audit-maintainer-* agents are
 # the Code Audit Team's maintainer-only members (framework shell + framework
 # TypeScript lenses); adopters audit only their own app via

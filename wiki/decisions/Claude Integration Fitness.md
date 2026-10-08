@@ -102,7 +102,7 @@ Things audits keep re-discovering that are not findings:
 
 **`@`-imports that use valid repo-relative paths.** An `@`-import is a finding only when it imports a skill file from inside a rule. Imports of always-loaded rule files from `CLAUDE.md` are the correct pattern; do not flag them.
 
-**Dead backticked path in `wiki/log.md` or `wiki/hot.md`.** These files are exempt from `gaia wiki dead-paths` by design; `wiki/log.md` is the append-only historical record; `wiki/hot.md` is the auto-overwritten session cache. Do not raise dead-path findings against either.
+**Dead backticked path in `wiki/log.md`.** This file is exempt from `gaia wiki dead-paths` by design; it is the append-only historical record. Do not raise dead-path findings against it.
 
 **A bare `Bash(cmd)` permission entry alongside `Bash(cmd:*)`.** Not a shadowed-permission finding; they match different invocations (no-args vs. with-args). See the permission-glob semantics note under [Settings hygiene](#5-settings-hygiene) for the strict-subset rule that governs this check.
 

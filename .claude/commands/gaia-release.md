@@ -108,7 +108,7 @@ graduation is idempotent, re-running with the same version is a no-op.
 .gaia/cli/gaia-maintainer release scrub-wiki
 ```
 
-Overwrites `wiki/hot.md` and `wiki/log.md` with release-clean content (full frontmatter required by the lint stage of `/gaia-wiki`).
+Overwrites `wiki/log.md` with release-clean content (full frontmatter required by the lint stage of `/gaia-wiki`).
 
 ### 7. Regenerate the manifest
 
@@ -134,7 +134,7 @@ Rebuilds both `.gaia/cli/gaia` (adopter binary) and `.gaia/cli/gaia-maintainer` 
 .gaia/cli/gaia-maintainer release commit-and-tag --commit
 ```
 
-Stages `package.json`, `frontend/package.json`, `.gaia/VERSION`, `.gaia/manifest.json`, `CHANGELOG.md`, `wiki/hot.md`, `wiki/log.md` (and `wiki/.state.json` after the amend). The maintainer adds `.gaia/cli/gaia` and `.gaia/cli/gaia-maintainer` manually if Step 7b rebuilt them. Commits as `chore(release): vX.Y.Z`, captures the new SHA, updates `wiki/.state.json` to point at it, then amends the commit so the tree contains a self-referential state file. Adopters who scaffold via `create-gaia` get a state file that says "wiki is in sync at this release."
+Stages `package.json`, `frontend/package.json`, `.gaia/VERSION`, `.gaia/manifest.json`, `CHANGELOG.md`, `wiki/log.md` (and `wiki/.state.json` after the amend). The maintainer adds `.gaia/cli/gaia` and `.gaia/cli/gaia-maintainer` manually if Step 7b rebuilt them. Commits as `chore(release): vX.Y.Z`, captures the new SHA, updates `wiki/.state.json` to point at it, then amends the commit so the tree contains a self-referential state file. Adopters who scaffold via `create-gaia` get a state file that says "wiki is in sync at this release."
 
 If the pre-commit hook fails, STOP and report, fix the issue and create a **new** commit; do not `--amend`.
 

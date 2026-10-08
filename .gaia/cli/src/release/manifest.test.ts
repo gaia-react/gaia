@@ -12,6 +12,7 @@ import {
   QUOTEPATH_PIN_ARGS,
 } from '../util/non-ascii-path-fixture.js';
 import {
+  ADOPTER_OWNED_SENTINELS,
   buildManifest,
   classifyPath,
   computeDrift,
@@ -64,11 +65,15 @@ const setupSandbox = (): Sandbox => {
 
 describe('classifyPath', () => {
   test('adopter sentinels return null', () => {
-    expect(classifyPath('wiki/hot.md')).toBeNull();
     expect(classifyPath('wiki/log.md')).toBeNull();
     expect(classifyPath('.gaia/VERSION')).toBeNull();
     expect(classifyPath('.gaia/manifest.json')).toBeNull();
     expect(classifyPath('.gaia/packages.json')).toBeNull();
+  });
+
+  test('wiki/hot.md is not an adopter-owned sentinel', () => {
+    expect(ADOPTER_OWNED_SENTINELS.has('wiki/hot.md')).toBe(false);
+    expect(ADOPTER_OWNED_SENTINELS.has('wiki/log.md')).toBe(true);
   });
 
   test('a registered package settings file is generated and has no class', () => {
@@ -206,7 +211,6 @@ describe('buildManifest', () => {
       'app/components/Foo/index.tsx': 'export {};\n',
       'CLAUDE.md': '# CLAUDE\n',
       'wiki/concepts/Bar.md': '# Bar\n',
-      'wiki/hot.md': '# hot\n',
       'wiki/log.md': '# log\n',
     });
 
@@ -224,7 +228,6 @@ describe('buildManifest', () => {
     expect(manifest.files['CLAUDE.md']).toBe('shared');
     expect(manifest.files['app/components/Foo/index.tsx']).toBe('owned');
     expect(manifest.files['wiki/concepts/Bar.md']).toBe('wiki-owned');
-    expect(manifest.files['wiki/hot.md']).toBeUndefined();
     expect(manifest.files['wiki/log.md']).toBeUndefined();
     expect(manifest.files['.gaia/VERSION']).toBeUndefined();
     expect(manifest.files['.gaia/manifest.json']).toBeUndefined();
@@ -531,7 +534,6 @@ const seedManifestSandbox = (): {
     'wiki/concepts/Foo.md': '# foo\n',
     'wiki/decisions/Bar.md': '# bar\n',
     'wiki/entities/Skip.md': '# excluded\n', // excluded
-    'wiki/hot.md': '# hot\n', // sentinel
     'wiki/index.md': '# index\n',
     'wiki/log.md': '# log\n', // sentinel
     'wiki/overview.md': '# overview\n',
@@ -558,7 +560,6 @@ describe('classifier category assignment', () => {
       ).toBeUndefined();
       expect(manifest.files['.gaia/scripts/legacy.mjs']).toBeUndefined();
       expect(manifest.files['CHANGELOG.md']).toBeUndefined();
-      expect(manifest.files['wiki/hot.md']).toBeUndefined();
       expect(manifest.files['wiki/log.md']).toBeUndefined();
       expect(manifest.files['wiki/entities/Skip.md']).toBeUndefined();
       expect(manifest.files['wiki/concepts/Foo.md']).toBe('wiki-owned');

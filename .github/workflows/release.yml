@@ -80,9 +80,9 @@ jobs:
         run: ./.gaia/cli/gaia-maintainer release manifest --check
 
       - name: Verify wiki was scrubbed for release
-        # Fail the release if wiki/hot.md or wiki/log.md was never re-rendered
-        # by `release scrub-wiki` (a skipped scrub would ship a stale wiki). The
-        # check compares the committed files against fresh-rendered output,
+        # Fail the release if wiki/log.md was never re-rendered by
+        # `release scrub-wiki` (a skipped scrub would ship a stale wiki). The
+        # check compares the committed file against fresh-rendered output,
         # normalizes dates out, and writes nothing.
         run: ./.gaia/cli/gaia-maintainer release scrub-wiki --check
 

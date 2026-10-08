@@ -16,7 +16,6 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 ## Top-level
 
 - [[overview]]: executive summary
-- [[hot]]: recent context cache (~200 words)
 - [[log]]: chronological ingest log
 - [[README]]: vault schema, mode declaration, conventions
 
@@ -169,8 +168,6 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 <!-- gaia:maintainer-only:end -->
 - [[GAIA Spec]]: `/gaia-spec`: GAIA's script-driven Socratic discovery workflow; produces an immutable SPEC artifact and stops, printing a `/gaia-plan` prompt for a fresh session (a guard enforces the stop).
 - [[GAIA Plan]]: `/gaia-plan`: feature plan + orchestrator scaffolding, clipboard handoff to a fresh session.
-- [[GAIA Handoff]]: `/gaia-handoff`: session handoff doc.
-- [[GAIA Pickup]]: `/gaia-pickup`: resume from the latest handoff.
 - [[GAIA Audit]]: `/gaia-audit`: two-stage knowledge-store hygiene sweep.
 - [[Wiki Sync]]: the sync stage of `/gaia-wiki` and the statusline drift nudge: keep the wiki convergent with code without spawned sub-Claudes.
 - [[Wiki Consolidate]]: the consolidate stage of `/gaia-wiki`: cross-SPEC redundancy and contradiction audit; surfaces supersession candidates, reversed decisions, near-collision slugs, and subject-orphans.

@@ -53,7 +53,6 @@ const setupSandbox = (currentVersion: string): Sandbox => {
     `# Changelog\n\n## [${currentVersion}] - 2026-05-07\n`,
     'utf8'
   );
-  writeFileSync(path.join(root, 'wiki', 'hot.md'), '# hot\n', 'utf8');
   writeFileSync(path.join(root, 'wiki', 'log.md'), '# log\n', 'utf8');
   writeFileSync(
     path.join(root, 'wiki', '.state.json'),
@@ -213,6 +212,22 @@ describe('release commit-and-tag --commit', () => {
       expect(status.trim()).toBe('');
     }
   );
+
+  test('does not stage wiki/hot.md', {timeout: 30_000}, () => {
+    sandbox = setupSandbox('1.2.0');
+    writeFileSync(path.join(sandbox.root, 'wiki', 'hot.md'), '# hot\n', 'utf8');
+
+    const exit = run(['--commit'], {cwd: sandbox.root});
+    expect(exit).toBe(0);
+
+    const committed = execFileSync(
+      'git',
+      ['show', '--name-only', '--pretty=format:', 'HEAD'],
+      {cwd: sandbox.root, encoding: 'utf8'}
+    );
+    expect(committed).toContain('wiki/log.md');
+    expect(committed).not.toContain('wiki/hot.md');
+  });
 
   test('exit 1 when no release files exist to stage', () => {
     sandbox = setupSandbox('1.0.0');

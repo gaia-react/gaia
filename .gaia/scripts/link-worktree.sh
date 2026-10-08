@@ -3,7 +3,7 @@
 #
 # A linked worktree's whole .gaia/local is ONE symlink to the main checkout's
 # own .gaia/local, so nothing under it diverges per-worktree: the registry's
-# per-tree entries (red-ledger/, worthiness-ledger/, forensics/, handoff/)
+# per-tree entries (red-ledger/, worthiness-ledger/, forensics/)
 # address themselves under a subdirectory keyed by gaia_tree_key
 # (.gaia/scripts/main-root-lib.sh) so they stay private to the tree that
 # wrote them even though the physical directory is now shared. Also symlinks

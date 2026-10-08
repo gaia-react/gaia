@@ -30,7 +30,7 @@ jq -r '.missing[].file'
 
 Treating `missing`'s entries as if they were bare strings prints JSON blobs instead of paths and silently breaks Step 3's classification.
 
-`missing` is not "everything that ships." Four paths, `.gaia/manifest.json`, `.gaia/VERSION`, `wiki/hot.md`, and `wiki/log.md`, are permanent adopter-owned fixtures that ship with baseline content but are never classified, so they never enter `missing` and this command never asks about them. That is correct, not a gap.
+`missing` is not "everything that ships." The paths in `ADOPTER_OWNED_SENTINELS` (`.gaia/cli/src/release/manifest.ts`: `.gaia/manifest.json`, `.gaia/packages.json`, `.gaia/VERSION`, and `wiki/log.md`) are permanent adopter-owned fixtures that ship with baseline content but are never classified, so they never enter `missing` and this command never asks about them. That is correct, not a gap.
 
 ## Step 2. Decide which path applies
 
