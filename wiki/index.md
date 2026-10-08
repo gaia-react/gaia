@@ -89,6 +89,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 
 ## Decisions (ADRs)
 
+- [[Per-call Bash hook cost cut]]
 - [[shadcn Component Layer]]: GAIA's component layer, the vendored-ui policy.
 - [[React Compiler]]: React Compiler runs by default in build, dev, Vitest and Storybook from one shared module; thresholds, adopter steps and rollback.
 - [[TypeScript Language Files]]
