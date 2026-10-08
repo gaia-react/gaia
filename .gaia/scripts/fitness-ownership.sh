@@ -98,7 +98,7 @@ for pin in "$root"/.gaia/vendor/*.json; do
 done
 
 result=""
-for given in "${paths[@]}"; do
+for given in ${paths[@]+"${paths[@]}"}; do
   path="$given"
   if [[ "$path" =~ ^(.+):[0-9]+$ ]]; then
     path="${BASH_REMATCH[1]}"
