@@ -50,6 +50,10 @@
 # that directory which no registration names is invoked directly by a caller who
 # sees its exit status, and owes nothing here.
 #
+# A jq use is the word `jq` outside a comment, or a command-position call of
+# `gaia_hook_payload_read` (the shared one-jq reader), so moving a hook's only
+# jq read into that library does not drop it out of the subject set.
+#
 # Fail-closed by construction, at each stage guards-must-fail.md names:
 #   discovery -- settings.json missing, unparseable, or registering no PreToolUse
 #                hook exits 2; a surface where no hook calls jq at all, or where
@@ -106,6 +110,15 @@ uses_jq() {
     }
     END { exit(found ? 0 : 1) }
   ' "$1"
+}
+
+# reads_payload_with_jq <hook_script_path>
+#
+# Succeed when the script reads jq either directly (uses_jq) or through the
+# shared one-jq payload reader, whose command-position call counts as a jq use
+# so a hook that moved its only jq read into the library stays in the subject set.
+reads_payload_with_jq() {
+  uses_jq "$1" || calls_in_command_position 'gaia_hook_payload_read' "$1"
 }
 
 # calls_in_command_position <needle> <hook_script_path>
@@ -206,7 +219,7 @@ main() {
     # with its own owner; skipping it keeps this check speaking only about the
     # availability arm.
     [ -f "$path" ] || continue
-    uses_jq "$path" || continue
+    reads_payload_with_jq "$path" || continue
     parsers=$((parsers + 1))
 
     if gaia_hook_blocks "$path"; then

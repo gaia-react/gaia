@@ -96,15 +96,12 @@ setup() {
   # feature while catching nothing a content assertion misses. Assert the guard
   # itself: the hook exists, both of its registrations survive, and the two
   # behaviors SPEC-028 added to it are intact.
-  local hook="$REPO_ROOT/.claude/hooks/block-env-read.sh"
-  local secrets_hook="$REPO_ROOT/.claude/hooks/block-secrets-read.sh"
+  local hook="$REPO_ROOT/.claude/hooks/block-sensitive-read.sh"
   local reader_operands_library="$REPO_ROOT/.claude/hooks/lib/reader-operands.sh"
   local matcher event
 
   [ -f "$hook" ]
   [ -x "$hook" ]
-  [ -f "$secrets_hook" ]
-  [ -x "$secrets_hook" ]
   [ -f "$reader_operands_library" ]
 
   # Registered on every tool surface it guards. Asserted per matcher rather than
@@ -118,8 +115,7 @@ setup() {
   # form of one predicate, green against itself while the sanctioned form moves.
   for matcher in Read Grep "Bash|Monitor"; do
     event=".hooks.PreToolUse[] | select(.matcher == \"$matcher\")"
-    hook_registered "$SETTINGS" "$event" block-env-read.sh
-    hook_registered "$SETTINGS" "$event" block-secrets-read.sh
+    hook_registered "$SETTINGS" "$event" block-sensitive-read.sh
   done
 
   # The variant family (.env.local, .env.production, ...) is the gap the hook
@@ -129,9 +125,8 @@ setup() {
   # The committed placeholder stays readable, or the guard is a footgun.
   grep -qF '.env.example' "$hook"
 
-  # Both hooks deny rather than warn.
+  # The hook denies rather than warns.
   grep -qF 'permissionDecision' "$hook"
-  grep -qF 'permissionDecision' "$secrets_hook"
 
   # The shared grammar is what lets the grep family be guarded at all, and a
   # guard that cannot load it must deny rather than exit non-zero: only exit 2
@@ -139,5 +134,4 @@ setup() {
   # every read through with a stderr line as the only trace.
   grep -qF 'gaia_reader_operands' "$reader_operands_library"
   grep -qF 'gaia_reader_operands' "$hook"
-  grep -qF 'gaia_reader_operands' "$secrets_hook"
 }

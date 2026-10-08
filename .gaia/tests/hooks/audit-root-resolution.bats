@@ -204,7 +204,7 @@ setup() {
     chmod +x "$MAIN/.claude/hooks/$script_name"
   done
   for script_name in audit-scope.sh audit-machinery.sh audit-clearance.sh audit-digest.sh gaia-version.sh audit-base-provenance.sh \
-           jq-availability.sh verb-arming.sh verb-arming-walk.sh repo-scope.sh \
+           jq-availability.sh hook-payload.sh verb-arming.sh verb-arming-walk.sh repo-scope.sh \
            cross-repo-refusal.sh audit-bypass-stamp.sh; do
     cp "$REPO_ROOT/.claude/hooks/lib/$script_name" "$MAIN/.claude/hooks/lib/$script_name"
   done

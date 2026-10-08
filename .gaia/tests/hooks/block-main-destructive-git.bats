@@ -1491,3 +1491,132 @@ run_hop() {
   run_hook 'grep -R "$(echo commit)" .'
   assert_allowed_by_json
 }
+
+# --- an unloadable lib/git-segments.sh refuses loudly, never fails open ---
+#
+# The library load resolves off BASH_SOURCE, so expressing a missing library
+# needs a COPY of the hooks directory the test controls.
+stage_hook_tree_without_segments_library() {
+  STAGED_ROOT="$BATS_TEST_TMPDIR/staged"
+  rm -rf "$STAGED_ROOT"
+  mkdir -p "$STAGED_ROOT/.claude"
+  cp -R "$HOOKS_SOURCE_DIRECTORY" "$STAGED_ROOT/.claude/hooks"
+  rm -f "$STAGED_ROOT/.claude/hooks/lib/git-segments.sh"
+  STAGED_HOOK="$STAGED_ROOT/.claude/hooks/block-main-destructive-git.sh"
+}
+
+run_staged_hook() {
+  local json
+  json=$(jq -n --arg command "$1" '{tool_name: "Bash", tool_input: {command: $command}}')
+  invoke_hook_in "$REPO" "$json" "$STAGED_HOOK"
+}
+
+@test "git-segments.sh absent: a git commit call exits 2 naming the library" {
+  on_main
+  stage_hook_tree_without_segments_library
+  run_staged_hook 'git commit -m x'
+  [ "$status" -eq 2 ]
+  grep -qF 'BLOCKED: block-main-destructive-git.sh cannot load lib/git-segments.sh' <<<"$output"
+}
+
+@test "git-segments.sh absent: a non-git call is still allowed" {
+  stage_hook_tree_without_segments_library
+  run_staged_hook 'ls'
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+# --- the early exit for subcommands no rule reads ---
+
+# A `git` shim first on PATH logs each argv and execs the real git, so the
+# number of `--git-common-dir` resolutions a payload costs is countable.
+install_git_shim() {
+  local real_git
+  real_git=$(command -v git)
+  SHIM_LOG="$BATS_TEST_TMPDIR/git-shim.log"
+  mkdir -p "$BATS_TEST_TMPDIR/shim"
+  {
+    printf '#!/bin/sh\n'
+    printf 'printf "%%s\\n" "$*" >> "%s"\n' "$SHIM_LOG"
+    printf 'exec "%s" "$@"\n' "$real_git"
+  } > "$BATS_TEST_TMPDIR/shim/git"
+  chmod +x "$BATS_TEST_TMPDIR/shim/git"
+  : > "$SHIM_LOG"
+}
+
+common_dir_call_count() {
+  grep -cF -- '--git-common-dir' "$SHIM_LOG" || true
+}
+
+run_hook_with_shim() {
+  local json
+  json=$(jq -n --arg command "$1" '{tool_name: "Bash", tool_input: {command: $command}}')
+  : > "$SHIM_LOG"
+  run bash -c 'cd "$1" && printf %s "$2" | PATH="$4:$PATH" bash "$3"' _ "$REPO" "$json" "$HOOK_ABSOLUTE_PATH" "$BATS_TEST_TMPDIR/shim"
+}
+
+@test "a -C status makes strictly fewer --git-common-dir calls than a -C commit on the same path" {
+  on_feature
+  install_git_shim
+  run_hook_with_shim "git -C $REPO status"
+  local status_count
+  status_count=$(common_dir_call_count)
+  run_hook_with_shim "git -C $REPO commit -m x"
+  local commit_count
+  commit_count=$(common_dir_call_count)
+  [ "$commit_count" -gt 0 ]
+  [ "$status_count" -lt "$commit_count" ]
+}
+
+@test "cd into the main checkout on main then git -C commit is still denied after the early exit" {
+  on_main
+  local worktree_directory="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$worktree_directory"
+  run_hook_from "cd '$REPO' && git -C '$REPO' status && git -C '$REPO' commit -m x" "$worktree_directory"
+  assert_denied_by_json
+}
+
+@test "a -C status segment does not skip a later -C commit segment on main" {
+  on_main
+  run_hook "git -C $REPO status && git -C $REPO commit -m x"
+  assert_denied_by_json
+}
+
+@test "git -C push origin main is still denied after the early exit" {
+  on_feature
+  run_hook "git -C $REPO push origin main"
+  assert_denied_by_json
+}
+
+# --- the one-jq payload reader ---
+
+@test "lib/hook-payload.sh absent: a payload the hook would deny exits 2 naming the library" {
+  local hooks_directory scratch_hooks payload
+  hooks_directory=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
+  scratch_hooks="$BATS_TEST_TMPDIR/scratch-hooks"
+  mkdir -p "$scratch_hooks"
+  cp -R "$hooks_directory/." "$scratch_hooks/"
+  rm -f "$scratch_hooks/lib/hook-payload.sh"
+  payload=$(jq -nc --arg command 'git push --force origin main' '{tool_name: "Bash", tool_input: {command: $command}}')
+  run bash -c 'cd "$1" && printf %s "$2" | bash "$3"' _ "$BATS_TEST_TMPDIR" "$payload" "$scratch_hooks/block-main-destructive-git.sh"
+  [ "$status" -eq 2 ]
+  grep -qF 'BLOCKED: block-main-destructive-git.sh cannot load lib/hook-payload.sh' <<<"$output"
+}
+
+@test "a non-arming Bash payload spawns exactly one jq process" {
+  local hooks_directory shim_directory spawn_log real_jq payload spawn_count
+  hooks_directory=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
+  shim_directory="$BATS_TEST_TMPDIR/jq-shim"
+  spawn_log="$BATS_TEST_TMPDIR/jq-spawns"
+  real_jq=$(command -v jq)
+  mkdir -p "$shim_directory"
+  printf '#!/bin/sh\nprintf x >>"%s"\nexec "%s" "$@"\n' "$spawn_log" "$real_jq" >"$shim_directory/jq"
+  chmod +x "$shim_directory/jq"
+  : >"$spawn_log"
+  payload=$(jq -nc '{tool_name: "Bash", tool_input: {command: "ls -la"}}')
+  run env PATH="$shim_directory:$PATH" bash -c 'cd "$1" && printf %s "$2" | bash "$3"' _ "$BATS_TEST_TMPDIR" "$payload" "$hooks_directory/block-main-destructive-git.sh"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  spawn_count=$(wc -c <"$spawn_log" | tr -d ' ')
+  [ "$spawn_count" -eq 1 ]
+}

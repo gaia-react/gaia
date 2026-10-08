@@ -89,6 +89,15 @@ assert_denied() {
   assert_denied_by_json
 }
 
+# A payload carrying a path and no content, the shape the dotenv path deny
+# rules on before any scan.
+run_write_hook_edit() {
+  local tool="$1" path="$2"
+  local json
+  json=$(jq -n --arg tool_name "$tool" --arg file_path "$path" '{tool_name: $tool_name, tool_input: {file_path: $file_path}}')
+  invoke_hook "$json" "$HOOK_ABSOLUTE_PATH"
+}
+
 
 # --- The three secret-shaped patterns still deny ---
 
@@ -696,7 +705,7 @@ assert_denied() {
 
 # A dash-leading path must not be read as a basename option. The verdict is safe
 # either way (no exemption, full scan), but `basename --` keeps the usage error
-# off the hook's stderr, matching block-env-read.sh.
+# off the hook's stderr, matching block-sensitive-read.sh.
 
 # The needle has to cover BOTH basename flavors, because the VERDICT does not
 # move when `--` is dropped: an empty basename matches no exemption and the file
@@ -755,5 +764,43 @@ assert_denied() {
 @test "a payload with no file_path is still scanned" {
   run_hook_write "$(printf 'SESSION_SECRET=%s\n' 'local')"
   assert_denied
+}
+
+# --- The dotenv path deny: rules on the target path before any content scan ---
+
+@test "Edit on .env.local is denied by the dotenv path deny" {
+  run_write_hook_edit "Edit" ".env.local"
+  assert_denied_by_json
+}
+
+@test "Write on .env.example is allowed by the dotenv path deny" {
+  run_write_hook_edit "Write" ".env.example"
+  assert_allowed_by_json
+}
+
+@test "Write to .env.production is denied with the dotenv write message" {
+  run_hook_write_path '.env.production' 'PORT=3000'
+  assert_denied_by_json
+  grep -qF -- "BLOCKED: writes to '.env.production' are forbidden. .env files must remain gitignored and edited manually by the developer." <<<"$output"
+}
+
+@test "the dotenv path message wins over the content scan when both would deny" {
+  local aws_id="AKIA""IOSFODNN7EXAMPLE"
+  run_hook_write_path '.env.production' "const id = '$aws_id'"
+  assert_denied_by_json
+  grep -qF -- "writes to '.env.production' are forbidden" <<<"$output"
+  grep -qF -- "AWS access-key" <<<"$output" && return 1
+  return 0
+}
+
+@test "Write to .env.example with clean content reaches the content scan and is allowed" {
+  run_hook_write_path '.env.example' 'PORT=3000'
+  assert_allowed_by_json
+}
+
+@test "a nested .env is denied by basename" {
+  run_hook_write_path 'packages/api/.env' 'PORT=3000'
+  assert_denied_by_json
+  grep -qF -- "writes to 'packages/api/.env' are forbidden" <<<"$output"
 }
 

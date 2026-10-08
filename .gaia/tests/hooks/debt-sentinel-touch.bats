@@ -114,3 +114,20 @@ assert_not_armed() { [ ! -f "$REPO/$SENTINEL_RELATIVE_PATH" ]; }
 @test "the hook file is executable" {
   [ -x "$HOOK_ABSOLUTE_PATH" ]
 }
+
+@test "hook-payload.sh missing: exit 0 with empty stdout, the sentinel stays unarmed" {
+  local scratch="$BATS_TEST_TMPDIR/scratch-hooks"
+  mkdir -p "$scratch/.claude/hooks"
+  cp -R "$(dirname "$HOOK_ABSOLUTE_PATH")/lib" "$scratch/.claude/hooks/lib"
+  cp "$HOOK_ABSOLUTE_PATH" "$scratch/.claude/hooks/debt-sentinel-touch.sh"
+  rm -f "$scratch/.claude/hooks/lib/hook-payload.sh"
+
+  REPO=$("$HELPERS/tmp-git-repo.sh")
+  cd "$REPO" || return 1
+  local input
+  input=$("$HELPERS/mock-hook-input.sh" post-tool-use S1 Bash 'gh issue close 590')
+  invoke_hook "$input" "$scratch/.claude/hooks/debt-sentinel-touch.sh"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  assert_not_armed
+}

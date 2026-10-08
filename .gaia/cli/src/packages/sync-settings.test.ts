@@ -101,6 +101,70 @@ describe('generateSettings', () => {
     expect(output.permissions.additionalDirectories).toEqual(['../..']);
   });
 
+  test('a hook handler carries its if rule through unchanged on PreToolUse and PostToolUse', () => {
+    const preRule = 'Bash(git *)';
+    const postRule = 'Bash(gh pr merge *)';
+    const output = generateSettings(
+      {
+        ...ROOT_SETTINGS,
+        hooks: {
+          PostToolUse: [
+            {
+              hooks: [{command: 'post.sh', if: postRule, type: 'command'}],
+              matcher: 'Bash',
+            },
+          ],
+          PreToolUse: [
+            {
+              hooks: [{command: 'pre.sh', if: preRule, type: 'command'}],
+              matcher: 'Bash',
+            },
+          ],
+        },
+      },
+      {},
+      'frontend'
+    ) as Record<string, any>;
+
+    expect(output.hooks.PreToolUse).toHaveLength(1);
+    expect(output.hooks.PreToolUse[0].hooks).toHaveLength(1);
+    expect(output.hooks.PreToolUse[0].hooks[0]).toHaveProperty('if', preRule);
+    expect(output.hooks.PostToolUse).toHaveLength(1);
+    expect(output.hooks.PostToolUse[0].hooks).toHaveLength(1);
+    expect(output.hooks.PostToolUse[0].hooks[0]).toHaveProperty('if', postRule);
+  });
+
+  test('two handlers sharing one command keep their different if rules in order', () => {
+    const output = generateSettings(
+      {
+        ...ROOT_SETTINGS,
+        hooks: {
+          PostToolUse: [
+            {
+              hooks: [
+                {command: 'same.sh', if: 'Bash(git *)', type: 'command'},
+                {
+                  command: 'same.sh',
+                  if: 'Bash(gh pr checkout *)',
+                  type: 'command',
+                },
+              ],
+              matcher: 'Bash',
+            },
+          ],
+        },
+      },
+      {},
+      'frontend'
+    ) as Record<string, any>;
+
+    const handlers = output.hooks.PostToolUse[0].hooks;
+
+    expect(handlers).toHaveLength(2);
+    expect(handlers[0]).toHaveProperty('if', 'Bash(git *)');
+    expect(handlers[1]).toHaveProperty('if', 'Bash(gh pr checkout *)');
+  });
+
   test('an overlay adds allow, deny, ask, and env entries', () => {
     const output = generateSettings(
       ROOT_SETTINGS,

@@ -70,6 +70,9 @@ write_settings() {
 # kind=namesonly    blocking, and NAMES the shared arm in a comment only
 # kind=loaderonly   blocking, and carries the loader block that MENTIONS the
 #                   shared arm without ever calling it
+# kind=libread      blocking, reads its payload only through the shared one-jq
+#                   reader, and has no gaia_require_jq call
+# kind=libreadarmed blocking, calls gaia_require_jq ahead of the shared reader
 write_hook() {
   local fixture_directory="$1" name="$2" kind="$3"
   {
@@ -108,6 +111,13 @@ write_hook() {
         printf '  printf %s >&2\n' "'BLOCKED: cannot load the arm.\\n'"
         printf '  exit 2\nfi\n'
         printf "command=\$(jq -r '.tool_input.command' <<<\"\$payload\")\nexit 2\n"
+        ;;
+      libread)
+        printf '. lib/hook-payload.sh\ngaia_hook_payload_read "$payload" || exit 0\nexit 2\n'
+        ;;
+      libreadarmed)
+        printf ". lib/jq-availability.sh\ngaia_require_jq 'the fixture guard' \"\$payload\" tool_input 'needle'\n"
+        printf '. lib/hook-payload.sh\ngaia_hook_payload_read "$payload" || exit 0\nexit 2\n'
         ;;
     esac
   } >"$fixture_directory/.claude/hooks/$name"
@@ -232,6 +242,33 @@ write_hook() {
   run bash "$CHECK" "$fixture_directory"
   [ "$status" -eq 1 ]
   grep -qF -- 'no jq-availability arm stands it down' <<<"$output"
+}
+
+@test "red: a blocking hook reading only through the shared payload reader needs the arm" {
+  # The reader hides the literal word jq from the invocation probe, so without
+  # the command-position call counting as a jq use this hook would fall out of
+  # the subject set and grade clean while its read still dies at 127.
+  local fixture_directory
+  fixture_directory="$(make_fixture red-libread)"
+  write_hook "$fixture_directory" armed.sh armed
+  write_hook "$fixture_directory" reader.sh libread
+  write_settings "$fixture_directory" PreToolUse armed.sh reader.sh
+
+  run bash "$CHECK" "$fixture_directory"
+  [ "$status" -eq 1 ]
+  grep -qF -- 'reader.sh' <<<"$output"
+  grep -qF -- 'no gaia_require_jq call reaches its payload read' <<<"$output"
+}
+
+@test "clean: a gaia_require_jq call ahead of the shared payload reader passes" {
+  local fixture_directory
+  fixture_directory="$(make_fixture clean-libread)"
+  write_hook "$fixture_directory" armed.sh armed
+  write_hook "$fixture_directory" reader.sh libreadarmed
+  write_settings "$fixture_directory" PreToolUse armed.sh reader.sh
+
+  run bash "$CHECK" "$fixture_directory"
+  [ "$status" -eq 0 ]
 }
 
 # --- fail-closed discovery ---------------------------------------------------

@@ -56,19 +56,22 @@ input=$(cat)
 
 command -v jq >/dev/null 2>&1 || exit 0
 
-tool_name=$(printf '%s' "$input" | jq -r '.tool_name // ""' 2>/dev/null || echo "")
-[ "$tool_name" = "Bash" ] || exit 0
+_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _library_directory=''
+[ -n "$_library_directory" ] && [ -f "$_library_directory/hook-payload.sh" ] && . "$_library_directory/hook-payload.sh"
+type gaia_hook_payload_read >/dev/null 2>&1 || exit 0
+gaia_hook_payload_read "$input" || exit 0
+[ "$GAIA_HOOK_TOOL_NAME" = "Bash" ] || exit 0
 
 # Every diagnostic below names the event that fired as its hookEventName, the
 # key hookSpecificOutput carries per event.
-hook_event_name=$(printf '%s' "$input" | jq -r '.hook_event_name // "PostToolUse"' 2>/dev/null || echo "PostToolUse")
+hook_event_name=${GAIA_HOOK_EVENT:-PostToolUse}
 [ "$hook_event_name" = "PostToolUseFailure" ] || hook_event_name="PostToolUse"
 emit_context() {
   jq -n --arg e "$hook_event_name" --arg c "$1" \
     '{hookSpecificOutput: {hookEventName: $e, additionalContext: $c}}' 2>/dev/null || true
 }
 
-command=$(printf '%s' "$input" | jq -r '.tool_input.command // ""' 2>/dev/null || echo "")
+command=$GAIA_HOOK_COMMAND
 [ -n "$command" ] || exit 0
 
 # --- scope match: a `(pnpm|npm) [run] test … --run …` invocation --------------
@@ -103,7 +106,6 @@ done < <(printf '%s\n' "$command" | tr '|&;()' '\n')
 # under the repository root, and the `type` degrade below cannot distinguish a
 # moved working directory from a missing library, so a `cd` alone would stop
 # this hook recording RED observations at all.
-_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _library_directory=''
 [ -n "$_library_directory" ] && [ -f "$_library_directory/red-ledger.sh" ] && . "$_library_directory/red-ledger.sh"
 type red_ledger_path >/dev/null 2>&1 || exit 0
 
@@ -121,7 +123,7 @@ source "$gaia_scripts/main-root-lib.sh" 2>/dev/null || exit 0
 # rather than by a raw git call this hook writes itself. Payload cwd is
 # measured, not contracted, and only established on PreToolUse/PostToolUse,
 # so the fallback is mandatory.
-payload_cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null || echo "")
+payload_cwd=$GAIA_HOOK_CWD
 source_cwd="$PWD"
 if [[ "$payload_cwd" == /* ]] && gaia_resolve_tree_root "$payload_cwd" >/dev/null 2>&1; then
   source_cwd="$payload_cwd"

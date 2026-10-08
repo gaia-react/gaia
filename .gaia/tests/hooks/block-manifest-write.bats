@@ -251,3 +251,29 @@ run_hook_bash() {
 @test "settings.json registers the hook on the Bash|Monitor matcher" {
   hook_registered "$SETTINGS_ABSOLUTE_PATH" '.hooks.PreToolUse[] | select(.matcher == "Bash|Monitor")' block-manifest-write.sh
 }
+
+# --- the shared payload reader ---
+
+@test "a missing lib/hook-payload.sh refuses a manifest edit rather than allowing the call" {
+  local scratch_directory="$BATS_TEST_TMPDIR/no-payload-lib" json
+  mkdir -p "$scratch_directory"
+  cp -R "$HOOKS_SOURCE_DIRECTORY/lib" "$scratch_directory/lib"
+  rm -f "$scratch_directory/lib/hook-payload.sh"
+  cp "$HOOK_ABSOLUTE_PATH" "$scratch_directory/"
+  json=$(jq -n --arg file_path ".gaia/manifest.json" '{tool_name: "Edit", tool_input: {file_path: $file_path}}')
+  invoke_hook "$json" "$scratch_directory/block-manifest-write.sh"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'cannot load lib/hook-payload.sh' <<<"$output"
+}
+
+@test "an ordinary Bash call runs at most one jq" {
+  local shim_directory="$BATS_TEST_TMPDIR/shim" real_jq json
+  real_jq=$(command -v jq)
+  mkdir -p "$shim_directory"
+  printf '#!/usr/bin/env bash\nprintf "jq\\n" >> "%s/calls.log"\nexec "%s" "$@"\n' "$BATS_TEST_TMPDIR" "$real_jq" >"$shim_directory/jq"
+  chmod +x "$shim_directory/jq"
+  json=$(jq -n '{tool_name: "Bash", tool_input: {command: "ls -la"}}')
+  PATH="$shim_directory:$PATH" invoke_hook "$json" "$HOOK_ABSOLUTE_PATH"
+  assert_allowed_by_json
+  [ "$(wc -l <"$BATS_TEST_TMPDIR/calls.log")" -le 1 ]
+}

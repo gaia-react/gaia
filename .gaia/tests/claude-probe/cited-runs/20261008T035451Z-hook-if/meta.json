@@ -1,0 +1,12 @@
+{
+  "expectations_commit": "33d3cbc731226b878764694573408804422c428b",
+  "table_sha256": "3ed1daf50aaf591d24821e954b1653e1b27e2aafad72ff839e1b46e90e45dc99",
+  "reps": 2,
+  "max_usd": 4,
+  "model": "sonnet",
+  "launches": [
+    "root"
+  ],
+  "only": "root-if-*",
+  "started_at": "2026-10-08T03:55:11Z"
+}

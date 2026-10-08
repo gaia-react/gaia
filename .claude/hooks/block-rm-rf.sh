@@ -323,7 +323,17 @@ main() {
   # absent. Strictly better than the status quo it replaces, which allowed every
   # spelling, and closing it needs the tokenizer this arm runs ahead of.
 
-  command=$(jq -r '.tool_input.command // empty' <<<"$payload")
+  set +e
+  # shellcheck source=lib/hook-payload.sh
+  [ -n "$_jq_library_directory" ] && [ -f "$_jq_library_directory/hook-payload.sh" ] && . "$_jq_library_directory/hook-payload.sh" 2>/dev/null
+  set -e
+  if ! type gaia_hook_payload_read >/dev/null 2>&1; then
+    printf 'BLOCKED: block-rm-rf.sh cannot load lib/hook-payload.sh, so this call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
+    exit 2
+  fi
+  gaia_hook_payload_read "$payload" || exit 0
+
+  command=$GAIA_HOOK_COMMAND
 
   [[ -n "$command" ]] || exit 0
 

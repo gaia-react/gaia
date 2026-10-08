@@ -119,7 +119,7 @@ write_file pnpm-lock.yaml "lockfileVersion: '9.0'"
 # Untracked by .gitignore, exactly as on a real machine.
 write_file .env "PROBE=1"
 write_file frontend/.env "PROBE=1"
-for marker in ok carried refused; do
+for marker in ok refused; do
   write_file ".gaia/local/audit/x.$marker" "PROBE=1"
 done
 

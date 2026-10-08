@@ -82,13 +82,21 @@ if ! type gaia_require_jq >/dev/null 2>&1; then
 fi
 gaia_require_jq 'the hand-rolled merge-wait guard' "$payload" tool_input 'gh pr'
 
-tool=$(jq -r '.tool_name // ""' <<<"$payload" 2>/dev/null) || exit 0
+# shellcheck source=lib/hook-payload.sh
+[ -n "$_jq_library_directory" ] && [ -f "$_jq_library_directory/hook-payload.sh" ] && . "$_jq_library_directory/hook-payload.sh" 2>/dev/null
+if ! type gaia_hook_payload_read >/dev/null 2>&1; then
+  printf 'BLOCKED: block-handrolled-pr-poll.sh cannot load lib/hook-payload.sh, so this call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
+  exit 2
+fi
+gaia_hook_payload_read "$payload" || exit 0
+
+tool=$GAIA_HOOK_TOOL_NAME
 case "$tool" in
   Bash | Monitor) ;;
   *) exit 0 ;;
 esac
 
-command=$(jq -r '.tool_input.command // ""' <<<"$payload" 2>/dev/null) || exit 0
+command=$GAIA_HOOK_COMMAND
 [ -n "$command" ] || exit 0
 
 # --- escape 1: the blessed path, and anything writing about it ----------------

@@ -64,8 +64,17 @@ deny() {
   exit 0
 }
 
+# shellcheck source=lib/hook-payload.sh
+[ -n "$_library_directory" ] && [ -f "$_library_directory/hook-payload.sh" ] && . "$_library_directory/hook-payload.sh" 2>/dev/null
+if ! type gaia_hook_payload_read >/dev/null 2>&1; then
+  printf 'BLOCKED: block-fork-pr-checkout.sh cannot load lib/hook-payload.sh, so this call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
+  exit 2
+fi
+gaia_hook_payload_read "$input" || exit 0
+
 # Empty for any tool but Bash, so one read covers both checks.
-command_line=$(printf '%s' "$input" | jq -r 'if .tool_name == "Bash" then .tool_input.command // "" else "" end' 2>/dev/null)
+command_line=""
+[ "$GAIA_HOOK_TOOL_NAME" = "Bash" ] && command_line=$GAIA_HOOK_COMMAND
 [ -n "$command_line" ] || exit 0
 
 checkout_fragment='gh[[:space:]]+pr[[:space:]]+checkout([[:space:]]|$)'

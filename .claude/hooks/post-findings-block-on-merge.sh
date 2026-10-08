@@ -14,14 +14,18 @@ trap 'exit 0' ERR
 command -v jq >/dev/null 2>&1 || exit 0
 
 payload=$(cat)
-tool_name=$(jq -r '.tool_name // ""' <<<"$payload")
-[ "$tool_name" = "Bash" ] || exit 0
 
-command_line=$(jq -r '.tool_input.command // ""' <<<"$payload")
+_hook_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
+# shellcheck source=/dev/null
+[ -n "${_hook_library_directory:-}" ] && . "$_hook_library_directory/hook-payload.sh" 2>/dev/null || true
+type gaia_hook_payload_read >/dev/null 2>&1 || exit 0
+gaia_hook_payload_read "$payload" || exit 0
+[ "$GAIA_HOOK_TOOL_NAME" = "Bash" ] || exit 0
+
+command_line=$GAIA_HOOK_COMMAND
 
 # Shared arming decision; see .claude/hooks/lib/verb-arming.sh. A quoted verb
 # inside prose still arms here, fail-closed, with no safe narrowing.
-_hook_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
 # shellcheck source=/dev/null
 [ -n "${_hook_library_directory:-}" ] && "${BASH:-bash}" -n "$_hook_library_directory/verb-arming.sh" 2>/dev/null && . "$_hook_library_directory/verb-arming.sh" 2>/dev/null || true
 type gaia_verb_armed >/dev/null 2>&1 || exit 0

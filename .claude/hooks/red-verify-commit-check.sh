@@ -69,10 +69,16 @@ input=$(cat)
 
 command -v jq >/dev/null 2>&1 || exit 0
 
-tool_name=$(echo "$input" | jq -r '.tool_name // ""' 2>/dev/null)
+_hook_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _hook_library_directory=''
+# shellcheck source=lib/hook-payload.sh
+[ -n "$_hook_library_directory" ] && [ -f "$_hook_library_directory/hook-payload.sh" ] && . "$_hook_library_directory/hook-payload.sh" 2>/dev/null
+type gaia_hook_payload_read >/dev/null 2>&1 || exit 0
+gaia_hook_payload_read "$input" || exit 0
+
+tool_name=$GAIA_HOOK_TOOL_NAME
 [ "$tool_name" = "Bash" ] || exit 0
 
-command=$(echo "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
+command=$GAIA_HOOK_COMMAND
 [ -n "$command" ] || exit 0
 
 # ---------------------------------------------------------------------------
@@ -159,7 +165,7 @@ source "$gaia_scripts/main-root-lib.sh" 2>/dev/null || exit 0
 # rather than by a raw git call this hook writes itself. Payload cwd is
 # measured, not contracted, and only established on PreToolUse, so the
 # fallback is mandatory.
-payload_cwd=$(echo "$input" | jq -r '.cwd // empty' 2>/dev/null)
+payload_cwd=$GAIA_HOOK_CWD
 source_cwd="$PWD"
 if [[ "$payload_cwd" == /* ]] && gaia_resolve_tree_root "$payload_cwd" >/dev/null 2>&1; then
   source_cwd="$payload_cwd"

@@ -11,6 +11,7 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-10-08 ADDED: wiki/decisions/per-call-bash-hook-cost-cut.md (hook if gating, single-jq payload read, merged read guard)
 - 2026-10-07 341d2d24 SKIP - wiki pages updated in the PR itself, no further edit needed (touches wiki-heavy domain)
 - 2026-10-07 3d40fdb9 SKIP - chore: generic chore
 - 2026-10-07 88a50c9e SKIP - wiki pages updated in the PR itself, no further edit needed (touches wiki-heavy domain)
