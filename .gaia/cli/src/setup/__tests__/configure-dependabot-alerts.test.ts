@@ -137,13 +137,13 @@ const FAILURE_CASES: FailureCase[] = [
   },
 ];
 
-describe('setup-ci configure-dependabot-alerts', () => {
+describe('setup configure-dependabot-alerts', () => {
   let sandbox: Sandbox;
   let stdio: ReturnType<typeof captureStdio>;
   let restore: (() => void) | undefined;
 
   beforeEach(() => {
-    sandbox = setupSandbox('gaia-setup-ci-configure-dependabot-alerts-');
+    sandbox = setupSandbox('gaia-setup-configure-dependabot-alerts-');
     stdio = captureStdio();
   });
 

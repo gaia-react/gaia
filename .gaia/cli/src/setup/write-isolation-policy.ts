@@ -19,9 +19,9 @@ import {
 } from '../util/project-config-write.js';
 import {resolveRepoRoot} from '../util/repo-root.js';
 
-const SUBCOMMAND = 'setup-ci write-isolation-policy';
+const SUBCOMMAND = 'setup write-isolation-policy';
 
-const HELP_TEXT = `Usage: gaia setup-ci write-isolation-policy <${ISOLATION_POLICIES.join('|')}>
+const HELP_TEXT = `Usage: gaia setup write-isolation-policy <${ISOLATION_POLICIES.join('|')}>
 
   Write isolation_policy to .gaia/project.json (committed), merged onto the
   raw parsed config so a key a newer binary wrote survives. Creates the file
@@ -82,7 +82,7 @@ export const run = (
     structuredError({
       code: 'not_a_git_repo',
       message:
-        'gaia setup-ci write-isolation-policy must run inside a git repository',
+        'gaia setup write-isolation-policy must run inside a git repository',
       subcommand: SUBCOMMAND,
     });
 

@@ -1,5 +1,5 @@
 /**
- * Shared sandbox helpers for setup-ci tests.
+ * Shared sandbox helpers for setup tests.
  *
  * Two scopes overlap here:
  *
@@ -63,7 +63,7 @@ export function assertOk<T extends {ok: boolean}>(
  * `readProjectConfig` results) without an `if`
  * inside the test body — vitest/no-conditional-in-test forbids a bare `if`
  * there, and vitest/no-conditional-expect forbids an `expect` inside one.
- * Shared across setup-ci tests that read back a schema-validated file.
+ * Shared across setup tests that read back a schema-validated file.
  */
 export function assertStatusOk<T extends {status: string}>(
   result: T
@@ -126,7 +126,7 @@ process.stdin.on('end', () => {
 });
 `;
 
-export const setupSandbox = (prefix = 'gaia-setup-ci-'): Sandbox => {
+export const setupSandbox = (prefix = 'gaia-setup-'): Sandbox => {
   const root = mkdtempSync(path.join(tmpdir(), prefix));
   execFileSync('git', ['init', '-q', '-b', 'main'], {cwd: root});
   execFileSync('git', ['config', 'user.email', 'test@example.com'], {

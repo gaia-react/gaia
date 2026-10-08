@@ -52,12 +52,12 @@ const writeFileAt = (root: string, relPath: string, content: string): void => {
   writeFileSync(target, content, 'utf8');
 };
 
-describe('setup-ci warn-existing-tools', () => {
+describe('setup warn-existing-tools', () => {
   let sandbox: Sandbox;
   let stdio: ReturnType<typeof captureStdio>;
 
   beforeEach(() => {
-    sandbox = setupSandbox('gaia-setup-ci-warn-');
+    sandbox = setupSandbox('gaia-setup-warn-');
     stdio = captureStdio();
   });
 

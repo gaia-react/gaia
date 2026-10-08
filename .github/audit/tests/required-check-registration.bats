@@ -120,7 +120,7 @@ check_registration_placement() {
     return 1
   }
   between="$(awk '
-    /setup-ci check-admin/ { inside = 1 }
+    /gaia setup check-admin/ { inside = 1 }
     /\["GAIA-Audit"\]/ { inside = 0 }
     inside
   ' <<<"$section")"

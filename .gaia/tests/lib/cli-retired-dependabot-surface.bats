@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 
 # The committed CLI bundle no longer offers the Dependabot config and security
-# updates writers: the three retired setup-ci subcommands are unknown, the help
+# updates writers: the three retired setup subcommands are unknown, the help
 # text lists only the alerts configurer, and the sources behind them are gone.
 #
 # The retired names are built at runtime so this file never carries them as
@@ -50,10 +50,10 @@ check_help_text() {
   done
 }
 
-@test "every retired setup-ci subcommand is an unknown subcommand" {
+@test "every retired setup subcommand is an unknown subcommand" {
   local name
   for name in "${RETIRED_SUBCOMMANDS[@]}"; do
-    run bash -c '"$0" setup-ci "$1" 2>&1 >/dev/null' "$BUNDLE" "$name"
+    run bash -c '"$0" setup "$1" 2>&1 >/dev/null' "$BUNDLE" "$name"
     [ "$status" -ne 0 ]
     case "$output" in
       *unknown_subcommand*) ;;
@@ -63,7 +63,7 @@ check_help_text() {
 }
 
 @test "an unretired subcommand does not report unknown_subcommand, so the check above can tell them apart" {
-  run bash -c '"$0" setup-ci "$1" 2>&1 >/dev/null' "$BUNDLE" "$CURRENT_SUBCOMMAND"
+  run bash -c '"$0" setup "$1" 2>&1 >/dev/null' "$BUNDLE" "$CURRENT_SUBCOMMAND"
   case "$output" in
     *unknown_subcommand*) return 1 ;;
   esac
@@ -76,15 +76,15 @@ check_help_text() {
   check_help_text "$help_file"
 }
 
-@test "the setup-ci help lists the alerts configurer and names no retired subcommand" {
-  local help_file="$BATS_TEST_TMPDIR/setup-ci-help.txt"
-  "$BUNDLE" setup-ci --help > "$help_file" 2>&1
+@test "the setup help lists the alerts configurer and names no retired subcommand" {
+  local help_file="$BATS_TEST_TMPDIR/setup-help.txt"
+  "$BUNDLE" setup --help > "$help_file" 2>&1
   check_help_text "$help_file"
 }
 
 @test "the help check fails on a help text that still names a retired subcommand" {
   local help_file="$BATS_TEST_TMPDIR/retired-help.txt"
-  "$BUNDLE" setup-ci --help > "$help_file" 2>&1
+  "$BUNDLE" setup --help > "$help_file" 2>&1
   printf '  %s   Opt in.\n' "${RETIRED_SUBCOMMANDS[0]}" >> "$help_file"
   run check_help_text "$help_file"
   [ "$status" -eq 1 ]
@@ -92,13 +92,13 @@ check_help_text() {
 
 @test "the help check fails on a help text without the alerts configurer" {
   local help_file="$BATS_TEST_TMPDIR/bare-help.txt"
-  printf 'Usage: gaia setup-ci <subcommand> [args]\n  detect-remote\n' > "$help_file"
+  printf 'Usage: gaia setup <subcommand> [args]\n  detect-remote\n' > "$help_file"
   run check_help_text "$help_file"
   [ "$status" -eq 1 ]
 }
 
 @test "the retired writer sources and their tests are absent" {
-  local directory="$REPOSITORY_ROOT/.gaia/cli/src/setup-ci" name
+  local directory="$REPOSITORY_ROOT/.gaia/cli/src/setup" name
   # A wrong directory would make every absence below pass.
   [ -f "$directory/configure-dependabot-alerts.ts" ]
   for name in "${RETIRED_SUBCOMMANDS[@]}"; do

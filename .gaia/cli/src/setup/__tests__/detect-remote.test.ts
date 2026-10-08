@@ -36,12 +36,12 @@ const captureStdio = (): {
   };
 };
 
-describe('setup-ci detect-remote', () => {
+describe('setup detect-remote', () => {
   let sandbox: Sandbox;
   let stdio: ReturnType<typeof captureStdio>;
 
   beforeEach(() => {
-    sandbox = setupSandbox('gaia-setup-ci-detect-remote-');
+    sandbox = setupSandbox('gaia-setup-detect-remote-');
     stdio = captureStdio();
   });
 

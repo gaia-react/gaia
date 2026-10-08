@@ -36,13 +36,13 @@ const captureStdio = (): {
   };
 };
 
-describe('setup-ci check-admin', () => {
+describe('setup check-admin', () => {
   let sandbox: Sandbox;
   let stdio: ReturnType<typeof captureStdio>;
   let restore: (() => void) | undefined;
 
   beforeEach(() => {
-    sandbox = setupSandbox('gaia-setup-ci-check-admin-');
+    sandbox = setupSandbox('gaia-setup-check-admin-');
     stdio = captureStdio();
   });
 

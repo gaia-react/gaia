@@ -1,5 +1,5 @@
 /**
- * `gaia setup-ci enable-delete-branch --owner <o> --repo <r>` handler.
+ * `gaia setup enable-delete-branch --owner <o> --repo <r>` handler.
  *
  * Runs `gh api -X PATCH repos/<owner>/<repo> -f delete_branch_on_merge=true`.
  * The slash command has already verified admin permission via
@@ -20,7 +20,7 @@ import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {runGhAsync} from '../util/run-process.js';
 
-const HELP_TEXT = `Usage: gaia setup-ci enable-delete-branch --owner <o> --repo <r>
+const HELP_TEXT = `Usage: gaia setup enable-delete-branch --owner <o> --repo <r>
 
   PATCH repos/<owner>/<repo> -f delete_branch_on_merge=true via gh.
 `;
@@ -58,7 +58,7 @@ export const run = async (
         structuredError({
           code: 'invalid_arguments',
           message: `unknown flag: ${token}`,
-          subcommand: 'setup-ci enable-delete-branch',
+          subcommand: 'setup enable-delete-branch',
         });
 
         return EXIT_CODES.UNKNOWN_SUBCOMMAND;
@@ -70,7 +70,7 @@ export const run = async (
     structuredError({
       code: 'missing_required_arg',
       message: 'enable-delete-branch requires --owner <o> --repo <r>',
-      subcommand: 'setup-ci enable-delete-branch',
+      subcommand: 'setup enable-delete-branch',
     });
 
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;

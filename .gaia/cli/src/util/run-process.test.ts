@@ -6,8 +6,8 @@ import {
   assertNotOk,
   assertOk,
   setupSandbox,
-} from '../setup-ci/__tests__/sandbox.js';
-import type {Sandbox} from '../setup-ci/__tests__/sandbox.js';
+} from '../setup/__tests__/sandbox.js';
+import type {Sandbox} from '../setup/__tests__/sandbox.js';
 import {defaultRunner, runGhAsync, runGit} from './run-process.js';
 
 describe('runGhAsync wrapper', () => {
@@ -15,7 +15,7 @@ describe('runGhAsync wrapper', () => {
   let restore: (() => void) | undefined;
 
   beforeEach(() => {
-    sandbox = setupSandbox('gaia-setup-ci-gh-');
+    sandbox = setupSandbox('gaia-setup-gh-');
   });
 
   afterEach(() => {

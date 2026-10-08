@@ -22,7 +22,6 @@ import {run as runResidueRecord} from './residue/record-cmd.js';
 import {run as runResidueTally} from './residue/tally.js';
 import {run as runSandbox} from './sandbox/index.js';
 import {run as runScaffold} from './scaffold/index.js';
-import {run as runSetupCi} from './setup-ci/index.js';
 import {run as runSetup} from './setup/index.js';
 import {run as runUpdateDeps} from './update-deps/index.js';
 import {run as runUpdate} from './update/index.js';
@@ -43,8 +42,7 @@ const HELP_TEXT = `Usage: gaia <subcommand> [args]
   update merge-workspace|merge-audit-ci|merge-region|regen-regions
   update-deps run|decline|global-tools|advisories|advisory-landed|dismiss-alert|write-security-cache|check-security-override
   init strip-branding|configure-i18n|configure-data-layer|rename|wire-statusline|bootstrap-env|write-project-config|finalize|resume
-  setup status|mark-step|finalize
-  setup-ci detect-remote|warn-existing-tools|check-admin|enable-delete-branch|write-isolation-policy|configure-dependabot-alerts
+  setup status|mark-step|finalize|detect-remote|warn-existing-tools|check-admin|enable-delete-branch|write-isolation-policy|configure-dependabot-alerts
   sandbox detect|apply|record|status
   ping --event <init|setup|update> [--field value ...]
   residue-tally [--count-only]
@@ -69,7 +67,6 @@ const SUBCOMMAND_HANDLERS: Readonly<
   sandbox: runSandbox,
   scaffold: runScaffold,
   setup: runSetup,
-  'setup-ci': runSetupCi,
   update: runUpdate,
   'update-deps': runUpdateDeps,
   wiki: runWiki,

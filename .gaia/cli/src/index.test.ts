@@ -77,6 +77,13 @@ describe('gaia top-level router', () => {
     expect(readStderrPayload()).toMatchObject({code: 'unknown_subcommand'});
   });
 
+  test('the retired setup-ci namespace is an unknown subcommand', async () => {
+    await expect(run(['setup-ci', 'detect-remote'])).resolves.toBe(
+      EXIT_CODES.UNKNOWN_SUBCOMMAND
+    );
+    expect(readStderrPayload()).toMatchObject({code: 'unknown_subcommand'});
+  });
+
   test('the adopter labels namespace does not serve docs', async () => {
     await expect(run(['labels', 'docs'])).resolves.toBe(
       EXIT_CODES.UNKNOWN_SUBCOMMAND

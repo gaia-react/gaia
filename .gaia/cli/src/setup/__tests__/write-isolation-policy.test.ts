@@ -53,12 +53,12 @@ const readRaw = (root: string): Record<string, unknown> =>
 const retiredConfigPath = (root: string): string =>
   path.join(root, '.gaia', ['automation', 'json'].join('.'));
 
-describe('setup-ci write-isolation-policy', () => {
+describe('setup write-isolation-policy', () => {
   let sandbox: Sandbox;
   let stdio: ReturnType<typeof captureStdio>;
 
   beforeEach(() => {
-    sandbox = setupSandbox('gaia-setup-ci-write-isolation-policy-');
+    sandbox = setupSandbox('gaia-setup-write-isolation-policy-');
     stdio = captureStdio();
   });
 

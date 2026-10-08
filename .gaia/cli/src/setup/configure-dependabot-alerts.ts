@@ -1,5 +1,5 @@
 /**
- * `gaia setup-ci configure-dependabot-alerts --owner <o> --repo <r>` handler.
+ * `gaia setup configure-dependabot-alerts --owner <o> --repo <r>` handler.
  *
  * Dependabot is a sensor only: alerts stay on, and automated security fixes
  * (the setting that opens security pull requests) stay off. Turns alerts on,
@@ -24,9 +24,9 @@ import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {runGhAsync} from '../util/run-process.js';
 
-const SUBCOMMAND = 'setup-ci configure-dependabot-alerts';
+const SUBCOMMAND = 'setup configure-dependabot-alerts';
 
-const HELP_TEXT = `Usage: gaia setup-ci configure-dependabot-alerts --owner <o> --repo <r> [--json]
+const HELP_TEXT = `Usage: gaia setup configure-dependabot-alerts --owner <o> --repo <r> [--json]
 
   Turn Dependabot alerts on and automated security fixes off, then verify both, via gh.
 `;
@@ -99,7 +99,7 @@ const parseArgs = (argv: readonly string[]): ParsedArgs => {
         repo = argv[index + 1];
         index += 1;
       } else if (token !== '--json') {
-        // '--json' is accepted for symmetry with the other setup-ci verbs;
+        // '--json' is accepted for symmetry with the other setup verbs;
         // this command's output is unconditionally JSON already. Any
         // other token is unrecognized.
         return {message: `unknown flag: ${token}`, status: 'invalid'};

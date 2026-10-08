@@ -36,13 +36,13 @@ const captureStdio = (): {
   };
 };
 
-describe('setup-ci enable-delete-branch', () => {
+describe('setup enable-delete-branch', () => {
   let sandbox: Sandbox;
   let stdio: ReturnType<typeof captureStdio>;
   let restore: (() => void) | undefined;
 
   beforeEach(() => {
-    sandbox = setupSandbox('gaia-setup-ci-enable-delete-branch-');
+    sandbox = setupSandbox('gaia-setup-enable-delete-branch-');
     stdio = captureStdio();
   });
 

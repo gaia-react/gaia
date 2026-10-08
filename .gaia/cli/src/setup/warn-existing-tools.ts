@@ -1,5 +1,5 @@
 /**
- * `gaia setup-ci warn-existing-tools [--json]` handler.
+ * `gaia setup warn-existing-tools [--json]` handler.
  *
  * Detects pre-existing dependency-bot configurations that would
  * collide with `/update-deps`. Read-only by design; never auto-disables
@@ -30,7 +30,7 @@ import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {resolveRepoRoot} from '../util/repo-root.js';
 
-const HELP_TEXT = `Usage: gaia setup-ci warn-existing-tools [--json]
+const HELP_TEXT = `Usage: gaia setup warn-existing-tools [--json]
 
   Detect Dependabot or Renovate config files in the repo. Read-only.
 `;
@@ -113,7 +113,7 @@ export const run = (
       structuredError({
         code: 'invalid_arguments',
         message: `unknown flag: ${token}`,
-        subcommand: 'setup-ci warn-existing-tools',
+        subcommand: 'setup warn-existing-tools',
       });
 
       return EXIT_CODES.UNKNOWN_SUBCOMMAND;
@@ -128,8 +128,8 @@ export const run = (
     structuredError({
       code: 'not_a_git_repo',
       message:
-        'gaia setup-ci warn-existing-tools must run inside a git repository',
-      subcommand: 'setup-ci warn-existing-tools',
+        'gaia setup warn-existing-tools must run inside a git repository',
+      subcommand: 'setup warn-existing-tools',
     });
 
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;

@@ -1,5 +1,5 @@
 /**
- * `gaia setup-ci check-admin --owner <o> --repo <r> [--json]` handler.
+ * `gaia setup check-admin --owner <o> --repo <r> [--json]` handler.
  *
  * Probes whether the authenticated user has admin permission on the
  * target repo. Returns a strict three-way `auth_status` enum so the
@@ -17,7 +17,7 @@ import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {runGhAsync} from '../util/run-process.js';
 
-const HELP_TEXT = `Usage: gaia setup-ci check-admin --owner <o> --repo <r> [--json]
+const HELP_TEXT = `Usage: gaia setup check-admin --owner <o> --repo <r> [--json]
 
   Probe repo admin permission via \`gh\`. Returns admin: false for any
   non-ok auth status. Exits 0 in every branch.
@@ -114,7 +114,7 @@ export const run = async (
         structuredError({
           code: 'invalid_arguments',
           message: `unknown flag: ${token}`,
-          subcommand: 'setup-ci check-admin',
+          subcommand: 'setup check-admin',
         });
 
         return EXIT_CODES.UNKNOWN_SUBCOMMAND;
@@ -126,7 +126,7 @@ export const run = async (
     structuredError({
       code: 'missing_required_arg',
       message: 'check-admin requires --owner <o> --repo <r>',
-      subcommand: 'setup-ci check-admin',
+      subcommand: 'setup check-admin',
     });
 
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;

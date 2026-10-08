@@ -1,5 +1,5 @@
 /**
- * `gaia setup-ci detect-remote [--json]` handler.
+ * `gaia setup detect-remote [--json]` handler.
  *
  * Shells `git remote get-url origin` and parses the result via
  * `parseRemoteUrl`. Returns the four parsed fields on success; returns
@@ -14,7 +14,7 @@ import {structuredError} from '../stderr.js';
 import {parseRemoteUrl} from '../util/parse-remote-url.js';
 import {resolveRepoRoot} from '../util/repo-root.js';
 
-const HELP_TEXT = `Usage: gaia setup-ci detect-remote [--json]
+const HELP_TEXT = `Usage: gaia setup detect-remote [--json]
 
   Read \`git remote get-url origin\` and parse it. Returns parsed
   owner/repo/host on success; \`found: false\` on missing remote.
@@ -82,7 +82,7 @@ export const run = (
       structuredError({
         code: 'invalid_arguments',
         message: `unknown flag: ${token}`,
-        subcommand: 'setup-ci detect-remote',
+        subcommand: 'setup detect-remote',
       });
 
       return EXIT_CODES.UNKNOWN_SUBCOMMAND;
@@ -96,8 +96,8 @@ export const run = (
   } catch {
     structuredError({
       code: 'not_a_git_repo',
-      message: 'gaia setup-ci detect-remote must run inside a git repository',
-      subcommand: 'setup-ci detect-remote',
+      message: 'gaia setup detect-remote must run inside a git repository',
+      subcommand: 'setup detect-remote',
     });
 
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
