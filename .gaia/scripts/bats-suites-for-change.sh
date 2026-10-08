@@ -24,10 +24,15 @@
 #     (`form-error/tests/index.test.tsx`). No suite sits beside it to name it
 #     through a directory variable. A source under a tree holding suites keeps
 #     the basename: a suite there imports it as `"$storage_directory/index.ts"`.
+#   - Any other file whose basename occurs inside a tracked directory path
+#     matches on its shortest trailing path no tracked directory path contains
+#     (`.gaia/cli/gaia` as `cli/gaia`). The bare name is in every suite that
+#     names a path through that directory (`.gaia/`), so it selects nearly all.
 #
-# The exceptions drop a suite that reaches such a file only by an unqualified
-# spelling (`cd "$REPO_ROOT" && cat package.json`). No tracked suite does
-# today; one that starts to is missed here and still runs in CI.
+# The exceptions drop a suite that reaches such a file only by a spelling the
+# match text is not part of (`cd "$REPO_ROOT" && cat package.json`,
+# `"$(cd "$SCRIPTS/../cli" && pwd)/gaia"`). Such a suite is missed here and
+# still runs in CI.
 #
 # Changed paths are read NUL-delimited. The hand-rolled spelling,
 # `for f in $(git diff --name-only ...)`, word-splits a path holding a space
@@ -94,18 +99,24 @@ changed_list="$(mktemp)" || die_input "cannot create a temporary file"
 suite_list="$(mktemp)" || { rm -f "$changed_list"; die_input "cannot create a temporary file"; }
 tracked_list="$(mktemp)" || { rm -f "$changed_list" "$suite_list"; die_input "cannot create a temporary file"; }
 suite_tree_list="$(mktemp)" || { rm -f "$changed_list" "$suite_list" "$tracked_list"; die_input "cannot create a temporary file"; }
-trap 'rm -f "$changed_list" "$suite_list" "$tracked_list" "$suite_tree_list"' EXIT
+directory_list="$(mktemp)" || { rm -f "$changed_list" "$suite_list" "$tracked_list" "$suite_tree_list"; die_input "cannot create a temporary file"; }
+trap 'rm -f "$changed_list" "$suite_list" "$tracked_list" "$suite_tree_list" "$directory_list"' EXIT
 
 # -z keeps a non-ASCII path unquoted, so it compares equal to the diff's path.
 git -C "$repository_root" ls-files -z | tr '\0' '\n' > "$tracked_list" \
   || die_input "listing tracked files failed"
 awk -F/ 'NF > 1 && /\.bats$/ { print $1 }' "$tracked_list" | sort -u > "$suite_tree_list"
+awk -F/ 'NF > 1 { sub(/\/[^\/]*$/, ""); print }' "$tracked_list" | sort -u > "$directory_list"
 
 count_other_paths_ending_with() {
   awk -v changed="$1" -v suffix="/$2" '
     $0 != changed && substr("/" $0, length($0) + 2 - length(suffix)) == suffix { count++ }
     END { print count + 0 }
   ' "$tracked_list"
+}
+
+directory_path_contains() {
+  awk -v text="$1" 'index($0, text) { found = 1; exit } END { exit !found }' "$directory_list"
 }
 
 match_text_for() {
@@ -116,7 +127,17 @@ match_text_for() {
   fi
   case "$base_name" in
     *.ts|*.tsx|*.js|*.jsx|*.mjs|*.cjs) ;;
-    *) printf '%s' "$base_name"; return ;;
+    *)
+      match_text="$base_name"
+      parent_path="${changed_path%/*}"
+      while directory_path_contains "$match_text"; do
+        match_text="${parent_path##*/}/$match_text"
+        [ "$parent_path" != "${parent_path%/*}" ] || break
+        parent_path="${parent_path%/*}"
+      done
+      printf '%s' "$match_text"
+      return
+      ;;
   esac
   if grep -qxF -e "${changed_path%%/*}" "$suite_tree_list" \
     || [ "$(count_other_paths_ending_with "$changed_path" "$base_name")" -eq 0 ]; then
