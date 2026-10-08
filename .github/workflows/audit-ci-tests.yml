@@ -564,8 +564,7 @@ jobs:
               # entry and it is kept by hand like the others. A reader adding a
               # dependency to the helper owes this list the same walk.
               - '.claude/settings.json'
-              - '.claude/hooks/block-env-read.sh'
-              - '.claude/hooks/block-secrets-read.sh'
+              - '.claude/hooks/block-sensitive-read.sh'
               - '.claude/hooks/lib/reader-operands.sh'
               - '.gaia/tests/helpers/hook-registration.sh'
               - '.gaia/scripts/hook-registration-lib.sh'

@@ -196,10 +196,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-env-write.sh\""
-          },
-          {
-            "type": "command",
             "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-eslint-config-edit.sh\""
           },
           {
@@ -269,13 +265,8 @@
           },
           {
             "type": "command",
-            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-env-read.sh\"",
-            "statusMessage": "Checking .env read guard…"
-          },
-          {
-            "type": "command",
-            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-secrets-read.sh\"",
-            "statusMessage": "Checking secret-path read guard…"
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-sensitive-read.sh\"",
+            "statusMessage": "Checking dotenv and secret-path read guard…"
           },
           {
             "type": "command",
@@ -294,11 +285,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-env-read.sh\""
-          },
-          {
-            "type": "command",
-            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-secrets-read.sh\""
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-sensitive-read.sh\""
           }
         ]
       },
@@ -307,13 +294,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-env-read.sh\"",
-            "statusMessage": "Checking .env read guard…"
-          },
-          {
-            "type": "command",
-            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-secrets-read.sh\"",
-            "statusMessage": "Checking secret-path read guard…"
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-sensitive-read.sh\"",
+            "statusMessage": "Checking dotenv and secret-path read guard…"
           }
         ]
       },

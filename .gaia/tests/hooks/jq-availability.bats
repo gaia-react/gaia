@@ -116,10 +116,10 @@ readonly INSTALL_COMMAND="brew install jq"
 
 # --- the matcher cannot reach the jq install, so the refusal is unconditional -
 
-@test "jq absent: block-env-write refuses an edit rather than letting it through" {
+@test "jq absent: block-secrets-write refuses a dotenv edit rather than letting it through" {
   local json
   json=$(edit_payload ".env.local")
-  without_jq block-env-write.sh "$json"
+  without_jq block-secrets-write.sh "$json"
   assert_blocked_by_exit
 }
 
@@ -149,17 +149,17 @@ readonly INSTALL_COMMAND="brew install jq"
 # Each pair is the whole claim: the in-remit call is refused, and the install
 # that repairs the machine is not.
 
-@test "jq absent: block-env-read refuses a dotenv read" {
+@test "jq absent: block-sensitive-read refuses a dotenv read" {
   local json
   json=$(bash_payload "cat .env.local")
-  without_jq block-env-read.sh "$json"
+  without_jq block-sensitive-read.sh "$json"
   assert_blocked_by_exit
 }
 
-@test "jq absent: block-env-read allows the jq install" {
+@test "jq absent: block-sensitive-read allows the jq install" {
   local json
   json=$(bash_payload "$INSTALL_COMMAND")
-  without_jq block-env-read.sh "$json"
+  without_jq block-sensitive-read.sh "$json"
   assert_allowed_by_exit
 }
 
@@ -219,17 +219,17 @@ readonly INSTALL_COMMAND="brew install jq"
   assert_allowed_by_exit
 }
 
-@test "jq absent: block-secrets-read refuses a read of a key path" {
+@test "jq absent: block-sensitive-read refuses a read of a key path" {
   local json
   json=$(jq -n '{tool_name: "Read", tool_input: {file_path: "certs/server.pem"}}')
-  without_jq block-secrets-read.sh "$json"
+  without_jq block-sensitive-read.sh "$json"
   assert_blocked_by_exit
 }
 
-@test "jq absent: block-secrets-read allows a read naming no secret class" {
+@test "jq absent: block-sensitive-read allows a read naming no secret class" {
   local json
   json=$(jq -n '{tool_name: "Read", tool_input: {file_path: "README.md"}}')
-  without_jq block-secrets-read.sh "$json"
+  without_jq block-sensitive-read.sh "$json"
   assert_allowed_by_exit
 }
 

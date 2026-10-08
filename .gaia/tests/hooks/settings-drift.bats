@@ -86,7 +86,7 @@ regenerate() {
   for rule in 'Edit(frontend/.env)' 'Edit(frontend/.claude/settings.json)'; do
     jq -e --arg r "$rule" '.permissions.deny | index($r) != null' "$ROOT_SETTINGS"
   done
-  # A .env.* deny also blocks the tracked, editable .env.example; block-env-write.sh covers it.
+  # A .env.* deny also blocks the tracked, editable .env.example; block-secrets-write.sh covers it.
   jq -e '.permissions.deny | index("Edit(frontend/.env.*)") == null' "$ROOT_SETTINGS"
 }
 

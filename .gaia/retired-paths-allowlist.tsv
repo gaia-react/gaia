@@ -29,8 +29,7 @@
 .gaia/scripts/precommit-packages.sh	.claude/rules/	Literal table of the retired root sources a migration rename may move, independent of the registry by design.
 .gaia/scripts/precommit-packages.sh	.claude/instructions/	Literal table of the retired root sources a migration rename may move, independent of the registry by design.
 .gaia/scripts/precommit-packages.sh	.claude/agents/code-audit-frontend/	Literal table of the retired root sources a migration rename may move, independent of the registry by design.
-.claude/hooks/block-env-read.sh	.env.example	Basename match on the committed placeholder file name at any depth; not a root path.
-.claude/hooks/block-env-write.sh	.env.example	Basename match on the committed placeholder file name at any depth; not a root path.
+.claude/hooks/block-sensitive-read.sh	.env.example	Basename match on the committed placeholder file name at any depth; not a root path.
 .claude/hooks/block-secrets-write.sh	.env.example	Basename match on the committed placeholder file name at any depth; not a root path.
 .gaia/scripts/link-worktree.sh	.env.example	Basename match on the committed placeholder file name at any depth; not a root path.
 .claude/commands/setup-gaia.md	.env.example	Prose naming the placeholder file by basename, not a root path.
