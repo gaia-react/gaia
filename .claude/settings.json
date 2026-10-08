@@ -322,11 +322,13 @@
         "hooks": [
           {
             "type": "command",
+            "if": "Bash(git *)",
             "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/token-tally-git-op.sh\"",
             "statusMessage": "Recording execute-phase token tally…"
           },
           {
             "type": "command",
+            "if": "Bash(gh pr merge *)",
             "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/post-findings-block-on-merge.sh\"",
             "statusMessage": "Posting local audit findings block…"
           }
@@ -374,10 +376,12 @@
         "hooks": [
           {
             "type": "command",
+            "if": "Bash(gh pr merge *)",
             "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/token-rollup-merge.sh\""
           },
           {
             "type": "command",
+            "if": "Bash(gh pr merge *)",
             "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/token-tally-review.sh\""
           },
           {
@@ -386,18 +390,27 @@
           },
           {
             "type": "command",
+            "if": "Bash(gh *)",
             "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/debt-sentinel-touch.sh\""
           },
           {
             "type": "command",
+            "if": "Bash(gh pr merge *)",
             "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/issue-claim-release.sh\""
           },
           {
             "type": "command",
+            "if": "Bash(gh pr create *)",
             "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/capture-gh-artifact.sh\""
           },
           {
             "type": "command",
+            "if": "Bash(git *)",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/workflow-doctrine-inject.sh\""
+          },
+          {
+            "type": "command",
+            "if": "Bash(gh pr checkout *)",
             "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/workflow-doctrine-inject.sh\""
           }
         ]

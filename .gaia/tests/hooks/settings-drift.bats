@@ -258,6 +258,32 @@ set_handler_if() {
   grep -qF -- "check-settings-drift: clean" <<<"$output"
 }
 
+# deny_guards_with_if <settings file>: prints "<event> <script>" for every deny guard
+# handler that carries an if. The filter is best-effort and the guards' verb arming
+# is fail-closed, so none may carry one.
+deny_guards_with_if() {
+  jq -r '.hooks | to_entries[] | .key as $event | .value[] | .hooks[]
+    | select(.["if"]) | (.command | capture("hooks/(?<name>[^\"]+)").name) as $name
+    | select($name | test("^(block-.*|pr-merge-audit-check|worthiness-presence-check|red-verify-commit-check)\\.sh$"))
+    | "\($event) \($name)"' "$1"
+}
+
+@test "no deny guard handler in the root or generated settings carries an if" {
+  [ "$(jq '[.hooks.PreToolUse[].hooks[] | select(.command | test("hooks/block-"))] | length' "$ROOT_SETTINGS")" -gt 0 ]
+  [ -z "$(deny_guards_with_if "$ROOT_SETTINGS")" ]
+  [ -z "$(deny_guards_with_if "$GENERATED")" ]
+}
+
+@test "the deny-guard if check reports a deny guard handler given an if" {
+  build_tree
+  jq '(.hooks.PreToolUse[].hooks[] | select(.command | test("hooks/block-no-verify.sh"))) |= . + {"if": "Bash(git *)"}' \
+    "$TREE/.claude/settings.json" >"$TREE/changed.json"
+  mv "$TREE/changed.json" "$TREE/.claude/settings.json"
+  run deny_guards_with_if "$TREE/.claude/settings.json"
+  [ "$status" -eq 0 ]
+  [ "$output" = "PreToolUse block-no-verify.sh" ]
+}
+
 @test "a missing generated file fails the drift check" {
   build_tree
   rm "$TREE/frontend/.claude/settings.json"

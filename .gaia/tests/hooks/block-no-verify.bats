@@ -502,36 +502,43 @@ run_staged() {
 # one and not the other reopens the gap in whichever copy was missed. Pinned on
 # the construct, not only on sameness: a copy that agrees with the other at the
 # narrow spelling fails here too.
-@test "block-no-verify.sh and block-main-destructive-git.sh derive the segment command word the same way" {
-  local expected="" hook_file_name line match_count
+# Both git deny guards read the segment command word and the substitution
+# collapse from lib/git-segments.sh. An inline copy returning to either one
+# would let a widening reach one guard and miss the other, which is the gap the
+# shared library closes; the behavior itself is pinned in git-segments-lib.bats.
+@test "neither git deny guard carries its own substitution collapse or command-word strip" {
+  local hook_file_name
   for hook_file_name in block-no-verify.sh block-main-destructive-git.sh; do
-    # shellcheck disable=SC2016 # the needle is the hooks' literal source text
-    match_count=$(grep -cF 'segment_command=$(printf' "$HOOKS_SOURCE_DIRECTORY/$hook_file_name")
-    [ "$match_count" -eq 1 ]
-    # shellcheck disable=SC2016
-    line=$(grep -F 'segment_command=$(printf' "$HOOKS_SOURCE_DIRECTORY/$hook_file_name" | sed -E 's/^[[:space:]]*//')
-    if [ -z "$expected" ]; then expected="$line"; fi
-    [ "$line" = "$expected" ]
-  done
-  grep -qF '+?=' <<<"$expected"
-  grep -qE '\bthen\b' <<<"$expected"
-  true
-}
-
-# The substitution collapse is the second derivation those two copies share.
-# This pin holds SAMENESS only, unlike the command-word pin above: a weakening
-# applied uniformly to both copies leaves it green. What carries the construct
-# is the behavioural pair in each suite, the orphaned-flag test and the
-# collapsed-substitution control, which red when the collapse stops rejoining
-# or starts over-arming.
-@test "block-no-verify.sh and block-main-destructive-git.sh collapse command substitutions the same way" {
-  local expected="" hook_file_name body
-  for hook_file_name in block-no-verify.sh block-main-destructive-git.sh; do
-    body=$(sed -n '/^collapsed_substitutions() {$/,/^}$/p' "$HOOKS_SOURCE_DIRECTORY/$hook_file_name")
-    [ -n "$body" ]
-    if [ -z "$expected" ]; then expected="$body"; fi
-    [ "$body" = "$expected" ]
+    grep -q '^collapsed_substitutions()' "$HOOKS_SOURCE_DIRECTORY/$hook_file_name" && return 1
+    grep -qF 'sed -E '"'"'s/^[[:space:]]*((' "$HOOKS_SOURCE_DIRECTORY/$hook_file_name" && return 1
+    grep -qF 'gaia_collapsed_substitutions' "$HOOKS_SOURCE_DIRECTORY/$hook_file_name"
+    grep -qF 'gaia_segment_command_word' "$HOOKS_SOURCE_DIRECTORY/$hook_file_name"
   done
   true
 }
 
+# --- an unloadable lib/git-segments.sh refuses loudly, never fails open ---
+
+@test "git-segments.sh absent: a bypass commit call exits 2 naming the library" {
+  stage_hook_tree
+  rm -f "$STAGED_ROOT/.claude/hooks/lib/git-segments.sh"
+  run_staged 'git commit --no-verify -m x'
+  [ "$status" -eq 2 ]
+  grep -qF 'BLOCKED: block-no-verify.sh cannot load lib/git-segments.sh' <<<"$output"
+}
+
+@test "git-segments.sh holding conflict markers: a bypass commit call exits 2 naming the library" {
+  stage_hook_tree
+  write_conflicted_library "$STAGED_ROOT/.claude/hooks/lib/git-segments.sh"
+  run_staged 'git commit --no-verify -m x'
+  [ "$status" -eq 2 ]
+  grep -qF 'BLOCKED: block-no-verify.sh cannot load lib/git-segments.sh' <<<"$output"
+}
+
+@test "git-segments.sh absent: a non-git call is still allowed" {
+  stage_hook_tree
+  rm -f "$STAGED_ROOT/.claude/hooks/lib/git-segments.sh"
+  run_staged 'ls'
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}

@@ -8,7 +8,7 @@ tags: [concept, claude, hooks]
 
 # Claude Hooks
 
-Bash scripts that run on Claude Code tool calls. Configured in `.claude/settings.json` under `hooks.PreToolUse` (and other event types). Hook scripts filter by command content internally; they do not use per-hook `if:` patterns. (Claude Code's `if:` field requires `ToolUseContext` which isn't always available, surfacing as `"ToolUseContext is required for prompt hooks"` errors. Removed in v1.0.3.)
+Bash scripts that run on Claude Code tool calls. Configured in `.claude/settings.json` under `hooks.PreToolUse` (and other event types). Hook scripts filter by command content internally. Advisory hooks that act on only a few verbs also carry an `if:` filter (one permission rule per handler) in their settings registration, so they never spawn on other calls. Deny guards never use `if:`: the filter is best-effort, and their verb arming must stay fail-closed. A Claude Code version that ignores `if:` runs the hook on every call, which fails safe because each hook still filters internally.
 
 Exit code semantics:
 
