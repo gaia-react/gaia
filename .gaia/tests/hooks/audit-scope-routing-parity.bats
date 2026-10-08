@@ -16,8 +16,7 @@
 #   .github/workflows/<single-segment>.yml|.yaml -> code-audit-github-workflows
 #   .github/actions/**/*.yml|*.yaml               -> code-audit-github-workflows
 #   .gaia/cli/templates/workflows/code-review-audit.yml.tmpl -> code-audit-maintainer-node
-#   .gaia/cli/{package.json,pnpm-lock.yaml,pnpm-workspace.yaml,tsconfig*.json,
-#              *.config.ts,*.config.mjs}          -> code-audit-maintainer-node
+#   .gaia/cli/{package.json,tsconfig*.json,*.config.ts,*.config.mjs}          -> code-audit-maintainer-node
 #
 # The scaffold templates are one tree now: `.gaia/cli/templates/**` is the
 # source and moves from ownerless to the node member (its `before = -` rows),
@@ -102,7 +101,7 @@ setup() {
       expected="code-audit-maintainer-node"
     elif [ "$before" = "code-audit-maintainer-node" ] && [[ "$path" =~ ^\.gaia/cli/src/(scaffold|automation)/templates/ ]]; then
       expected="-"
-    elif [[ "$path" =~ ^\.gaia/cli/(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|tsconfig[^/]*\.json|[^/]*\.config\.ts|[^/]*\.config\.mjs)$ ]]; then
+    elif [[ "$path" =~ ^\.gaia/cli/(package\.json|tsconfig[^/]*\.json|[^/]*\.config\.ts|[^/]*\.config\.mjs)$ ]]; then
       expected="code-audit-maintainer-node"
     # The four ownerless-triage arms below are guarded on `before = -` rather
     # than on the path alone, so the header's claim about their DIRECTION is

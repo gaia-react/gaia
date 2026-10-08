@@ -4,7 +4,7 @@ status: active
 priority: 2
 date: 2026-09-30
 created: 2026-09-30
-updated: 2026-10-03
+updated: 2026-10-09
 tags: [decision, ci, github-actions]
 ---
 
@@ -29,11 +29,11 @@ Making a job required renames its context (the ` (advisory)` tag comes off), so 
 <!-- gaia:maintainer-only:start -->
 ## Maintainer-only workflows
 
-6. A maintainer-only workflow (release-excluded, never installed on an adopter clone) prefixes its `name:` with `GAIA: `, after rule 2's Title Case. Example: `cli-advisory-scan.yml` writes `name: 'GAIA: CLI Advisory Scan'`.
+6. A maintainer-only workflow (release-excluded, never installed on an adopter clone) prefixes its `name:` with `GAIA: `, after rule 2's Title Case. Example: `cli-tests.yml` writes `name: 'GAIA: CLI Tests'`.
 
 ### Why `GAIA: `
 
-The maintainer-only workflows exist because this repository is the GAIA project itself (its release, its CLI test suite, its bats shards, its forensics triage, its shell lint, its advisory dependency scan); an adopter clone never has them. The workflows that ship carry no prefix because they exist for any project this template produces.
+The maintainer-only workflows exist because this repository is the GAIA project itself (its release, its CLI test suite, its bats shards, its forensics triage, its shell lint); an adopter clone never has them. The workflows that ship carry no prefix because they exist for any project this template produces.
 
 ### Quoting
 

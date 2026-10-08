@@ -4,7 +4,7 @@ status: active
 package: '@gaia-react/lint'
 role: lint-config
 created: 2026-04-27
-updated: 2026-10-05
+updated: 2026-10-09
 tags: [dependency, lint, eslint]
 ---
 
@@ -89,9 +89,9 @@ The `resources.*` and `actions.*` carve-out means UI-layer files may import type
 <!-- gaia:maintainer-only:start -->
 ## CLI consumer
 
-`.gaia/cli` (`@gaia-react/cli`) is a second consumer, with its own `.gaia/cli/eslint.config.mjs` in its separate pnpm workspace. It consumes `base`/`react`/`testing`/`styleHygiene`/`guardrails`/`prettier` with `sourceDir: 'src'`, omitting the React-app-only presets (`storybook`, `playwright`, `reactRouter`, `betterTailwind`). It spreads `react` only because `base` transitively references `react/*` rules; the ruleset is inert on the CLI's non-JSX TypeScript. It disables a small Node/CLI set (`sonarjs/no-os-command-from-path`, `no-relative-import-paths`, `check-file/folder-match-with-fex`, the Testing Library render-result naming rule) and extends the `unicorn/prevent-abbreviations` ignore list for CLI idioms. `.gaia/cli/eslint.config.mjs` is the source of truth for the full rule table and the exact rule ids.
+`.gaia/cli` (`@gaia-react/cli`) is a second consumer, as a root workspace member with its own `.gaia/cli/eslint.config.mjs`. It consumes `base`/`react`/`testing`/`styleHygiene`/`guardrails`/`prettier` with `sourceDir: 'src'`, omitting the React-app-only presets (`storybook`, `playwright`, `reactRouter`, `betterTailwind`). It spreads `react` only because `base` transitively references `react/*` rules; the ruleset is inert on the CLI's non-JSX TypeScript. It disables a small Node/CLI set (`sonarjs/no-os-command-from-path`, `no-relative-import-paths`, `check-file/folder-match-with-fex`, the Testing Library render-result naming rule) and extends the `unicorn/prevent-abbreviations` ignore list for CLI idioms. `.gaia/cli/eslint.config.mjs` is the source of truth for the full rule table and the exact rule ids.
 
-Because `.gaia/cli` pins `@gaia-react/lint` independently in its own lockfile, nothing keeps its version in step with the root workspace's pin automatically. `/update-deps`'s Phase 6b raises `.gaia/cli`'s shared devDependency pins, `@gaia-react/lint` included, to match root's after every dependency run. See [[pnpm]] for the full cross-workspace hardening.
+`.gaia/cli` pins `@gaia-react/lint` in its own `package.json`, and the pin resolves through the root lockfile. The frontend's pin and the CLI's are separate importers, so nothing keeps them in step automatically; drift between the two is aligned by hand. See [[pnpm]] for the workspace layout.
 <!-- gaia:maintainer-only:end -->
 
 ## See also
