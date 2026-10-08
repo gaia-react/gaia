@@ -57,9 +57,17 @@ if ! type gaia_require_jq >/dev/null 2>&1; then
 fi
 gaia_require_jq 'the PR title guard' "$payload" tool_input 'gh pr'
 
-tool_name=$(jq -r '.tool_name // ""' <<<"$payload" 2>/dev/null) || exit 0
+# shellcheck source=lib/hook-payload.sh
+[ -n "$_jq_library_directory" ] && [ -f "$_jq_library_directory/hook-payload.sh" ] && . "$_jq_library_directory/hook-payload.sh" 2>/dev/null
+if ! type gaia_hook_payload_read >/dev/null 2>&1; then
+  printf 'BLOCKED: block-invalid-pr-title.sh cannot load lib/hook-payload.sh, so this call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
+  exit 2
+fi
+gaia_hook_payload_read "$payload" || exit 0
+
+tool_name=$GAIA_HOOK_TOOL_NAME
 [ "$tool_name" = "Bash" ] || exit 0
-command_text=$(jq -r '.tool_input.command // ""' <<<"$payload" 2>/dev/null) || exit 0
+command_text=$GAIA_HOOK_COMMAND
 [ -n "$command_text" ] || exit 0
 
 _hook_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || exit 0

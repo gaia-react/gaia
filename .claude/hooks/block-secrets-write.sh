@@ -5,11 +5,13 @@
 #   - AWS access key prefix:   AKIA[0-9A-Z]{16}
 #   - GitHub PATs:             ghp_, gho_, ghu_, ghs_, ghr_  (followed by token chars)
 #   - Private key headers:     -----BEGIN [A-Z ]*PRIVATE KEY-----
+#   - a target path whose basename is `.env` or `.env.<anything>`, refused
+#     before any content is read; `.env.example` is the one exemption
 #   - dotenv-style assignment to suspicious names, with or without a leading
 #     export / declare / typeset / local / readonly and that keyword's own
 #     options. In a write whose destination is named `.env.example`, this rule
 #     alone drops its placeholder allowlist and judges the value by SHAPE only,
-#     the way both sibling env guards already special-case that file; the three
+#     the way the dotenv path deny and the read guard special-case that file; the three
 #     rules above still run on it:
 #       (_TOKEN|_SECRET|_KEY|_PASSWORD)=<non-placeholder-value>
 #       Placeholders allowed: empty, "", '', x, xxx, changeme, REPLACE_ME,
@@ -48,6 +50,24 @@ gaia_require_jq 'the secret-content write guard' "$payload" tool_input
 # tool on this matcher (Edit, Write, MultiEdit) carries it; a payload without one
 # resolves to empty, matches no exemption, and is scanned in full.
 file_path=$(jq -r '.tool_input.file_path // empty' <<<"$payload")
+
+# Dotenv path deny, ahead of the content scan and independent of it: a write to
+# `.env` or `.env.<anything>` is refused whatever it contains, and an empty
+# write is refused too. Only the basename `.env.example` passes through to the
+# scan below.
+if [[ -n "$file_path" ]]; then
+  dotenv_base=$(basename -- "$file_path")
+  if [[ "$dotenv_base" != ".env.example" && ( "$dotenv_base" == ".env" || "$dotenv_base" == .env.* ) ]]; then
+    jq -n --arg reason "BLOCKED: writes to '$file_path' are forbidden. .env files must remain gitignored and edited manually by the developer." '{
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: "deny",
+        permissionDecisionReason: $reason
+      }
+    }'
+    exit 0
+  fi
+fi
 
 # Pull whichever field carries the new content (Edit uses new_string, Write uses content,
 # MultiEdit uses edits[].new_string). Concatenate so a single pattern scan covers all.
@@ -176,8 +196,8 @@ value_allowed() {
 
 # `.env.example` is judged by SHAPE alone, skipping the placeholder allowlist
 # below: a committed file whose purpose is placeholders, so the allowlist
-# elsewhere would refuse its own real content. `block-env-read.sh` and
-# `block-env-write.sh` exempt it by the same basename, on the same matcher.
+# elsewhere would refuse its own real content. The dotenv path deny above and
+# `block-sensitive-read.sh` exempt it by the same basename.
 #
 # Its honest limit is the shape rule's own, stated where that rule is defined:
 # the bound is on the RUN, so a value whose every alphanumeric run is under 13
@@ -190,7 +210,7 @@ value_allowed() {
 #
 # The match is this exact basename, so `.env`, `.env.local`, and
 # `.env.example.local` reach the full allowlist below as before. `basename --`
-# because a path may begin with a dash, matching `block-env-read.sh`.
+# because a path may begin with a dash, matching `block-sensitive-read.sh`.
 if [ "$(basename -- "${file_path:-}")" = ".env.example" ]; then
   while IFS= read -r line; do
     if secret_shaped "$(sed -E 's/^[^=]*=//' <<<"$line")"; then

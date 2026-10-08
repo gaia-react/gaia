@@ -354,7 +354,7 @@ readonly CORE_AWK='
 # apostrophe in the remaining literal opens a quote state that never closes.
 # Because state is carried across lines, the rest of the FILE is then swallowed
 # as quoted text and never classified, while this gate still prints `clean`.
-# `.claude/hooks/block-env-read.sh` is the exemplar, where a `sed -E` pattern
+# `.claude/hooks/block-sensitive-read.sh` is the exemplar, where a `sed -E` pattern
 # carries a `)` inside a bracket expression. No count is given: how many files
 # reach the shape depends entirely on which counterfactual is measured, and three
 # defensible readings give three different answers, so a number here would read

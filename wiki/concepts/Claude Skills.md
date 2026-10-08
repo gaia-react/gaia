@@ -88,7 +88,7 @@ GAIA's `.claude/` surface places each kind of guidance in the layer that loads i
 
 Heuristic when migrating:
 
-- **Rule → hook** when the guidance can be phrased as a deterministic block on a specific tool call (e.g. "no writes to `.env`" → `block-env-write.sh`).
+- **Rule → hook** when the guidance can be phrased as a deterministic block on a specific tool call (e.g. "no writes to `.env`" → `block-secrets-write.sh`).
 - **Rule → skill** when the guidance is a body of patterns triggered by intent rather than file path (e.g. ESLint fix recipes only matter when fixing lint, not on every edit) and benefits from references that load on demand.
 - **Keep as rule** when it must auto-apply whenever a file in scope is touched, regardless of user intent (e.g. `i18n.md` for `frontend/app/pages/**`, `accessibility.md`, `coding-guidelines.md`, `quality-gate.md`).
 

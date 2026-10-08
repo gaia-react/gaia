@@ -231,7 +231,8 @@ EOF
   mkdir -p "$hook_copy_directory/lib"
   cp "$HOOK" "$hook_copy_directory/block-fork-pr-checkout.sh"
   cp "$REPO_ROOT/.claude/hooks/lib/jq-availability.sh" "$REPO_ROOT/.claude/hooks/lib/verb-arming.sh" \
-    "$REPO_ROOT/.claude/hooks/lib/verb-arming-walk.sh" "$hook_copy_directory/lib/"
+    "$REPO_ROOT/.claude/hooks/lib/verb-arming-walk.sh" "$REPO_ROOT/.claude/hooks/lib/hook-payload.sh" \
+    "$hook_copy_directory/lib/"
   run_guard 'gh pr checkout 12' "$hook_copy_directory/block-fork-pr-checkout.sh"
   assert_denied_by_json
   reason | grep -qF -- 'cross-repo-refusal.sh'
@@ -255,4 +256,37 @@ EOF
   # shellcheck disable=SC2016 # the expansion is literal text in settings.json
   jq -e --arg command '"$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-.}")/.claude/hooks/block-fork-pr-checkout.sh"' \
     '[.hooks.PreToolUse[] | select(.matcher | split("|") | index("Bash")) | .hooks[].command] | index($command) != null' "$SETTINGS"
+}
+
+# --- the one-jq payload reader ---
+
+@test "lib/hook-payload.sh absent: a payload the hook would deny exits 2 naming the library" {
+  local hooks_directory scratch_hooks payload
+  hooks_directory=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
+  scratch_hooks="$BATS_TEST_TMPDIR/scratch-hooks"
+  mkdir -p "$scratch_hooks"
+  cp -R "$hooks_directory/." "$scratch_hooks/"
+  rm -f "$scratch_hooks/lib/hook-payload.sh"
+  payload=$(jq -nc --arg command 'gh pr checkout 12' '{tool_name: "Bash", tool_input: {command: $command}}')
+  run bash -c 'cd "$1" && printf %s "$2" | bash "$3"' _ "$BATS_TEST_TMPDIR" "$payload" "$scratch_hooks/block-fork-pr-checkout.sh"
+  [ "$status" -eq 2 ]
+  grep -qF 'BLOCKED: block-fork-pr-checkout.sh cannot load lib/hook-payload.sh' <<<"$output"
+}
+
+@test "a non-arming Bash payload spawns no jq process" {
+  local hooks_directory shim_directory spawn_log real_jq payload spawn_count
+  hooks_directory=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
+  shim_directory="$BATS_TEST_TMPDIR/jq-shim"
+  spawn_log="$BATS_TEST_TMPDIR/jq-spawns"
+  real_jq=$(command -v jq)
+  mkdir -p "$shim_directory"
+  printf '#!/bin/sh\nprintf x >>"%s"\nexec "%s" "$@"\n' "$spawn_log" "$real_jq" >"$shim_directory/jq"
+  chmod +x "$shim_directory/jq"
+  : >"$spawn_log"
+  payload=$(jq -nc '{tool_name: "Bash", tool_input: {command: "ls -la"}}')
+  run env PATH="$shim_directory:$PATH" bash -c 'cd "$1" && printf %s "$2" | bash "$3"' _ "$BATS_TEST_TMPDIR" "$payload" "$hooks_directory/block-fork-pr-checkout.sh"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  spawn_count=$(wc -c <"$spawn_log" | tr -d ' ')
+  [ "$spawn_count" -eq 0 ]
 }

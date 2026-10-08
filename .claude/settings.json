@@ -83,7 +83,6 @@
       "Bash(rm -rf .gaia/local/specs/*)",
       "Edit(.claude/agents/**)",
       "Edit(.claude/commands/**)",
-      "Edit(.claude/instructions/**)",
       "Edit(.claude/rules/**)",
       "Edit(.claude/skills/**)",
       "Edit(.gaia/**)",
@@ -105,7 +104,6 @@
       "Bash(git push --force-with-lease *master*)",
       "Bash(git reset --hard HEAD~*)",
       "Edit(.env)",
-      "Edit(.gaia/local/audit/*.carried)",
       "Edit(.gaia/local/audit/*.ok)",
       "Edit(.gaia/local/audit/*.refused)",
       "Edit(frontend/.claude/settings.json)",
@@ -199,10 +197,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-env-write.sh\""
-          },
-          {
-            "type": "command",
             "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-eslint-config-edit.sh\""
           },
           {
@@ -272,13 +266,8 @@
           },
           {
             "type": "command",
-            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-env-read.sh\"",
-            "statusMessage": "Checking .env read guard…"
-          },
-          {
-            "type": "command",
-            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-secrets-read.sh\"",
-            "statusMessage": "Checking secret-path read guard…"
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-sensitive-read.sh\"",
+            "statusMessage": "Checking dotenv and secret-path read guard…"
           },
           {
             "type": "command",
@@ -297,11 +286,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-env-read.sh\""
-          },
-          {
-            "type": "command",
-            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-secrets-read.sh\""
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-sensitive-read.sh\""
           }
         ]
       },
@@ -310,13 +295,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-env-read.sh\"",
-            "statusMessage": "Checking .env read guard…"
-          },
-          {
-            "type": "command",
-            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-secrets-read.sh\"",
-            "statusMessage": "Checking secret-path read guard…"
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-sensitive-read.sh\"",
+            "statusMessage": "Checking dotenv and secret-path read guard…"
           }
         ]
       },
@@ -325,11 +305,13 @@
         "hooks": [
           {
             "type": "command",
+            "if": "Bash(git *)",
             "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/token-tally-git-op.sh\"",
             "statusMessage": "Recording execute-phase token tally…"
           },
           {
             "type": "command",
+            "if": "Bash(gh pr merge *)",
             "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/post-findings-block-on-merge.sh\"",
             "statusMessage": "Posting local audit findings block…"
           }
@@ -377,10 +359,12 @@
         "hooks": [
           {
             "type": "command",
+            "if": "Bash(gh pr merge *)",
             "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/token-rollup-merge.sh\""
           },
           {
             "type": "command",
+            "if": "Bash(gh pr merge *)",
             "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/token-tally-review.sh\""
           },
           {
@@ -389,18 +373,27 @@
           },
           {
             "type": "command",
+            "if": "Bash(gh *)",
             "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/debt-sentinel-touch.sh\""
           },
           {
             "type": "command",
+            "if": "Bash(gh pr merge *)",
             "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/issue-claim-release.sh\""
           },
           {
             "type": "command",
+            "if": "Bash(gh pr create *)",
             "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/capture-gh-artifact.sh\""
           },
           {
             "type": "command",
+            "if": "Bash(git *)",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/workflow-doctrine-inject.sh\""
+          },
+          {
+            "type": "command",
+            "if": "Bash(gh pr checkout *)",
             "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/workflow-doctrine-inject.sh\""
           }
         ]

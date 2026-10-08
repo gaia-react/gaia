@@ -12,7 +12,8 @@
 // was observed that no row covers. Exit 1: a MISMATCH, UNLISTED, EMPTY
 // (a row whose expansion found nothing), UNCITED, SCHEMA or MISSING_FLOOR
 // line. Exit 2: usage error, or evidence or table that cannot be parsed;
-// never 0 on unreadable input.
+// never 0 on unreadable input. A NOTE line is information and never changes
+// the exit code.
 //
 // --plan prints the scenarios run-probe.sh must run, one per line:
 // launch<TAB>trigger<TAB>scenario-slug<TAB>needs-listing-turn(0|1).
@@ -21,12 +22,12 @@ import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { basename, dirname, join, relative } from 'node:path';
 import {
-  EvidenceError, listedNames, loadScenario, loadedInstructionPaths, observe, scenarioSlug, sessionCommandNames,
-  sessionProblem,
+  EvidenceError, ifGateSpawnCount, listedNames, loadScenario, loadedInstructionPaths, observe, scenarioSlug,
+  sessionCommandNames, sessionProblem,
 } from './lib/observe.mjs';
 import {
   FLOOR_ITEMS, LAUNCHES, TableError, expandRow, floorMap, floorProblems, globToRegExp,
-  matchKind, readSnapshotJson, readSnapshotTree, readTable, schemaProblems, subjectKey,
+  matchKind, parseIfSubject, readSnapshotJson, readSnapshotTree, readTable, schemaProblems, subjectKey,
 } from './lib/table.mjs';
 
 const USAGE = 'usage: compare.mjs <expectations.json> <evidence_dir> [--only <row-id-glob>] [--first-run-commit <sha>]\n'
@@ -186,6 +187,9 @@ const runCompare = (tablePath, evidenceDirectory, options) => {
 
   let floorMismatches = 0;
   let otherMismatches = 0;
+  // Informational, never a failure: the dedup row's spawn count decides how a
+  // hook registered under two rules is gated, so it is printed even on a match.
+  const notes = [];
   for (const row of rows) {
     if (!existsSync(snapshotFor(row.launch))) {
       problems.push(`MISMATCH ${row.id} rep=* expected=${row.expect} observed=launch_not_run`);
@@ -208,6 +212,9 @@ const runCompare = (tablePath, evidenceDirectory, options) => {
           const label = row.expand === null ? row.id : `${row.id}@${item.display.replace(/\s+/g, '_')}`;
           problems.push(`MISMATCH ${label} rep=${rep} expected=${row.expect} observed=${observed}`);
           if (row.floor) floorMismatches += 1; else otherMismatches += 1;
+        }
+        if (row.kind === 'hook_if' && parseIfSubject(row.subject)?.rule === 'dedup') {
+          notes.push(`NOTE ${row.id} rep=${rep} spawn_count=${ifGateSpawnCount(row, data)}`);
         }
       }
     }
@@ -253,6 +260,7 @@ const runCompare = (tablePath, evidenceDirectory, options) => {
   }
   problems.push(...unlisted);
   for (const line of problems) console.log(line);
+  for (const line of notes) console.log(line);
   console.log(`SUMMARY floor_mismatches=${floorMismatches} other_mismatches=${otherMismatches} unlisted=${unlisted.size} reps=${meta.reps}`);
   return problems.length === 0 ? 0 : 1;
 };

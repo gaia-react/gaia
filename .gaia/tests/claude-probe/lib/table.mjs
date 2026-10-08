@@ -9,7 +9,7 @@ export const SCHEMA_KEYS = [
   'expect', 'signal', 'floor', 'source', 'cited_run',
 ];
 export const LAUNCHES = ['root', 'frontend', 'worktree'];
-export const TASKS = ['component-write', 'commit', 'permissions-read', 'permissions-edit'];
+export const TASKS = ['component-write', 'commit', 'permissions-read', 'permissions-edit', 'hook-if'];
 export const PROBE_HOOK_MARKER = 'claude-probe/probe-hooks/';
 
 // Which expectations and which signal each kind may carry. A row outside its
@@ -26,11 +26,38 @@ const KIND_RULES = {
   env: { expect: ['value:'], signal: ['session_start_probe'] },
   permission: { expect: ['allow', 'deny'], signal: ['post_tool_use'] },
   task: { expect: ['allow', 'deny', 'value:'], signal: ['post_tool_use', 'git_log'] },
+  hook_if: { expect: ['spawn', 'skip'], signal: ['probe_if'] },
 };
 export const SIGNALS = [
   'instructions_loaded', 'session_start_probe', 'stream_json_init', 'transcript_listing',
-  'post_tool_use', 'pre_tool_use', 'git_log', 'manual',
+  'post_tool_use', 'pre_tool_use', 'git_log', 'probe_if', 'manual',
 ];
+
+// A hook_if row's subject is `<event>|<if rule>|<marker>`. `dedup` in the rule
+// place stands for the two same-command PostToolUse handlers
+// inject-probe-fixtures.sh registers under different rules.
+const IF_SUBJECT = /^(PreToolUse|PostToolUse)\|(Bash\([^()|]+\)|dedup)\|(m[0-9][0-9][a-z]?)$/;
+export const parseIfSubject = (subject) => {
+  const match = IF_SUBJECT.exec(subject);
+  return match ? { event: match[1], rule: match[2], marker: match[3] } : null;
+};
+// The slug if-gate.sh logs for a rule; inject-probe-fixtures.sh derives the
+// same one (if_gate_rules), so the two must change together.
+export const ifRuleSlug = (rule) => (rule === 'dedup' ? 'dedup'
+  : rule.replace(/^Bash\(/, '').replace(/\)$/, '').replace(/ \*$/, '').replace(/ /g, '-'));
+
+const hookIfProblems = (row, label) => {
+  const parsed = parseIfSubject(row.subject);
+  if (!parsed) return [`SCHEMA ${label}: hook_if subject must be <PreToolUse|PostToolUse>|<Bash(rule)|dedup>|<marker mNN>`];
+  const problems = [];
+  if (row.launch !== 'root') problems.push(`SCHEMA ${label}: hook_if rows launch from root (the gated handlers live in the root settings)`);
+  if (row.trigger !== 'after_task:hook-if') problems.push(`SCHEMA ${label}: hook_if rows use trigger after_task:hook-if`);
+  if (row.expand !== null) problems.push(`SCHEMA ${label}: hook_if rows do not expand`);
+  if (parsed.rule === 'dedup' && parsed.event !== 'PostToolUse') problems.push(`SCHEMA ${label}: the dedup handlers are PostToolUse only`);
+  const id = `root-if-${parsed.marker}-${parsed.event === 'PreToolUse' ? 'pre' : 'post'}-${ifRuleSlug(parsed.rule)}`;
+  if (row.id !== id) problems.push(`SCHEMA ${label}: hook_if id must be ${id}`);
+  return problems;
+};
 
 export class TableError extends Error {}
 
@@ -96,6 +123,7 @@ export const schemaProblems = (table) => {
     if (typeof row.source !== 'string' || row.source.trim() === '') problems.push(`SCHEMA ${label}: source must be a non-empty string`);
     if (row.cited_run !== null && (typeof row.cited_run !== 'string' || row.cited_run === '')) problems.push(`SCHEMA ${label}: cited_run must be null or a cited-runs/ summary path`);
     if (row.floor === true && row.signal === 'manual') problems.push(`SCHEMA ${label}: a floor row needs an observable signal, not manual`);
+    if (row.kind === 'hook_if' && typeof row.subject === 'string') problems.push(...hookIfProblems(row, label));
   });
   return problems;
 };
@@ -106,7 +134,7 @@ export const schemaProblems = (table) => {
 const item = (id, description, fields) => ({ id, description, fields });
 const PERMISSION_FLOOR_TARGETS = [
   'Edit .env', 'Edit frontend/.env', 'Edit frontend/.claude/settings.json', 'Edit pnpm-lock.yaml',
-  'Edit .gaia/local/audit/x.ok', 'Edit .gaia/local/audit/x.carried', 'Edit .gaia/local/audit/x.refused',
+  'Edit .gaia/local/audit/x.ok', 'Edit .gaia/local/audit/x.refused',
   'Read .env', 'Read frontend/.env',
 ];
 const UAT017_TARGETS = ['Edit .gaia/local/audit/x.ok', 'Edit pnpm-lock.yaml'];

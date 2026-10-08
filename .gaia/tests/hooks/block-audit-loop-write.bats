@@ -1301,3 +1301,27 @@ assert_recorder_run_denied_and_staging_allowed() {
   run_bash "rm $STATE"
   assert_pins_only_class state
 }
+
+# --- the shared payload reader ---
+
+@test "a missing lib/hook-payload.sh refuses a write to the state path rather than allowing the call" {
+  local scratch_directory="$BATS_TEST_TMPDIR/no-payload-lib"
+  mkdir -p "$scratch_directory"
+  cp -R "$HOOKS_SOURCE_DIRECTORY/lib" "$scratch_directory/lib"
+  rm -f "$scratch_directory/lib/hook-payload.sh"
+  cp "$HOOKS_SOURCE_DIRECTORY/block-audit-loop-write.sh" "$scratch_directory/"
+  invoke_hook "$(edit_payload Write "$STATE" "$MAIN")" "$scratch_directory/block-audit-loop-write.sh"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'cannot load lib/hook-payload.sh' <<<"$output"
+}
+
+@test "an ordinary Bash call runs no jq at all" {
+  local shim_directory="$BATS_TEST_TMPDIR/shim" real_jq
+  real_jq=$(command -v jq)
+  mkdir -p "$shim_directory"
+  printf '#!/usr/bin/env bash\nprintf "jq\\n" >> "%s/calls.log"\nexec "%s" "$@"\n' "$BATS_TEST_TMPDIR" "$real_jq" >"$shim_directory/jq"
+  chmod +x "$shim_directory/jq"
+  PATH="$shim_directory:$PATH" invoke_hook "$(command_payload Bash "ls -la" "$MAIN")" "$HOOK_ABSOLUTE_PATH"
+  assert_allowed_by_json
+  [ ! -s "$BATS_TEST_TMPDIR/calls.log" ]
+}

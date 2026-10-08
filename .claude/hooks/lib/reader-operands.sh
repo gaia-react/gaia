@@ -1,15 +1,13 @@
 #!/usr/bin/env bash
-# Shared reader-operand extraction for the two read-side secret guards.
+# Reader-operand extraction for the read-side secret guard.
 #
-# Sourced by .claude/hooks/block-env-read.sh and
-# .claude/hooks/block-secrets-read.sh. Does no work at source time.
+# Sourced by .claude/hooks/block-sensitive-read.sh. Does no work at source time.
 #
-# Both guards ask one question of a Bash command segment, "which tokens in it
-# name or select a file that a reader will open?", and differ only in the
-# predicate they then apply to the answer. This library owns the question; each hook owns its
-# own answer. Splitting it this way is what keeps the grep arm below written
-# once: it is the only part of either guard that needs real argument grammar,
-# and a second hand-rolled copy of it would drift.
+# The guard asks one question of a Bash command segment, "which tokens in it
+# name or select a file that a reader will open?", and applies its path
+# predicates to the answer. This library owns the question; the hook owns its
+# answers. Splitting it this way keeps the grep arm below, the only part that
+# needs real argument grammar, separate from the predicates.
 #
 #   gaia_reader_operands <segment-text>
 #
@@ -72,7 +70,7 @@
 # either is not, and belongs in the exception list above instead.
 
 # Readers whose every argument is a candidate path. This is the historical set
-# from block-env-read.sh, unchanged: `awk` and `perl` take a PROGRAM as their
+# from the dotenv read guard, unchanged: `awk` and `perl` take a PROGRAM as their
 # first operand much as grep takes a pattern, but they have always been scanned
 # whole, and narrowing them here would loosen a guard while claiming to refactor
 # it. The grep family is handled separately below.

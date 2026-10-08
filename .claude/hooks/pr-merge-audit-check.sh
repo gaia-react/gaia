@@ -135,12 +135,20 @@ if ! type gaia_require_jq >/dev/null 2>&1; then
 fi
 gaia_require_jq 'the PR merge audit gate' "$input" tool_input 'gh'
 
-tool_name=$(echo "$input" | jq -r '.tool_name // ""' 2>/dev/null)
+# shellcheck source=lib/hook-payload.sh
+[ -n "$_jq_library_directory" ] && [ -f "$_jq_library_directory/hook-payload.sh" ] && . "$_jq_library_directory/hook-payload.sh" 2>/dev/null
+if ! type gaia_hook_payload_read >/dev/null 2>&1; then
+  printf 'BLOCKED: pr-merge-audit-check.sh cannot load lib/hook-payload.sh, so this call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
+  exit 2
+fi
+gaia_hook_payload_read "$input" || exit 0
+
+tool_name=$GAIA_HOOK_TOOL_NAME
 [ "$tool_name" = "Bash" ] || exit 0
 
 # Note: avoid naming this `command`, it would shadow bash's `command` builtin
 # and make any later `command -v ...` calls in this script silently misbehave.
-command_line=$(echo "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
+command_line=$GAIA_HOOK_COMMAND
 
 # Arm the gate when this tool call carries a `gh pr merge`, through the shared
 # arming decision (.claude/hooks/lib/verb-arming.sh): the same raw start/sep

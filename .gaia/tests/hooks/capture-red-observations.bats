@@ -796,3 +796,30 @@ SH
   [ -z "$output" ]
   [ "$(ledger_lines)" -eq 0 ]
 }
+
+@test "hook-payload.sh missing: exit 0 with empty stdout, writes nothing" {
+  local scratch="$BATS_TEST_TMPDIR/scratch-hooks"
+  mkdir -p "$scratch/.claude/hooks"
+  cp -R "$REPO_ROOT/.claude/hooks/lib" "$scratch/.claude/hooks/lib"
+  cp "$HOOK" "$scratch/.claude/hooks/capture-red-observations.sh"
+  rm -f "$scratch/.claude/hooks/lib/hook-payload.sh"
+
+  local payload
+  payload=$(jq -n '{tool_name: "Bash", tool_input: {command: "pnpm test --run"}, tool_response: {stdout: "", stderr: "", interrupted: false}}')
+  invoke_hook_in "$REPO_ROOT" "$payload" "$scratch/.claude/hooks/capture-red-observations.sh"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ "$(ledger_lines)" -eq 0 ]
+}
+
+@test "a payload with no hook_event_name reports PostToolUse; PostToolUseFailure is kept" {
+  run_capture "Bash" "pnpm test --run"
+  [ "$status" -eq 0 ]
+  jq -e '.hookSpecificOutput.hookEventName == "PostToolUse"' <<<"$output"
+
+  local failure_payload
+  failure_payload=$(jq -n '{hook_event_name: "PostToolUseFailure", tool_name: "Bash", tool_input: {command: "pnpm test --run"}}')
+  invoke_hook_in "$REPO_ROOT" "$failure_payload" "$HOOK"
+  [ "$status" -eq 0 ]
+  jq -e '.hookSpecificOutput.hookEventName == "PostToolUseFailure"' <<<"$output"
+}

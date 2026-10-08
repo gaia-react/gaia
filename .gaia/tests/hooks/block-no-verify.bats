@@ -502,36 +502,76 @@ run_staged() {
 # one and not the other reopens the gap in whichever copy was missed. Pinned on
 # the construct, not only on sameness: a copy that agrees with the other at the
 # narrow spelling fails here too.
-@test "block-no-verify.sh and block-main-destructive-git.sh derive the segment command word the same way" {
-  local expected="" hook_file_name line match_count
+# Both git deny guards read the segment command word and the substitution
+# collapse from lib/git-segments.sh. An inline copy returning to either one
+# would let a widening reach one guard and miss the other, which is the gap the
+# shared library closes; the behavior itself is pinned in git-segments-lib.bats.
+@test "neither git deny guard carries its own substitution collapse or command-word strip" {
+  local hook_file_name
   for hook_file_name in block-no-verify.sh block-main-destructive-git.sh; do
-    # shellcheck disable=SC2016 # the needle is the hooks' literal source text
-    match_count=$(grep -cF 'segment_command=$(printf' "$HOOKS_SOURCE_DIRECTORY/$hook_file_name")
-    [ "$match_count" -eq 1 ]
-    # shellcheck disable=SC2016
-    line=$(grep -F 'segment_command=$(printf' "$HOOKS_SOURCE_DIRECTORY/$hook_file_name" | sed -E 's/^[[:space:]]*//')
-    if [ -z "$expected" ]; then expected="$line"; fi
-    [ "$line" = "$expected" ]
-  done
-  grep -qF '+?=' <<<"$expected"
-  grep -qE '\bthen\b' <<<"$expected"
-  true
-}
-
-# The substitution collapse is the second derivation those two copies share.
-# This pin holds SAMENESS only, unlike the command-word pin above: a weakening
-# applied uniformly to both copies leaves it green. What carries the construct
-# is the behavioural pair in each suite, the orphaned-flag test and the
-# collapsed-substitution control, which red when the collapse stops rejoining
-# or starts over-arming.
-@test "block-no-verify.sh and block-main-destructive-git.sh collapse command substitutions the same way" {
-  local expected="" hook_file_name body
-  for hook_file_name in block-no-verify.sh block-main-destructive-git.sh; do
-    body=$(sed -n '/^collapsed_substitutions() {$/,/^}$/p' "$HOOKS_SOURCE_DIRECTORY/$hook_file_name")
-    [ -n "$body" ]
-    if [ -z "$expected" ]; then expected="$body"; fi
-    [ "$body" = "$expected" ]
+    grep -q '^collapsed_substitutions()' "$HOOKS_SOURCE_DIRECTORY/$hook_file_name" && return 1
+    grep -qF 'sed -E '"'"'s/^[[:space:]]*((' "$HOOKS_SOURCE_DIRECTORY/$hook_file_name" && return 1
+    grep -qF 'gaia_collapsed_substitutions' "$HOOKS_SOURCE_DIRECTORY/$hook_file_name"
+    grep -qF 'gaia_segment_command_word' "$HOOKS_SOURCE_DIRECTORY/$hook_file_name"
   done
   true
 }
 
+# --- an unloadable lib/git-segments.sh refuses loudly, never fails open ---
+
+@test "git-segments.sh absent: a bypass commit call exits 2 naming the library" {
+  stage_hook_tree
+  rm -f "$STAGED_ROOT/.claude/hooks/lib/git-segments.sh"
+  run_staged 'git commit --no-verify -m x'
+  [ "$status" -eq 2 ]
+  grep -qF 'BLOCKED: block-no-verify.sh cannot load lib/git-segments.sh' <<<"$output"
+}
+
+@test "git-segments.sh holding conflict markers: a bypass commit call exits 2 naming the library" {
+  stage_hook_tree
+  write_conflicted_library "$STAGED_ROOT/.claude/hooks/lib/git-segments.sh"
+  run_staged 'git commit --no-verify -m x'
+  [ "$status" -eq 2 ]
+  grep -qF 'BLOCKED: block-no-verify.sh cannot load lib/git-segments.sh' <<<"$output"
+}
+
+@test "git-segments.sh absent: a non-git call is still allowed" {
+  stage_hook_tree
+  rm -f "$STAGED_ROOT/.claude/hooks/lib/git-segments.sh"
+  run_staged 'ls'
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+# --- the one-jq payload reader ---
+
+@test "lib/hook-payload.sh absent: a payload the hook would deny exits 2 naming the library" {
+  local hooks_directory scratch_hooks payload
+  hooks_directory=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
+  scratch_hooks="$BATS_TEST_TMPDIR/scratch-hooks"
+  mkdir -p "$scratch_hooks"
+  cp -R "$hooks_directory/." "$scratch_hooks/"
+  rm -f "$scratch_hooks/lib/hook-payload.sh"
+  payload=$(jq -nc --arg command 'git commit --no-verify -m x' '{tool_name: "Bash", tool_input: {command: $command}}')
+  run bash -c 'cd "$1" && printf %s "$2" | bash "$3"' _ "$BATS_TEST_TMPDIR" "$payload" "$scratch_hooks/block-no-verify.sh"
+  [ "$status" -eq 2 ]
+  grep -qF 'BLOCKED: block-no-verify.sh cannot load lib/hook-payload.sh' <<<"$output"
+}
+
+@test "a non-arming Bash payload spawns exactly one jq process" {
+  local hooks_directory shim_directory spawn_log real_jq payload spawn_count
+  hooks_directory=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
+  shim_directory="$BATS_TEST_TMPDIR/jq-shim"
+  spawn_log="$BATS_TEST_TMPDIR/jq-spawns"
+  real_jq=$(command -v jq)
+  mkdir -p "$shim_directory"
+  printf '#!/bin/sh\nprintf x >>"%s"\nexec "%s" "$@"\n' "$spawn_log" "$real_jq" >"$shim_directory/jq"
+  chmod +x "$shim_directory/jq"
+  : >"$spawn_log"
+  payload=$(jq -nc '{tool_name: "Bash", tool_input: {command: "ls -la"}}')
+  run env PATH="$shim_directory:$PATH" bash -c 'cd "$1" && printf %s "$2" | bash "$3"' _ "$BATS_TEST_TMPDIR" "$payload" "$hooks_directory/block-no-verify.sh"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  spawn_count=$(wc -c <"$spawn_log" | tr -d ' ')
+  [ "$spawn_count" -eq 1 ]
+}

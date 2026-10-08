@@ -19,10 +19,15 @@ trap 'exit 0' ERR
 command -v jq >/dev/null 2>&1 || exit 0
 
 payload=$(cat)
-tool_name=$(jq -r '.tool_name // ""' <<<"$payload")
-[ "$tool_name" = "Bash" ] || exit 0
 
-command=$(jq -r '.tool_input.command // ""' <<<"$payload")
+_hook_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
+# shellcheck source=/dev/null
+[ -n "${_hook_library_directory:-}" ] && . "$_hook_library_directory/hook-payload.sh" 2>/dev/null || true
+type gaia_hook_payload_read >/dev/null 2>&1 || exit 0
+gaia_hook_payload_read "$payload" || exit 0
+[ "$GAIA_HOOK_TOOL_NAME" = "Bash" ] || exit 0
+
+command=$GAIA_HOOK_COMMAND
 
 # Uses the shared arming decision, the same one token-rollup-merge.sh uses
 # (.claude/hooks/lib/verb-arming.sh). Deliberately does NOT match `gh issue
@@ -58,7 +63,6 @@ command=$(jq -r '.tool_input.command // ""' <<<"$payload")
 # on staged copies with repo-scope.sh holding conflict markers, a plain
 # `git status` exits 2 on /bin/bash 3.2.57 and 0 on 5.3.15. Both loads live
 # inside verb-arming.sh, so no consumer hook can guard either from out here.
-_hook_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
 # shellcheck source=/dev/null
 [ -n "${_hook_library_directory:-}" ] && "${BASH:-bash}" -n "$_hook_library_directory/verb-arming.sh" 2>/dev/null && . "$_hook_library_directory/verb-arming.sh" 2>/dev/null || true
 type gaia_verb_armed >/dev/null 2>&1 || exit 0
@@ -106,7 +110,7 @@ parsed="$(gaia_gh_artifact_parse_url "$stdout_text")"
 
 number="$(jq -r '.number' <<<"$parsed" 2>/dev/null)"
 repo="$(jq -r '.repo' <<<"$parsed" 2>/dev/null)"
-session_id="$(jq -r '.session_id // ""' <<<"$payload")"
+session_id=$GAIA_HOOK_SESSION_ID
 branch="$(git branch --show-current 2>/dev/null || true)"
 
 # The PR-to-branch edge is written before the cache and breadcrumb exits below,

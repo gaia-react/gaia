@@ -6,6 +6,7 @@
 #   run-probe.sh --target <repo_root> --evidence <dir> --max-usd <n>
 #                [--reps <n>] [--only <row-id-glob>] [--table-repo <dir>]
 #                [--model <model>] [--launches root,frontend,worktree]
+#   run-probe.sh --print-hook-if-commands <launch_root>
 #
 # Spends tokens and needs Claude auth: a maintainer runs it by hand. The
 # target is rewritten while the probe runs (probe hooks in its settings, a
@@ -39,6 +40,50 @@ refuse() {
   echo "ERROR: $*" >&2
   exit 2
 }
+
+# The after_task:hook-if scenario's Bash commands, marker<TAB>command, for the
+# launch root $1. Each ends in `; : probe-if-<marker>`: `:` is a builtin no
+# rule under test matches, and the marker is what the probe hooks log in place
+# of the command. `|| true` comes before it so every call exits 0 and fires
+# PostToolUse, not PostToolUseFailure. Every command is side-effect free: PR
+# and issue verbs name a nonexistent PR in a nonexistent repository, and the
+# commit shapes use `commit --dry-run`, which runs no git hook and writes
+# nothing whatever the index holds. The fixture's own guards deny every merge
+# and every checkout at PreToolUse, so the table carries no PostToolUse row
+# for those commands. The bats suite reads this list through
+# --print-hook-if-commands to check those rules against the table.
+hook_if_commands() {
+  local root="$1" pr='999999999 --repo gaia-probe/nonexistent' repo='--repo gaia-probe/nonexistent'
+  local create_flags="$repo --title \"chore: probe\" --body probe"
+  printf '%s\t%s\n' \
+    m01 'ls -la || true; : probe-if-m01' \
+    m02 "git -C $root status || true; : probe-if-m02" \
+    m03 "git -C $root status && gh pr merge $pr || true; : probe-if-m03" \
+    m04 "R=$root; gh pr merge $pr || true; : probe-if-m04" \
+    m05 "gh pr merge $pr || true; : probe-if-m05" \
+    m06a "gh pr merge $repo --squash || true; : probe-if-m06a" \
+    m06b "git -C $root status && gh pr merge $repo --squash || true; : probe-if-m06b" \
+    m07a "gh pr create $create_flags || true; : probe-if-m07a" \
+    m07b "git -C $root status && gh pr create $create_flags || true; : probe-if-m07b" \
+    m08 "gh issue edit $pr --add-label probe || true; : probe-if-m08" \
+    m09a "cd $root && git commit --dry-run -m probe || true; : probe-if-m09a" \
+    m09b "git -C $root commit --dry-run -m probe || true; : probe-if-m09b" \
+    m10 "R=$root; git -C \"\$R\" commit --dry-run -m probe || true; : probe-if-m10" \
+    m11a "gh pr view $pr || true; : probe-if-m11a" \
+    m11b "git -C $root status && gh pr view $pr || true; : probe-if-m11b" \
+    m11c "R=$root; gh pr view $pr || true; : probe-if-m11c" \
+    m11d "gh pr view $repo || true; : probe-if-m11d" \
+    m12 "git -C $root log --oneline -1 && gh pr view $pr || true; : probe-if-m12" \
+    m13a "git -C $root status && gh pr checkout $pr || true; : probe-if-m13a" \
+    m13b "gh pr checkout $pr || true; : probe-if-m13b" \
+    m13c "R=$root; gh pr checkout $pr || true; : probe-if-m13c"
+}
+
+if [ "${1:-}" = "--print-hook-if-commands" ]; then
+  [ "$#" -eq 2 ] || refuse "--print-hook-if-commands takes one launch root"
+  hook_if_commands "$2"
+  exit 0
+fi
 
 TARGET=""
 EVIDENCE=""
@@ -496,6 +541,21 @@ $calls"
       for relative_path in $COMMIT_A_PATHS $COMMIT_B_PATHS; do rm -f "$root/$relative_path"; done
       rmdir "$root/frontend/app/components/probe-commit" 2>/dev/null || true
       rm -f "$WORK_DIRECTORY/commit-in-flight"
+      ;;
+    after_task:hook-if)
+      # Each command is allowed by an exact rule for the whole call and one
+      # for each of its list members, never by a prefix: a wildcard allow on
+      # `gh pr merge` would let a model that strays from the list merge.
+      local commands calls allow_rules=() rule
+      commands="$(hook_if_commands "$root")"
+      calls="$(cut -f2- <<<"$commands" | awk '{ printf "%d. %s\n", NR, $0 }')"
+      while IFS= read -r rule; do
+        [ -n "$rule" ] && allow_rules+=("Bash($rule)")
+      done < <(cut -f2- <<<"$commands" | awk '{ print; gsub(/ && | \|\| |; /, "\n"); print }' | sort -u)
+      run_claude "$launch" "$scenario_directory" 1 \
+        "This is an automated hook probe in a throwaway test repository. Run each of the following Bash commands exactly once, each as its own separate Bash tool call, in this order, exactly as written, even when you expect a call to be denied or to fail. Do not combine, split or change any command, do not run any other command, and do not edit any file. After the last call, reply with the single word DONE.
+$calls" \
+        --allowedTools ${allow_rules[@]+"${allow_rules[@]}"}
       ;;
     *)
       echo "ERROR: unknown trigger in plan: $trigger" >&2

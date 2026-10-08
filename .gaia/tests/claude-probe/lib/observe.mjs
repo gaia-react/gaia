@@ -5,7 +5,7 @@
 // is never read: a model saying a rule loaded is not evidence that it did.
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { readSnapshotJson, settingsHookEntries } from './table.mjs';
+import { ifRuleSlug, parseIfSubject, readSnapshotJson, settingsHookEntries } from './table.mjs';
 
 export class EvidenceError extends Error {}
 
@@ -275,6 +275,47 @@ const envValue = (data, subject) => {
   return `value:${[...values][0]}`;
 };
 
+// The gated handlers the root settings snapshot holds for a hook_if row: the
+// handlers in a `Bash` group of the row's event whose command runs if-gate.sh
+// for that event and slug, and, unless the row is the dedup row, whose `if` is
+// the row's rule. Without this a `skip` row would pass on a run whose handler
+// was never registered.
+const ifGateHandlers = (snapshotDirectory, event, rule) => {
+  const settings = readSnapshotJson(snapshotDirectory, '.claude/settings.json');
+  const tail = `probe-hooks/if-gate.sh' root-settings ${event} ${ifRuleSlug(rule)}`;
+  return (settings?.hooks?.[event] ?? []).filter((group) => group?.matcher === 'Bash')
+    .flatMap((group) => group.hooks ?? [])
+    .filter((hook) => typeof hook.command === 'string' && hook.command.endsWith(tail)
+      && (rule === 'dedup' ? typeof hook.if === 'string' : hook.if === rule));
+};
+
+const ifGateLines = (data, event, rule, marker) => data.probe.filter((line) => line.event === 'IfGate'
+  && line.hook_event === event && line.rule_slug === ifRuleSlug(rule) && line.probe_if_marker === marker);
+
+// How many IfGate lines a hook_if row's call produced; the dedup row reports
+// it, since one spawn and two are both a pass with different consequences.
+export const ifGateSpawnCount = (row, data) => {
+  const parsed = parseIfSubject(row.subject);
+  return parsed && data ? ifGateLines(data, parsed.event, parsed.rule, parsed.marker).length : 0;
+};
+
+// A hook_if row's call counts as attempted only on the always-on probe line
+// of the row's own event carrying its marker. A PreToolUse line never stands
+// in for a PostToolUse attempt: a call denied at PreToolUse, or one that
+// failed and fired PostToolUseFailure, has one and never reached PostToolUse,
+// so its silent gate is not a skip. An IfGate line alone proves nothing
+// either: it is the thing under test.
+const hookIfObservation = (row, data, snapshotDirectory) => {
+  const parsed = parseIfSubject(row.subject);
+  if (!parsed) return 'bad_subject';
+  const handlers = ifGateHandlers(snapshotDirectory, parsed.event, parsed.rule);
+  const registered = parsed.rule === 'dedup' ? new Set(handlers.map((hook) => hook.if)).size >= 2 : handlers.length > 0;
+  if (!registered) return 'not_registered';
+  const attempted = data.probe.some((line) => line.event === parsed.event && line.probe_if_marker === parsed.marker);
+  if (!attempted) return 'not_attempted';
+  return ifGateLines(data, parsed.event, parsed.rule, parsed.marker).length > 0 ? 'spawn' : 'skip';
+};
+
 // Observed state of one expanded row in one scenario. `context.rootCommit`
 // supplies the root launch's commit scenario for the parity row.
 export const observe = (row, expanded, data, snapshotDirectory, context = {}) => {
@@ -344,6 +385,8 @@ export const observe = (row, expanded, data, snapshotDirectory, context = {}) =>
       if (outcome === 'allow' && data.filesAfter[subject] !== true) return 'allow_but_file_missing';
       return outcome;
     }
+    case 'hook_if':
+      return hookIfObservation(row, data, snapshotDirectory);
     default:
       return 'unknown_kind';
   }
