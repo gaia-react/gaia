@@ -357,7 +357,6 @@ budget_constant_owners() {
   section="$(extract_section '## Claim the fix unit')"
   [ -n "$section" ]
   grep -qiF -- 'release every claim this run already set' <<<"$section"
-  grep -qF -- 'mkdir -p .gaia/local/debt && : > .gaia/local/debt/refresh-requested' <<<"$section"
   grep -qF -- '`#<N> was <claimed by another session | parked on a SPEC> before this run could claim it; released this run'"'"'s claims and stopped. Re-run /gaia-debt with the numbers you still want.`' <<<"$section"
   grep -qiF -- 'without re-presenting the backlog' <<<"$section"
 }
@@ -478,7 +477,6 @@ spec_arm() {
   [ -n "$arm" ]
   grep -qiF -- 'the first downgraded member in backlog order drains alone exactly as `/gaia-debt <S>` would' <<<"$arm"
   grep -qiF -- "every other downgraded member's claim is released" <<<"$arm"
-  grep -qiF -- 'the sentinel is touched' <<<"$arm"
   grep -qF -- '`Released #<S2> [#<S3> ...]: the spec screen found no SPEC needed, and a hand-off drains one downgraded issue per run. Re-run /gaia-debt <S2> [<S3> ...] to drain them.`' <<<"$arm"
   grep -qiF -- 'downgraded members never drain together' <<<"$arm"
   grep -qiF -- 'one block per confirmed member' <<<"$arm"

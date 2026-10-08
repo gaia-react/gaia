@@ -36,7 +36,6 @@
 .claude/commands/setup-gaia.md	.env.example	Prose naming the placeholder file by basename, not a root path.
 .claude/agents/code-audit-frontend.md	<root>/.claude/agents/code-audit-frontend/	Root extension-directory glob by design, and a generic refusal-set shape that applies at the root or under a package.
 .claude/agents/code-audit-frontend.md	a `test/**` tree	Root extension-directory glob by design, and a generic refusal-set shape that applies at the root or under a package.
-.claude/skills/gaia/references/debt.md	app/services/	Illustrative file path in an example, not a path the skill reads.
 .claude/skills/gaia/references/debt.md	app/foo/index.ts	Illustrative file path in an example, not a path the skill reads.
 .claude/skills/gaia/references/forensics/redaction.md	app/i18n.ts	Redaction example for an arbitrary user project layout.
 .claude/skills/naming-conventions/SKILL.md	Dockerfile ARG	The generic word Dockerfile, not the retired root file.
