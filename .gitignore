@@ -37,6 +37,8 @@ coverage
 **/.claude/settings.local.json
 # React Doctor installs its Claude Code skill project-local; kept per-machine, never committed.
 **/.claude/skills/react-doctor/
+# claude-code-action's working area in the forensics workflow, which stages with `git add -A`
+.claude-pr/
 
 # GAIA release/update working directories
 # No trailing slash: in the main checkout this is a directory, in a provisioned
