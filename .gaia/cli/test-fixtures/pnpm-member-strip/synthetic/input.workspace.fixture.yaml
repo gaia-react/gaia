@@ -1,0 +1,7 @@
+packages:
+  - frontend
+  # The release scrub removes the next entry.
+  - .gaia/cli
+
+# Settings below pass through the scrub untouched.
+strictPeerDependencies: false

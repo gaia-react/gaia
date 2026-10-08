@@ -21016,7 +21016,7 @@ var run11 = (argv, options = {}) => {
 };
 
 // src/release/scrub.ts
-import { readFileSync as readFileSync15, statSync as statSync3 } from "node:fs";
+import { existsSync as existsSync11, readFileSync as readFileSync15, statSync as statSync3 } from "node:fs";
 import path16 from "node:path";
 
 // src/wiki/util/wikilinks.ts
@@ -21131,12 +21131,556 @@ var compileExcludedRefMatcher = (tokens) => {
   };
 };
 
+// src/release/pnpm-member-strip.ts
+var SUPPORTED_LOCKFILE_VERSION = "9.0";
+var DOCUMENT_START = "---";
+var ENTRY_SECTIONS = ["importers", "packages", "snapshots"];
+var IMPORTER_DEPENDENCY_FIELDS = [
+  "dependencies",
+  "devDependencies",
+  "optionalDependencies"
+];
+var SNAPSHOT_DEPENDENCY_FIELDS = [
+  "dependencies",
+  "optionalDependencies"
+];
+var ALIAS_VALUE = /^(?:@[^@/]+\/)?[^@/:]+@/;
+var ENTRY_LINE = /^ {2}\S/;
+var TOP_LEVEL_LINE = /^\S/;
+var WORKSPACE_PACKAGES_HEADER = /^packages\s*:\s*(?:#.*)?$/;
+var WORKSPACE_ITEM_MARKER = "- ";
+var WORKSPACE_BLOCK_END = /^[^\s#-]/;
+var StripRefusal = class extends Error {
+  detail;
+  file;
+  token;
+  constructor(file2, token, detail) {
+    super(`${token}: ${detail}`);
+    this.detail = detail;
+    this.file = file2;
+    this.token = token;
+  }
+};
+var refuse2 = (file2, token, detail) => {
+  throw new StripRefusal(file2, token, detail);
+};
+var messageOf = (error51) => error51 instanceof Error ? error51.message : String(error51);
+var isRecord = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+var splitLockfile = (lockfile) => {
+  const lines = lockfile.split("\n");
+  const starts = lines.flatMap(
+    (line, index) => line === DOCUMENT_START ? [index] : []
+  );
+  const [first, second] = starts;
+  if (starts.length !== 2 || first !== 0 || second === void 0) {
+    return refuse2(
+      "lockfile",
+      "unparseable",
+      `expected exactly two YAML documents, each opened by a '${DOCUMENT_START}' line, found ${starts.length}`
+    );
+  }
+  return {
+    dependencyDocument: lines.slice(second + 1).join("\n"),
+    packageManagerDocument: lines.slice(1, second).join("\n"),
+    prefix: `${lines.slice(0, second + 1).join("\n")}
+`
+  };
+};
+var parseDocument = (text, label, schema2) => {
+  let parsed;
+  try {
+    parsed = schema2 === void 0 ? load(text) : load(text, { schema: schema2 });
+  } catch (error51) {
+    return refuse2("lockfile", "unparseable", `${label}: ${messageOf(error51)}`);
+  }
+  return isRecord(parsed) ? parsed : refuse2("lockfile", "unparseable", `${label} is not a YAML mapping`);
+};
+var assertLockfileVersions = (split) => {
+  const documents = [
+    ["document 1 (packageManagerDependencies)", split.packageManagerDocument],
+    ["document 2 (dependencies)", split.dependencyDocument]
+  ];
+  for (const [label, text] of documents) {
+    const version2 = parseDocument(text, label).lockfileVersion;
+    if (version2 !== SUPPORTED_LOCKFILE_VERSION) {
+      refuse2(
+        "lockfile",
+        "unknown-lockfile-version",
+        `${label} declares lockfileVersion ${JSON.stringify(version2)}; only '${SUPPORTED_LOCKFILE_VERSION}' is supported`
+      );
+    }
+  }
+};
+var sectionOf = (document, section) => {
+  const value = document[section];
+  if (value === void 0 || value === null || value === "") return {};
+  return isRecord(value) ? value : refuse2("lockfile", "unparseable", `${section} is not a mapping`);
+};
+var readEdges = ({
+  body,
+  fields,
+  owner,
+  versionOf
+}) => {
+  const edges = /* @__PURE__ */ new Map();
+  if (!isRecord(body)) return edges;
+  for (const field of fields) {
+    const dependencies = body[field];
+    if (isRecord(dependencies)) {
+      for (const [name, entry] of Object.entries(dependencies)) {
+        const version2 = versionOf(entry);
+        if (typeof version2 !== "string" || version2.length === 0) {
+          refuse2(
+            "lockfile",
+            "unparseable",
+            `${owner} ${field}.${name} has no version string`
+          );
+        }
+        edges.set(name, version2);
+      }
+    }
+  }
+  return edges;
+};
+var buildGraph = (document) => {
+  const importers = /* @__PURE__ */ new Map();
+  const snapshots = /* @__PURE__ */ new Map();
+  for (const [key, body] of Object.entries(sectionOf(document, "importers"))) {
+    importers.set(
+      key,
+      readEdges({
+        body,
+        fields: IMPORTER_DEPENDENCY_FIELDS,
+        owner: `importers.${key}`,
+        versionOf: (entry) => isRecord(entry) ? entry.version : void 0
+      })
+    );
+  }
+  for (const [key, body] of Object.entries(sectionOf(document, "snapshots"))) {
+    snapshots.set(
+      key,
+      readEdges({
+        body,
+        fields: SNAPSHOT_DEPENDENCY_FIELDS,
+        owner: `snapshots.${key}`,
+        versionOf: (entry) => entry
+      })
+    );
+  }
+  return {
+    importers,
+    packageIds: new Set(Object.keys(sectionOf(document, "packages"))),
+    snapshots
+  };
+};
+var dependencyTarget = (name, value) => {
+  if (value.startsWith("link:") || value.startsWith("file:")) return null;
+  if (/^\d/.test(value)) return `${name}@${value}`;
+  return ALIAS_VALUE.test(value) ? value : `${name}@${value}`;
+};
+var edgeTargets = (edges) => [...edges].flatMap(([name, value]) => {
+  const target = dependencyTarget(name, value);
+  return target === null ? [] : [target];
+});
+var packageBase = (snapshotId) => {
+  const peerStart = snapshotId.indexOf("(", 1);
+  return peerStart === -1 ? snapshotId : snapshotId.slice(0, peerStart);
+};
+var reachFrom = (graph, importerKeys) => {
+  const reached = /* @__PURE__ */ new Set();
+  const pending = importerKeys.flatMap(
+    (key) => edgeTargets(graph.importers.get(key) ?? /* @__PURE__ */ new Map()).map((id) => ({
+      from: `importers.${key}`,
+      id
+    }))
+  );
+  for (let next = pending.pop(); next !== void 0; next = pending.pop()) {
+    const { from, id } = next;
+    if (!reached.has(id)) {
+      const edges = graph.snapshots.get(id);
+      if (edges === void 0) {
+        refuse2(
+          "lockfile",
+          "missing-snapshot",
+          `${id} (referenced from ${from}) has no snapshots entry`
+        );
+      }
+      reached.add(id);
+      for (const target of edgeTargets(edges)) {
+        pending.push({ from: `snapshots.${id}`, id: target });
+      }
+    }
+  }
+  return reached;
+};
+var pruneView = (graph, member) => {
+  const rest = [...graph.importers.keys()].filter((key) => key !== member);
+  const memberEdges = graph.importers.get(member) ?? /* @__PURE__ */ new Map();
+  return {
+    memberDependencyNames: new Set(memberEdges.keys()),
+    memberReach: reachFrom(graph, [member]),
+    restReach: reachFrom(graph, rest),
+    snapshotIds: [...graph.snapshots.keys()]
+  };
+};
+var memberOnlyPrune = ({ memberReach, restReach }) => new Set([...memberReach].filter((id) => !restReach.has(id)));
+var planPrune = (graph, droppedSnapshots) => {
+  const survivingBases = new Set(
+    [...graph.snapshots.keys()].filter((id) => !droppedSnapshots.has(id)).map((id) => packageBase(id))
+  );
+  const packages = new Set(
+    [...droppedSnapshots].map((id) => packageBase(id)).filter((base) => graph.packageIds.has(base) && !survivingBases.has(base))
+  );
+  return {
+    packages,
+    snapshots: new Set(
+      [...droppedSnapshots].filter((id) => graph.snapshots.has(id))
+    )
+  };
+};
+var alphabetical = (left, right) => left.localeCompare(right);
+var sortedStrings = (values) => {
+  const copy = [...values];
+  return copy.toSorted(alphabetical);
+};
+var parseEntryKey = (line, index) => {
+  let parsed;
+  try {
+    parsed = load(line.trim(), { schema: FAILSAFE_SCHEMA });
+  } catch {
+    parsed = void 0;
+  }
+  const keys = isRecord(parsed) ? Object.keys(parsed) : [];
+  return keys.length === 1 ? keys[0] : refuse2(
+    "lockfile",
+    "unparseable",
+    `line ${index + 1} of the dependency document is not a single entry key`
+  );
+};
+var assertSpansMatchDocument = (spans, document) => {
+  for (const name of ENTRY_SECTIONS) {
+    const located = spans.get(name) ?? /* @__PURE__ */ new Map();
+    const parsed = Object.keys(sectionOf(document, name));
+    if (located.size !== parsed.length || !parsed.every((key) => located.has(key))) {
+      refuse2(
+        "lockfile",
+        "unparseable",
+        `the line locator found ${located.size} ${name} entries where the parsed document has ${parsed.length}`
+      );
+    }
+  }
+};
+var locateEntries = (lines, document) => {
+  const spans = new Map(
+    ENTRY_SECTIONS.map((section2) => [section2, /* @__PURE__ */ new Map()])
+  );
+  let section = null;
+  let current = null;
+  for (const [index, line] of lines.entries()) {
+    if (line !== "") {
+      if (TOP_LEVEL_LINE.test(line)) {
+        current = null;
+        section = line.slice(0, line.indexOf(":"));
+      } else if (ENTRY_LINE.test(line) && section !== null && spans.has(section)) {
+        const key = parseEntryKey(line, index);
+        const sectionSpans = spans.get(section);
+        if (sectionSpans.has(key) || lines[index - 1] !== "") {
+          refuse2(
+            "lockfile",
+            "unparseable",
+            `${section}.${key} at line ${index + 1} is duplicated or not preceded by a blank line`
+          );
+        }
+        current = { end: index, key, section, start: index };
+        sectionSpans.set(key, current);
+      } else if (current !== null) {
+        current.end = index;
+      }
+    }
+  }
+  assertSpansMatchDocument(spans, document);
+  return spans;
+};
+var removeEntries = (dependencyDocument, document, removals) => {
+  const lines = dependencyDocument.split("\n");
+  const spans = locateEntries(lines, document);
+  const dropped = /* @__PURE__ */ new Set();
+  for (const [section, keys] of removals) {
+    const sectionSpans = spans.get(section);
+    if (keys.size > 0 && keys.size >= sectionSpans.size) {
+      refuse2(
+        "lockfile",
+        "unparseable",
+        `removing every ${section} entry leaves a shape this line edit cannot write`
+      );
+    }
+    for (const key of keys) {
+      const span = sectionSpans.get(key);
+      for (let index = span.start - 1; index <= span.end; index += 1) {
+        dropped.add(index);
+      }
+    }
+  }
+  return lines.filter((_, index) => !dropped.has(index)).join("\n");
+};
+var readWorkspacePackages = (workspace) => {
+  let parsed;
+  try {
+    parsed = load(workspace);
+  } catch (error51) {
+    return refuse2("workspace", "unparseable", messageOf(error51));
+  }
+  const packages = isRecord(parsed) ? parsed.packages : void 0;
+  if (packages === void 0 || packages === null) return [];
+  if (!Array.isArray(packages) || !packages.every((item) => typeof item === "string")) {
+    return refuse2(
+      "workspace",
+      "unparseable",
+      "packages is not a list of strings"
+    );
+  }
+  return packages;
+};
+var parseItemValue = (text) => {
+  try {
+    return load(text, { schema: FAILSAFE_SCHEMA });
+  } catch {
+    return void 0;
+  }
+};
+var removeWorkspaceMember = (workspace, member) => {
+  const lines = workspace.split("\n");
+  const headers = lines.flatMap(
+    (line, index) => WORKSPACE_PACKAGES_HEADER.test(line) ? [index] : []
+  );
+  const [header] = headers;
+  if (headers.length !== 1 || header === void 0) {
+    return refuse2(
+      "workspace",
+      "unparseable",
+      "no single block-style packages key to edit"
+    );
+  }
+  const matches = [];
+  for (let index = header + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (WORKSPACE_BLOCK_END.test(line)) break;
+    const item = line.trimStart();
+    if (item.startsWith(WORKSPACE_ITEM_MARKER) && parseItemValue(item.slice(WORKSPACE_ITEM_MARKER.length)) === member) {
+      matches.push(index);
+    }
+  }
+  if (matches.length !== 1) {
+    return refuse2(
+      "workspace",
+      "unparseable",
+      `found ${matches.length} packages item lines for ${member}, expected exactly one`
+    );
+  }
+  return lines.filter((_, index) => index !== matches[0]).join("\n");
+};
+var toRefused = (error51) => {
+  if (error51 instanceof StripRefusal) {
+    return {
+      detail: error51.detail,
+      file: error51.file,
+      kind: "refused",
+      token: error51.token
+    };
+  }
+  return {
+    detail: messageOf(error51),
+    file: "lockfile",
+    kind: "refused",
+    token: "unparseable"
+  };
+};
+var stripWith = (input, policy) => {
+  const split = splitLockfile(input.lockfile);
+  assertLockfileVersions(split);
+  const document = parseDocument(
+    split.dependencyDocument,
+    "document 2 (dependencies)",
+    FAILSAFE_SCHEMA
+  );
+  const listed = readWorkspacePackages(input.workspace).filter(
+    (item) => item === input.member
+  );
+  const graph = buildGraph(document);
+  const hasImporter = graph.importers.has(input.member);
+  if (listed.length > 1) {
+    refuse2("workspace", "unparseable", `packages lists ${input.member} twice`);
+  }
+  if (listed.length === 0 && !hasImporter) return { kind: "noop" };
+  if (!hasImporter) {
+    refuse2(
+      "workspace",
+      "member-without-importer",
+      `packages lists ${input.member} but the lockfile has no importers entry for it`
+    );
+  }
+  if (listed.length === 0) {
+    refuse2(
+      "lockfile",
+      "importer-without-member",
+      `importers has an entry for ${input.member} but the workspace packages list does not name it`
+    );
+  }
+  const plan = planPrune(graph, policy(pruneView(graph, input.member)));
+  const dependencyDocument = removeEntries(
+    split.dependencyDocument,
+    document,
+    /* @__PURE__ */ new Map([
+      ["importers", /* @__PURE__ */ new Set([input.member])],
+      ["packages", plan.packages],
+      ["snapshots", plan.snapshots]
+    ])
+  );
+  return {
+    kind: "stripped",
+    lockfile: `${split.prefix}${dependencyDocument}`,
+    removed: {
+      importers: [input.member],
+      packages: sortedStrings(plan.packages),
+      snapshots: sortedStrings(plan.snapshots)
+    },
+    workspace: removeWorkspaceMember(input.workspace, input.member)
+  };
+};
+var stripPnpmMemberUnchecked = (input, policy) => {
+  try {
+    return stripWith(input, policy);
+  } catch (error51) {
+    return toRefused(error51);
+  }
+};
+var parseDependencyDocument = (lockfile) => buildGraph(
+  parseDocument(
+    splitLockfile(lockfile).dependencyDocument,
+    "document 2 (dependencies)",
+    FAILSAFE_SCHEMA
+  )
+);
+var memberOnlyKeys = (graph, member) => graph.importers.has(member) ? planPrune(graph, memberOnlyPrune(pruneView(graph, member))) : { packages: /* @__PURE__ */ new Set(), snapshots: /* @__PURE__ */ new Set() };
+var findMemberOnlyLeftovers = ({
+  after,
+  before,
+  member
+}) => {
+  const beforeGraph = parseDependencyDocument(before);
+  const afterGraph = parseDependencyDocument(after);
+  const memberOnly = memberOnlyKeys(beforeGraph, member);
+  return sortedStrings([
+    ...afterGraph.importers.has(member) ? [`importers[${member}]`] : [],
+    ...[...memberOnly.packages].filter((key) => afterGraph.packageIds.has(key)).map((key) => `packages[${key}]`),
+    ...[...memberOnly.snapshots].filter((key) => afterGraph.snapshots.has(key)).map((key) => `snapshots[${key}]`)
+  ]);
+};
+var danglingReferences = (graph) => {
+  const dangling = /* @__PURE__ */ new Set();
+  const owners = [
+    ...[...graph.importers].map(
+      ([key, edges]) => [
+        `importers.${key}`,
+        edges
+      ]
+    ),
+    ...[...graph.snapshots].map(
+      ([key, edges]) => [
+        `snapshots.${key}`,
+        edges
+      ]
+    )
+  ];
+  for (const [owner, edges] of owners) {
+    for (const target of edgeTargets(edges)) {
+      if (!graph.snapshots.has(target)) dangling.add(`${owner} -> ${target}`);
+    }
+  }
+  return dangling;
+};
+var snapshotsWithoutPackage = (graph) => new Set(
+  [...graph.snapshots.keys()].filter(
+    (id) => !graph.packageIds.has(packageBase(id))
+  )
+);
+var packagesWithoutSnapshot = (graph) => {
+  const bases = new Set(
+    [...graph.snapshots.keys()].map((id) => packageBase(id))
+  );
+  return new Set([...graph.packageIds].filter((key) => !bases.has(key)));
+};
+var newIn = (after, before) => sortedStrings([...after].filter((item) => !before.has(item)));
+var integrityProblems = (beforeGraph, afterGraph) => [
+  ...newIn(danglingReferences(afterGraph), danglingReferences(beforeGraph)).map(
+    (reference) => `dangling reference ${reference}`
+  ),
+  ...newIn(
+    snapshotsWithoutPackage(afterGraph),
+    snapshotsWithoutPackage(beforeGraph)
+  ).map((id) => `snapshots[${id}] has no packages entry`),
+  ...newIn(
+    packagesWithoutSnapshot(afterGraph),
+    packagesWithoutSnapshot(beforeGraph)
+  ).map((key) => `packages[${key}] has no snapshot`)
+];
+var checkWorkspace = (input, workspace) => {
+  const expected = readWorkspacePackages(input.workspace).filter(
+    (item) => item !== input.member
+  );
+  const actual = readWorkspacePackages(workspace);
+  if (actual.join("\n") !== expected.join("\n")) {
+    refuse2(
+      "workspace",
+      "integrity",
+      `packages is [${actual.join(", ")}], expected [${expected.join(", ")}]`
+    );
+  }
+};
+var checkPair = (input, stripped) => {
+  checkWorkspace(input, stripped.workspace);
+  if (splitLockfile(stripped.lockfile).prefix !== splitLockfile(input.lockfile).prefix) {
+    refuse2(
+      "lockfile",
+      "integrity",
+      "document 1 (packageManagerDependencies) changed"
+    );
+  }
+  const leftovers = findMemberOnlyLeftovers({
+    after: stripped.lockfile,
+    before: input.lockfile,
+    member: input.member
+  });
+  if (leftovers.length > 0) {
+    refuse2("lockfile", "cli-only-key-survives", leftovers.join(", "));
+  }
+  const problems = integrityProblems(
+    parseDependencyDocument(input.lockfile),
+    parseDependencyDocument(stripped.lockfile)
+  );
+  if (problems.length > 0) refuse2("lockfile", "integrity", problems.join("; "));
+};
+var checkStrippedPair = (input, stripped) => {
+  try {
+    checkPair(input, stripped);
+    return null;
+  } catch (error51) {
+    return toRefused(error51);
+  }
+};
+var stripPnpmMember = (input) => {
+  const outcome = stripPnpmMemberUnchecked(input, memberOnlyPrune);
+  if (outcome.kind !== "stripped") return outcome;
+  return checkStrippedPair(input, outcome) ?? outcome;
+};
+
 // src/release/scrub.ts
 var HELP_TEXT12 = `Usage: gaia-maintainer release scrub <staging-dir> [--config <path>] [--json]
 
-  Apply bundle-time scrub transforms (marker-strip + leak-check) to a
-  staging directory produced by release.yml. Writes in place inside
-  <staging-dir>; treats the source repo as read-only.
+  Apply the bundle-time scrub transforms in .gaia/release-scrub.yml (marker,
+  JSON and pnpm workspace-member strips, then leak checks) to a staging
+  directory produced by release.yml. Writes in place inside <staging-dir>;
+  treats the source repo as read-only.
 
   Flags:
     --config <path>  Override config path (default: .gaia/release-scrub.yml
@@ -21146,7 +21690,8 @@ var HELP_TEXT12 = `Usage: gaia-maintainer release scrub <staging-dir> [--config 
 
   Exit codes:
     0  clean
-    1  leaks detected, unbalanced markers, missing staging dir, bad flags
+    1  leaks detected, unbalanced markers, refused pnpm member strip,
+       missing staging dir, bad flags
     2  config parse error or filesystem IO failure
 `;
 var HELP_TOKENS12 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
@@ -21229,6 +21774,12 @@ var JsonFieldRewriteSchema = external_exports.object({
   ).min(1),
   type: external_exports.literal("json-field-rewrite")
 });
+var PnpmMemberStripSchema = external_exports.strictObject({
+  lockfile: external_exports.string().min(1),
+  member: external_exports.string().min(1),
+  type: external_exports.literal("pnpm-member-strip"),
+  workspace: external_exports.string().min(1)
+});
 var ConfigSchema = external_exports.object({
   transforms: external_exports.array(
     external_exports.union([
@@ -21236,6 +21787,7 @@ var ConfigSchema = external_exports.object({
       JsonStripSchema,
       JsonStripArrayElementSchema,
       JsonFieldRewriteSchema,
+      PnpmMemberStripSchema,
       LeakCheckSchema
     ])
   ).min(1)
@@ -21513,6 +22065,62 @@ var applyJsonFieldRewrite = (stagingRoot, files, transform2) => {
     }
   }
   return { fieldsRewritten, filesTouched };
+};
+var NOTHING_STRIPPED = {
+  filesTouched: [],
+  importersRemoved: 0,
+  packagesRemoved: 0,
+  refusal: null,
+  snapshotsRemoved: 0
+};
+var applyPnpmMemberStrip = (stagingRoot, transform2, strip) => {
+  const paths = {
+    lockfile: path16.join(stagingRoot, transform2.lockfile),
+    workspace: path16.join(stagingRoot, transform2.workspace)
+  };
+  const present = {
+    lockfile: existsSync11(paths.lockfile),
+    workspace: existsSync11(paths.workspace)
+  };
+  if (!present.lockfile && !present.workspace) return NOTHING_STRIPPED;
+  if (!present.lockfile || !present.workspace) {
+    const missing = present.lockfile ? "workspace" : "lockfile";
+    return {
+      ...NOTHING_STRIPPED,
+      refusal: {
+        detail: "staged without its pnpm counterpart file",
+        file: paths[missing],
+        token: "unparseable"
+      }
+    };
+  }
+  const input = {
+    lockfile: readFileSync15(paths.lockfile, "utf8"),
+    member: transform2.member,
+    workspace: readFileSync15(paths.workspace, "utf8")
+  };
+  const stripped = strip(input);
+  const outcome = stripped.kind === "stripped" ? checkStrippedPair(input, stripped) ?? stripped : stripped;
+  if (outcome.kind === "noop") return NOTHING_STRIPPED;
+  if (outcome.kind === "refused") {
+    return {
+      ...NOTHING_STRIPPED,
+      refusal: {
+        detail: outcome.detail,
+        file: paths[outcome.file],
+        token: outcome.token
+      }
+    };
+  }
+  atomicWriteFileSync(paths.workspace, outcome.workspace);
+  atomicWriteFileSync(paths.lockfile, outcome.lockfile);
+  return {
+    filesTouched: [transform2.workspace, transform2.lockfile],
+    importersRemoved: outcome.removed.importers.length,
+    packagesRemoved: outcome.removed.packages.length,
+    refusal: null,
+    snapshotsRemoved: outcome.removed.snapshots.length
+  };
 };
 var trackLineAllowlist = (check2) => {
   const entries = (check2["line-allowlist"] ?? []).map(
@@ -21814,7 +22422,8 @@ var renderHumanReport = (report, jsonMode) => {
     `release scrub: stripped ${report.marker_strip.blocks_stripped} marker block(s) across ${report.marker_strip.files_touched.length} file(s)`,
     `release scrub: removed ${report.json_strip.keys_removed} json key(s) from ${report.json_strip.files_touched.length} file(s)`,
     `release scrub: removed ${report.json_strip_array_element.elements_removed} json array element(s) from ${report.json_strip_array_element.files_touched.length} file(s)`,
-    `release scrub: rewrote ${report.json_field_rewrite.fields_rewritten} json field(s) in ${report.json_field_rewrite.files_touched.length} file(s)`
+    `release scrub: rewrote ${report.json_field_rewrite.fields_rewritten} json field(s) in ${report.json_field_rewrite.files_touched.length} file(s)`,
+    `release scrub: removed ${report.pnpm_member_strip.importers_removed} pnpm importer(s), ${report.pnpm_member_strip.packages_removed} package(s), ${report.pnpm_member_strip.snapshots_removed} snapshot(s)`
   ];
   if (report.unbalanced_markers.length > 0) {
     out.push("", `unbalanced markers (${report.unbalanced_markers.length}):`);
@@ -21924,12 +22533,18 @@ var runTransforms = (config2, ctx) => {
     jsonStripFiles: [],
     jsonStripKeysRemoved: 0,
     leaks: [],
+    pnpmFiles: [],
+    pnpmImportersRemoved: 0,
+    pnpmPackagesRemoved: 0,
+    pnpmRefusal: null,
+    pnpmSnapshotsRemoved: 0,
     stripBlocks: 0,
     stripFiles: [],
     unbalanced: [],
     warnings: []
   };
   for (const transform2 of config2.transforms) {
+    if (results.pnpmRefusal !== null) break;
     if (transform2.type === "marker-strip") {
       const result = applyMarkerStrip(
         ctx.stagingDir,
@@ -21959,6 +22574,17 @@ var runTransforms = (config2, ctx) => {
       );
       results.jsonFieldsRewritten += result.fieldsRewritten;
       results.jsonFieldRewriteFiles.push(...result.filesTouched);
+    } else if (transform2.type === "pnpm-member-strip") {
+      const result = applyPnpmMemberStrip(
+        ctx.stagingDir,
+        transform2,
+        ctx.stripPnpmMember
+      );
+      results.pnpmFiles.push(...result.filesTouched);
+      results.pnpmImportersRemoved += result.importersRemoved;
+      results.pnpmPackagesRemoved += result.packagesRemoved;
+      results.pnpmSnapshotsRemoved += result.snapshotsRemoved;
+      results.pnpmRefusal = result.refusal;
     } else {
       const result = runLeakChecksForTransform(transform2, ctx);
       results.leaks.push(...result.leaks);
@@ -22020,9 +22646,22 @@ var run12 = (argv, options = {}) => {
   const results = tryRunTransformsOrReport(config2, {
     cwd,
     stagedFiles,
-    stagingDir
+    stagingDir,
+    stripPnpmMember: options.stripPnpmMember ?? stripPnpmMember
   });
   if (results === null) return UNEXPECTED_EXIT9;
+  if (results.pnpmRefusal !== null) {
+    const { detail, file: file2, token } = results.pnpmRefusal;
+    structuredError({
+      code: "pnpm_member_strip_refused",
+      detail,
+      file: file2,
+      message: `pnpm-member-strip refused ${file2} (${token}): ${detail}; neither pnpm file was written`,
+      subcommand: "release scrub",
+      token
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
   const report = {
     json_field_rewrite: {
       fields_rewritten: results.jsonFieldsRewritten,
@@ -22040,6 +22679,12 @@ var run12 = (argv, options = {}) => {
     marker_strip: {
       blocks_stripped: results.stripBlocks,
       files_touched: results.stripFiles
+    },
+    pnpm_member_strip: {
+      files_touched: results.pnpmFiles,
+      importers_removed: results.pnpmImportersRemoved,
+      packages_removed: results.pnpmPackagesRemoved,
+      snapshots_removed: results.pnpmSnapshotsRemoved
     },
     unbalanced_markers: results.unbalanced,
     unused_allowlist: results.warnings
