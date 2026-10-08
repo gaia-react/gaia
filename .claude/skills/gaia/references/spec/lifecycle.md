@@ -1,6 +1,6 @@
 # SPEC and plan lifecycle procedures
 
-The procedures a generated `ORCHESTRATOR.md` and both pre-flights point at. `.claude/skills/gaia/references/plan.md` step 4 owns the order of the orchestrator's steps and the verbatim blocks a planner copies; this page owns what each step does. Every command runs from the directory each section names, with the placeholders the orchestrator holds: `<SPEC_PATH>` (the absolute, main-anchored `SPEC.md`), `<PLAN_DIR>` (the absolute, main-anchored plan folder), `<RESOLVED_ROOT>` (the working copy the isolation reference resolved) and `<N>` (the PR number).
+The procedures a generated `ORCHESTRATOR.md` and both pre-flights point at. `.claude/skills/gaia/references/plan/planner.md` owns the order of the orchestrator's steps and the verbatim blocks a planner copies; this page owns what each step does. Every command runs from the directory each section names, with the placeholders the orchestrator holds: `<SPEC_PATH>` (the absolute, main-anchored `SPEC.md`), `<PLAN_DIR>` (the absolute, main-anchored plan folder), `<RESOLVED_ROOT>` (the working copy the isolation reference resolved) and `<N>` (the PR number).
 
 Contents: Owning-phase UAT gate; Phase N, <title> (HALTED); Pre-audit UAT checks; Consolidation; Wiki promotion; Post-merge close; Pre-flight sweep.
 
@@ -104,7 +104,7 @@ Runs after `gh pr merge`, in this order. Each step runs only after the one befor
    ```
 
    Passing the confirmed PR number stamps `pr_number` on the plans-ledger row, which the pre-flight sweep's reap reads.
-4. **Exit the worktree** (worktree mode only), per the template's post-merge worktree cleanup and isolation-context detection bullets in `.claude/skills/gaia/references/plan.md` step 4. When the orchestrator cannot leave the worktree (an isolated sub-agent context), its continuation prompt carries steps 5 and 6 for the human to run from the main checkout.
+4. **Exit the worktree** (worktree mode only), per the template's post-merge worktree cleanup and isolation-context detection bullets in `.claude/skills/gaia/references/plan/planner.md`. When the orchestrator cannot leave the worktree (an isolated sub-agent context), its continuation prompt carries steps 5 and 6 for the human to run from the main checkout.
 5. **Verify, then remove the layers.** From the main checkout:
 
    ```bash

@@ -116,11 +116,18 @@
     ".claude/skills/gaia/references/isolation.md": "owned",
     ".claude/skills/gaia/references/pickup.md": "owned",
     ".claude/skills/gaia/references/plan.md": "owned",
+    ".claude/skills/gaia/references/plan/decomposition-audit.md": "owned",
+    ".claude/skills/gaia/references/plan/planner.md": "owned",
     ".claude/skills/gaia/references/residue.md": "owned",
     ".claude/skills/gaia/references/serena-sync.md": "owned",
     ".claude/skills/gaia/references/spec.md": "owned",
+    ".claude/skills/gaia/references/spec/audit.md": "owned",
+    ".claude/skills/gaia/references/spec/clarify-loop.md": "owned",
     ".claude/skills/gaia/references/spec/clarify-prompts.md": "owned",
+    ".claude/skills/gaia/references/spec/lens-dispatch.md": "owned",
     ".claude/skills/gaia/references/spec/lifecycle.md": "owned",
+    ".claude/skills/gaia/references/spec/resume.md": "owned",
+    ".claude/skills/gaia/references/spec/self-review-dispatch.md": "owned",
     ".claude/skills/gaia/references/spec/self-review.md": "owned",
     ".claude/skills/gaia/references/spec/spec-template.md": "owned",
     ".claude/skills/gaia/references/spec/system-prompt.md": "owned",
@@ -691,7 +698,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-10-08T10:00:07.661Z",
+  "generated": "2026-10-08T10:18:40.486Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

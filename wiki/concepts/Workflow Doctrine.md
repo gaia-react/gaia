@@ -43,7 +43,7 @@ Among the doctrine sources (the rule, `.claude/doctrine/execution.md`, and this 
 ### Pin sites
 
 - Frontmatter `model:` in skills and agents: `.claude/skills/*/SKILL.md`, `frontend/.claude/skills/*/SKILL.md`, `.claude/agents/*.md`. A skill pins only for the lookup, scaffold, mechanical row; [[Deliberate Configuration Asymmetries]] records which skills pin and why.
-- Dispatch pins in playbooks: `.claude/skills/gaia/references/plan.md` (the planner picker and the executor pin), `.claude/skills/gaia/references/spec.md` (the model gate), `.claude/skills/gaia/references/audit.md`, `.claude/skills/gaia/references/fitness.md`, `.claude/skills/gaia/references/wiki.md` and its stage files `.claude/skills/gaia/references/wiki/*.md`, the update-deps wave and override-audit agents in `.claude/skills/update-deps/SKILL.md`, and the bump agents in `.claude/skills/update-gaia/SKILL.md`.
+- Dispatch pins in playbooks: `.claude/skills/gaia/references/plan.md` (the planner picker), `.claude/skills/gaia/references/plan/planner.md` (the executor pin), `.claude/skills/gaia/references/spec.md` (the model gate), `.claude/skills/gaia/references/audit.md`, `.claude/skills/gaia/references/fitness.md`, `.claude/skills/gaia/references/wiki.md` and its stage files `.claude/skills/gaia/references/wiki/*.md`, the update-deps wave and override-audit agents in `.claude/skills/update-deps/SKILL.md`, and the bump agents in `.claude/skills/update-gaia/SKILL.md`.
 <!-- gaia:maintainer-only:start -->
 - Maintainer health-audit runbooks: `.gaia/cli/health/runbook.md` and `.gaia/cli/health/comprehensive/runbook.md`.
 <!-- gaia:maintainer-only:end -->

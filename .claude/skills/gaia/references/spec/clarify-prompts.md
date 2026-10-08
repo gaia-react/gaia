@@ -11,6 +11,8 @@ fixed-text portions is normative, do not paraphrase the per-topic
 exhaustion checkpoint, the "Other" option, or the "Discuss this"
 option.
 
+Contents: Rule 1: One question at a time; Rule 2: Closed-set questions use `AskUserQuestion`; Rule 3: "Discuss this" escape and resume; Rule 4: Open-ended questions use plain prompts; Rule 5: Per-topic exhaustion checkpoint; Rule 6: Research dispatch announce; Rule 7: Coach voice, not interrogator; Rule 8: Coverage scan (Clear / Partial / Missing); Rule 9: The question budget; Topic-bank scaffolding (suggested seed).
+
 ---
 
 ## Rule 1: One question at a time
@@ -281,8 +283,8 @@ narrate it every turn. Surface it at exactly two moments:
 ## Rule 9: The question budget
 
 The Socratic loop's question ceiling is owned by
-`.claude/skills/gaia/references/spec.md` (the operational primitive
-`### The question ceiling`). That file is the single source of truth
+`.claude/skills/gaia/references/spec/clarify-loop.md` (its section
+`## The question ceiling`). That file is the single source of truth
 for the interactive ceiling, the auto-mode ceiling, what counts as a
 substantive question, and what the loop does on reaching the bound
 with coverage incomplete.
