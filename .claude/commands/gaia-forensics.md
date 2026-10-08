@@ -1,6 +1,7 @@
 ---
 name: gaia-forensics
-description: Turn a GAIA workflow misfire into a redacted, classified, filing-ready bug report in one read-only pass. Self-diagnoses config issues inline; files probable bugs upstream on confirmation.
+description: Turns a GAIA workflow misfire into a redacted, classified, filing-ready bug report in one read-only pass. Self-diagnoses config issues inline and files probable bugs upstream on confirmation.
+disable-model-invocation: true
 argument-hint: [description]
 ---
 

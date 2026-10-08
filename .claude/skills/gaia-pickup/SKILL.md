@@ -1,6 +1,6 @@
 ---
 name: gaia-pickup
-description: Restore context from the most recent GAIA session handoff and suggest the next action. Trigger on `/gaia-pickup` or natural-language asks like "pick up where we left off", "resume from the handoff", or "continue the last session".
+description: Restores context from the most recent GAIA session handoff and suggests the next action. Trigger on `/gaia-pickup` or natural-language asks like "pick up where we left off", "resume from the handoff", or "continue the last session".
 ---
 
 Run the GAIA **pickup** workflow.

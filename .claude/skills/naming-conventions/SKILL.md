@@ -1,7 +1,6 @@
 ---
 name: naming-conventions
-description: Descriptive, self-documenting naming in any language (TypeScript, bash, workflow YAML, Dockerfiles). Use this skill whenever naming or renaming an identifier, variable, constant, function, parameter, env var, workflow job, or Dockerfile ARG/ENV, or reviewing names for vagueness, abbreviations, or redundant type noise.
-model: haiku
+description: Applies descriptive, self-documenting naming in any language (TypeScript, bash, workflow YAML, Dockerfiles). Use this skill whenever naming or renaming an identifier, variable, constant, function, parameter, env var, workflow job, or Dockerfile ARG/ENV, or reviewing names for vagueness, abbreviations, or redundant type noise.
 ---
 
 # Naming Conventions

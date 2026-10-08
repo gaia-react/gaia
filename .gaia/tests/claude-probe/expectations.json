@@ -1744,6 +1744,32 @@
       "cited_run": null
     },
     {
+      "id": "root-user-only-commands-not-listed",
+      "launch": "root",
+      "kind": "listing",
+      "subject": "root user-only commands",
+      "expand": ".claude/commands/*.md#model-invocation-disabled",
+      "trigger": "session_start",
+      "expect": "not_listed",
+      "signal": "transcript_listing",
+      "floor": false,
+      "source": "Claude Code skills docs: disable-model-invocation removes the description from the listing; command files take the same fields",
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T074946Z-listing"
+    },
+    {
+      "id": "root-model-invocable-commands-listed",
+      "launch": "root",
+      "kind": "listing",
+      "subject": "root model-invocable commands",
+      "expand": ".claude/commands/*.md#model-invocable",
+      "trigger": "session_start",
+      "expect": "listed",
+      "signal": "transcript_listing",
+      "floor": false,
+      "source": "Claude Code skills docs: disable-model-invocation removes the description from the listing; command files take the same fields",
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T074946Z-listing"
+    },
+    {
       "id": "manual-q1-bash-read-no-lazy-load",
       "launch": "root",
       "kind": "claude_md",

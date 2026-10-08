@@ -1,6 +1,6 @@
 ---
 name: new-component
-description: Scaffold a new React component with its Storybook story, which is the component's test. Use this skill whenever the user asks to "create a component", "make a button", "scaffold a card", "add a new component", or asks for a new file under `app/components/` following the project's component pattern (kebab-case folder, index.tsx, tests/), or asks for a component a shadcn registry item already provides (dialog, tabs, popover, and so on).
+description: Scaffolds a new React component with its Storybook story, which is the component's test. Use this skill whenever the user asks to "create a component", "make a button", "scaffold a card", "add a new component", or asks for a new file under `app/components/` following the project's component pattern (kebab-case folder, index.tsx, tests/), or asks for a component a shadcn registry item already provides (dialog, tabs, popover, and so on).
 model: haiku
 ---
 

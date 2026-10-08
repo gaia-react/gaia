@@ -4,7 +4,7 @@ status: active
 priority: 2
 date: 2026-07-20
 created: 2026-07-20
-updated: 2026-10-05
+updated: 2026-10-08
 tags: [decision, claude, configuration]
 ---
 
@@ -44,32 +44,38 @@ grants.
 
 See [[Claude Hooks]] for what each script enforces.
 
-## Skill `model:` pinning tracks task difficulty, not file shape
+## Skill `model:` pinning tracks the task class, not file shape
 
-Some skills pin `model: haiku` in their frontmatter. Most omit `model:`
-entirely and inherit whatever model the session is running.
+Some skills pin `model:` in their frontmatter. Most omit it and inherit
+whatever model the session is running.
 
-The criterion is what the skill's work demands:
+The criterion is the model table in [[Workflow Doctrine]]:
 
-- **Pin `model: haiku`** when the work is mechanical and bounded: scaffolding
-  from a template, applying a fix keyed to a specific rule id, looking up a
-  convention.
+- **Pin** only when the skill's whole invocation is the lookup, scaffold,
+  mechanical task class: scaffolding from a template, or applying a fix keyed
+  to a specific rule id. The pinned model is the one that row names.
 - **Omit `model:`** when the work needs judgment: orchestration, diagnosis,
-  design decisions, or any multi-step workflow whose shape is not known in
-  advance.
+  design decisions, review, or any multi-step workflow whose shape is not
+  known in advance.
 
-Skills that read as structurally similar can still fall on opposite sides of
-this line. `tailwind` and `typescript` are convention lookups and pin.
-`react-code` does not pin, because its trigger surface is decision-shaped:
-compiler-first memoization decisions (whether a manual memo or `"use no memo"` is justified), stale closures, choosing between React
-idioms, deciding whether a dependency is warranted. That work needs whatever
-model the session is running.
+The trigger surface decides as much as the content. A skill's `model:`
+overrides the session model for the rest of the turn it loads in. A
+convention skill that fires whenever code is being written (`typescript`,
+`tailwind`, `naming-conventions`) reads like a lookup, yet a pin there would
+move the rest of an implementation or review turn onto the pinned model, so
+those skills omit it. `skeleton-loaders` omits it for the same reason: it
+triggers whenever a loading state is added to a component, mid-implementation. The scaffolding skills and the rule-id fix skills keep
+their pin, because the turn that loads them is doing exactly that bounded
+task. `react-code` omits it for the same reason, and because its trigger
+surface is decision-shaped: compiler-first memoization decisions (whether a
+manual memo or `"use no memo"` is justified), stale closures, choosing between
+React idioms, deciding whether a dependency is warranted.
 
 **A pin is a ceiling, not a floor.** An unpinned skill inherits the session
 model, so pinning a judgment-heavy skill would cap it *below* the model the
-user deliberately chose. Pinning is a cost optimization for work that cannot
-benefit from a stronger model, and applying it more widely than that trades
-correctness for tokens. The same criterion applies to skills you write.
+user deliberately chose. Fit selects a pin; the lower price follows from it
+and is never the reason for it. The same criterion applies to skills you
+write.
 
 ## The GAIA update check has no opt-out
 

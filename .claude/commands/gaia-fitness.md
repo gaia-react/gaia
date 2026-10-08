@@ -1,6 +1,7 @@
 ---
 name: gaia-fitness
-description: Health-check and auto-heal this project's Claude integration, triage, heal, verify, and report an F-to-A+ grade.
+description: Health-checks and auto-heals this project's Claude integration (triage, heal, verify) and reports an F-to-A+ grade.
+disable-model-invocation: true
 ---
 
 Run the GAIA **fitness** workflow.

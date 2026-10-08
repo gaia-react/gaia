@@ -1,6 +1,6 @@
 ---
 name: code-audit-maintainer-node
-description: 'Maintainer-only audit of the framework Node/CLI TypeScript, its render templates and test snapshots, and the CLI build/config surface the roster grants it: correctness, error handling, filesystem/IO safety, Zod schema fitness, shell/gh injection safety, and build-script/dependency/compiler-config safety. Advisory-only (no self-heal). One member of the Code Audit Team gate.'
+description: 'Maintainer-only audit of the framework Node/CLI TypeScript, its render templates and test snapshots, and the CLI build/config surface the roster grants it: correctness, error handling, filesystem/IO safety, Zod schema fitness, shell/gh injection safety, and build-script/dependency/compiler-config safety. Read-only: reports findings and gates its marker; edits no tracked file. One member of the Code Audit Team gate.'
 model: opus
 color: blue
 ---

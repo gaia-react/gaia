@@ -1,6 +1,6 @@
 ---
 name: new-route
-description: Scaffold a new route with its page component, page story, and optional i18n keys. Use this skill whenever the user asks to "create a route", "add a new page", "scaffold /dashboard", "wire up a new route under _public or _session", or anything that implies adding a file under `app/routes/` with a matching `app/pages/<name>/` folder.
+description: Scaffolds a new route with its page component, page story, and optional i18n keys. Use this skill whenever the user asks to "create a route", "add a new page", "scaffold /dashboard", "wire up a new route under _public or _session", or anything that implies adding a file under `app/routes/` with a matching `app/pages/{name}/` folder.
 model: haiku
 ---
 

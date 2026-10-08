@@ -1,6 +1,6 @@
 ---
 name: a11y-fixes
-description: Resolve axe-core accessibility violations reported by a story under Vitest (addon-a11y), Playwright (.playwright/a11y.ts), or the code-audit-frontend agent's a11y bucket. Trigger on any axe rule id appearing in test output, not only the ones named here. Contains fix patterns for the most common violations (color-contrast, label, label-title-only, image-alt, button-name, link-name, region, landmark-one-main, heading-order, aria-allowed-attr, aria-required-attr, aria-required-children, aria-required-parent, aria-valid-attr-value, focus-trap, tabindex, html-has-lang, document-title, duplicate-id, listitem, definition-list); for any violation not listed, apply the general axe guidance and the same fix-then-verify loop.
+description: Resolves axe-core accessibility violations reported by a story under Vitest (addon-a11y), Playwright (.playwright/a11y.ts), or the code-audit-frontend agent's a11y bucket, with fix patterns for the common violations and a fix-then-verify loop for the rest. Trigger on any axe rule id appearing in test output.
 model: haiku
 ---
 

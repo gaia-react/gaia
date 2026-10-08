@@ -1,6 +1,7 @@
 ---
 name: health-audit
-description: Maintainer-only autonomous health audit + auto-heal loop. Runs N=3 fresh-team audit-fix-audit cycles with circuit breakers, reports an F-to-A+ verdict (folding in the shared Claude-integration fitness grade) or escalates.
+description: Maintainer-only. Runs an autonomous health audit and auto-heal loop of N=3 fresh-team audit-fix-audit cycles with circuit breakers, and reports an F-to-A+ verdict (folding in the shared Claude-integration fitness grade) or escalates.
+disable-model-invocation: true
 ---
 
 # /health-audit

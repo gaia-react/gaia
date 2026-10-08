@@ -1,6 +1,6 @@
 ---
 name: react-code
-description: Patterns and conventions for writing and editing React code, including components and hooks. Use this skill whenever writing or reviewing React components, hooks (useEffect, useState), event handlers, or component extraction decisions. Also trigger when deciding whether a manual useMemo, useCallback, memo, or "use no memo" is justified under React Compiler, when debugging stale closures or infinite re-renders, or when deciding whether to add a dependency, reach for a web-platform API (Intl, URL, crypto.randomUUID), or hand-roll a primitive. Also trigger when choosing a React 19 idiom, deciding between forwardRef and ref-as-prop, useContext and use(), or Context.Provider and the Context shorthand; when conditional rendering risks the && numeric-0 leak; or when tempted to reach for React's form Actions (useActionState, useFormStatus, useOptimistic) instead of React Router's form handling.
+description: Applies GAIA's patterns and conventions for writing and editing React components and hooks. Use this skill whenever writing or reviewing React components, hooks, or event handlers, or deciding on component extraction. Also trigger when deciding whether a manual memo or "use no memo" is justified under React Compiler, debugging stale closures or infinite re-renders, weighing a new dependency against a web-platform API or a hand-rolled primitive, choosing a React 19 idiom, or reaching for React's form Actions instead of React Router's form handling.
 ---
 
 # React Code

@@ -1,6 +1,7 @@
 ---
 name: gaia-residue
-description: Triage drain over the keyed audit residue recorded in merged pull-request bodies. Enumerates candidates, resolves each one's cited line, and takes one disposition per entry, promote to a tech-debt issue, dismiss, or keep. Never fixes anything. Pass `list` to see live candidates or `why <path>:<line>` to explain one.
+description: Triages the keyed audit residue recorded in merged pull-request bodies. Enumerates candidates, resolves each one's cited line, and takes one disposition per entry (promote to a tech-debt issue, dismiss, or keep). Never fixes anything.
+disable-model-invocation: true
 argument-hint: [review|list|why <path>:<line>|<path>:<line>]
 ---
 

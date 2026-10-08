@@ -1,6 +1,7 @@
 ---
 name: gaia-release
-description: Cut a new GAIA release, bump version, graduate CHANGELOG, regenerate manifest, open release PR, then tag on merge. Maintainer-only.
+description: Maintainer-only. Cuts a new GAIA release. Bumps the version, graduates the CHANGELOG, regenerates the manifest, opens the release PR, then tags on merge.
+disable-model-invocation: true
 argument-hint: patch|minor|major
 ---
 

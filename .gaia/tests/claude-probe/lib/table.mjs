@@ -20,6 +20,7 @@ const KIND_RULES = {
   skill: { expect: ['available', 'not_available'], signal: ['stream_json_init'] },
   agent: { expect: ['available', 'not_available'], signal: ['stream_json_init'] },
   mcp: { expect: ['available', 'not_available'], signal: ['stream_json_init'] },
+  listing: { expect: ['listed', 'not_listed'], signal: ['transcript_listing'] },
   hook: { expect: ['registered', 'not_registered'], signal: ['session_start_probe'] },
   settings_source: { expect: ['loaded', 'not_loaded'], signal: ['session_start_probe'] },
   env: { expect: ['value:'], signal: ['session_start_probe'] },
@@ -28,7 +29,7 @@ const KIND_RULES = {
   hook_if: { expect: ['spawn', 'skip'], signal: ['probe_if'] },
 };
 export const SIGNALS = [
-  'instructions_loaded', 'session_start_probe', 'stream_json_init',
+  'instructions_loaded', 'session_start_probe', 'stream_json_init', 'transcript_listing',
   'post_tool_use', 'pre_tool_use', 'git_log', 'probe_if', 'manual',
 ];
 
@@ -202,10 +203,12 @@ export const globToRegExp = (glob) => {
 
 // Frontmatter `paths:` of a rule file: null when the rule has none (always
 // loaded), else the list of globs.
+const frontmatterBlock = (content) => /^---\n([\s\S]*?)\n---/.exec(content)?.[1] ?? null;
+
 export const rulePaths = (content) => {
-  const match = /^---\n([\s\S]*?)\n---/.exec(content);
-  if (!match || !/^paths:/m.test(match[1])) return null;
-  const block = match[1].split('\n');
+  const frontmatter = frontmatterBlock(content);
+  if (frontmatter === null || !/^paths:/m.test(frontmatter)) return null;
+  const block = frontmatter.split('\n');
   const start = block.findIndex((line) => /^paths:/.test(line));
   const inline = block[start].replace(/^paths:\s*/, '');
   if (inline) return inline.replace(/^\[|\]$/g, '').split(',').map((entry) => entry.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
@@ -216,6 +219,14 @@ export const rulePaths = (content) => {
     globs.push(entry[1].trim().replace(/^['"]|['"]$/g, ''));
   }
   return globs;
+};
+
+// Whether a command or skill file's YAML frontmatter sets
+// `disable-model-invocation: true`, which removes it from the model's skill
+// listing.
+export const disablesModelInvocation = (content) => {
+  const frontmatter = frontmatterBlock(content);
+  return frontmatter !== null && /^disable-model-invocation:\s*['"]?true['"]?\s*(?:#.*)?$/m.test(frontmatter);
 };
 
 export const readSnapshotTree = (snapshotDirectory) => {
@@ -254,6 +265,17 @@ export const readSnapshotJson = (snapshotDirectory, relativePath) => {
   }
 };
 
+// Each expand qualifier keeps a matched file by its content.
+const QUALIFIERS = {
+  unscoped: (content) => rulePaths(content) === null,
+  scoped: (content) => rulePaths(content) !== null,
+  'model-invocable': (content) => !disablesModelInvocation(content),
+  'model-invocation-disabled': disablesModelInvocation,
+};
+
+// A listing row names skills and commands, so it is keyed and covered as a skill.
+export const matchKind = (kind) => (kind === 'listing' ? 'skill' : kind);
+
 // The concrete subjects one row stands for. Each is {subject, display, entry?}.
 export const expandRow = (row, snapshotDirectory) => {
   if (row.expand === null) return [{ subject: row.subject, display: row.subject }];
@@ -264,7 +286,7 @@ export const expandRow = (row, snapshotDirectory) => {
     }));
   }
   const [glob, qualifier = ''] = row.expand.split('#');
-  if (!['', 'unscoped', 'scoped'].includes(qualifier)) throw new TableError(`row ${row.id}: unknown expand qualifier #${qualifier}`);
+  if (qualifier !== '' && !Object.hasOwn(QUALIFIERS, qualifier)) throw new TableError(`row ${row.id}: unknown expand qualifier #${qualifier}`);
   const matcher = globToRegExp(glob);
   return readSnapshotTree(snapshotDirectory)
     .filter((path) => matcher.test(path))
@@ -272,8 +294,7 @@ export const expandRow = (row, snapshotDirectory) => {
       if (qualifier === '') return true;
       const filePath = join(snapshotDirectory, 'files', path);
       if (!existsSync(filePath)) throw new TableError(`row ${row.id}: ${path} is in tree.txt but not under the snapshot's files/`);
-      const scoped = rulePaths(readFileSync(filePath, 'utf8')) !== null;
-      return qualifier === 'scoped' ? scoped : !scoped;
+      return QUALIFIERS[qualifier](readFileSync(filePath, 'utf8'));
     })
     .map((path) => ({ subject: path, display: path }));
 };
@@ -281,7 +302,7 @@ export const expandRow = (row, snapshotDirectory) => {
 // The key an observation of this kind is matched on: rules and CLAUDE.md by
 // repo-relative path, skills and agents by name, everything else verbatim.
 export const subjectKey = (kind, subject) => {
-  if (kind === 'skill') {
+  if (matchKind(kind) === 'skill') {
     const skill = /(?:^|\/)\.claude\/skills\/([^/]+)\/SKILL\.md$/.exec(subject);
     if (skill) return skill[1];
     const command = /(?:^|\/)\.claude\/commands\/(.+)\.md$/.exec(subject);

@@ -1,6 +1,6 @@
 ---
 name: gaia-react-perf
-description: Diagnose React render performance by driving a micro-interaction, capturing real renders, and surfacing memo-defeating reference instability with a recommended structural fix. Measure-only: it emits a diagnosis, it does not auto-fix. Trigger on `/gaia-react-perf` or natural-language asks like "profile renders", "measure renders", "why is X re-rendering", or "diagnose render performance". Do NOT trigger on vague "feels slow", "janky", or "optimize my app".
+description: Diagnoses React render performance by driving a micro-interaction, capturing real renders, and surfacing memo-defeating reference instability with a recommended structural fix. Measure-only, it emits a diagnosis and does not auto-fix. Trigger on `/gaia-react-perf` or natural-language asks like "profile renders", "measure renders", "why is X re-rendering", or "diagnose render performance". Do NOT trigger on vague "feels slow", "janky", or "optimize my app".
 ---
 
 Run the GAIA **react-perf** measure-only diagnostic with these arguments: `$ARGUMENTS`

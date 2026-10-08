@@ -460,7 +460,7 @@ check_description() {
 @test "the description check fails with Autonomous Dependabot put back" {
   local copy
   copy="$(scratch_copy "$SKILL" "description-autonomous.md")"
-  replace_fixed "$copy" 'description: Dependency remediation' 'description: Autonomous Dependabot, dependency remediation'
+  replace_fixed "$copy" 'description: Remediates dependencies' 'description: Autonomous Dependabot, remediates dependencies'
   run check_description "$copy"
   [ "$status" -ne 0 ]
 }

@@ -1,6 +1,6 @@
 ---
 name: eslint-fixes
-description: Resolve specific ESLint errors and warnings that appear in this project. Use when fixing lint failures, ESLint reported issues, or autofix conflicts (e.g. no-void, canonical/export-specifier-newline vs prettier, no-shadow trailing underscores, sonarjs/deprecation, you-dont-need-lodash-underscore, unawaited user-event calls in a play function, raw DOM property checks the jest-dom matchers replace).
+description: Resolves the ESLint errors and warnings this project's lint config reports, including autofix conflicts. Use when fixing lint failures, ESLint-reported issues, or an autofix that fights another rule.
 model: haiku
 ---
 
