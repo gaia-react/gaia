@@ -1,6 +1,6 @@
 ---
 name: file-tech-debt
-description: File a new tech-debt GitHub issue for an out-of-scope code-review finding, building the dedup key, checking for an existing open or declined-closed match, and only if none exists, creating the issue with the right labels and touching the debt-count staleness sentinel. Trigger on natural-language asks like "file a tech-debt issue", "record this as tech-debt", "open a tech-debt issue for this out-of-scope finding", or "file this finding as debt". Do NOT trigger on draining, fixing, listing, or prioritizing existing debt (that's `/gaia-debt`), nor on general "clean up the code" or "fix this bug" asks that aren't about filing a new tracked issue.
+description: Files a new tech-debt GitHub issue for an out-of-scope code-review finding. Builds the dedup key, checks for an existing open or declined-closed match, and only if none exists, creates the issue with the right labels and touches the debt-count staleness sentinel. Trigger on natural-language asks like "file a tech-debt issue", "record this as tech-debt", "open a tech-debt issue for this out-of-scope finding", or "file this finding as debt". Do NOT trigger on draining, fixing, listing, or prioritizing existing debt (that's `/gaia-debt`), nor on general "clean up the code" or "fix this bug" asks that aren't about filing a new tracked issue.
 ---
 
 # File a tech-debt issue
@@ -26,15 +26,19 @@ This line is what every later step (dedup, re-filing checks, any caller-side led
 
 ## 2. Check for an existing match (dedup)
 
-**Never rely on `gh`'s full-text search.** GitHub's search tokenizes on `/ : @`, so it cannot reliably match a key containing those characters. Query and match locally instead, and match on **the parsed `path=` and `line=` fields alone, ignoring `class=`**: a finding reclassified from `holistic/unclassified` to a seeded class (or the reverse) still carries the same `path=`+`line=` and must resolve to the same issue, not a new one.
+Run the dedup script with the finding's own path and line (the `path=` and `line=` from the key built in step 1):
 
-1. `gh issue list --label tech-debt --state open --limit 1000 --json number,title,body`. For each issue's `gaia-debt-key` comment, parse out its `path=` and `line=` fields and compare them against the finding's own path and line: `path=` as a string, `line=` as a parsed integer, so `line=4` never matches `line=42`. Two keys equal on both fields are the same finding regardless of what `class=` either one carries.
-2. Also check `--state closed` with the same `--limit 1000`: the same path+line comparison on a closed issue that carries the `wontfix` label (or was closed as not-planned) means the finding was **declined**, not merely resolved. Do not re-file it.
-3. Keyless fallback for issues a human filed by hand (no machine key present): scan open `tech-debt` issue bodies for the bare `<path>:<line>` substring. Anchor the match so the line number is followed by a non-digit or end-of-string, otherwise `foo.ts:4` false-matches a sibling `foo.ts:42`. This is the same path+line identity as 1 and 2, sourced from a bare-text scan instead of a parsed key; a hit here suppresses re-filing even with no key line at all.
+```bash
+bash .gaia/scripts/debt-dedup.sh --path <repo-relative-path> --line <line>
+```
 
-On any match (1, 2, or 3), hand back to the caller the **matched issue's number**, its **open/closed state**, and, when the match came from a parsed key (1 or 2), that key's **existing verbatim inner key** (`v1 class=… path=… line=…`). This recipe records nothing itself; callers own their bookkeeping (see above).
+Its exit code is the answer:
 
-Accepted tradeoff: two genuinely distinct findings that land on the exact same `path:line` with different root-cause classes collapse to one issue under path+line dedup. This is the same residual risk the keyless `path:line` fallback already accepted; matching on path+line alone extends it to the machine-keyed case too.
+- **0**: no match. Continue to step 4.
+- **1**: a match. Read `number`, `state`, `declined`, and `inner_key` from its one JSON line and hand them back to the caller. An open match's `inner_key` is the key the caller records, never a freshly built one; it is `null` when `source` is `keyless` (a hand-filed issue with no parsed key), so the caller records the number alone; a declined match gets no bookkeeping entry.
+- **2 or 3**: the check could not run (usage error, or an input it could not read or that hit its result limit). Report its stderr line, do not file, and do not treat it as a pass.
+
+The script's header owns the matching rules: path plus line with `class=` ignored, declined-closed detection, the keyless fallback for hand-filed issues, and the accepted collapse of distinct findings on one `path:line`. This recipe records nothing itself; callers own their bookkeeping (see above).
 
 ## 3. Idempotency: skip if a match exists
 
@@ -46,7 +50,7 @@ If no match exists:
 
 1. Create the labels idempotently first (step 6), a pre-existing label is not an error.
 2. Build the full issue body (step 5) in a gitignored body-file, not inline. Give the file a per-run-unique name under `.gaia/local/audit/` (for example `.gaia/local/audit/issue-body-<something-unique>.md`). The name must be unique because the create-and-cleanup sub-step below deletes it: two runs sharing one fixed name (CI plus a local run, the same pair sub-step 3 below guards against) would race, and one run's cleanup would delete the other's in-flight body out from under it.
-3. Re-check the dedup query from step 2 immediately before creating, this shrinks the race window where a concurrent run (CI plus a local run, for instance) files the same finding twice. It is the same path+line matching basis as step 2, so a reclassification that lands between your first check and now still resolves to the already-open issue. Prefer a search-or-update path over a blind create when your environment supports it.
+3. Re-run the step 2 script call immediately before creating, with the same exit mapping (a match or an exit of 2 or 3 means do not create). This shrinks the race window where a concurrent run (CI plus a local run, for instance) files the same finding twice, and a reclassification that lands between your first check and now still resolves to the already-open issue. Prefer a search-or-update path over a blind create when your environment supports it.
 4. **Check the metadata before creating, and do not create on a finding.** Pass the exact label set the create call is about to carry, comma-separated, together with the body file built in sub-step 2:
 
    ```bash

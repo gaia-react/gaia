@@ -1,6 +1,6 @@
 ---
 name: gaia-debt
-description: Fix the tech-debt backlog, a single issue or a recommended related batch, highest severity then oldest first, on a fresh isolated branch through the audit gate, closing the issue(s) on merge. With no argument it drains the top of the backlog; one issue number fixes that issue directly, and several issue numbers choose your own batch, budgeted. An optional trailing `[use] worktree|branch` picks the isolation mode. A named number that cannot be drained stops with a reason.
+description: Fixes the tech-debt backlog, a single issue or a recommended related batch, highest severity then oldest first, on a fresh isolated branch through the audit gate, closing the issue(s) on merge. With no argument it drains the top of the backlog; one issue number fixes that issue directly, and several issue numbers name the operator's own batch, budgeted. An optional trailing `[use] worktree|branch` picks the isolation mode. A named number that cannot be drained stops with a reason.
 argument-hint: [<issue-number>...] [[use] worktree|branch]
 ---
 
@@ -19,4 +19,11 @@ gaia_refuse_if_worktree "/gaia-debt" || exit 1
 
 If the detection does not fire, fall through to the workflow dispatch line below.
 
-Read `.claude/skills/gaia/references/debt.md` from the project root and follow it exactly. That reference is written to consume an argument string, treat the arguments above as that input. The one accepted form is `[<issue-number> ...] [[use] worktree|branch]`: zero or more issue numbers, each with an optional `#`, separated by spaces or commas; one number fixes that issue directly and several name your own batch. `worktree` or `branch`, optionally preceded by `use`, as the last token (or the whole argument), picks the isolation mode up front. The reference's argument parser reads the arguments, and an unrecognized argument stops the run with the accepted form. If no arguments were provided, follow the reference's no-argument path (the top-of-backlog flow).
+Read `.claude/skills/gaia/references/debt.md` from the project root and follow it exactly, treating the arguments above as its input: zero or more issue numbers (one fixes that issue, several name your own batch) and an optional trailing isolation mode. The reference's argument parser owns the grammar, and an unrecognized argument stops the run with the accepted form; no argument runs the top-of-backlog flow.
+
+`debt.md` routes each run to at most a few of these sub-references, all under `.claude/skills/gaia/references/debt/`. Read one only when a "Read ... now" line sends you there, and then read the whole file:
+
+- `recommend.md`: the no-argument offer.
+- `named.md`: validating named issue numbers and fixing one issue or a named set.
+- `spec-handoff.md`: handing a spec-class issue off to `/gaia-spec`.
+- `worktree-cleanup.md`: post-merge cleanup when the fix ran in a worktree.
