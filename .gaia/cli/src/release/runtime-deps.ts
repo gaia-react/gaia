@@ -22,10 +22,10 @@
  * Each extracted path constant is verified to be either:
  *
  *   - present in `.gaia/manifest.json` (a shipped file), or
- *   - an adopter-owned sentinel (`wiki/hot.md`, `wiki/log.md`,
+ *   - an adopter-owned sentinel (`wiki/log.md`,
  *     `.gaia/VERSION`, `.gaia/manifest.json`), or
  *   - a runtime-allocated path on adopter machines (under
- *     `.gaia/local/`, `.claude/handoff/`,
+ *     `.gaia/local/`,
  *     `.claude/worktrees/`, `.claude/agent-memory/`, `.claude/audit/`,
  *     or one of the per-session marker files).
  *
@@ -94,7 +94,6 @@ export const ADOPTER_OWNED_SENTINELS: ReadonlySet<string> = new Set([
  */
 const RUNTIME_PREFIXES: readonly string[] = [
   '.gaia/local',
-  '.claude/handoff',
   '.claude/worktrees',
   '.claude/agent-memory',
   '.claude/audit',

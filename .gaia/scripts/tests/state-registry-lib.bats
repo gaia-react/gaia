@@ -236,18 +236,17 @@ run_in_registry_repo() {
 
 # ========== gaia_registry_rm_whitelist ==========
 
-@test "gaia_registry_rm_whitelist: prints exactly the 8 rm-whitelist rows in registry order" {
-  run_in_repo gaia_registry_rm_whitelist
+@test "gaia_registry_rm_whitelist: prints exactly the 7 rm-whitelist rows in registry order" {
+  run_in_registry_repo gaia_registry_rm_whitelist
   [ "$status" -eq 0 ]
-  [ "${#lines[@]}" -eq 8 ]
+  [ "${#lines[@]}" -eq 7 ]
   [ "${lines[0]}" = $'.gaia/local/plans\ttrue' ]
   [ "${lines[1]}" = $'.gaia/local/specs\ttrue' ]
   [ "${lines[2]}" = $'.gaia/local/audit\ttrue' ]
-  [ "${lines[3]}" = $'.gaia/local/handoff\ttrue' ]
-  [ "${lines[4]}" = $'.gaia/local/cache\ttrue' ]
-  [ "${lines[5]}" = $'.gaia/local/runs\ttrue' ]
-  [ "${lines[6]}" = $'dist\tfalse' ]
-  [ "${lines[7]}" = $'build\tfalse' ]
+  [ "${lines[3]}" = $'.gaia/local/cache\ttrue' ]
+  [ "${lines[4]}" = $'.gaia/local/runs\ttrue' ]
+  [ "${lines[5]}" = $'dist\tfalse' ]
+  [ "${lines[6]}" = $'build\tfalse' ]
 }
 
 @test "gaia_registry_rm_whitelist: no jq on PATH returns 1 and prints nothing on stdout (a caller that cannot read the list treats every path as non-whitelisted)" {
@@ -269,13 +268,12 @@ run_in_registry_repo() {
 
 # ========== gaia_registry_integrity_snapshot ==========
 
-@test "gaia_registry_integrity_snapshot: prints exactly the 3 durable-state dirs in registry order" {
-  run_in_repo gaia_registry_integrity_snapshot
+@test "gaia_registry_integrity_snapshot: prints exactly the 2 durable-state dirs in registry order" {
+  run_in_registry_repo gaia_registry_integrity_snapshot
   [ "$status" -eq 0 ]
-  [ "${#lines[@]}" -eq 3 ]
+  [ "${#lines[@]}" -eq 2 ]
   [ "${lines[0]}" = "specs" ]
   [ "${lines[1]}" = "plans" ]
-  [ "${lines[2]}" = "handoff" ]
 }
 
 @test "gaia_registry_integrity_snapshot: no jq on PATH returns 1 and prints nothing on stdout (a fail-closed consumer must refuse rather than treat an empty list as a clean diff)" {
@@ -408,7 +406,6 @@ run_in_registry_repo() {
     "red-ledger/observations.jsonl:per-tree"
     "worthiness-ledger/worthiness.jsonl:per-tree"
     "forensics/2026-07-23-x.md:per-tree"
-    "handoff/HANDOFF-2026-07-23-x.md:per-tree"
     "harden/declines.json:shared"
     "harden/reviewed.json:shared"
     "harden/review-tally.json:shared"
@@ -441,12 +438,13 @@ run_in_registry_repo() {
     ".mentorship-swept:residue"
     "plans/archived/PLAN-001:residue"
     "specs/archived/SPEC-001:residue"
+    "handoff/2026-07-23-x.md:residue"
   )
   local case_line relative_path expected got
   for case_line in "${cases[@]}"; do
     relative_path="${case_line%%:*}"
     expected="${case_line##*:}"
-    run_in_repo gaia_registry_classify "$relative_path"
+    run_in_registry_repo gaia_registry_classify "$relative_path"
     got="$output"
     if [ "$got" = "unknown" ]; then
       echo "NOT COVERED: $relative_path (expected $expected)"

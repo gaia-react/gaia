@@ -213,7 +213,6 @@ transforms:
         path-allowlist:
           # History ledgers, exempt by the rule; same release-baseline carve-out
           # as excluded-refs above.
-          - "wiki/hot.md"
           - "wiki/log.md"
 
       # The bare `#N` form, scoped to non-Markdown files. In Markdown a bare
@@ -248,7 +247,6 @@ transforms:
         scope:
           - "**"
         path-allowlist:
-          - "wiki/hot.md"
           - "wiki/log.md"
 
       # ---- Release-excluded references leaked into shipped surfaces ----
@@ -276,9 +274,8 @@ transforms:
         path-allowlist:
           # Adopter-owned sentinels that ship in the tarball but contain
           # release-baseline content after `gaia-maintainer release scrub-wiki`.
-          # Local simulations against mid-development hot/log content would
+          # Local simulations against mid-development log content would
           # otherwise false-positive.
-          - "wiki/hot.md"
           - "wiki/log.md"
         # Excluded only to withhold GAIA's own copy; adopters create their own,
         # so a shipped reference to one points at something they do have.
@@ -380,9 +377,8 @@ transforms:
           # release-notes skill is release-excluded (category 1); its
           # ../website/ references are maintainer-only and never ship.
           - ".claude/skills/release-notes/SKILL.md"
-          # Same hot/log carve-out as excluded-refs; they get
+          # Same log carve-out as excluded-refs; it gets
           # release-baseline content via `gaia-maintainer release scrub-wiki`.
-          - "wiki/hot.md"
           - "wiki/log.md"
         line-allowlist:
           # `gaia wiki dead-paths` is the check that FLAGS sibling-monorepo
@@ -478,7 +474,6 @@ transforms:
         scope:
           - "wiki/**/*.md"
         path-allowlist:
-          - "wiki/hot.md"
           - "wiki/log.md"
 
       # ---- Bare-prose Title-Case mentions of release-excluded wiki titles ----
@@ -505,7 +500,6 @@ transforms:
         scope:
           - "wiki/**/*.md"
         path-allowlist:
-          - "wiki/hot.md"
           - "wiki/log.md"
         title-opt-out:
           - "GAIA" # the project's own name; a generic word on nearly every shipped page.

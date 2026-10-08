@@ -28,7 +28,7 @@ const HELP_TEXT = `Usage: gaia-maintainer release <subcommand> [args]
   changelog [--draft] [--version <X.Y.Z>]     Graduate CHANGELOG's [Unreleased] block
                                               (--draft: render a review block, write nothing).
   scrub-wiki [--version <X.Y.Z>] [--date <D>] [--check]
-                                              Reset wiki/hot.md and wiki/log.md
+                                              Reset wiki/log.md
                                               (--check: verify they are fresh, write nothing).
   manifest [--ship <path>]... [--withhold <path> --category <N> --reason <text>]...
                                               Regenerate .gaia/manifest.json. Refuses while any

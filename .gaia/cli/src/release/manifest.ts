@@ -37,7 +37,6 @@ export const ADOPTER_OWNED_SENTINELS: ReadonlySet<string> = new Set([
   // a package by editing it, so /update-gaia must never merge or overwrite it.
   '.gaia/packages.json',
   '.gaia/VERSION',
-  'wiki/hot.md',
   'wiki/log.md',
 ]);
 

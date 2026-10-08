@@ -104,10 +104,10 @@ tree="$(gaia_resolve_tree_root "$tree" 2>/dev/null)" || exit 0
 [ -n "$tree" ] || exit 0
 
 # ---------- carry forward per-tree ledger/report data under the tree key ----------
-# Four .gaia/local segments moved one path segment deeper, keyed by this
-# tree's own gaia_tree_key, so multiple trees stop shadowing each other's
+# The per-tree .gaia/local segments moved one path segment deeper, keyed by
+# this tree's own gaia_tree_key, so multiple trees stop shadowing each other's
 # data at one shared unkeyed path: red-ledger/observations.jsonl,
-# worthiness-ledger/worthiness.jsonl, forensics/<file>, handoff/<file>.
+# worthiness-ledger/worthiness.jsonl, forensics/<file>.
 # Every reader looks at the keyed path only -- this is the one place that
 # migrates the old data, so anything left behind here is gone from its own
 # reader's point of view.
@@ -146,7 +146,7 @@ carry_forward_file() {
   fi
 }
 
-# carry_forward_directory_contents <local_subdirectory>: the forensics/ and handoff/ shape --
+# carry_forward_directory_contents <local_subdirectory>: the forensics/ shape --
 # any number of loosely-named files sitting directly in the old unkeyed
 # directory, never a subdirectory (which is how an already-migrated keyed
 # subdir is left alone). Same existence and never-overwrite rules as
@@ -205,7 +205,7 @@ migrate_keyed_subtrees_to_main() {
   [ "$main_root" = "$tree" ] && return 0
 
   local local_subdirectory source destination
-  for local_subdirectory in red-ledger worthiness-ledger forensics handoff; do
+  for local_subdirectory in red-ledger worthiness-ledger forensics; do
     source="$tree/.gaia/local/$local_subdirectory/$tree_key"
     [ -d "$source" ] || continue
     destination="$main_root/.gaia/local/$local_subdirectory/$tree_key"
@@ -270,7 +270,6 @@ if [ ! -L "$tree/.gaia/local" ]; then
   carry_forward_file "red-ledger" "observations.jsonl"
   carry_forward_file "worthiness-ledger" "worthiness.jsonl"
   carry_forward_directory_contents "forensics"
-  carry_forward_directory_contents "handoff"
   migrate_keyed_subtrees_to_main
   migrate_audit_artifacts_to_main
 fi

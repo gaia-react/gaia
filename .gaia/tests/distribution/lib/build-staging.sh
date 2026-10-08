@@ -81,7 +81,7 @@ fi
 
 rsync -a --files-from="$INCLUDE" "$PROJECT_ROOT/" "$OUTPUT_DIRECTORY/"
 
-# Phase 2; Scrub-wiki. Resets wiki/hot.md and wiki/log.md to release-
+# Phase 2; Scrub-wiki. Resets wiki/log.md to release-
 # baseline state. release.yml does NOT do this; it runs in the local
 # `/gaia-release` runbook BEFORE the release PR is merged. We replicate
 # it against the staging tree so the harness mirrors what an adopter
@@ -102,7 +102,7 @@ rsync -a --files-from="$INCLUDE" "$PROJECT_ROOT/" "$OUTPUT_DIRECTORY/"
 
 # Phase 3; Scrub. Same invocation as release.yml's "Bundle-time scrub
 # (marker-strip + leak-check)" step. Runs after scrub-wiki so the leak-check
-# scans the reset log.md/hot.md (see above).
+# scans the reset log.md (see above).
 "$PROJECT_ROOT/.gaia/cli/gaia-maintainer" release scrub "$OUTPUT_DIRECTORY"
 
 # Phase 4; Runtime-deps. Same invocation as release.yml's "Verify runtime

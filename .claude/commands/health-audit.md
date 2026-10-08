@@ -105,7 +105,7 @@ The comprehensive line is additive: it does not change the `HEALTH AUDIT: <grade
 - Do not fix anything yourself. Fixers fix; you orchestrate.
 - Do not re-grade between cycles, only on a clean Adjudicator report or on escalation.
 - Do not commit. Fixers leave the working tree dirty; the human commits.
-- Do not write to `wiki/log.md` or `wiki/hot.md`.
+- Do not write to `wiki/log.md`.
 - Do not edit the runbook mid-loop. If the runbook needs changing, escalate first.
 - Do not delete this run's `.gaia/local/audit/archived/<stamp>/` folder (RUN_DIR) on escalation. Preserve everything for human review.
 - Do not let the Comprehensive phase edit audited files or file issues; it is report-only, and it never feeds the integrity verdict math.

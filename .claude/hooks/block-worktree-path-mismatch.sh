@@ -183,7 +183,7 @@ resolved_target_directory="$(CDPATH='' cd "$target_directory" 2>/dev/null && pwd
 # to the ordinary cross-tree deny below, the same as before the cutover.
 #
 # The one entry that still needs protecting is per-tree state
-# (red-ledger/, worthiness-ledger/, forensics/, handoff/): each addresses
+# (red-ledger/, worthiness-ledger/, forensics/): each addresses
 # itself under a subdirectory named by gaia_tree_key
 # (.gaia/scripts/main-root-lib.sh), the acting tree's own physically-resolved
 # root, hashed. A write whose path carries the ACTING tree's own key is

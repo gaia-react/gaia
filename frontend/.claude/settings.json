@@ -76,7 +76,6 @@
       "Bash(pnpm test:ci:*)",
       "Bash(pnpm typecheck:*)",
       "Bash(rm -f .gaia/local/cache/*)",
-      "Bash(rm -f .gaia/local/handoff/*/HANDOFF-*.md)",
       "Bash(rm -rf .gaia/cache)",
       "Bash(rm -rf .gaia/local/cache/*)",
       "Bash(rm -rf .gaia/local/plans/*)",
@@ -149,25 +148,12 @@
             "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/ports-session-start.sh\""
           }
         ]
-      },
-      {
-        "matcher": "startup|resume|clear|compact",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/wiki-hot-inject.sh\""
-          }
-        ]
       }
     ],
     "Stop": [
       {
         "matcher": "",
         "hooks": [
-          {
-            "type": "command",
-            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/wiki-session-stop.sh\""
-          },
           {
             "type": "command",
             "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/token-tally-review.sh\""
@@ -183,10 +169,6 @@
       {
         "matcher": "",
         "hooks": [
-          {
-            "type": "command",
-            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/janitor-report-drain.sh\""
-          },
           {
             "type": "command",
             "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/audit-loop-grant.sh\""

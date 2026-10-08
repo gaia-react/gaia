@@ -4,7 +4,7 @@
 # Asserts the staged tarball matches the manifest contract:
 #  1. Every path in .gaia/manifest.json files{} exists in the staging tree.
 #  2. Every path in .gaia/release-exclude is ABSENT from the staging tree.
-#  3. Adopter-owned sentinels (wiki/hot.md, wiki/log.md, .gaia/VERSION,
+#  3. Adopter-owned sentinels (wiki/log.md, .gaia/VERSION,
 #     .gaia/manifest.json) exist and contain release-baseline content
 #     (not maintainer dev content).
 #  4. .gaia/scripts/check-hook-scope-manifest.sh ships and passes against the
@@ -59,7 +59,7 @@ if [ "${#LEAKED[@]}" -gt 0 ]; then
 fi
 
 # 3. Adopter-owned sentinels present with release-baseline content.
-for sentinel in wiki/hot.md wiki/log.md .gaia/VERSION .gaia/manifest.json; do
+for sentinel in wiki/log.md .gaia/VERSION .gaia/manifest.json; do
   [ -e "$STAGING/$sentinel" ] || { fail "sentinel missing: $sentinel"; exit 1; }
 done
 
@@ -70,17 +70,14 @@ FILE_VERSION="$(tr -d '[:space:]' < "$STAGING/.gaia/VERSION")"
 [ "$PACKAGE_VERSION" = "$FILE_VERSION" ] \
   || { fail ".gaia/VERSION ($FILE_VERSION) != package.json version ($PACKAGE_VERSION)"; exit 1; }
 
-# wiki/hot.md and wiki/log.md should carry the release-marker strings
+# wiki/log.md should carry the release-marker string
 # that `gaia-maintainer release scrub-wiki` writes (Step 8 + 9 of
 # `/gaia-release`).
 # Asserting on the actual rendered content is stricter than a line-count
 # proxy; it catches "scrub-wiki didn't run" AND "scrub-wiki wrote the
-# wrong version". Marker shapes are pinned to scrub-wiki.ts:renderHotMd /
-# renderLogMd.
+# wrong version". The marker shape is pinned to scrub-wiki.ts:renderLogMd.
 grep -qF "## [v$PACKAGE_VERSION]" "$STAGING/wiki/log.md" \
   || { fail "wiki/log.md missing '## [v$PACKAGE_VERSION]' release marker; scrub-wiki did not run or wrote a wrong version"; exit 1; }
-grep -qF "GAIA v$PACKAGE_VERSION" "$STAGING/wiki/hot.md" \
-  || { fail "wiki/hot.md missing 'GAIA v$PACKAGE_VERSION' release marker; scrub-wiki did not run or wrote a wrong version"; exit 1; }
 
 # 4. Hook-scope check, run the way an adopter runs it: the staged copy
 # against the staged tree. It scans every staged hook for a bare .gaia/local

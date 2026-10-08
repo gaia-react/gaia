@@ -381,7 +381,6 @@ describe('release runtime-deps CLI', () => {
         '#!/usr/bin/env bash',
         'cat .gaia/manifest.json',
         'cat .gaia/VERSION',
-        'cat wiki/hot.md',
         'cat wiki/log.md',
         '',
       ].join('\n')

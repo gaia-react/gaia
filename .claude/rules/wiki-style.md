@@ -2,7 +2,6 @@
 paths:
   - 'wiki/**/*.md'
   - 'frontend/app/**/*.{ts,tsx,js,jsx,css}'
-  - '.claude/instructions/**/*.md'
   - 'frontend/.claude/**/*.md'
   - '.claude/skills/**/*.md'
   - '.claude/commands/**/*.md'
@@ -35,7 +34,6 @@ Wiki readers (maintainers, adopters) need to understand the system as it is now.
 ## Exceptions
 
 - **`wiki/log.md`**: append-only change ledger, exempt by design.
-- **`wiki/hot.md`**: auto-loaded recent-context cache. Body is by design a recap of recent commits / threads; historical phrasing is the point. The cache is overwritten by the sync stage of `/gaia-wiki`, not edited by hand.
 - **`wiki/meta/`**: audit artifacts (lint reports, consolidate reports). Their purpose is referencing specific commits / SHAs / dates, so the no-inline-refs rule does not apply.
 - **Frontmatter (`created`, `updated`, `status`, etc.)**: metadata, not prose.
 <!-- gaia:maintainer-only:start -->
@@ -48,8 +46,8 @@ Wiki readers (maintainers, adopters) need to understand the system as it is now.
 Before merging changes that touch any in-scope path, and before running `/gaia-wiki`:
 
 ```bash
-# UAT / SPEC refs in wiki body prose (excluding log.md, hot.md, and meta/ audit reports)
-grep -rEn "UAT-[0-9]+|SPEC-[0-9]+" wiki/ --include="*.md" --exclude="log.md" --exclude="hot.md" --exclude-dir="meta"
+# UAT / SPEC refs in wiki body prose (excluding log.md and meta/ audit reports)
+grep -rEn "UAT-[0-9]+|SPEC-[0-9]+" wiki/ --include="*.md" --exclude="log.md" --exclude-dir="meta"
 
 # UAT / SPEC refs in source comments
 grep -rEn "// .*(UAT|SPEC)-[0-9]+|/\*.*(UAT|SPEC)-[0-9]+|\*.*(UAT|SPEC)-[0-9]+" frontend/app/
@@ -67,7 +65,7 @@ grep -rEn "\bSPEC-[0-9]{3,}\b" \
   .gaia/scripts/spec/ .gaia/templates/spec/
 
 # Historical-style phrasing in wiki body prose
-grep -rEn "\bchanged from|was changed|previously (did|was|stated|had|used)|previously set|as of [0-9]{4}|in PR #?[0-9]+|in commit [a-f0-9]{6,}" wiki/ --include="*.md" --exclude="log.md" --exclude="hot.md" --exclude-dir="meta"
+grep -rEn "\bchanged from|was changed|previously (did|was|stated|had|used)|previously set|as of [0-9]{4}|in PR #?[0-9]+|in commit [a-f0-9]{6,}" wiki/ --include="*.md" --exclude="log.md" --exclude-dir="meta"
 ```
 
 Any non-empty match outside this rule's prose is a candidate for rewrite. The narrative-vs-structural triage for the `.claude/` / `.gaia/scripts/spec/` / `.gaia/templates/spec/` greps is a human read, the regex flags candidates; `.claude/rules/working-doc-ids.md` codifies what stays.
