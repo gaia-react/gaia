@@ -122,7 +122,6 @@ The maintainer's copy of this page carries every root file. An adopter's copy ca
 | `guard-awk-lib.sh` | no | sourced | Shared awk scaffolding the guard lints build their detectors on. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `hook-registration-lib.sh` | no | sourced | The shared read of `.claude/settings.json`'s registrations, and the oracle for whether a registered hook can stop a tool call. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `ledger-path-lib.sh` | yes | sourced | The one definition of every main-checkout ledger path, so renaming one changes one place. |
-| `ledger-status-migrate.sh` | yes | manual | One-time, idempotent migration of spec and plan ledger rows onto the unified status vocabulary. |
 | `link-worktree.sh` | yes | `provision-worktree.sh` hook, `/setup-gaia` | Lays the shared-state symlinks a linked worktree needs. |
 | `main-only-lib.sh` | yes | the main-only skills | Refusal helper for a flow that must run in the main checkout, never a linked worktree. |
 | `main-root-lib.sh` | yes | sourced by most hooks and scripts | GAIA's shared main-checkout resolver: the one answer to which checkout am I in. |

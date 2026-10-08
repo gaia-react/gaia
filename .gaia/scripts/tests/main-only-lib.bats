@@ -318,9 +318,8 @@ CALL_SITE_FLOW_NAMES=(
 
 # The flows that must never carry the refusal: each provisions or drives
 # its own worktree mid-flow (gaia-plan, gaia-debt's fix path) or must stay
-# reachable from inside one (gaia-spec, gaia-forensics, gaia-handoff,
-# gaia-pickup, file-tech-debt). This half is what catches a future drive-by
-# adding the refusal to one of these, e.g. onto /gaia-plan, which would break
+# reachable from inside one (gaia-spec, gaia-forensics, file-tech-debt).
+# This half is what catches a future drive-by adding the refusal to one of these, e.g. onto /gaia-plan, which would break
 # plan execution the moment the flow enters the worktree it just created.
 #
 # distribution-audit joins them on a different warrant, and one worth stating
@@ -343,8 +342,6 @@ NO_CALL_SITE_FILES=(
   ".claude/commands/gaia-plan.md"
   ".claude/commands/gaia-spec.md"
   ".claude/commands/gaia-forensics.md"
-  ".claude/skills/gaia-handoff/SKILL.md"
-  ".claude/skills/gaia-pickup/SKILL.md"
   ".claude/skills/file-tech-debt/SKILL.md"
 )
 

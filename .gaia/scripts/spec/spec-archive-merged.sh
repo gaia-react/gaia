@@ -79,20 +79,6 @@ retention_days="${GAIA_SPEC_RETENTION_DAYS:-30}"
 case "$retention_days" in '' | *[!0-9]*) retention_days=30 ;; esac
 now_epoch="$(date -u +%s 2>/dev/null || echo 0)"
 
-# _age_past_window <merged_at_iso>: 0 iff merged_at is parseable AND older
-# than the retention window (reap-eligible). 1 iff missing/unparseable/within
-# window (keep). A missing or unparseable merged_at never reads as infinitely
-# old, so it keeps the folder rather than authorizing a delete.
-_age_past_window() {
-  local iso="$1" merged_epoch age_days
-  [ -n "$iso" ] || return 1
-  merged_epoch="$(jq -rn --arg iso_timestamp "$iso" '($iso_timestamp | sub("\\.[0-9]+Z$";"Z") | fromdateiso8601)' 2>/dev/null || true)"
-  case "$merged_epoch" in '' | *[!0-9]*) return 1 ;; esac
-  [ "$now_epoch" -gt 0 ] || return 1
-  age_days=$(( (now_epoch - merged_epoch) / 86400 ))
-  [ "$age_days" -ge "$retention_days" ] && return 0 || return 1
-}
-
 # _consolidation_gate_pass <folder>: 0 iff the folder holds neither SPEC.md
 # nor AUDIT.md, or its SUMMARY.md is present and well-formed (consolidation
 # ran). 1 keeps the folder: those layers are its sole record and consolidation
@@ -116,6 +102,15 @@ _consolidation_gate_pass() {
 _library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../ledger-path-lib.sh
 . "${_library_directory}/../ledger-path-lib.sh" 2>/dev/null || true
+# The age test lives in ledger-lib.sh. Loaded bracketed against an unparseable
+# copy; without it no age can be judged, and an unknown age must never read as
+# past the window, so the sweep reaps nothing.
+# shellcheck source=ledger-lib.sh
+[ -f "${_library_directory}/ledger-lib.sh" ] && . "${_library_directory}/ledger-lib.sh" 2>/dev/null || true
+if ! type gaia_ledger_age_past_window >/dev/null 2>&1; then
+  echo "spec-archive-merged: ledger-lib.sh is unusable; nothing swept" >&2
+  exit 0
+fi
 
 # repo_root names the tree this sweep runs in; the ledger and folders it
 # sweeps are main's, because the state registry declares specs/ main-only.
@@ -170,7 +165,7 @@ while IFS= read -r spec_id; do
   # representation for a folder that is kept regardless. A missing/unparseable
   # merged_at keeps the folder (fail-closed). No caller bypasses it.
   merged_at="$(jq -r --arg id "$spec_id" '.specs[] | select(.id==$id) | .merged_at // ""' "$ledger_path" 2>/dev/null || true)"
-  if ! _age_past_window "$merged_at"; then
+  if ! gaia_ledger_age_past_window "$merged_at" "$now_epoch" "$retention_days"; then
     echo "spec-archive-merged: $spec_id within retention window (or merged_at missing/unparseable); kept" >&2
     continue
   fi

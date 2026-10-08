@@ -50,12 +50,10 @@ TTL=21600
 #   - AUDIT_DRIFT_DAYS: days since the last `applied` audit before signal (a) fires.
 #   - AUDIT_MEMORY_DELTA: memory entries gained since the last `applied` audit
 #                         before signal (a) fires.
-#   - AUDIT_HOT_BUDGET / AUDIT_CLAUDEMD_BUDGET: auto-load word budgets for
-#     wiki/hot.md and root CLAUDE.md (signal b).
+#   - AUDIT_CLAUDEMD_BUDGET: auto-load word budget for root CLAUDE.md (signal b).
 #   - AUDIT_RULE_BUDGET: max lines for any .claude/rules/*.md (signal b).
 AUDIT_DRIFT_DAYS=30
 AUDIT_MEMORY_DELTA=10
-AUDIT_HOT_BUDGET=200
 AUDIT_CLAUDEMD_BUDGET=500
 AUDIT_RULE_BUDGET=200
 
@@ -73,7 +71,7 @@ PROJECT_ROOT="$(cd "$GAIA_DIRECTORY/.." && pwd)"
 # is the honest answer and the refresher still refreshes.
 #
 # STATE_ROOT anchors machine-local STATE only. Everything this script measures
-# out of the checkout itself -- wiki/hot.md, CLAUDE.md, .claude/rules/*.md, the
+# out of the checkout itself -- CLAUDE.md, .claude/rules/*.md, the
 # Serena language drift, and the two CLI invocations below -- stays on
 # PROJECT_ROOT, because those are tracked files that legitimately differ per
 # branch. Repointing them wholesale would make this refresher report a fact
@@ -571,13 +569,6 @@ fi
 # (b) Project drift: any committed auto-load file over budget. Budget-only, no
 # committed marker; clears for everyone once a dev fixes + commits.
 project_drift=false
-hot_words=$(wc -w < "$PROJECT_ROOT/wiki/hot.md" 2>/dev/null | tr -d '[:space:]')
-case "$hot_words" in
-  ''|*[!0-9]*) hot_words=0 ;;
-esac
-if [ "$hot_words" -gt "$AUDIT_HOT_BUDGET" ] 2>/dev/null; then
-  project_drift=true
-fi
 claudemd_words=$(wc -w < "$PROJECT_ROOT/CLAUDE.md" 2>/dev/null | tr -d '[:space:]')
 case "$claudemd_words" in
   ''|*[!0-9]*) claudemd_words=0 ;;

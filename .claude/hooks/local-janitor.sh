@@ -56,14 +56,13 @@
 # idempotent fact, so however many landings occur it collapses to at most one
 # file; that is what bounds it, with no cap and no retention window. A
 # fast-forward that was TRIED and failed additionally writes one line to
-# .gaia/local/cache/shared/wiki-base-catchup.report, drained (read, then
-# deleted, so it surfaces exactly once) by janitor-report-drain.sh, a
-# UserPromptSubmit hook whose stdout reaches the conversation. A merely
+# .gaia/local/cache/shared/wiki-base-catchup.report, which wiki-session-start.sh
+# prints and deletes right after this script returns, so it surfaces exactly
+# once on SessionStart stdout, which reaches the conversation. A merely
 # SKIPPED attempt is silent and leaves base byte-identical.
 #
-# Invoked from wiki-session-start.sh (a type:command SessionStart hook, the
-# side-effect form Anthropic still permits; it injects NOTHING into
-# context). Also runnable directly for testing:
+# Invoked from wiki-session-start.sh. This script itself writes nothing to
+# stdout. Also runnable directly for testing:
 #   bash .claude/hooks/local-janitor.sh
 #
 # Fail-safe: every gate above is cheap and local, the fast-forward is
@@ -504,11 +503,11 @@ if [ "$attempt_fast_forward" -eq 1 ] && [ -n "$base" ]; then
       if [ -d "$main_root/.gaia/local" ]; then
         mkdir -p "$main_root/.gaia/local/cache/shared" 2>/dev/null
         # Temp-file-plus-mv, same idiom wiki_catchup_state_set uses above: a
-        # plain truncating redirect leaves a window where janitor-report-drain.sh
-        # (a separate process draining this file: read, then delete) can
-        # observe it mid-truncate as blank and lose the refusal permanently.
-        # `mv -f` is atomic, so a concurrent drain either sees the old
-        # content or the new content, never neither.
+        # plain truncating redirect leaves a window where another session's
+        # start hook (a separate process printing this file, then deleting
+        # it) can observe it mid-truncate as blank and lose the refusal
+        # permanently. `mv -f` is atomic, so a concurrent reader either sees
+        # the old content or the new content, never neither.
         report_file="$main_root/.gaia/local/cache/shared/wiki-base-catchup.report"
         report_temporary_file="${report_file}.tmp.$$"
         printf '[wiki base] fast-forward of %s to origin/%s refused (%s); local base is behind. Resolve by hand; the next qualifying session retries.\n' \

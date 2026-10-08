@@ -11,7 +11,8 @@
 # needs, each on a line of its own (leading and trailing whitespace allowed,
 # nothing else), in the order the template places them. Without --spec the plan
 # is spec-less and only the wiki-promotion and post-merge-close sentinels are
-# required.
+# required. README.md, ORCHESTRATOR.md, KICKOFF.md and every task-*.md hold no
+# literal {PLAN_DIR}, {SPEC_PATH} or {AUDIT_PATH}; one failure line per hit.
 #
 # With --spec (a spec-derived plan) additionally: the UAT routing table in
 # README.md validates (delegated to uat_lib_validate_routing); the three UAT
@@ -128,6 +129,18 @@ if [ -f "$orchestrator" ]; then
     index=$((index + 1))
   done
 fi
+
+# The planner substitutes absolute values for these tokens in every file it
+# writes; one left behind sends a cold orchestrator to a literal brace path.
+for generated_file in "$readme" "$orchestrator" "$plan_directory/KICKOFF.md" ${task_files[@]+"${task_files[@]}"}; do
+  [ -f "$generated_file" ] || continue
+  for placeholder in '{PLAN_DIR}' '{SPEC_PATH}' '{AUDIT_PATH}'; do
+    while IFS=: read -r hit_line _; do
+      [ -n "$hit_line" ] || continue
+      fail "$(basename "$generated_file"):$hit_line holds the unsubstituted placeholder $placeholder"
+    done < <(grep -nF -- "$placeholder" "$generated_file" 2>/dev/null)
+  done
+done
 
 if [ -n "$spec_path" ] && [ -f "$readme" ]; then
   routing_problems=''

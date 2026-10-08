@@ -19,6 +19,8 @@
 #
 # Assertion style: .claude/rules/bats-assertions.md.
 
+bats_require_minimum_version 1.5.0
+
 setup() {
   HELPERS="$BATS_TEST_DIRNAME/helpers"
   ARCHIVE=".gaia/scripts/spec/spec-archive-abandoned.sh"
@@ -344,4 +346,31 @@ _clear_abandoned_at() {
 
   [ ! -e "$REPO/$SPECS/SPEC-001" ]
   [ ! -e "$REPO/.gaia/local/cache/spec-session-SPEC-001.lock" ]
+}
+
+@test "23: without ledger-lib.sh the sweep reaps nothing and says so; with it the same folder is reaped" {
+  REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-abandoned-folder SPEC-001)"
+  _seed_cost_row SPEC-001 sess-1 100 10 5 20
+
+  mv "$REPO/.gaia/scripts/spec/ledger-lib.sh" "$REPO/ledger-lib.sh.aside"
+  run --separate-stderr _archive "$REPO"
+  [ "$status" -eq 0 ]
+  grep -qF "ledger-lib.sh is unusable; nothing swept" <<<"$stderr"
+  [ -d "$REPO/$SPECS/SPEC-001" ]
+
+  mv "$REPO/ledger-lib.sh.aside" "$REPO/.gaia/scripts/spec/ledger-lib.sh"
+  run _archive "$REPO"
+  [ "$status" -eq 0 ]
+  [ ! -e "$REPO/$SPECS/SPEC-001" ]
+}
+
+@test "24: an unparseable cost.json leaves its folder for review and the sweep still reaps the next row" {
+  REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-abandoned-folder SPEC-001 --seed-abandoned-folder SPEC-002)"
+  printf '{ not json' > "$REPO/$SPECS/SPEC-001/cost.json"
+
+  run --separate-stderr _archive "$REPO"
+  [ "$status" -eq 0 ]
+  grep -qF "cost not fully represented in cost.jsonl; left SPEC-001 folder for review" <<<"$stderr"
+  [ -d "$REPO/$SPECS/SPEC-001" ]
+  [ ! -e "$REPO/$SPECS/SPEC-002" ]
 }

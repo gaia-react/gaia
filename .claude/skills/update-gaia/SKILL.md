@@ -8,7 +8,7 @@ Pull the latest GAIA release into this project without clobbering customizations
 - **`owned`**: GAIA controls fully.
 - **`shared`**: GAIA seeds, you customize.
 - **`wiki-owned`**: GAIA-seeded concept/decision/module wiki pages.
-- **adopter-owned (implicit)**: anything not in the manifest, plus sentinels like `wiki/hot.md`, `wiki/log.md`, `CHANGELOG.md`, `.gaia/VERSION`, `.gaia/manifest.json`. Never touched.
+- **adopter-owned (implicit)**: anything not in the manifest, plus sentinels like `wiki/log.md`, `CHANGELOG.md`, `.gaia/VERSION`, `.gaia/manifest.json`. Never touched.
 
 The first three take the same Step 7 rows. The class changes only two of them: which bucket a clean overwrite reports under (`owned` → `overwrite[]`, the other two → `merge[]`), and what happens when the release newly owns a path the adopter already has (`owned` backs up and overwrites, the other two fall through to the ordinary rows). Step 7 is authoritative.
 

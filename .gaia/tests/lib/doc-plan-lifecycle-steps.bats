@@ -2,16 +2,20 @@
 #
 # Doc-conformance suite for the generated orchestrator's lifecycle steps.
 #
-# .claude/skills/gaia/references/plan.md step 4 holds five verbatim step
-# blocks a planner copies into a generated ORCHESTRATOR.md, each opening with
-# a sentinel line plan-verify.sh checks: the UAT render, the owning-phase UAT
-# gate, the pre-audit UAT checks, the wiki promotion and the post-merge
-# close. .claude/skills/gaia/references/spec/lifecycle.md holds the
-# procedures those blocks point at. This suite pins:
+# .claude/skills/gaia/references/plan/planner.md, the file the planner
+# sub-agent reads, holds five verbatim step blocks a planner copies into a
+# generated ORCHESTRATOR.md, each opening with a sentinel line plan-verify.sh
+# checks: the UAT render, the owning-phase UAT gate, the pre-audit UAT checks,
+# the wiki promotion and the post-merge close.
+# .claude/skills/gaia/references/spec/lifecycle.md holds the procedures those
+# blocks point at, and .claude/skills/gaia/references/plan.md, the
+# /gaia-plan entry file, keeps the pre-flight sweep pointer. This suite pins:
 #
-#   - each sentinel sits once in plan.md, inside a fenced block, and each
+#   - each sentinel sits once in planner.md, inside a fenced block, and each
 #     block carries the command or pointer it exists for;
-#   - nothing in plan.md archives the plan folder or removes SPEC.md before
+#   - plan.md holds no sentinel and never names plan-archive.sh, so the
+#     blocks have one home;
+#   - nothing in planner.md archives the plan folder or removes SPEC.md before
 #     the post-merge close, and lifecycle.md's close confirms MERGED first;
 #   - the blocks, assembled the way a planner copies them (indentation
 #     kept), pass plan-verify.sh, and a dropped or reordered block fails it;
@@ -29,6 +33,7 @@
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   PLAN_MD="$REPO_ROOT/.claude/skills/gaia/references/plan.md"
+  PLANNER_MD="$REPO_ROOT/.claude/skills/gaia/references/plan/planner.md"
   SPEC_MD="$REPO_ROOT/.claude/skills/gaia/references/spec.md"
   LIFECYCLE_MD="$REPO_ROOT/.claude/skills/gaia/references/spec/lifecycle.md"
   PLAN_VERIFY="$REPO_ROOT/.gaia/scripts/spec/plan-verify.sh"
@@ -240,48 +245,72 @@ EOF
 
 # ---------- sentinels and block contents ----------
 
-@test "each orchestrator sentinel sits once in plan.md, inside a fenced block" {
-  check_sentinels_once_in_fences "$PLAN_MD"
+@test "each orchestrator sentinel sits once in planner.md, inside a fenced block" {
+  check_sentinels_once_in_fences "$PLANNER_MD"
 }
 
 @test "red twin: a duplicated or unfenced sentinel fails the sentinel check" {
-  copy="$BATS_TEST_TMPDIR/plan.md"
-  cp "$PLAN_MD" "$copy"
+  copy="$BATS_TEST_TMPDIR/planner.md"
+  cp "$PLANNER_MD" "$copy"
   printf '\n%s\n' "$S_GATE" >>"$copy"
   run check_sentinels_once_in_fences "$copy"
   [ "$status" -ne 0 ]
   # Unfenced: drop every fence line, so the sentinel lines sit in prose.
-  grep -vE '^[[:space:]]*```' "$PLAN_MD" >"$copy"
+  grep -vE '^[[:space:]]*```' "$PLANNER_MD" >"$copy"
   run check_sentinels_once_in_fences "$copy"
   [ "$status" -ne 0 ]
 }
 
 @test "each block carries the command or pointer it exists for" {
-  check_block_contents "$PLAN_MD"
+  check_block_contents "$PLANNER_MD"
 }
 
 @test "red twin: a block missing its command fails the contents check" {
-  copy="$BATS_TEST_TMPDIR/plan.md"
+  copy="$BATS_TEST_TMPDIR/planner.md"
   local needle
   for needle in 'uat-write.sh' '--phase' '--all' 'wiki-promote.md' 'runs only after'; do
-    awk -v needle="$needle" '{ gsub(needle, "removed") } { print }' "$PLAN_MD" >"$copy"
+    awk -v needle="$needle" '{ gsub(needle, "removed") } { print }' "$PLANNER_MD" >"$copy"
     run check_block_contents "$copy"
     [ "$status" -ne 0 ] || { echo "removing '$needle' did not fail the check" >&2; return 1; }
   done
 }
 
+# The entry file routes to planner.md and must not carry a second copy of a
+# block or the archive call a stale copy would run.
+check_entry_file_has_no_blocks() {
+  local file="$1" hit
+  hit="$(grep -nF -- '<!-- gaia:orchestrator-step' "$file" || true)"
+  [ -z "$hit" ] || { printf '%s holds an orchestrator-step sentinel: %s\n' "$file" "$hit" >&2; return 1; }
+  hit="$(grep -nF -- 'plan-archive.sh' "$file" || true)"
+  [ -z "$hit" ] || { printf '%s names plan-archive.sh: %s\n' "$file" "$hit" >&2; return 1; }
+}
+
+@test "plan.md holds no orchestrator-step sentinel and never names plan-archive.sh" {
+  check_entry_file_has_no_blocks "$PLAN_MD"
+}
+
+@test "red twin: a sentinel or a plan-archive.sh line in plan.md fails the entry-file check" {
+  copy="$BATS_TEST_TMPDIR/plan.md"
+  { cat "$PLAN_MD"; printf '\n%s\n' "$S_CLOSE"; } >"$copy"
+  run check_entry_file_has_no_blocks "$copy"
+  [ "$status" -ne 0 ]
+  { cat "$PLAN_MD"; printf '\nbash .gaia/scripts/plan-archive.sh {PLAN_DIR}\n'; } >"$copy"
+  run check_entry_file_has_no_blocks "$copy"
+  [ "$status" -ne 0 ]
+}
+
 # ---------- close order: nothing irreversible before MERGED ----------
 
-@test "plan.md archives and removes layers only in or after the post-merge close" {
-  check_plan_close_order "$PLAN_MD"
+@test "planner.md archives and removes layers only in or after the post-merge close" {
+  check_plan_close_order "$PLANNER_MD"
 }
 
 @test "red twin: an archive or a SPEC.md removal above the post-merge close fails" {
-  copy="$BATS_TEST_TMPDIR/plan.md"
-  { sed -n '1,20p' "$PLAN_MD"; printf '      bash .gaia/scripts/plan-archive.sh {PLAN_DIR}\n'; sed -n '21,$p' "$PLAN_MD"; } >"$copy"
+  copy="$BATS_TEST_TMPDIR/planner.md"
+  { sed -n '1,20p' "$PLANNER_MD"; printf '      bash .gaia/scripts/plan-archive.sh {PLAN_DIR}\n'; sed -n '21,$p' "$PLANNER_MD"; } >"$copy"
   run check_plan_close_order "$copy"
   [ "$status" -ne 0 ]
-  { sed -n '1,20p' "$PLAN_MD"; printf '      On exit 0, rm the folder SPEC.md and AUDIT.md.\n'; sed -n '21,$p' "$PLAN_MD"; } >"$copy"
+  { sed -n '1,20p' "$PLANNER_MD"; printf '      On exit 0, rm the folder SPEC.md and AUDIT.md.\n'; sed -n '21,$p' "$PLANNER_MD"; } >"$copy"
   run check_plan_close_order "$copy"
   [ "$status" -ne 0 ]
 }
@@ -301,7 +330,7 @@ EOF
 
 @test "blocks copied as a planner copies them pass plan-verify.sh --spec" {
   write_plan_fixture
-  assemble_orchestrator "$PLAN_MD" "$FIXTURE_PLAN/ORCHESTRATOR.md" "$S_RENDER" "$S_GATE" "$S_PRE" "$S_WIKI" "$S_CLOSE"
+  assemble_orchestrator "$PLANNER_MD" "$FIXTURE_PLAN/ORCHESTRATOR.md" "$S_RENDER" "$S_GATE" "$S_PRE" "$S_WIKI" "$S_CLOSE"
   # The copy keeps the template's indentation, so the trim rule is exercised.
   grep -qE "^[[:space:]]+<!-- gaia:orchestrator-step uat-render -->$" "$FIXTURE_PLAN/ORCHESTRATOR.md"
   run bash "$PLAN_VERIFY" "$FIXTURE_PLAN" --spec "$FIXTURE_SPEC"
@@ -310,7 +339,7 @@ EOF
 
 @test "red twin: a dropped render block fails plan-verify.sh naming the sentinel" {
   write_plan_fixture
-  assemble_orchestrator "$PLAN_MD" "$FIXTURE_PLAN/ORCHESTRATOR.md" "$S_GATE" "$S_PRE" "$S_WIKI" "$S_CLOSE"
+  assemble_orchestrator "$PLANNER_MD" "$FIXTURE_PLAN/ORCHESTRATOR.md" "$S_GATE" "$S_PRE" "$S_WIKI" "$S_CLOSE"
   run bash "$PLAN_VERIFY" "$FIXTURE_PLAN" --spec "$FIXTURE_SPEC"
   [ "$status" -eq 1 ]
   grep -qF -- "missing the sentinel line $S_RENDER" <<<"$output"
@@ -318,7 +347,7 @@ EOF
 
 @test "red twin: a render block below the gate block fails plan-verify.sh as out of order" {
   write_plan_fixture
-  assemble_orchestrator "$PLAN_MD" "$FIXTURE_PLAN/ORCHESTRATOR.md" "$S_GATE" "$S_RENDER" "$S_PRE" "$S_WIKI" "$S_CLOSE"
+  assemble_orchestrator "$PLANNER_MD" "$FIXTURE_PLAN/ORCHESTRATOR.md" "$S_GATE" "$S_RENDER" "$S_PRE" "$S_WIKI" "$S_CLOSE"
   run bash "$PLAN_VERIFY" "$FIXTURE_PLAN" --spec "$FIXTURE_SPEC"
   [ "$status" -eq 1 ]
   grep -qF -- "$S_RENDER is out of order" <<<"$output"
@@ -327,16 +356,16 @@ EOF
 # ---------- pinned literals ----------
 
 @test "the report heading and PROGRESS.md record lines are pinned" {
-  check_pinned_literals "$PLAN_MD" "$LIFECYCLE_MD"
+  check_pinned_literals "$PLANNER_MD" "$LIFECYCLE_MD"
 }
 
 @test "red twin: removing any pinned literal fails the literal check" {
   local literal target copy
   for literal in '### Logical UAT divergence' 'Reason: logical UAT divergence' 'Skipped: no e2e-routed UATs' \
     '## UAT render (HALTED)' 'Reason: UAT render conflict' 'skipped-unattended' 'Reason: UAT gate failed'; do
-    plan_copy="$BATS_TEST_TMPDIR/plan.md"
+    plan_copy="$BATS_TEST_TMPDIR/planner.md"
     lifecycle_copy="$BATS_TEST_TMPDIR/lifecycle.md"
-    cp "$PLAN_MD" "$plan_copy"
+    cp "$PLANNER_MD" "$plan_copy"
     cp "$LIFECYCLE_MD" "$lifecycle_copy"
     case "$literal" in
       'Reason: UAT gate failed') target="$lifecycle_copy" ;;

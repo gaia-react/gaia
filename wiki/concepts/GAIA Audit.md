@@ -14,7 +14,7 @@ tags: [concept, claude, skill, knowledge, hygiene]
 ## When to use
 
 - After an ingestion spree that may have introduced overlap
-- When auto-load payload starts feeling heavy (CLAUDE.md, `wiki/hot.md`, or rules growing)
+- When auto-load payload starts feeling heavy (CLAUDE.md or rules growing)
 - Periodic hygiene pass
 - When the statusline shows `Run /gaia-audit (<reason>)`: GAIA nudges on per-machine memory drift, an auto-load file over budget, or a pending draft to resume. The over-budget signal is a live recompute with no debounce of its own.
 
@@ -58,7 +58,7 @@ Each report carries a `status:` field. Stage 1 writes it as `draft`; Stage 2 fli
 - **Cross-store duplication**: fact lives in both memory and wiki → wiki wins; the memory entry is deleted
 - **Contradictions**: a memory entry, rule, or project file that asserts the opposite of the authoritative source on a subject → resolved toward the authoritative source (cross-store favors the wiki; project-internal favors whichever file is canonical for that fact).
 - **Promotable memory**: durable knowledge stuck in machine-local memory → moves to a specific wiki page
-- **Auto-load bloat**: flags `wiki/hot.md`, `CLAUDE.md`, and rules over budget
+- **Auto-load bloat**: flags `CLAUDE.md` and rules over budget
 - **Stale entries** referencing removed code, branches, or features
 - Wiki-internal redundancy and broken links are not fixed here (that is [[Wiki Management]], consolidate / lint), but they are no longer dropped: each is filed as a `tech-debt` issue whose suggested fix names the right `/gaia-wiki` command, or, for a broken wikilink, which `/gaia-wiki` detects and fixes through its lint stage's check #17, `/gaia-wiki`.
 

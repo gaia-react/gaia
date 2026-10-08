@@ -18,7 +18,6 @@ This project ships with [GAIA](https://gaiareact.com/). Run these slash commands
 
 - `/gaia-plan`: plan a feature as a graph of tasks and execute via subagents
 - `/gaia-spec`: run Socratic discovery and produce an immutable SPEC artifact
-- `/gaia-handoff` and `/gaia-pickup`: clear context without losing state across sessions
 - `/gaia-forensics`: file a redacted, classified report when GAIA itself misfires
 
 ## Knowledge base

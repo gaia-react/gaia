@@ -28,7 +28,7 @@ GAIA ships with [Claude Code](https://claude.ai/) support out of the box. Everyt
 
 ## Commands vs. skills
 
-GAIA workflows are split between slash commands under `.claude/commands/` (`/gaia-plan`, `/gaia-spec`, `/gaia-audit`, `/gaia-fitness`, `/gaia-forensics`, `/gaia-harden`, `/gaia-init`, and more) and standalone skills under `.claude/skills/` (`gaia-handoff`, `gaia-pickup`, `gaia-wiki`, each with its own `SKILL.md`). There is no `/gaia` router; each command and skill reads a shared reference file in `.claude/skills/gaia/references/`. For the current inventory, query Serena or list the folder directly.
+GAIA workflows are split between slash commands under `.claude/commands/` (`/gaia-plan`, `/gaia-spec`, `/gaia-audit`, `/gaia-fitness`, `/gaia-forensics`, `/gaia-harden`, `/gaia-init`, and more) and standalone skills under `.claude/skills/` (`gaia-wiki`, with its own `SKILL.md`). There is no `/gaia` router; each command and skill reads a shared reference file in `.claude/skills/gaia/references/`. For the current inventory, query Serena or list the folder directly.
 
 ## Rules: auto-attached
 
@@ -47,7 +47,7 @@ Hooks are bash scripts wired through `.claude/settings.json`. See its `hooks` ke
 ### Wiki coherence (a layered system)
 
 > [!key-insight] Why GAIA owns the wiki hooks
-> The `claude-obsidian` plugin does not commit `wiki/` edits on its own, and its own `hot.md` load is opt-in and fails closed on GAIA's layout. GAIA's `wiki-hot-inject.sh` loads `wiki/hot.md` at session start and after compaction, and the `wiki-session-start.sh` + `wiki-session-stop.sh` pair prompts the refresh when `wiki/` changed, committed or not. No hook commits wiki edits on its own.
+> The `claude-obsidian` plugin does not commit `wiki/` edits on its own, and its own session-context load is opt-in and fails closed on GAIA's layout. No hook commits wiki edits on its own.
 
 The sync design is convergent: hooks never spawn `claude -p` sub-processes. No hook surfaces drift: the `🧠 Run /gaia-wiki` statusline nudge is the only signal, and the user's session reconciles the wiki via `/gaia-wiki`. See [[Wiki Sync]].
 

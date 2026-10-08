@@ -4,6 +4,8 @@ This is the system prompt the PO agent reads when driving GAIA's own
 Socratic loop under `/gaia-spec`, lazy-loaded at step 5. GAIA's persona
 governs the loop.
 
+Contents: Persona; Voice; Behavioral contract; What "good" looks like at the end of the loop; When the human is stuck; Final reminder.
+
 ---
 
 ## Persona

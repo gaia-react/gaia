@@ -2,7 +2,7 @@
  * `gaia-maintainer release scrub-wiki` handler.
  *
  * Step 6 of the maintainer release runbook. Overwrites
- * `wiki/hot.md` and `wiki/log.md` with release-clean content. The exact
+ * `wiki/log.md` with release-clean content. The exact
  * field reset list is codified verbatim from the runbook so adopters
  * who scaffold via `create-gaia` start from a consistent slate.
  *
@@ -17,21 +17,20 @@ import {atomicWriteFileSync} from '../util/atomic-write.js';
 
 const HELP_TEXT = `Usage: gaia-maintainer release scrub-wiki [--version <X.Y.Z>] [--date <YYYY-MM-DD>] [--check]
 
-  Overwrite wiki/hot.md and wiki/log.md with release-clean content
-  (Step 6 of the runbook).
+  Overwrite wiki/log.md with release-clean content (Step 6 of the runbook).
 
   Flags:
     --version <X.Y.Z>     Override the new version (default: package.json).
     --date <YYYY-MM-DD>   Override the release date (default: today UTC).
-    --check               Verify the committed wiki/hot.md and wiki/log.md
-                          match freshly-rendered release-clean output and exit
+    --check               Verify the committed wiki/log.md matches
+                          freshly-rendered release-clean output and exit
                           non-zero on drift. Writes nothing. Dates are
                           normalized out of the comparison; the release gate
                           uses this to catch a wiki that was never scrubbed.
 
   Exit codes:
     0  success (no stdout); --check: no drift
-    1  user-correctable error; --check: committed wiki file is stale or missing
+    1  user-correctable error; --check: committed wiki/log.md is stale or missing
     2  unexpected (filesystem failure)
 `;
 
@@ -112,27 +111,6 @@ const readVersion = (cwd: string, override: string | undefined): string => {
   return parsed.version;
 };
 
-export const renderHotMd = (version: string, date: string): string =>
-  `---
-type: meta
-title: Hot Cache
-status: active
-created: ${date}
-updated: ${date}
-tags: [meta, cache]
----
-
-# Recent Context
-
-## Last Updated
-
-${date}. Released as GAIA v${version}. Fresh slate.
-
-## Active Threads
-
-- None.
-`;
-
 export const renderLogMd = (version: string, date: string): string =>
   `---
 type: meta
@@ -167,19 +145,16 @@ const normalizeDates = (content: string): string =>
 
 type CheckArgs = {
   date: string;
-  hotPath: string;
   logPath: string;
   version: string;
 };
 
-// `--check`: compare the committed wiki/hot.md and wiki/log.md against
-// freshly-rendered release-clean output and exit non-zero on drift, writing
-// nothing. Guards a release from shipping a stale (unrendered) wiki because
+// `--check`: compare the committed wiki/log.md against freshly-rendered
+// release-clean output and exit non-zero on drift, writing nothing. Guards a release from shipping a stale (unrendered) wiki because
 // `release scrub-wiki` was skipped before the tag.
 const runCheck = (args: CheckArgs): number => {
-  const {date, hotPath, logPath, version} = args;
+  const {date, logPath, version} = args;
   const targets = [
-    {label: 'wiki/hot.md', path: hotPath, rendered: renderHotMd(version, date)},
     {label: 'wiki/log.md', path: logPath, rendered: renderLogMd(version, date)},
   ];
   const drifted: string[] = [];
@@ -271,16 +246,14 @@ export const run = (
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
-  const hotPath = path.join(wikiDir, 'hot.md');
   const logPath = path.join(wikiDir, 'log.md');
 
   if (parsed.flags.check) {
-    return runCheck({date, hotPath, logPath, version});
+    return runCheck({date, logPath, version});
   }
 
   try {
     mkdirSync(wikiDir, {recursive: true});
-    atomicWriteFileSync(hotPath, renderHotMd(version, date));
     atomicWriteFileSync(logPath, renderLogMd(version, date));
   } catch (error) {
     structuredError({

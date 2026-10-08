@@ -15675,7 +15675,6 @@ var RELEASE_FILES = [
   ".gaia/VERSION",
   ".gaia/manifest.json",
   "CHANGELOG.md",
-  "wiki/hot.md",
   "wiki/log.md"
 ];
 var writeStateSha = (cwd, sha) => {
@@ -19193,7 +19192,6 @@ var ADOPTER_OWNED_SENTINELS = /* @__PURE__ */ new Set([
   // a package by editing it, so /update-gaia must never merge or overwrite it.
   ".gaia/packages.json",
   ".gaia/VERSION",
-  "wiki/hot.md",
   "wiki/log.md"
 ]);
 var SHARED = /* @__PURE__ */ new Set([
@@ -20524,7 +20522,6 @@ var ADOPTER_OWNED_SENTINELS2 = /* @__PURE__ */ new Set([
 ]);
 var RUNTIME_PREFIXES = [
   ".gaia/local",
-  ".claude/handoff",
   ".claude/worktrees",
   ".claude/agent-memory",
   ".claude/audit"
@@ -20855,21 +20852,20 @@ import { existsSync as existsSync10, mkdirSync, readFileSync as readFileSync14 }
 import path14 from "node:path";
 var HELP_TEXT11 = `Usage: gaia-maintainer release scrub-wiki [--version <X.Y.Z>] [--date <YYYY-MM-DD>] [--check]
 
-  Overwrite wiki/hot.md and wiki/log.md with release-clean content
-  (Step 6 of the runbook).
+  Overwrite wiki/log.md with release-clean content (Step 6 of the runbook).
 
   Flags:
     --version <X.Y.Z>     Override the new version (default: package.json).
     --date <YYYY-MM-DD>   Override the release date (default: today UTC).
-    --check               Verify the committed wiki/hot.md and wiki/log.md
-                          match freshly-rendered release-clean output and exit
+    --check               Verify the committed wiki/log.md matches
+                          freshly-rendered release-clean output and exit
                           non-zero on drift. Writes nothing. Dates are
                           normalized out of the comparison; the release gate
                           uses this to catch a wiki that was never scrubbed.
 
   Exit codes:
     0  success (no stdout); --check: no drift
-    1  user-correctable error; --check: committed wiki file is stale or missing
+    1  user-correctable error; --check: committed wiki/log.md is stale or missing
     2  unexpected (filesystem failure)
 `;
 var HELP_TOKENS11 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
@@ -20916,25 +20912,6 @@ var readVersion3 = (cwd, override) => {
   }
   return parsed.version;
 };
-var renderHotMd = (version2, date5) => `---
-type: meta
-title: Hot Cache
-status: active
-created: ${date5}
-updated: ${date5}
-tags: [meta, cache]
----
-
-# Recent Context
-
-## Last Updated
-
-${date5}. Released as GAIA v${version2}. Fresh slate.
-
-## Active Threads
-
-- None.
-`;
 var renderLogMd = (version2, date5) => `---
 type: meta
 title: Log
@@ -20952,9 +20929,8 @@ See CHANGELOG.md for details.
 `;
 var normalizeDates = (content) => content.replaceAll(/\d{4}-\d{2}-\d{2}/g, "YYYY-MM-DD");
 var runCheck2 = (args) => {
-  const { date: date5, hotPath, logPath, version: version2 } = args;
+  const { date: date5, logPath, version: version2 } = args;
   const targets = [
-    { label: "wiki/hot.md", path: hotPath, rendered: renderHotMd(version2, date5) },
     { label: "wiki/log.md", path: logPath, rendered: renderLogMd(version2, date5) }
   ];
   const drifted = [];
@@ -21021,14 +20997,12 @@ var run11 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const hotPath = path14.join(wikiDir, "hot.md");
   const logPath = path14.join(wikiDir, "log.md");
   if (parsed.flags.check) {
-    return runCheck2({ date: date5, hotPath, logPath, version: version2 });
+    return runCheck2({ date: date5, logPath, version: version2 });
   }
   try {
     mkdirSync(wikiDir, { recursive: true });
-    atomicWriteFileSync(hotPath, renderHotMd(version2, date5));
     atomicWriteFileSync(logPath, renderLogMd(version2, date5));
   } catch (error51) {
     structuredError({
@@ -22085,7 +22059,7 @@ var HELP_TEXT13 = `Usage: gaia-maintainer release <subcommand> [args]
   changelog [--draft] [--version <X.Y.Z>]     Graduate CHANGELOG's [Unreleased] block
                                               (--draft: render a review block, write nothing).
   scrub-wiki [--version <X.Y.Z>] [--date <D>] [--check]
-                                              Reset wiki/hot.md and wiki/log.md
+                                              Reset wiki/log.md
                                               (--check: verify they are fresh, write nothing).
   manifest [--ship <path>]... [--withhold <path> --category <N> --reason <text>]...
                                               Regenerate .gaia/manifest.json. Refuses while any

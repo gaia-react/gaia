@@ -123,7 +123,7 @@ assert_pinned() {
 }
 
 @test "agent carries the How your run ends paragraph verbatim" {
-  local plan="$ROOT/.claude/skills/gaia/references/plan.md"
+  local plan="$ROOT/.claude/skills/gaia/references/plan/planner.md"
   local paragraph
   paragraph="$(grep -F -m1 'How your run ends:' "$plan" | sed 's/^[[:space:]>]*//')"
   [ -n "$paragraph" ]

@@ -146,7 +146,6 @@ const RELEASE_FILES = [
   '.gaia/VERSION',
   '.gaia/manifest.json',
   'CHANGELOG.md',
-  'wiki/hot.md',
   'wiki/log.md',
 ];
 

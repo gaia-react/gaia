@@ -312,7 +312,7 @@ Crash-safety: Bucket E writes incrementally per category; a crash mid-run leaves
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
 | **config-yaml-md** | `.gaia/release-scrub.yml`, `.gaia/cli/health/taxonomy.md`, `.gaia/cli/health/runbook.md`, `wiki/decisions/Bundle-time Scrub.md` | New scrub check: allowlist tightening; taxonomy class addition; runbook tweak |
 | **source-ts**      | `.gaia/cli/src/**`, `.gaia/scripts/**`, `.github/workflows/release.yml`, `.gaia/cli/gaia` (rebundle)                            | New CLI primitive: release.yml step; bundle regeneration                      |
-| **wiki-content**   | `wiki/**/*.md` (shipped pages only; exclude `hot.md`, `log.md`, anything release-excluded)                                      | Wiki-style or structural finding                                              |
+| **wiki-content**   | `wiki/**/*.md` (shipped pages only; exclude `log.md`, anything release-excluded)                                      | Wiki-style or structural finding                                              |
 | **claude-surface** | `.claude/skills/**`, `.claude/commands/**`, `.claude/agents/**`, `.claude/hooks/**`, `CLAUDE.md`, `.claude/rules/**`            | Instruction-file leak: fitness findings from Bucket E                         |
 
 Mutual-exclusion (must serialize, never run in parallel; single Fixer at a time across the whole team):
@@ -340,7 +340,7 @@ The cycle loop is adversarial against the product (five buckets, a fresh per-cyc
 
 The challenger is a single adversarial pass the Orchestrator spawns at the clean-exit boundary, AFTER a cycle produces a clean `findings.json` but BEFORE the RUN_DIR deletion and the A+ report. A substantiated finding from any lens REVOKES the clean exit.
 
-**Intentional divergences from the canonical adversarial-audit pattern** (`.claude/skills/gaia/references/spec.md` step 7, `.claude/skills/gaia/references/plan.md` step 4.6); these are deliberate, do not "fix" them back toward that shape:
+**Intentional divergences from the canonical adversarial-audit pattern** (`.claude/skills/gaia/references/spec/audit.md`, `.claude/skills/gaia/references/plan/decomposition-audit.md`); these are deliberate, do not "fix" them back toward that shape:
 
 1. **No interactive gate.** The loop is autonomous, so the challenger runs UNCONDITIONALLY on the terminal clean cycle. There is no recommended-but-optional prompt.
 2. **No refutation pass.** Challenger findings are binary and checkable (a defect exists at a file + pattern or it does not; a near-match matches a Decided entry or it does not), exactly like the plan-decomposition audit, so there is no severity-debate refutation round.
@@ -451,7 +451,7 @@ Lifecycle:
 
 Cycle artifacts persist in `RUN_DIR/c<N>/` for the duration of the audit, where `RUN_DIR` is this run's `.gaia/local/audit/archived/<stamp>/` folder (see §Audit artifacts). On a clean exit (which the terminal cycle reaches only after the false-clean challenger clears, see §False-clean challenger), the Orchestrator removes RUN_DIR (`rm -rf RUN_DIR`; whitelisted via `.gaia/local/audit/*`). On escalation, RUN_DIR is left in place (already under `archived/`) and its path surfaced in the escalation report for human review; a cycle-3 `false-clean-refuted` escalation preserves it the same way.
 
-The audit does not write to `wiki/log.md` or `wiki/hot.md`.
+The audit does not write to `wiki/log.md`.
 
 Fingerprint format: `{check-id}:{file}:{line}:{first-40-chars-of-match-text}`. Stored in `c<N>/findings.json`. Compared mechanically across cycles for oscillation detection via `jq` + `comm`.
 

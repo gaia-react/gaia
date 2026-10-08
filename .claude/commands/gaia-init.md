@@ -548,32 +548,7 @@ End of Step 9.
 
 ## Step 10: Refresh the wiki
 
-The template ships with a wiki shaped for the upstream GAIA project. Refresh the two files that encode "where we are right now" so the new project starts with a clean context:
-
-### 10a. Overwrite `wiki/hot.md`
-
-Read `wiki/hot.md` first (required before Write can overwrite an existing file), then replace the entire file with:
-
-```md
----
-type: meta
-title: Hot Cache
-status: active
-created: <TODAY_ISO>
-updated: <TODAY_ISO>
-tags: [meta, cache]
----
-
-# Recent Context
-
-## Last Updated
-
-<TODAY>. Project initialized via `/gaia-init`. Fresh slate.
-
-## Active Threads
-
-- None.
-```
+The template ships with a wiki shaped for the upstream GAIA project. Refresh the file that encodes "where we are right now" so the new project starts with a clean context:
 
 ### 10b. Overwrite `wiki/log.md`
 

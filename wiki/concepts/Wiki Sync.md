@@ -10,13 +10,11 @@ tags: [concept, claude, workflow, wiki]
 
 Drift between code and knowledge is detected and resolved in the user's existing Claude Code session (no spawned sub-Claudes) by combining a statusline nudge with a single workhorse command.
 
-## The three pieces
+## The pieces
 
 1. **Statusline nudge.** The only drift signal. When the count of commits since the last sync reaches the threshold the statusline wrapper declares, the wrapper shows `🧠 Run /gaia-wiki` in the last nudge slot, below `/gaia-residue`. The count is computed by the cache refresher `.gaia/scripts/check-updates.sh` from `gaia wiki state --json`'s `drift_count` and cached as `wikiDriftCount`, so it catches anything that landed in the repo since the last sync, including commits made outside Claude (terminal, GitHub UI, automerge, teammate's pull). The threshold lives in `.gaia/statusline/gaia-statusline.sh`; adopters can neither tune nor disable it. No hook injects a drift reminder into the conversation.
 
-2. **Stop hook** (`Stop`). `wiki-session-stop.sh` prompts a `hot.md` refresh when the session committed changes under `wiki/` or left uncommitted `wiki/` content changes. A companion `SessionStart` hook (`wiki-session-start.sh`) records a session-start marker (`$GIT_DIR/claude-session-start`) it compares HEAD against and a baseline of the uncommitted `wiki/` content, clears stale per-session caches, and runs the janitor. See [[Claude Hooks]] for both triggers and the paths the uncommitted check ignores. The janitor's base-catch-up report reaches the conversation through `janitor-report-drain.sh` (`UserPromptSubmit`), which reads and deletes the report so the line surfaces exactly once.
-
-3. **`/gaia-wiki` command.** The workhorse; its sync stage does the drift work. Reads commits between `last_evaluated_sha` and `HEAD`, classifies each as WORTHY or SKIP (subjects-and-stats first, deep-read only the worthy ones), edits relevant pages, appends `wiki/log.md`, advances `wiki/.state.json`, commits.
+2. **`/gaia-wiki` command.** The workhorse; its sync stage does the drift work. Reads commits between `last_evaluated_sha` and `HEAD`, classifies each as WORTHY or SKIP (subjects-and-stats first, deep-read only the worthy ones), edits relevant pages, appends `wiki/log.md`, advances `wiki/.state.json`, commits.
 
 `wiki/.state.json` is the single source of truth for sync state. Two stages of `/gaia-wiki` write to it: the sync stage owns `last_evaluated_sha` and `last_evaluated_at`; the consolidate stage owns `last_consolidated_sha` and `last_consolidated_at`. Each writer preserves the other's fields. The hooks and the statusline are read-only.
 
@@ -54,7 +52,7 @@ If the file is missing, the drift count covers the whole history and the first `
 
 ## Cost
 
-The nudge costs no tokens: it is a statusline segment, not an injection. The Stop hook's `hot.md` prompt is free when no wiki change was committed or left uncommitted.
+The nudge costs no tokens: it is a statusline segment, not an injection.
 
 The sync stage of `/gaia-wiki` is where the real cost lives. Two-pass design keeps it bounded:
 

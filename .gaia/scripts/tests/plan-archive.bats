@@ -25,8 +25,8 @@ setup() {
   SANDBOX="$(cd "$SANDBOX_RAW" && pwd -P)"
   git -C "$SANDBOX" init --quiet
 
-  # The PLAN-NNN merge stamp shells out to plan-ledger-update.sh, which
-  # sources with-ledger-lock.sh from its own dir; both are copied here so a
+  # The PLAN-NNN merge stamp shells out to ledger-update.sh, which sources
+  # ledger-lib.sh and with-ledger-lock.sh from its own dir; all are copied here so a
   # PLAN-<digits> slug's stamp resolves instead of silently failing. The
   # representation gate sources cost-represented.sh + ledger-path-lib.sh at
   # their fixed repo-relative path, mirrored here the same way so the gate
@@ -34,8 +34,10 @@ setup() {
   # ledger-path-lib.sh now sources its own sibling main-root-lib.sh by
   # on-disk location, so that sibling is copied alongside it too.
   mkdir -p "$SANDBOX/.gaia/scripts/spec"
-  cp "$REPO_ROOT/.gaia/scripts/spec/plan-ledger-update.sh" \
-    "$SANDBOX/.gaia/scripts/spec/plan-ledger-update.sh"
+  cp "$REPO_ROOT/.gaia/scripts/spec/ledger-update.sh" \
+    "$SANDBOX/.gaia/scripts/spec/ledger-update.sh"
+  cp "$REPO_ROOT/.gaia/scripts/spec/ledger-lib.sh" \
+    "$SANDBOX/.gaia/scripts/spec/ledger-lib.sh"
   cp "$REPO_ROOT/.gaia/scripts/spec/with-ledger-lock.sh" \
     "$SANDBOX/.gaia/scripts/spec/with-ledger-lock.sh"
   mkdir -p "$SANDBOX/.gaia/scripts"

@@ -17,7 +17,7 @@
 # task, so it ships nowhere just like /gaia-release. /health-audit is the
 # maintainer-only autonomous audit + auto-heal loop (runbook lives under
 # .gaia/cli/health/, already excluded wholesale via category 10). Other
-# /gaia-* commands (plan, handoff, pickup, audit) are adopter-useful and
+# /gaia-* commands (plan, audit) are adopter-useful and
 # must NOT be added here. The two code-audit-maintainer-* agents are
 # the Code Audit Team's maintainer-only members (framework shell + framework
 # TypeScript lenses); adopters audit only their own app via
@@ -153,10 +153,6 @@ wiki/decisions/Dependabot Security Updates.md
 wiki/decisions/Dependabot as a Data Source.md
 # Superseded design history of GAIA's own former GitHub Actions audit workflow, which no longer exists; every claim is about a workflow an adopter does not have.
 wiki/decisions/Dispatched-Check Rollup via Polling.md
-# Superseded design history of how /gaia-spec once ran on GitHub spec-kit; GAIA no longer installs spec-kit, so the page describes GAIA's past rather than anything an adopter runs.
-wiki/decisions/spec-kit Extension Strategy.md
-# Superseded dependency page for spec-kit, which GAIA no longer installs; it describes GAIA's own past design, not anything an adopter runs.
-wiki/dependencies/spec-kit.md
 
 # --- 3. Test harnesses and audit reports ---
 # Smoke / observability harnesses run by maintainers in CI; never invoked
