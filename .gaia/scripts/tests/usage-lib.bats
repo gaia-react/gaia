@@ -101,15 +101,14 @@ key_json() {
   [ "$(jq -r '.[""].key' <<<"$branch_map")" = "null" ]
 }
 
-@test "branch key: a failing branch hashes to the same 16 hex gaia_hash16 prints" {
-  local normalized_branch='feat/has space' want got
-  want="$( (source "$SCRIPTS/token-pricing-lib.sh"; printf '%s' "$normalized_branch" | gaia_hash16) )"
-  [ "${#want}" -eq 16 ]
-  got="$(gaia_usage_branch_key "$normalized_branch")"
-  [ "$got" = "branch:%$want" ]
+@test "branch key: a failing branch hashes to the first 16 hex characters of its sha256" {
+  local normalized_branch='feat/has space' want
+  # Pinned literal: the sha256 prefix of the input.
+  want=622b769126303c10
+  [ "$(gaia_usage_branch_key "$normalized_branch")" = "branch:%$want" ]
   # A 129-character name fails the grammar by length alone.
   normalized_branch="$(printf 'q%.0s' $(seq 1 129))"
-  want="$( (source "$SCRIPTS/token-pricing-lib.sh"; printf '%s' "$normalized_branch" | gaia_hash16) )"
+  want=f0886d9cc70695b4
   [ "$(gaia_usage_branch_key "$normalized_branch")" = "branch:%$want" ]
   [ "$(gaia_usage_branch_key "$(printf 'q%.0s' $(seq 1 128))")" = "branch:$(printf 'q%.0s' $(seq 1 128))" ]
 }

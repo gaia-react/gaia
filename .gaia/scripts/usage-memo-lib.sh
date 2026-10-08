@@ -471,7 +471,7 @@ gaia_usage_memo_view() {
 # saved before the view runs, so a readout killed at the render cap still
 # leaves the next one warm. Every step discards its stderr.
 gaia_usage_memo_readout() {
-  local library_directory="$1" telemetry_directory="$2" cost="$3" main="$4" table="$5" view="$6" memo default_branch models rates view_output take_gap_exit_status miss_count=0
+  local library_directory="$1" telemetry_directory="$2" cost="$3" main="$4" table="$5" view="$6" memo default_branch models rates view_output miss_count=0
   shift 6
   memo="$(gaia_usage_memo_path "$telemetry_directory")"
   default_branch="$(gaia_usage_default_branch "${main:-.}" 2>/dev/null)"
@@ -492,23 +492,18 @@ gaia_usage_memo_readout() {
       '' | '{"legacy":true}') return 1 ;;
       *) printf '%s\n' "$view_output"; return 0 ;;
     esac
-    miss_count=1 take_gap_exit_status=0
-    gaia_usage_memo_take_gap "$telemetry_directory" "$view_output" || take_gap_exit_status=$?
-    case "$take_gap_exit_status" in
-      0) ;;
-      2) rates="$(gaia_usage_memo_rates_fresh "$library_directory" "$table" "$main")" || return 1 ;;
-      *) return 1 ;;
-    esac
+    miss_count=1
+    gaia_usage_memo_take_gap "$telemetry_directory" "$view_output" || return 1
   done
 }
 
 # Prints the memo's models as compact JSON, the spelling usage_models_of
-# prints, so the rate heal sees the same argument a pre-change readout passes.
+# prints, so the model list matches what a pre-change readout passes.
 gaia_usage_memo_models() { jq -er '.models | tojson' <<<"${GAIA_USAGE_MEMO:-}" 2>/dev/null; }
 
 # gaia_usage_memo_take_gap <telemetry-directory> <view-output>: traces, merges and saves the
-# {"miss": gap} a view printed. rc 0 when done, 2 when the gap names a model so
-# the caller must reload rates, 1 when the output carries no readable gap.
+# {"miss": gap} a view printed. rc 0 when done, 1 when the output carries no
+# readable gap.
 gaia_usage_memo_take_gap() {
   local gap counts
   gap="$(jq -c '.miss | objects' <<<"$2" 2>/dev/null)" || return 1
@@ -518,25 +513,7 @@ gaia_usage_memo_take_gap() {
   gaia_usage_memo_trace "rerun=miss $counts"
   gaia_usage_memo_merge_gap "$gap"
   if [ "$GAIA_USAGE_MEMO_DIRTY" = 1 ]; then gaia_usage_memo_save "$(gaia_usage_memo_path "$1")"; fi
-  case "$counts" in *" models=0") return 0 ;; esac
-  return 2
-}
-
-# gaia_usage_memo_rates_fresh <lib-dir> <rate-override> <main-root>: prints the
-# rate table a fresh bash loads for the memo's models. The heal tries the feed
-# once per process and the readout's own process already spent that try on the
-# memo's earlier model list, so only a new process can heal the missed model.
-# rc 1 when nothing loads.
-gaia_usage_memo_rates_fresh() {
-  local models rates_json
-  models="$(gaia_usage_memo_models)" || return 1
-  # shellcheck disable=SC2016  # bash source for the child, expanded there
-  rates_json="$("${BASH:-bash}" -c '. "$1/usage-lib.sh" && . "$1/usage-resolve-lib.sh" && . "$1/usage-render-lib.sh" || exit 1
-    . "$1/ledger-path-lib.sh"; . "$1/token-pricing-lib.sh"
-    usage_rates_load "$2" "$3" "$4"; printf "%s" "$USAGE_RATES"' _ "$1" "$2" "$3" "$models" 2>/dev/null </dev/null)" || return 1
-  [ -n "$rates_json" ] || return 1
-  gaia_usage_memo_trace "rates=reload"
-  printf '%s' "$rates_json"
+  return 0
 }
 
 # Test observability for the window between the memo being saved and the view

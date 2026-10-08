@@ -127,10 +127,11 @@ const PATH_PREFIXES = ['.gaia/', '.claude/', '.github/'] as const;
  *     descriptive, not an invocation. An inline-ignore comment cannot annotate
  *     the occurrence because it lives inside a multi-line quoted `reason="..."`
  *     string that renders to the operator, hence this central allowlist.
- *   - `.claude/projects`: Claude Code's own global session-transcript
- *     directory, `$HOME/.claude/projects`, referenced by
- *     `token-tally-review.sh`. It lives outside the repo on every machine and
- *     structurally can never have a manifest entry.
+ *   - `.claude/projects`: Claude Code's own global per-project directory,
+ *     `$HOME/.claude/projects`, referenced by `check-updates.sh` and
+ *     `knowledge-inventory.sh` to locate a project's auto-memory directory. It
+ *     lives outside the repo on every machine and structurally can never have
+ *     a manifest entry.
  *   - `.claude/shell-snapshots`: Claude Code's own per-Bash-call snapshot
  *     wrapper directory, referenced inside `SNAPSHOT_WRAPPER_PATTERN`, a
  *     regex literal in `spec-session-lock.sh` that MATCHES/REJECTS the

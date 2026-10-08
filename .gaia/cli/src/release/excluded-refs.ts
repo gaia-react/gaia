@@ -36,7 +36,7 @@ const COMMAND_PATTERN =
   /^\.claude\/(?:commands\/(?<command>[\w-]+)\.md|skills\/(?<skill>[\w-]+))$/;
 const AGENT_PATTERN = /^\.claude\/agents\/(?<agent>[\w-]+)\.md$/;
 // Code file names are distinctive enough to stand alone in prose. Data and
-// fixture names (`cost.jsonl`) are not: adopters generate files of the same
+// fixture names (`usage.jsonl`) are not: adopters generate files of the same
 // name at runtime, so a bare mention of one is not a pointer to GAIA's copy.
 const CODE_EXTENSIONS = new Set(['.mjs', '.sh', '.ts']);
 

@@ -1,10 +1,19 @@
 # shellcheck shell=bash
 # GAIA shared dollar-pricing lib (single-sourced).
-# Sourced by token-rollup.sh and token-tally.sh. Defines the rate-table
-# resolution/load helpers and the rate_window / priced_row jq definitions.
-# No side effects at source time; defines functions + one jq-defs variable.
-# Also sources token-rates-local-lib.sh and token-rates-feed-lib.sh from its own
-# directory, silently when either is absent (a partial update).
+# Sourced by usage.sh, token-rollup.sh and token-tally.sh. Defines the
+# rate_window / priced_row jq definitions and the rate-table helpers. No side
+# effects at source time; defines functions + one jq-defs variable.
+#
+# gaia_rates_load is the usage readout path. It reads the distributed
+# token-rates.json (beside this file) and overlays the optional
+# <main>/.gaia/local/telemetry/token-rates.override.json row by row: each
+# override .models[<id>] replaces that model's distributed row. It opens no
+# network connection and writes nothing.
+#
+# gaia_resolve_rate_table, gaia_hash16 and gaia_rate_table_id serve the tally
+# scripts (token-tally.sh, token-rollup.sh), which call them. This file also
+# sources token-rates-local-lib.sh and token-rates-feed-lib.sh from its own
+# directory for those scripts, silently when either is absent.
 
 _gaia_pricing_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
@@ -98,4 +107,43 @@ gaia_rate_table_id() {
   table_hash="$(gaia_hash16 <"$path")" || return 1
   [[ -z "$table_hash" ]] && return 1
   printf 'sha256:%s' "$table_hash"
+}
+
+# gaia_rates_override_status <main_root>: prints `none` (no override file),
+# `applied` (valid JSON whose .models is an object) or `unparseable`.
+gaia_rates_override_status() {
+  local override_file="${1:-}/.gaia/local/telemetry/token-rates.override.json"
+  if [[ -z "${1:-}" || ! -f "$override_file" ]]; then
+    printf 'none'
+  elif jq -e 'type=="object" and (.models|type)=="object"' "$override_file" >/dev/null 2>&1; then
+    printf 'applied'
+  else
+    printf 'unparseable'
+  fi
+}
+
+# gaia_rates_load <main_root> [<table_path>]: sets GAIA_RATES_JSON to the
+# distributed table with the override overlaid, or null when the distributed
+# table is unreadable, and GAIA_RATES_OVERRIDE_STATUS to none|applied|unparseable.
+# Always returns 0. Call it in the caller's shell, not in $(...), which would
+# discard the variables.
+# shellcheck disable=SC2034 # both variables are read by the caller
+gaia_rates_load() {
+  local main_root="${1:-}" table_path="${2:-}" distributed merged
+  GAIA_RATES_JSON=null
+  GAIA_RATES_OVERRIDE_STATUS=none
+  if [[ -z "$table_path" ]]; then
+    table_path="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/token-rates.json"
+  fi
+  distributed="$(gaia_load_rate_table "$table_path")" || return 0
+  GAIA_RATES_JSON="$distributed"
+  GAIA_RATES_OVERRIDE_STATUS="$(gaia_rates_override_status "$main_root")"
+  [[ "$GAIA_RATES_OVERRIDE_STATUS" == applied ]] || return 0
+  if merged="$(jq -c --slurpfile override "$main_root/.gaia/local/telemetry/token-rates.override.json" \
+    '.models = (.models + $override[0].models)' <<<"$distributed" 2>/dev/null)" && [[ -n "$merged" ]]; then
+    GAIA_RATES_JSON="$merged"
+  else
+    GAIA_RATES_OVERRIDE_STATUS=unparseable
+  fi
+  return 0
 }

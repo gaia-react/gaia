@@ -25765,13 +25765,13 @@ var insertExportEntry = (lines, args) => {
     }
   }
   const lastEntry = entries.at(-1);
-  const lastLine = lastEntry === void 0 ? void 0 : lines[lastEntry.lineIdx];
-  if (lastEntry === void 0 || lastLine === void 0)
+  const lastLine2 = lastEntry === void 0 ? void 0 : lines[lastEntry.lineIdx];
+  if (lastEntry === void 0 || lastLine2 === void 0)
     throw new Error(
       "insertExportEntry: the export block has no source line for its last entry; refusing to report a skipped registration as done"
     );
-  if (!lastLine.endsWith(",")) {
-    lines[lastEntry.lineIdx] = `${lastLine},`;
+  if (!lastLine2.endsWith(",")) {
+    lines[lastEntry.lineIdx] = `${lastLine2},`;
   }
   lines.splice(lastEntry.lineIdx + 1, 0, newEntryLine);
 };
@@ -35349,7 +35349,7 @@ var finalizeMerge = (options) => {
 var WIKI_CHAIN_BRANCH_PREFIX = "wiki/sync-";
 var WIKI_CHAIN_BRANCH_PATTERN = /^wiki\/sync-\d{4}-\d{2}-\d{2}-[\da-f]{7,40}$/u;
 var LEGACY_WIKI_CHAIN_BRANCH_PATTERN = /^wiki-sync\/\d{4}-\d{2}-\d{2}-[\da-f]{7,40}$/u;
-var TALLY_SCRIPT = ".gaia/scripts/token-tally.sh";
+var USAGE_SCRIPT = ".gaia/scripts/usage.sh";
 var passthroughFailure2 = (result, command, args) => passthroughFailure({ args, command, prefix: "chain", result });
 var stepOk = commandSucceeded;
 var safeOutput3 = (value) => value ?? "";
@@ -35572,29 +35572,25 @@ var parsePrUrl = (text) => {
   if (!Number.isSafeInteger(number4) || number4 <= 0) return void 0;
   return { number: number4, repo };
 };
-var emitWikiTally = (options, artifact) => {
+var lastLine = (value) => safeOutput3(value).split("\n").map((line) => line.trim()).findLast((line) => line !== "") ?? "";
+var recordWikiCost = (options, artifact) => {
   try {
     const cwd = options.cwd ?? process.cwd();
     const runner = options.runner ?? defaultRunner;
     const repoRoot = resolveRepoRootOrNull(cwd);
     if (repoRoot === null) return;
     const args = [
-      TALLY_SCRIPT,
-      "--action",
-      "command",
-      "--command",
+      USAGE_SCRIPT,
+      "record",
+      "command:gaia-wiki",
+      "--workflow",
       "gaia-wiki",
-      ...artifact === void 0 ? [] : [
-        "--github-type",
-        "pr",
-        "--github-number",
-        String(artifact.number),
-        "--github-repo",
-        artifact.repo
-      ]
+      ...artifact === void 0 ? [] : ["--pr", String(artifact.number)]
     ];
     const result = runner("bash", args, { cwd: repoRoot });
-    process.stdout.write(safeOutput3(result.stdout));
+    const line = lastLine(result.status === 0 ? result.stdout : result.stderr);
+    if (line !== "") process.stdout.write(`${line}
+`);
   } catch {
   }
 };
@@ -35704,7 +35700,7 @@ var runFinish = (argv, options) => {
 };
 var finish = (argv, options) => {
   const outcome = runFinish(argv, options);
-  emitWikiTally(options, outcome.artifact);
+  recordWikiCost(options, outcome.artifact);
   return outcome.code;
 };
 var ACTIONS = {

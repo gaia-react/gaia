@@ -59,7 +59,7 @@ const WIKI_CHAIN_BRANCH_PATTERN =
 const LEGACY_WIKI_CHAIN_BRANCH_PATTERN =
   /^wiki-sync\/\d{4}-\d{2}-\d{2}-[\da-f]{7,40}$/u;
 
-const TALLY_SCRIPT = '.gaia/scripts/token-tally.sh';
+const USAGE_SCRIPT = '.gaia/scripts/usage.sh';
 
 const passthroughFailure = (
   result: PassthroughFailureOptions['result'],
@@ -105,7 +105,7 @@ type FinishOutcome = {
   code: number;
 };
 
-/** The GitHub artifact `finish` passed through to the cost tally. */
+/** The GitHub artifact `finish` passed through to the cost record. */
 type GhArtifact = {number: number; repo: string};
 
 type RunOptions = {
@@ -133,8 +133,8 @@ const resolveRoot = (cwdOption: string, action: string): null | string => {
   }
 };
 
-// Telemetry-only variant of `resolveRoot`: `emitWikiTally` must never surface
-// an error of its own, so a repo-root failure degrades to "skip the tally"
+// Telemetry-only variant of `resolveRoot`: `recordWikiCost` must never surface
+// an error of its own, so a repo-root failure degrades to "skip the record"
 // rather than a structured stderr message.
 const resolveRepoRootOrNull = (cwd: string): null | string => {
   try {
@@ -417,16 +417,23 @@ const parsePrUrl = (text: string): GhArtifact | undefined => {
   return {number, repo};
 };
 
+const lastLine = (value: null | string | undefined): string =>
+  safeOutput(value)
+    .split('\n')
+    .map((line) => line.trim())
+    .findLast((line) => line !== '') ?? '';
+
 /**
- * Emit this run's `kind: "command"` cost record and write the tally's
- * `Cost:` line through to stdout. `defaultRunner` captures a spawned child's
- * stdout instead of inheriting it, so without this explicit write the line
- * is silently swallowed and `/gaia-wiki` prints no cost at all.
+ * Close this run's usage-ledger record and write the `Cost:` line through to
+ * stdout. `defaultRunner` captures a spawned child's stdout instead of
+ * inheriting it, so without this explicit write the line is silently
+ * swallowed and `/gaia-wiki` prints no cost at all.
  *
- * Never throws and never influences `finish`'s exit code: a missing script,
- * a non-zero tally exit, or empty stdout are all silently fine.
+ * Never throws and never influences `finish`'s exit code: a missing script
+ * or empty output is silently fine, and a non-zero exit relays its one
+ * stderr line in place of the Cost line.
  */
-const emitWikiTally = (options: RunOptions, artifact?: GhArtifact): void => {
+const recordWikiCost = (options: RunOptions, artifact?: GhArtifact): void => {
   try {
     const cwd = options.cwd ?? process.cwd();
     const runner = options.runner ?? defaultRunner;
@@ -435,26 +442,18 @@ const emitWikiTally = (options: RunOptions, artifact?: GhArtifact): void => {
     if (repoRoot === null) return;
 
     const args = [
-      TALLY_SCRIPT,
-      '--action',
-      'command',
-      '--command',
+      USAGE_SCRIPT,
+      'record',
+      'command:gaia-wiki',
+      '--workflow',
       'gaia-wiki',
-      ...(artifact === undefined ?
-        []
-      : [
-          '--github-type',
-          'pr',
-          '--github-number',
-          String(artifact.number),
-          '--github-repo',
-          artifact.repo,
-        ]),
+      ...(artifact === undefined ? [] : ['--pr', String(artifact.number)]),
     ];
 
     const result = runner('bash', args, {cwd: repoRoot});
+    const line = lastLine(result.status === 0 ? result.stdout : result.stderr);
 
-    process.stdout.write(safeOutput(result.stdout));
+    if (line !== '') process.stdout.write(`${line}\n`);
   } catch {
     // Telemetry is best-effort; a thrown error here must not surface.
   }
@@ -624,7 +623,7 @@ const runFinish = (
 const finish = (argv: readonly string[], options: RunOptions): number => {
   const outcome = runFinish(argv, options);
 
-  emitWikiTally(options, outcome.artifact);
+  recordWikiCost(options, outcome.artifact);
 
   return outcome.code;
 };

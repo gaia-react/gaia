@@ -462,111 +462,6 @@ differs() { if cmp -s "$1" "$2"; then return 1; fi; return 0; }
   differs "$OLD_OUTPUT_FILE" "$edited"
 }
 
-# --- local rate mode (9, 12) -------------------------------------------------
-
-MODEL_XRAY=claude-xray-1
-MODEL_YRAY=claude-yray-1
-
-# The model entry in the flusher's key order, and in another order that the
-# warm-up grep does not match.
-_flusher() { printf '"%s":{"fresh_input":1000000,"cache_write_5m":0,"cache_write_1h":0,"cache_read":0,"output":100000}' "$1"; }
-_reordered() { printf '"%s":{"output":100000,"fresh_input":1000000,"cache_write_5m":0,"cache_write_1h":0,"cache_read":0}' "$1"; }
-
-# append_segment <variant>: a segment on the probe's key priced under models the
-# local table lacks. A: X, visible to the warm-up. B: X, visible only to the
-# coverage check. C: Y visible to the warm-up and X only to the coverage check,
-# so the first rate load attempts the feed for Y alone.
-append_segment() {
-  local by_model
-  case "$1" in
-    A) by_model="{$(_flusher "$MODEL_XRAY")}" ;;
-    B) by_model="{$(_reordered "$MODEL_XRAY")}" ;;
-    C) by_model="{$(_flusher "$MODEL_YRAY"),$(_reordered "$MODEL_XRAY")}" ;;
-    *) return 1 ;;
-  esac
-  printf '{"schema_version":1,"kind":"segment","key":"%s","session_id":"s-xm","inherit":false,"first_ts":"2026-09-12T16:00:00Z","last_ts":"2026-09-12T16:00:00Z","messages":2,"by_model":%s}\n' \
-    "$KEY" "$by_model" >>"$UM_TELEMETRY_DIRECTORY/usage.jsonl"
-}
-
-# run_local_rates <tree> <output-file> <error-file> <state-dir> <args...>: local rate mode. No --rate-table
-# override, the feed enabled and pointed at the stub, and a rates state dir of
-# the caller's choosing (the heal writes the local table, so each tree has its
-# own).
-run_local_rates() {
-  local tree="$1" output_file="$2" error_file="$3" state="$4" exit_status=0
-  shift 4
-  env -u GAIA_RATES_FEED_DISABLE GAIA_RATES_STATE_DIRECTORY="$state" GAIA_RATES_FEED_URL="file://$STUB" \
-    bash "$tree/.gaia/scripts/usage.sh" "$@" --main-root "$UM_MAIN" --telemetry-dir "$UM_TELEMETRY_DIRECTORY" \
-    --projects-root "$UM_PROJECTS_DIRECTORY" >"$output_file" 2>"$error_file" || exit_status=$?
-  return "$exit_status"
-}
-
-# local_scenario <variant> <tree> <state-name>: warms the memo under the shipped
-# tree over the committed stores, appends the variant's segment, and reads it
-# with <tree> and, over a fresh copy of the same local table, with the
-# pre-change scripts. Leaves the captures in $NEW_OUTPUT_FILE $NEW_ERROR_FILE $OLD_OUTPUT_FILE $OLD_ERROR_FILE and the
-# warm-up's output in $BASE_OUTPUT_FILE.
-local_scenario() {
-  local variant="$1" tree="$2" state_name="$3"
-  _paths
-  BASE_OUTPUT_FILE="$BATS_TEST_TMPDIR/base.out"
-  STUB="$BATS_TEST_TMPDIR/feed.json"
-  mkdir -p "$UM_MAIN/.gaia/scripts"
-  cp "$UM_RATES" "$UM_MAIN/.gaia/scripts/token-rates.json"
-  cp "$ROBUST/feed-stub.json" "$STUB"
-  rm -rf "$BATS_TEST_TMPDIR/rates-$state_name" "$BATS_TEST_TMPDIR/rates-old"
-  run_local_rates "$UM_NEW" "$BASE_OUTPUT_FILE" "$BATS_TEST_TMPDIR/base.err" "$BATS_TEST_TMPDIR/rates-$state_name" pr "$PR"
-  assert_priced "$BASE_OUTPUT_FILE"
-  append_segment "$variant"
-  : >"$GAIA_USAGE_MEMO_TRACE"
-  run_local_rates "$tree" "$NEW_OUTPUT_FILE" "$NEW_ERROR_FILE" "$BATS_TEST_TMPDIR/rates-$state_name" pr "$PR"
-  run_local_rates "$UM_OLD" "$OLD_OUTPUT_FILE" "$OLD_ERROR_FILE" "$BATS_TEST_TMPDIR/rates-old" pr "$PR"
-}
-
-# assert_healed: the model's segment is priced and the output is the pre-change
-# one, with nothing on stderr and no lower-bound marker.
-assert_healed() {
-  assert_priced "$NEW_OUTPUT_FILE"
-  assert_priced "$OLD_OUTPUT_FILE"
-  if grep -qF 'unpriced model(s)' "$OLD_OUTPUT_FILE"; then printf 'the pre-change run left a model unpriced, so the fixture proves nothing:\n%s\n' "$(cat "$OLD_OUTPUT_FILE")" >&2; return 1; fi
-  if grep -qF 'unpriced model(s)' "$NEW_OUTPUT_FILE"; then printf 'the readout marks a model unpriced:\n%s\n' "$(cat "$NEW_OUTPUT_FILE")" >&2; return 1; fi
-  differs "$BASE_OUTPUT_FILE" "$NEW_OUTPUT_FILE"
-  assert_same "$OLD_OUTPUT_FILE" "$NEW_OUTPUT_FILE"
-  if [ -s "$NEW_ERROR_FILE" ]; then printf 'the readout printed on stderr:\n%s\n' "$(cat "$NEW_ERROR_FILE")" >&2; return 1; fi
-  return 0
-}
-
-@test "local rates: a model the warm-up grep sees is healed to the pre-change figure" {
-  local_scenario A "$UM_NEW" shipped
-  assert_healed
-  assert_no_trace '^rerun=miss'
-}
-
-@test "local rates: a model only the coverage check finds is healed in a fresh child" {
-  local_scenario B "$UM_NEW" shipped
-  assert_healed
-  assert_trace "rerun=miss raws=0 bkeys=0 models=1"
-  assert_trace "rates=reload"
-}
-
-@test "local rates: a second missing model after a first heal that already fetched is healed too" {
-  local_scenario C "$UM_NEW" shipped
-  assert_healed
-  assert_trace "rerun=miss raws=0 bkeys=0 models=1"
-  assert_trace "rates=reload"
-}
-
-@test "local rates, guard red: a copy that reloads rates in-process leaves the second model unpriced" {
-  make_tree inproc
-  mutate "$MUTANT_TREE/$LIBRARY" '2) rates="$(gaia_usage_memo_rates_fresh "$library_directory" "$table" "$main")" || return 1 ;;' \
-    '2) usage_rates_load "$table" "$main" "$(gaia_usage_memo_models)"; rates="$USAGE_RATES" ;;'
-  local_scenario C "$MUTANT_TREE" inproc
-  assert_priced "$OLD_OUTPUT_FILE"
-  assert_priced "$NEW_OUTPUT_FILE"
-  differs "$OLD_OUTPUT_FILE" "$NEW_OUTPUT_FILE"
-  grep -qF "unpriced model(s) $MODEL_XRAY" "$NEW_OUTPUT_FILE"
-}
-
 # --- 10. cross-shell warmth --------------------------------------------------
 
 @test "shells: one memo stays warm across bash 3.2 and bash 5" {
@@ -661,15 +556,6 @@ forced_failure_tree() {
   differs "$OLD_ERROR_FILE" "$NEW_ERROR_FILE"
 }
 
-# --- 12. legacy fallback in local rate mode ----------------------------------
-
-@test "fallback, local rates: a failed single parse after a first heal still prices the second model" {
-  forced_failure_tree jqfail
-  local_scenario C "$MUTANT_TREE" fallback
-  assert_healed
-  assert_trace "fallback=legacy"
-}
-
 # --- 13. a memo too large for one argument -----------------------------------
 
 # A body past 1 MiB is over both limits a memo on argv would hit: Linux refuses
@@ -696,7 +582,7 @@ forced_failure_tree() {
 
 # --- 14. memo model superset -------------------------------------------------
 
-@test "models superset: a model only a non-schema line names is dropped from the memo, with a rate reload" {
+@test "models superset: a model only a non-schema line names is dropped from the memo" {
   local row zeta_model=claude-zeta-1
   row='{"schema_version":2,"kind":"segment","key":"session:s-z","session_id":"s-z","inherit":false,"first_ts":"2026-09-30T00:00:00Z","last_ts":"2026-09-30T00:00:00Z","messages":1,"by_model":{"'"$zeta_model"'":{"fresh_input":10,"cache_write_5m":0,"cache_write_1h":0,"cache_read":0,"output":5}}}'
   warm
@@ -715,7 +601,6 @@ forced_failure_tree() {
 
   check_same pr "$PR"
   assert_trace "rerun=miss raws=0 bkeys=0 models=1"
-  assert_trace "rates=reload"
   jq -e --arg zeta_model "$zeta_model" '.models | index($zeta_model) == null' <<<"$(memo_body)" >/dev/null
 
   check_same pr "$PR"

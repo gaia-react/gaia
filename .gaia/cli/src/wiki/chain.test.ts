@@ -136,11 +136,11 @@ const gitCalls = (recorded: RecordedCall[]): RecordedCall[] =>
 const ghCalls = (recorded: RecordedCall[]): RecordedCall[] =>
   recorded.filter((entry) => entry.command === 'gh');
 
-const TALLY_SCRIPT = '.gaia/scripts/token-tally.sh';
+const USAGE_SCRIPT = '.gaia/scripts/usage.sh';
 
-const tallyCalls = (recorded: RecordedCall[]): RecordedCall[] =>
+const recordCalls = (recorded: RecordedCall[]): RecordedCall[] =>
   recorded.filter(
-    (entry) => entry.command === 'bash' && entry.args[0] === TALLY_SCRIPT
+    (entry) => entry.command === 'bash' && entry.args[0] === USAGE_SCRIPT
   );
 
 const cachePathOf = (root: string): string =>
@@ -297,7 +297,7 @@ describe('wiki chain', () => {
       expect(stdio.errors.join('')).toContain('unknown flag');
     });
 
-    test('makes zero tally calls, on-main or in-place', () => {
+    test('makes zero record calls, on-main or in-place', () => {
       sandbox = setupSandbox();
       const inPlaceRecorded: RecordedCall[] = [];
       const inPlaceRunner = buildRunner(
@@ -311,7 +311,7 @@ describe('wiki chain', () => {
       );
 
       run(['begin'], {cwd: sandbox.root, runner: inPlaceRunner});
-      expect(tallyCalls(inPlaceRecorded)).toHaveLength(0);
+      expect(recordCalls(inPlaceRecorded)).toHaveLength(0);
 
       const onMainRecorded: RecordedCall[] = [];
       const onMainRunner = buildRunner(
@@ -333,7 +333,7 @@ describe('wiki chain', () => {
         runner: onMainRunner,
         today: '2026-05-07',
       });
-      expect(tallyCalls(onMainRecorded)).toHaveLength(0);
+      expect(recordCalls(onMainRecorded)).toHaveLength(0);
     });
   });
 
@@ -469,7 +469,7 @@ describe('wiki chain', () => {
       });
     });
 
-    test('makes zero tally calls, committing or no-op', () => {
+    test('makes zero record calls, committing or no-op', () => {
       sandbox = setupSandbox();
       const committingRecorded: RecordedCall[] = [];
       const committingRunner = buildRunner(
@@ -490,7 +490,7 @@ describe('wiki chain', () => {
         cwd: sandbox.root,
         runner: committingRunner,
       });
-      expect(tallyCalls(committingRecorded)).toHaveLength(0);
+      expect(recordCalls(committingRecorded)).toHaveLength(0);
 
       const noopRecorded: RecordedCall[] = [];
       const noopRunner = buildRunner(
@@ -511,7 +511,7 @@ describe('wiki chain', () => {
         cwd: sandbox.root,
         runner: noopRunner,
       });
-      expect(tallyCalls(noopRecorded)).toHaveLength(0);
+      expect(recordCalls(noopRecorded)).toHaveLength(0);
     });
 
     test('a successful commit sets checkedAt to 0 and keeps wikiDriftCount', () => {
@@ -1042,30 +1042,18 @@ describe('wiki chain', () => {
     });
   });
 
-  describe('finish: tally emission', () => {
-    const SUCCESS_TALLY_ARGV = [
-      TALLY_SCRIPT,
-      '--action',
-      'command',
-      '--command',
-      'gaia-wiki',
-      '--github-type',
-      'pr',
-      '--github-number',
-      '712',
-      '--github-repo',
-      'gaia-react/gaia',
-    ];
-
-    const NO_ARTIFACT_TALLY_ARGV = [
-      TALLY_SCRIPT,
-      '--action',
-      'command',
-      '--command',
+  describe('finish: cost record emission', () => {
+    const NO_ARTIFACT_RECORD_ARGV = [
+      USAGE_SCRIPT,
+      'record',
+      'command:gaia-wiki',
+      '--workflow',
       'gaia-wiki',
     ];
 
-    test('full success: exactly 1 tally call, exact pass-through argv, cost line written through', () => {
+    const SUCCESS_RECORD_ARGV = [...NO_ARTIFACT_RECORD_ARGV, '--pr', '712'];
+
+    test('full success: exactly 1 record call, exact pass-through argv, cost line written through', () => {
       sandbox = setupSandbox();
       const recorded: RecordedCall[] = [];
       const runner = buildRunner(
@@ -1110,7 +1098,7 @@ describe('wiki chain', () => {
             result: okResult('MERGED\n'),
           },
           {
-            argv: SUCCESS_TALLY_ARGV,
+            argv: SUCCESS_RECORD_ARGV,
             result: okResult('Cost: ~1.2M tokens, $0.90, 3m4s\n'),
           },
         ],
@@ -1124,15 +1112,15 @@ describe('wiki chain', () => {
       });
       expect(exit).toBe(0);
 
-      const calls = tallyCalls(recorded);
+      const calls = recordCalls(recorded);
       expect(calls).toHaveLength(1);
-      expect(calls[0]).toEqual({args: SUCCESS_TALLY_ARGV, command: 'bash'});
+      expect(calls[0]).toEqual({args: SUCCESS_RECORD_ARGV, command: 'bash'});
       expect(stdio.outputs.join('')).toContain(
         'Cost: ~1.2M tokens, $0.90, 3m4s'
       );
     });
 
-    test('empty branch: exactly 1 tally call, no artifact', () => {
+    test('empty branch: exactly 1 record call, no artifact', () => {
       sandbox = setupSandbox();
       const recorded: RecordedCall[] = [];
       const runner = buildRunner(
@@ -1155,15 +1143,15 @@ describe('wiki chain', () => {
 
       const exit = run(['finish'], {cwd: sandbox.root, runner});
       expect(exit).toBe(0);
-      const calls = tallyCalls(recorded);
+      const calls = recordCalls(recorded);
       expect(calls).toHaveLength(1);
       expect(calls[0]).toEqual({
-        args: NO_ARTIFACT_TALLY_ARGV,
+        args: NO_ARTIFACT_RECORD_ARGV,
         command: 'bash',
       });
     });
 
-    test('empty branch, dirty tree: exactly 1 tally call, no artifact', () => {
+    test('empty branch, dirty tree: exactly 1 record call, no artifact', () => {
       sandbox = setupSandbox();
       const recorded: RecordedCall[] = [];
       const runner = buildRunner(
@@ -1190,15 +1178,15 @@ describe('wiki chain', () => {
 
       const exit = run(['finish'], {cwd: sandbox.root, runner});
       expect(exit).toBe(0);
-      const calls = tallyCalls(recorded);
+      const calls = recordCalls(recorded);
       expect(calls).toHaveLength(1);
       expect(calls[0]).toEqual({
-        args: NO_ARTIFACT_TALLY_ARGV,
+        args: NO_ARTIFACT_RECORD_ARGV,
         command: 'bash',
       });
     });
 
-    test('in-place run: exactly 1 tally call, no artifact', () => {
+    test('in-place run: exactly 1 record call, no artifact', () => {
       sandbox = setupSandbox();
       const recorded: RecordedCall[] = [];
       const runner = buildRunner(
@@ -1213,15 +1201,15 @@ describe('wiki chain', () => {
 
       const exit = run(['finish'], {cwd: sandbox.root, runner});
       expect(exit).toBe(0);
-      const calls = tallyCalls(recorded);
+      const calls = recordCalls(recorded);
       expect(calls).toHaveLength(1);
       expect(calls[0]).toEqual({
-        args: NO_ARTIFACT_TALLY_ARGV,
+        args: NO_ARTIFACT_RECORD_ARGV,
         command: 'bash',
       });
     });
 
-    test('git push fails: exactly 1 tally call, no artifact, exit code unchanged', () => {
+    test('git push fails: exactly 1 record call, no artifact, exit code unchanged', () => {
       sandbox = setupSandbox();
       const recorded: RecordedCall[] = [];
       const runner = buildRunner(
@@ -1252,15 +1240,15 @@ describe('wiki chain', () => {
 
       const exit = run(['finish'], {cwd: sandbox.root, runner});
       expect(exit).toBe(2);
-      const calls = tallyCalls(recorded);
+      const calls = recordCalls(recorded);
       expect(calls).toHaveLength(1);
       expect(calls[0]).toEqual({
-        args: NO_ARTIFACT_TALLY_ARGV,
+        args: NO_ARTIFACT_RECORD_ARGV,
         command: 'bash',
       });
     });
 
-    test('gh pr create fails: exactly 1 tally call, no artifact, exit code unchanged', () => {
+    test('gh pr create fails: exactly 1 record call, no artifact, exit code unchanged', () => {
       sandbox = setupSandbox();
       const recorded: RecordedCall[] = [];
       const runner = buildRunner(
@@ -1302,15 +1290,15 @@ describe('wiki chain', () => {
 
       const exit = run(['finish'], {cwd: sandbox.root, runner});
       expect(exit).toBe(2);
-      const calls = tallyCalls(recorded);
+      const calls = recordCalls(recorded);
       expect(calls).toHaveLength(1);
       expect(calls[0]).toEqual({
-        args: NO_ARTIFACT_TALLY_ARGV,
+        args: NO_ARTIFACT_RECORD_ARGV,
         command: 'bash',
       });
     });
 
-    test('gh pr merge fails after gh pr create succeeded: exactly 1 tally call, carries the artifact, exit code unchanged', () => {
+    test('gh pr merge fails after gh pr create succeeded: exactly 1 record call, carries the artifact, exit code unchanged', () => {
       sandbox = setupSandbox();
       const recorded: RecordedCall[] = [];
       const runner = buildRunner(
@@ -1356,12 +1344,12 @@ describe('wiki chain', () => {
 
       const exit = run(['finish'], {cwd: sandbox.root, runner});
       expect(exit).toBe(2);
-      const calls = tallyCalls(recorded);
+      const calls = recordCalls(recorded);
       expect(calls).toHaveLength(1);
-      expect(calls[0]).toEqual({args: SUCCESS_TALLY_ARGV, command: 'bash'});
+      expect(calls[0]).toEqual({args: SUCCESS_RECORD_ARGV, command: 'bash'});
     });
 
-    test('rev-list fails: exactly 1 tally call, exit code unchanged', () => {
+    test('rev-list fails: exactly 1 record call, exit code unchanged', () => {
       sandbox = setupSandbox();
       const recorded: RecordedCall[] = [];
       const runner = buildRunner(
@@ -1384,15 +1372,15 @@ describe('wiki chain', () => {
 
       const exit = run(['finish'], {cwd: sandbox.root, runner});
       expect(exit).toBe(2);
-      const calls = tallyCalls(recorded);
+      const calls = recordCalls(recorded);
       expect(calls).toHaveLength(1);
       expect(calls[0]).toEqual({
-        args: NO_ARTIFACT_TALLY_ARGV,
+        args: NO_ARTIFACT_RECORD_ARGV,
         command: 'bash',
       });
     });
 
-    test('merge-poll timeout: exactly 1 tally call, carries the artifact', () => {
+    test('merge-poll timeout: exactly 1 record call, carries the artifact', () => {
       sandbox = setupSandbox();
       const recorded: RecordedCall[] = [];
       const runner = buildRunner(
@@ -1447,12 +1435,12 @@ describe('wiki chain', () => {
         sleep: () => undefined,
       });
       expect(exit).toBe(0);
-      const calls = tallyCalls(recorded);
+      const calls = recordCalls(recorded);
       expect(calls).toHaveLength(1);
-      expect(calls[0]).toEqual({args: SUCCESS_TALLY_ARGV, command: 'bash'});
+      expect(calls[0]).toEqual({args: SUCCESS_RECORD_ARGV, command: 'bash'});
     });
 
-    test('gh pr create prints a non-URL: tally called once, no artifact', () => {
+    test('gh pr create prints a non-URL: record called once, no artifact', () => {
       sandbox = setupSandbox();
       const recorded: RecordedCall[] = [];
       const runner = buildRunner(
@@ -1506,10 +1494,10 @@ describe('wiki chain', () => {
         sleep: () => undefined,
       });
       expect(exit).toBe(0);
-      const calls = tallyCalls(recorded);
+      const calls = recordCalls(recorded);
       expect(calls).toHaveLength(1);
       expect(calls[0]).toEqual({
-        args: NO_ARTIFACT_TALLY_ARGV,
+        args: NO_ARTIFACT_RECORD_ARGV,
         command: 'bash',
       });
     });
@@ -1568,10 +1556,10 @@ describe('wiki chain', () => {
         sleep: () => undefined,
       });
       expect(exit).toBe(0);
-      const calls = tallyCalls(recorded);
+      const calls = recordCalls(recorded);
       expect(calls).toHaveLength(1);
       expect(calls[0]).toEqual({
-        args: NO_ARTIFACT_TALLY_ARGV,
+        args: NO_ARTIFACT_RECORD_ARGV,
         command: 'bash',
       });
       expect(existsSync(path.join(sandbox.root, 'CANARY'))).toBe(false);
@@ -1631,15 +1619,15 @@ describe('wiki chain', () => {
         sleep: () => undefined,
       });
       expect(exit).toBe(0);
-      const calls = tallyCalls(recorded);
+      const calls = recordCalls(recorded);
       expect(calls).toHaveLength(1);
       expect(calls[0]).toEqual({
-        args: NO_ARTIFACT_TALLY_ARGV,
+        args: NO_ARTIFACT_RECORD_ARGV,
         command: 'bash',
       });
     });
 
-    test('tally call returning non-zero status and empty stdout does not affect exit code or stdout', () => {
+    test('record call returning non-zero status relays its stderr line in place of the Cost line without affecting the exit code', () => {
       sandbox = setupSandbox();
       const recorded: RecordedCall[] = [];
       const runner = buildRunner(
@@ -1649,8 +1637,8 @@ describe('wiki chain', () => {
             result: okResult('feature/x\n'),
           },
           {
-            argv: NO_ARTIFACT_TALLY_ARGV,
-            result: failResult(1, 'tally: unexpected error'),
+            argv: NO_ARTIFACT_RECORD_ARGV,
+            result: failResult(1, 'usage: record skipped, no session id\n'),
           },
         ],
         recorded
@@ -1658,7 +1646,35 @@ describe('wiki chain', () => {
 
       const exit = run(['finish'], {cwd: sandbox.root, runner});
       expect(exit).toBe(0);
+      expect(stdio.outputs.join('')).toContain(
+        'usage: record skipped, no session id\n'
+      );
       expect(stdio.outputs.join('')).not.toContain('Cost:');
+    });
+
+    test('no call names the retired tally script', () => {
+      sandbox = setupSandbox();
+      const recorded: RecordedCall[] = [];
+      const runner = buildRunner(
+        [
+          {
+            argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+            result: okResult('feature/x\n'),
+          },
+          {
+            argv: NO_ARTIFACT_RECORD_ARGV,
+            result: okResult('Cost: ~1.2M tokens, $0.90, 3m4s\n'),
+          },
+        ],
+        recorded
+      );
+
+      run(['finish'], {cwd: sandbox.root, runner});
+      expect(
+        recorded.some((entry) =>
+          entry.args.some((arg) => arg.includes('tally'))
+        )
+      ).toBe(false);
     });
   });
 

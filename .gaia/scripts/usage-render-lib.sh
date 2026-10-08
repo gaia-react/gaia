@@ -129,24 +129,17 @@ def usage_view_reconcile:
 # shellcheck disable=SC2034  # consumed by usage.sh
 GAIA_USAGE_VIEW_JQ="$GAIA_USAGE_PRUNE_JQ$GAIA_USAGE_VIEW_BODY_JQ"
 
-# usage_rates_load <override> <main_root> <models_json>: sets USAGE_RATES to the
-# rate table JSON, or null when none loads. Call it in the caller's own shell,
-# never in $(...): gaia_rates_prepare keeps per-process state a subshell
-# discards. An override skips seed, sync, and heal, as in token-rollup.sh.
+# usage_rates_load <table-override> <main_root> [models_json]: sets USAGE_RATES
+# to the distributed rate table with the local override overlaid, or null when
+# none loads. A non-empty <table-override> replaces the distributed table (the
+# --rate-table seam). It never touches the network, so a model absent from both
+# tables prices as unpriced. The models argument is accepted and unused.
 # shellcheck disable=SC2034  # USAGE_RATES is read by the caller
 usage_rates_load() {
-  local table=""
   USAGE_RATES=null
-  if declare -F gaia_rates_prepare >/dev/null 2>&1; then
-    if gaia_rates_prepare "$1" "$2"; then table="$GAIA_RATES_TABLE"; fi
-  elif declare -F gaia_resolve_rate_table >/dev/null 2>&1; then
-    table="$(gaia_resolve_rate_table "$1")" || table=""
-  fi
-  [ -n "$table" ] || return 0
-  USAGE_RATES="$(gaia_load_rate_table "$table")" || { USAGE_RATES=null; return 0; }
-  if declare -F gaia_rates_heal >/dev/null 2>&1 && gaia_rates_heal "$3"; then
-    USAGE_RATES="$(gaia_load_rate_table "$GAIA_RATES_TABLE")" || USAGE_RATES=null
-  fi
+  declare -F gaia_rates_load >/dev/null 2>&1 || return 0
+  gaia_rates_load "$2" "$1"
+  USAGE_RATES="$GAIA_RATES_JSON"
 }
 
 # usage_models_of <keys-json>: the models list a gaia_usage_keys_json object
@@ -169,6 +162,13 @@ usage_unflushed() {
 _usage_markers() {
   local view_json="$1" hooks="$2" unflushed="$3" marker unpriced_models tab=$'\t'
   shift 3
+  # The memo path loads rates in a subshell, so the status is read again here
+  # from the caller's MAIN_ROOT; the flag keeps a multi-root readout to one line.
+  if [ -z "${_USAGE_OVERRIDE_MARKED:-}" ] && declare -F gaia_rates_override_status >/dev/null 2>&1 &&
+    [ "$(gaia_rates_override_status "${MAIN_ROOT:-}")" = unparseable ]; then
+    _USAGE_OVERRIDE_MARKED=1
+    printf '  ! rate override ignored (unparseable): .gaia/local/telemetry/token-rates.override.json\n'
+  fi
   [ "$hooks" = 1 ] || printf '  ! capture hooks not registered\n'
   if [ -n "$unflushed" ]; then printf '  ! unflushed: %s file(s), %s bytes not yet recorded\n' "${unflushed%%"$tab"*}" "${unflushed#*"$tab"}"; fi
   for marker in "$@"; do printf '  ! %s\n' "$marker"; done

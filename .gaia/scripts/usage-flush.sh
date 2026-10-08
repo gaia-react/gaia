@@ -4,15 +4,24 @@
 # and workflow starts, and one `cursor` row per committed file. Attribution is
 # not decided here; readers resolve it at read time.
 #
-#   usage-flush.sh --session <sid> [--transcript <path>] [--finished-main]
+#   usage-flush.sh --session <sid> [--transcript <path>] [--finished-main] [--all-sidecars-finished]
 #   usage-flush.sh --sweep [--self-session <sid>]
 #   common: [--projects-root <dir>] [--main-root <dir>] [--telemetry-dir <dir>] [--ledger <cost.jsonl>]
 #
-# Contract with the hooks that call it: always exits 0, prints nothing on
-# stdout, diagnostics on stderr. `--finished-main` asserts the session's main
-# transcript is quiescent up to its current size (Stop and the merge hook fire
-# only after the issuing message is complete), which lets the trailing message
-# group commit instead of waiting for its final duplicate line.
+# Contract with the hooks that call it: exits 0 and prints nothing on stdout,
+# diagnostics on stderr. The one exception is a missing or unparseable library
+# (usage-lib.sh, usage-parse-lib.sh), which exits non-zero with one stderr line
+# naming the file; the hooks launch it detached or discard its status.
+# `--finished-main` asserts the session's main transcript is quiescent up to its
+# current size (Stop and the merge hook fire only after the issuing message is
+# complete), which lets the trailing message group commit instead of waiting for
+# its final duplicate line. `--all-sidecars-finished` asserts the same for every
+# sidecar of a session run, so no sidecar waits out the quiet window; a sweep
+# ignores it.
+#
+# Every segment row carries agent_type (main, the sidecar's meta agentType, or
+# unknown) and, for a sidecar, agent_id. A close binding row in the ledger ends
+# an attribution interval, so it splits segments like a declare binding.
 #
 # Counted-once invariant: every usage message lands in exactly one segment at
 # its final value. It rests on four mechanisms that only hold together:
@@ -22,7 +31,8 @@
 #   - the per (session, role) high-water mark: a relocated copy, a truncated
 #     and rewritten file, or a reparse after a lost race counts nothing twice;
 #   - compare-and-swap: a commit aborts when another flusher committed a cursor
-#     for the same (session, role) since this one read the ledger;
+#     for the same (session, role), or a close binding for the session, since
+#     this one read the ledger;
 #   - per-file commits: a sweep killed midway loses only its uncommitted file.
 #
 # Knobs: GAIA_USAGE_LIVE_SECONDS (300, a sweep treats a newer file as still being
@@ -41,16 +51,17 @@ _uf_log() { printf 'usage-flush: %s\n' "$*" >&2; }
 
 command -v jq >/dev/null 2>&1 || exit 0
 # shellcheck source=usage-lib.sh
-. "$UF_SCRIPT_DIRECTORY/usage-lib.sh" 2>/dev/null || exit 0
+. "$UF_SCRIPT_DIRECTORY/usage-lib.sh" 2>/dev/null || { _uf_log "cannot load $UF_SCRIPT_DIRECTORY/usage-lib.sh"; exit 1; }
 gaia_usage_in_ci && exit 0
 # shellcheck source=usage-parse-lib.sh
-. "$UF_SCRIPT_DIRECTORY/usage-parse-lib.sh" 2>/dev/null || exit 0
+. "$UF_SCRIPT_DIRECTORY/usage-parse-lib.sh" 2>/dev/null || { _uf_log "cannot load $UF_SCRIPT_DIRECTORY/usage-parse-lib.sh"; exit 1; }
 
-UF_SESSION="" UF_TRANSCRIPT="" UF_FINISHED_MAIN=false UF_SWEEP=0 UF_SELF=""
+UF_SESSION="" UF_TRANSCRIPT="" UF_FINISHED_MAIN=false UF_ALL_SIDECARS_FINISHED=0 UF_SWEEP=0 UF_SELF=""
 UF_PROJECTS="" UF_MAIN="" UF_TELEMETRY_DIRECTORY="" UF_COST="" UF_TELEMETRY_DIRECTORY_GIVEN=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --finished-main) UF_FINISHED_MAIN=true; shift; continue ;;
+    --all-sidecars-finished) UF_ALL_SIDECARS_FINISHED=1; shift; continue ;;
     --sweep) UF_SWEEP=1; shift; continue ;;
     --session | --transcript | --self-session | --projects-root | --main-root | --telemetry-dir | --ledger)
       [ $# -ge 2 ] || { _uf_log "missing value for ${1//[^A-Za-z0-9._=\/-]/?}"; exit 0; } ;;
@@ -107,10 +118,8 @@ UF_DEFAULT="$(gaia_usage_default_branch "$UF_MAIN")"
 
 UF_ROOTS_JSON="$({ printf '%s\n' "$UF_MAIN"; gaia_usage_tree_roots "$UF_MAIN"; } | jq -Rnc '[inputs | select(length > 0)] | unique')" || exit 0
 UF_RESEARCH_ROOTS_JSON="$(jq -nc --arg research_root "$UF_MAIN/.gaia/local/research/" '[$research_root]')" || exit 0
-# The workflows whose start opens an attribution interval: /gaia-spec,
-# /gaia-plan, and the maintenance commands token-tally.sh accepts for
-# --action command (its closed --command set). Mirror that list here.
-UF_STARTSET='["gaia-spec","gaia-plan","gaia-audit","gaia-debt","gaia-fitness","gaia-forensics","gaia-harden","gaia-residue","gaia-wiki"]'
+# The workflows whose start opens an attribution interval and whose run
+# `usage.sh record` closes: GAIA_USAGE_START_SET in usage-lib.sh.
 
 UF_WORK="$(mktemp -d 2>/dev/null)" || exit 0
 UF_SWEEP_LOCK="$UF_TELEMETRY_DIRECTORY/usage-sweep.lock.d"
@@ -193,12 +202,28 @@ _uf_load_state() {
 }
 
 # Rc 0 when a cursor row for (session, role) landed in the ledger after byte ledger_bytes_read.
+# A compare-and-swap conflict is also a close binding for the session that
+# prepare did not see (_uf_closes_changed): prepare reads the split points
+# outside the lock, so a close appended since would otherwise be invisible and a
+# committed segment could straddle it.
 # shellcheck disable=SC2329  # reached through _uf_commit_locked
 _uf_cas_conflict() {
   _uf_range "$UF_LEDGER" "$3" "$4" | grep -F '"kind":"cursor"' |
     jq -neR --arg session_id "$1" --arg role "$2" \
       '[inputs | try fromjson catch null | objects | select(.kind == "cursor" and .session_id == $session_id and .role == $role)] | length > 0' \
       >/dev/null 2>&1
+}
+
+# The session's close binding rows currently in the ledger, sorted.
+# shellcheck disable=SC2329  # reached through _uf_closes_changed
+_uf_session_closes() {
+  grep -F -- "$1" "$UF_LEDGER" 2>/dev/null | grep -F '"type":"close"' | sort
+}
+
+# Rc 0 when the session's close rows differ from the set prepare used.
+# shellcheck disable=SC2329  # reached through _uf_commit_locked
+_uf_closes_changed() {
+  ! _uf_session_closes "$1" | cmp -s - "$UF_WORK/closes"
 }
 
 # Rewrites the cursor cache from the ledger (temp file then rename). Called
@@ -238,7 +263,10 @@ _uf_commit_locked() {
   local batch="$1" session_id="$2" role="$3" ledger_bytes_read="$4" prune="$5" commit_started_at size newsize
   commit_started_at="$(_uf_now)"
   size="$(_uf_file_size "$UF_LEDGER")"
-  if [ "$size" -gt "$ledger_bytes_read" ] && _uf_cas_conflict "$session_id" "$role" "$ledger_bytes_read" "$size"; then return 3; fi
+  if [ "$size" -gt "$ledger_bytes_read" ]; then
+    if _uf_cas_conflict "$session_id" "$role" "$ledger_bytes_read" "$size"; then return 3; fi
+    if _uf_closes_changed "$session_id"; then return 3; fi
+  fi
   cat "$batch" >>"$UF_LEDGER" || return 1
   newsize="$(_uf_file_size "$UF_LEDGER")"
   _uf_write_cache "$newsize" "$prune" || _uf_log "cursor cache not rewritten; the next run rebuilds it"
@@ -258,6 +286,44 @@ _uf_barrier() {
   done
 }
 
+# Sets UF_AGENT_TYPE and UF_AGENT_ID for a transcript. A sidecar's type is the
+# agentType of the agent-<id>.meta.json beside it, read for the whole session in
+# one jq pass the first time any of its sidecars is prepared (one jq per meta
+# costs seconds on a session with dozens); a missing, unreadable or oddly
+# spelled meta reads as unknown. The map is a newline-led string so the lookup
+# stays in bash and exact.
+UF_META_SESSIONS=$'\n' UF_META_MAP=$'\n'
+_uf_load_metas() {
+  local session_directory="$1" meta_file meta_output
+  local -a meta_files=()
+  case "$UF_META_SESSIONS" in *$'\n'"$session_directory"$'\n'*) return 0 ;; esac
+  UF_META_SESSIONS="$UF_META_SESSIONS$session_directory"$'\n'
+  for meta_file in "$session_directory"/subagents/agent-*.meta.json "$session_directory"/subagents/workflows/*/agent-*.meta.json; do
+    if [ -f "$meta_file" ]; then meta_files[${#meta_files[@]}]="$meta_file"; fi
+  done
+  [ "${#meta_files[@]}" -gt 0 ] || return 0
+  meta_output="$(jq -nr '[inputs | select(type == "object")
+      | "\(input_filename | sub("\\.meta\\.json\\z"; ".jsonl"))\t\(.agentType | if type == "string" and test("\\A[A-Za-z0-9._:-]+\\z") then . else "unknown" end)\n"]
+    | join("")' "${meta_files[@]}" 2>/dev/null)" || meta_output=""
+  UF_META_MAP="$UF_META_MAP$meta_output"
+}
+_uf_agent_fields() {
+  local transcript_file="$1" role="$2" file_name rest
+  UF_AGENT_TYPE=main UF_AGENT_ID=""
+  [ "$role" != main ] || return 0
+  file_name="${transcript_file##*/}"
+  file_name="${file_name#agent-}"
+  UF_AGENT_ID="${file_name%.jsonl}"
+  _uf_load_metas "${transcript_file%%/subagents/*}"
+  UF_AGENT_TYPE=unknown
+  case "$UF_META_MAP" in
+    *$'\n'"$transcript_file"$'\t'*)
+      rest="${UF_META_MAP#*$'\n'"$transcript_file"$'\t'}"
+      UF_AGENT_TYPE="${rest%%$'\n'*}"
+      ;;
+  esac
+}
+
 # Parses one file's due range and writes the commit batch to UF_BATCH. Rc 1
 # when there is nothing to commit.
 _uf_prepare() {
@@ -273,17 +339,20 @@ _uf_prepare() {
   _uf_range "$transcript_file" "$offset" "$size" >"$UF_WORK/chunk"
   complete="$(_uf_complete_bytes "$UF_WORK/chunk")"
   line_count=$(($(wc -l <"$UF_WORK/chunk")))
-  jq -nrR --argjson roots "$UF_ROOTS_JSON" --argjson research_roots "$UF_RESEARCH_ROOTS_JSON" --argjson startset "$UF_STARTSET" \
+  jq -nrR --argjson roots "$UF_ROOTS_JSON" --argjson research_roots "$UF_RESEARCH_ROOTS_JSON" --argjson startset "$GAIA_USAGE_START_SET" \
     --argjson line_count "$line_count" "$GAIA_USAGE_PARSE_JQ" <"$UF_WORK/chunk" >"$UF_WORK/p1" 2>/dev/null || return 1
   head -n 1 "$UF_WORK/p1" >"$UF_WORK/ext"
   while IFS= read -r raw_branch; do raw_branches[${#raw_branches[@]}]="$raw_branch"; done < <(tail -n +2 "$UF_WORK/p1")
   branch_map='{}'
   if [ "${#raw_branches[@]}" -gt 0 ]; then branch_map="$(gaia_usage_branch_map "${raw_branches[@]}" 2>/dev/null)" || branch_map='{}'; fi
   [ -n "$branch_map" ] || branch_map='{}'
-  { grep -F -- "$session_id" "$UF_COST"; grep -F -- "$session_id" "$UF_LEDGER"; } >"$UF_WORK/splits" 2>/dev/null
+  grep -F -- "$session_id" "$UF_LEDGER" >"$UF_WORK/session_rows" 2>/dev/null
+  { grep -F -- "$session_id" "$UF_COST"; cat "$UF_WORK/session_rows"; } >"$UF_WORK/splits" 2>/dev/null
+  grep -F '"type":"close"' "$UF_WORK/session_rows" 2>/dev/null | sort >"$UF_WORK/closes"
+  _uf_agent_fields "$transcript_file" "$role"
   jq -nr --slurpfile extraction "$UF_WORK/ext" --argjson branch_map "$branch_map" --arg default "$UF_DEFAULT" --arg file_session_id "$session_id" \
     --argjson high_water_mark "$UF_HIGH_WATER_MARK" --argjson finished "$finished" --rawfile splitsraw "$UF_WORK/splits" \
-    --arg path "$transcript_file" --arg role "$role" --argjson size "$size" --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --arg path "$transcript_file" --arg role "$role" --arg agent_type "$UF_AGENT_TYPE" --arg agent_id "$UF_AGENT_ID" --argjson size "$size" --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     "$GAIA_USAGE_SEGMENT_JQ" >"$UF_WORK/p2" 2>/dev/null || return 1
   { IFS= read -r hold; IFS= read -r cursor_row_prefix; IFS= read -r cursor_row_suffix; } <"$UF_WORK/p2"
   if [ "$hold" = null ]; then
@@ -367,7 +436,7 @@ _uf_session() {
     [ "$UF_SESSION_ID" = "$UF_SESSION" ] || continue
     if [ "$UF_ROLE" = main ]; then
       file_finished="$UF_FINISHED_MAIN"
-    elif _uf_age_ok "$mtime" "${GAIA_USAGE_SIDECAR_QUIET_SECONDS:-60}"; then
+    elif [ "$UF_ALL_SIDECARS_FINISHED" = 1 ] || _uf_age_ok "$mtime" "${GAIA_USAGE_SIDECAR_QUIET_SECONDS:-60}"; then
       file_finished=true
     else
       file_finished=false
