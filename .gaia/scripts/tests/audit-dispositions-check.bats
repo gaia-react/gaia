@@ -30,7 +30,8 @@ setup() {
   mkdir -p "$RUN_FOLDER"
   # f.txt:1 authored Critical, :2 security Suggestion, :3 Important,
   # base.txt:3 Critical outside the branch diff, :4 cross-remit Important,
-  # :5 no security field, :6 Suggestion.
+  # :5 no security field, :6 Suggestion; base.txt:5 security Suggestion and
+  # base.txt:6 Important, both outside the branch diff.
   FINDINGS_JSON='[
     {"path":"f.txt","line":1,"finding_class":"c/crit","severity":"error","security":false},
     {"path":"f.txt","line":2,"finding_class":"c/sec","severity":"suggestion","security":true},
@@ -38,9 +39,19 @@ setup() {
     {"path":"base.txt","line":3,"finding_class":"c/oos","severity":"error","security":false},
     {"path":"f.txt","line":4,"finding_class":"c/xr","severity":"warning","security":false,"cross_remit":true},
     {"path":"f.txt","line":5,"finding_class":"c/nosec","severity":"warning"},
-    {"path":"f.txt","line":6,"finding_class":"c/sug","severity":"suggestion","security":false}
+    {"path":"f.txt","line":6,"finding_class":"c/sug","severity":"suggestion","security":false},
+    {"path":"base.txt","line":5,"finding_class":"c/oossec","severity":"suggestion","security":true},
+    {"path":"base.txt","line":6,"finding_class":"c/oosimp","severity":"warning","security":false}
   ]'
   open_round 1 "$FINDINGS_JSON"
+  # A gh stub answering the repo-visibility probe with $GH_VISIBILITY (failing
+  # when unset) and logging each call, so a test controls and observes it.
+  GH_CALLS="$BATS_TEST_TMPDIR/gh-calls"
+  mkdir -p "$BATS_TEST_TMPDIR/bin"
+  printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >>"%s"\n[ -n "${GH_VISIBILITY-}" ] || exit 1\nprintf "%%s\\n" "$GH_VISIBILITY"\n' "$GH_CALLS" >"$BATS_TEST_TMPDIR/bin/gh"
+  chmod +x "$BATS_TEST_TMPDIR/bin/gh"
+  PATH="$BATS_TEST_TMPDIR/bin:$PATH"
+  export GH_VISIBILITY=PUBLIC
 }
 
 # open_round <round> <findings-json>: record round r on HEAD with its stamp,
@@ -178,10 +189,34 @@ vetoes() {
   red cross-remit-basis-mismatch "$(key_json c/imp f.txt 3)"
 }
 
-@test "control: an out-of-scope Critical filed with a reason passes" {
+@test "control: an out-of-scope Critical filed with a reason passes on a confirmed PRIVATE repo" {
+  GH_VISIBILITY=PRIVATE
   write_dispositions 1 "$(fill "$FINDINGS_JSON" "[$(disposition_entry base.txt 3 c/oos file "filed upstream")]")"
   run_check 1
   green
+}
+
+@test "security divert: an out-of-scope Critical filed on a PUBLIC repo fails security-file-not-private" {
+  write_dispositions 1 "$(fill "$FINDINGS_JSON" "[$(disposition_entry base.txt 3 c/oos file "filed upstream")]")"
+  run_check 1
+  red security-file-not-private "$(key_json c/oos base.txt 3)"
+}
+
+@test "security divert: an out-of-scope security:true Suggestion filed fails on INTERNAL and on a failed probe" {
+  local visibility
+  write_dispositions 1 "$(fill "$FINDINGS_JSON" "[$(disposition_entry base.txt 5 c/oossec file "filed upstream")]")"
+  for visibility in INTERNAL ''; do
+    GH_VISIBILITY="$visibility"
+    run_check 1
+    red security-file-not-private "$(key_json c/oossec base.txt 5)" || return 1
+  done
+}
+
+@test "security divert: an out-of-scope non-security Important filed on a PUBLIC repo passes without probing" {
+  write_dispositions 1 "$(fill "$FINDINGS_JSON" "[$(disposition_entry base.txt 6 c/oosimp file "filed upstream")]")"
+  run_check 1
+  green || return 1
+  [ ! -e "$GH_CALLS" ] || { echo "probed: $(cat "$GH_CALLS")"; return 1; }
 }
 
 @test "control: a branch-authored security:false Suggestion waived on the triage threshold passes" {
