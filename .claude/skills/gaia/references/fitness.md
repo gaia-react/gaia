@@ -4,6 +4,8 @@
 
 The check taxonomy, F-to-A+ grading rubric, and triage/heal orchestration protocol all live in `wiki/decisions/Claude Integration Fitness.md`. This file is the Orchestrator: it reads that page, runs its three phases, and owns the branch / repo-state / publish harness layer described below. That harness layer, auto-branching, the unsafe-state guard, and the post-report publish gate, is `/gaia-fitness`-specific and is not part of the protocol in that page.
 
+Contents: Path resolution; Step 1, Read the protocol page; Step 2, Repo-state pre-flight; Step 3, Triage; Step 4, Heal; Step 5, Verify; Cost record (run end); Step 6, Report; Step 7, Publish gate; Step 8, Publish.
+
 **Scope note:** the harness this file wraps around the protocol is minimal, no Orchestrator-above-Triager layer, no preserved per-cycle artifact directories, no escalation handoff. On loop exhaustion it reports the unresolved findings with the grade, period. The agent runs the checks the wiki page defines (greps / `jq` / `.gaia/cli/gaia wiki …` calls) inline; the only fitness-specific `gaia` subcommand it calls is `gaia fitness render-card`, which renders the final report card from the findings JSON (presentation only, it runs no checks).
 
 ---
@@ -28,7 +30,7 @@ That page defines:
 
 - The graded check categories.
 - The bucket-and-model spec for triage Auditors (Haiku for mechanical checks, Sonnet for judgment-bearing checks and grade synthesis).
-- The Fixer lanes for the heal phase.
+- The Fixer lanes for the heal phase, and the ownership classes that decide which files the heal may edit.
 - The bounded loop (default 3 cycles) and oscillation detection (fingerprint format: `{check-id}:{file}:{line}:{first-40-chars-of-match-text}`).
 - The F-to-A+ grading rubric (grade keys off the worst severity present, then the count at that severity).
 - The findings schema (`{severity, file, remediation, fingerprint}`) and chat report format.
@@ -104,41 +106,50 @@ Collect the findings arrays. **Adjudicate each finding against the repo before g
 
 Classify each surviving finding as fixable or unfixable. A finding is fixable when a Fixer can apply it confidently without product context (mechanical edits: add a missing frontmatter field, fix a bad path, update `.gitignore`, etc.). A finding is unfixable when it requires product context or invasive restructuring (e.g. splitting an oversized `CLAUDE.md`, restructuring hook logic, rewriting a rule file's scope).
 
+Then classify ownership. Collect the repo-relative file of every fixable finding (a finding whose fix straddles files contributes each one) and run, as one Bash call:
+
+```bash
+bash .gaia/scripts/fitness-ownership.sh <file>...
+```
+
+It prints one `<class>\t<path>` line per file. A fixable finding stays fixable only when every file it touches is `adopter`; the rest become report-only, with the remediation the wiki page's Ownership table gives their class. A non-zero exit means the classifier could not read its inputs: every finding is report-only for this run, and the report names the classifier's stderr line.
+
 ---
 
 ## Step 4, Heal (skipped if Step 2 routed to triage-only)
 
-**If no fixable finding exists:** skip heal entirely. No branch is created. HEAD stays where it is. Proceed directly to Step 6 with the triage grades. A zero-findings run is overall A+; no changes, no branch.
+**If no fixable finding exists** (none at all, or every one became report-only when Step 3 classified ownership): skip heal entirely. No branch is created. HEAD stays where it is. Proceed directly to Step 6 with the triage grades.
 
-**If ≥1 fixable finding AND `ON_DEFAULT_BRANCH` is true:**
+**Otherwise, heal in these steps.** The ownership contract they carry out is the wiki page's `#### Ownership`: only `adopter` files are edited, and each one only on a yes.
 
-Before applying the first fix, create and switch to a new branch:
+1. **Propose.** Make a scratch directory for proposals, `mktemp -d`, and carry the printed path as `<PROPOSALS>`. Dispatch lane-aware Fixer subagents (Sonnet) in parallel per the wiki page's lane definitions:
 
-```bash
-BRANCH="$(bash .gaia/scripts/branch-name-lib.sh name fitness)"
-git -C "$PROJECT_ROOT" checkout -b "$BRANCH"
-```
+   | Lane             | Owns                                                                                                                 |
+   | ---------------- | -------------------------------------------------------------------------------------------------------------------- |
+   | `claude-surface` | `.claude/skills/**`, `.claude/commands/**`, `.claude/agents/**`, `.claude/hooks/**`, `CLAUDE.md`, `.claude/rules/**` |
+   | `settings`       | `.claude/settings.json`                                                                                              |
+   | `gitignore`      | `.gitignore`                                                                                                         |
 
-Remember `BRANCH`, the way Step 2 remembers `CURRENT_BRANCH`: Steps 7 and 8 need the minted name in later Bash calls and in a question put to the human, and the shell variable set here is gone by then. Carry the value itself as `<BRANCH>`.
+   If a finding's fix straddles multiple lanes, dispatch one Fixer with multi-lane scope. Give each Fixer its findings and one output path per file it would change, `<PROPOSALS>/<n>.after`, and tell it: write the complete proposed content of the file to its `.after` path, never write the file itself, and reply with each source path, its `.after` path and a one-line summary. A fix it judges too invasive gets no `.after` file, only a recommended approach.
+2. **Ask, one file at a time.** With no one to answer (a headless or composed run), skip to step 4. Otherwise, for each proposal, show its diff in the reply (`diff -u <file> <PROPOSALS>/<n>.after`, with `/dev/null` in place of `<file>` when the fix creates it), then ask with `AskUserQuestion`:
+   - **header:** `"Apply fix?"`
+   - **question:** `"Apply this fitness fix to <file>?"`
+   - **options (this exact order):** `{ label: "Apply", description: "Write the proposed change to <file>." }`, `{ label: "Skip", description: "Leave <file> as it is; the finding stays in the report." }`
 
-Apply fixes on this new branch. Never commit.
+   Never put two files in one question: the human approves each file they own separately.
+3. **Apply what was accepted.** On a main-branch run (`ON_DEFAULT_BRANCH` true), create and switch to a new branch before the first apply:
 
-**If ≥1 fixable finding AND `ON_DEFAULT_BRANCH` is false:**
+   ```bash
+   BRANCH="$(bash .gaia/scripts/branch-name-lib.sh name fitness)"
+   git -C "$PROJECT_ROOT" checkout -b "$BRANCH"
+   ```
 
-Heal in place on `CURRENT_BRANCH`. Create no new branch.
+   Remember `BRANCH`, the way Step 2 remembers `CURRENT_BRANCH`: Steps 7 and 8 need the minted name in later Bash calls and in a question put to the human, and the shell variable set here is gone by then. Carry the value itself as `<BRANCH>`. On any other branch, apply in place on `CURRENT_BRANCH` and create no branch. Then copy each accepted proposal over its file, `cp <PROPOSALS>/<n>.after <file>` (creating the parent directory first for a new file). Never commit. When nothing was accepted, no branch is created.
+4. **Carry the rest to the report.** A skipped proposal, and every proposal of a run with no one to answer, is reported as unresolved with the proposed change as its remediation. It is settled for the run: never proposed again in a later cycle.
 
-**In both cases, running the heal phase:**
-
-Dispatch lane-aware Fixer subagents (Sonnet) in parallel per the wiki page's lane definitions:
-
-| Lane             | Owns                                                                                                                 |
-| ---------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `claude-surface` | `.claude/skills/**`, `.claude/commands/**`, `.claude/agents/**`, `.claude/hooks/**`, `CLAUDE.md`, `.claude/rules/**` |
-| `settings`       | `.claude/settings.json`                                                                                              |
-| `gitignore`      | `.gitignore`                                                                                                         |
-| `manifest`       | `.gaia/manifest.json` (serialize, one Fixer at a time)                                                               |
-
-If a finding's fix straddles multiple lanes, dispatch one Fixer with multi-lane scope.
+<!-- gaia:maintainer-only:start -->
+In the GAIA source repo there is no upstream to point at: a `gaia-shipped` finding is fixed in an ordinary pull request, so report it with that remediation instead of `/update-gaia`. Scrubbed from adopter bundles.
+<!-- gaia:maintainer-only:end -->
 
 Run inside the bounded heal loop. The cap and stop conditions below mirror `wiki/decisions/Claude Integration Fitness.md`, which stays canonical; the cycle cap is tunable there:
 
@@ -182,7 +193,7 @@ Every run-ending path records here:
 - Step 6, post-heal routing, triage-only (unsafe state) STOP.
 - Step 6, post-heal routing, zero findings (A+) STOP.
 - Step 7, publish gate, Keep for review STOP.
-- Step 7, publish gate, non-interactive fallback stop.
+- Step 6, post-heal routing, no fix applied STOP.
 - Step 8, in-place heal (any other branch): no pass-through, no PR.
 - Step 8, main-branch run: `MERGED`, `TIMEOUT` (still queued), `CHECK_FAILED`, `CLOSED`, or a merge wait that refused because it read nothing: pass-through.
 - Step 8, publish failure STOP: pass-through only if `gh pr create` had already succeeded and printed its URL before the later command failed.
@@ -230,6 +241,7 @@ The `findings` array drives both the per-category note column and the grouped FI
 | Branch created (fixes applied, main-branch run) | Proceed to Step 7 (publish gate). |
 | In place on `CURRENT_BRANCH` (fixes applied, non-default branch) | Proceed to Step 7 (publish gate). |
 | Triage-only (unsafe state) | Record cost (see **Cost record (run end)**, no pass-through), then print `Heal skipped, <reason>. Re-run /gaia-fitness after <resolution steps>.` and STOP. No gate. |
+| Findings, no fix applied (every finding report-only, every proposal skipped, or no one to answer) | Record cost (see **Cost record (run end)**, no pass-through), then print `No fixes applied. Each finding above carries its remediation.` and STOP. No gate. |
 | Zero findings (A+) | Record cost (see **Cost record (run end)**, no pass-through), then print `No findings. Overall A+. No changes made, no branch created.` and STOP. No gate. |
 
 Format, taxonomy, and grading rubric source of truth: `wiki/decisions/Claude Integration Fitness.md` (Chat Report Format, Grading Rubric, Severity Vocabulary).
@@ -254,13 +266,13 @@ Ask once, via `AskUserQuestion`, after the card (the card is the information the
   - Branch created: `Changes applied on branch <BRANCH>. Review with git diff main; discard with git checkout main && git branch -D <BRANCH>.`
   - In place: `Changes applied on <CURRENT_BRANCH>. Review with git diff; discard with git checkout -- .`
 
-**Non-interactive fallback.** In a context with no user to answer the gate (a headless or composed run), do not publish: leave the healed changes in the working tree, record cost (see **Cost record (run end)**, no pass-through), print the matching review line above, and stop. Publishing is the standalone, interactive `/gaia-fitness` harness; a composing audit harness owns its own publish (the branch / heal / publish harness layer is `/gaia-fitness`-specific, per the protocol page).
+A run with no one to answer never reaches this gate: Step 4 applies nothing without a yes, so Step 6 routed it to the no-fix-applied stop.
 
 ---
 
 ## Step 8, Publish (commit / PR / merge)
 
-Reached only on **Publish** from Step 7. It does for fitness's heal diff what `/gaia-audit`'s Publish and `/update-deps` Phase 8 do: commit the working-tree changes and drive the PR to merge on a main-branch run, or commit and push on any other branch. The diff is expected to touch only out-of-audit-scope surfaces (`.claude/**`, `CLAUDE.md`, `.gitignore`, `.gaia/manifest.json`, `.claude/settings.json`), in which case the PR clears the merge gate through the PR Merge Workflow's out-of-scope bypass with no `code-audit-frontend` marker. Do not assume it: a heal fix can restore a framework surface the roster claims, and `.gitignore` itself is treated as in scope by the gate. Before `gh pr merge`, run
+Reached only on **Publish** from Step 7. It does for fitness's heal diff what `/gaia-audit`'s Publish and `/update-deps` Phase 8 do: commit the working-tree changes and drive the PR to merge on a main-branch run, or commit and push on any other branch. The diff is expected to touch only out-of-audit-scope surfaces (`.claude/**`, `CLAUDE.md`, `.gitignore`, `.claude/settings.json`), in which case the PR clears the merge gate through the PR Merge Workflow's out-of-scope bypass with no `code-audit-frontend` marker. Do not assume it: a heal fix can restore a framework surface the roster claims, and `.gitignore` itself is treated as in scope by the gate. Before `gh pr merge`, run
 
 ```bash
 bash .gaia/scripts/resolve-audit-members.sh
