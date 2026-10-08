@@ -1,5 +1,6 @@
 packages:
   - frontend
+  - .gaia/cli
 
 # pnpm settings. In pnpm 10.x+ only auth/registry settings are read from
 # .npmrc; everything else (including supply-chain hardening) lives here.

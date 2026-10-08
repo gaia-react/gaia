@@ -6,8 +6,9 @@
  * prettier preset). eslint-plugin-prettier resolves the Prettier config by
  * walking up from each linted file, so without this file it would reach the
  * repo-root `prettier.config.mjs`, which imports `@gaia-react/lint` and only
- * resolves when the ROOT workspace is installed. The CI CLI-lint job installs
- * only `.gaia/cli` (`pnpm -C .gaia/cli install`), so the root import fails there
+ * resolves when the root importer is installed. The CI CLI-lint job runs a root
+ * install filtered to the CLI and its dependencies (the composite action's
+ * `cli` arm), which links no root importer, so the root import fails there
  * with ERR_MODULE_NOT_FOUND. Giving the CLI its own config stops the upward
  * search here and resolves `@gaia-react/lint` from `.gaia/cli/node_modules`,
  * keeping the CLI's Prettier rules identical to the root's.
@@ -19,17 +20,18 @@
  * `.gaia/cli/node_modules` link only to a DIRECT dependency, so the plugin
  * stays in `.gaia/cli/package.json`'s `devDependencies`; the copy
  * `@gaia-react/lint` carries transitively lands in `.pnpm/node_modules`, which
- * is not on Node's upward walk from this cwd. Mirroring the root workspace's
- * `publicHoistPattern` here would reach the same link by another route, and
- * this workspace deliberately does not, which is what leaves the direct
- * dependency as the mechanism.
+ * is not on Node's upward walk from this cwd. The root `pnpm-workspace.yaml`'s
+ * `publicHoistPattern` covers `prettier-plugin-*` and now governs the CLI as a
+ * workspace member, so the plugin is also hoisted into the repo-root
+ * `node_modules`, even under the filtered install, and a walk up from here
+ * would find it. The direct dependency stays as the mechanism that does not
+ * rest on hoisting settings: it links the plugin into this directory
+ * whatever the hoist pattern is.
  *
- * Deleting it is the tempting simplification, because the root workspace
- * declares no such dependency and this file exists to mirror the root. It
- * still passes locally, but only because the ROOT `pnpm-workspace.yaml`'s
- * `publicHoistPattern` covers `prettier-plugin-*`, which links the plugin into
- * the repo-root `node_modules` a local run can walk up into. The CI CLI-lint job
- * installs `.gaia/cli` alone and has no such tree above it, so it fails there.
+ * Deleting this file is the tempting simplification, because it exists to
+ * mirror the root. Without it the upward search reaches the repo-root config,
+ * and the filtered CI install has no root importer for that config's
+ * `@gaia-react/lint` import to resolve through.
  * `eslint-plugin-prettier` loads Prettier lazily inside the rule, so the
  * ERR_MODULE_NOT_FOUND surfaces while ESLint is linting the first file and
  * reads as an ESLint crash rather than as a reported lint violation.
