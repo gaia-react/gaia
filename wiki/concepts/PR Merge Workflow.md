@@ -467,7 +467,7 @@ A usable rule names a disposition for **every** way the round can come back, inc
 
 A `quiet` verdict from the evaluator (no fixable finding this branch authored remains) only proposes this section's disposition; this section's own judgment of what this change authored decides it. The verdict counts findings by where they sit in the branch diff, which is evidence about authorship, not the judgment the three branches above ask for.
 
-The three dispositions are also bounded by the dispositions check: it refuses a round that leaves a branch-authored finding or a vetoed key with no disposition, disposes a vetoed key or a Critical or security-class finding anything but `fix` (an out-of-branch one may be filed), or makes a non-fix disposition without a reason or a valid `basis`, and `.gaia/scripts/audit-dispositions-check.sh`'s header owns the list.
+The three dispositions are also bounded by the dispositions check: it refuses a round that leaves a branch-authored finding or a vetoed key with no disposition, disposes a vetoed key or a Critical or security-class finding anything but `fix` (an out-of-branch one may be filed on a confirmed PRIVATE repo), or makes a non-fix disposition without a reason or a valid `basis`, and `.gaia/scripts/audit-dispositions-check.sh`'s header owns the list.
 
 **A round count is evidence, not a verdict.** What says a guard is the wrong instrument is the **direction** of its repairs, whether each one leaves the artifact smaller, and **where** the defects land: in the parser, the comparison, the payload, or the design. A fifth round in a part that has been stable since the third is a different finding from a fifth round in the same place, and the count alone cannot tell them apart.
 
