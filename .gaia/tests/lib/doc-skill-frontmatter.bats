@@ -25,7 +25,7 @@ setup() {
 authored_files() {
   local root="$1" vendored_targets
   vendored_targets="$(jq -r '.target // empty' "$root"/.gaia/vendor/*.json 2>/dev/null)"
-  git -C "$root" ls-files -- '.claude/skills/*/SKILL.md' 'frontend/.claude/skills/*/SKILL.md' '.claude/commands/*.md' |
+  git -C "$root" ls-files -z -- '.claude/skills/*/SKILL.md' 'frontend/.claude/skills/*/SKILL.md' '.claude/commands/*.md' | tr '\0' '\n' |
     while IFS= read -r relative_path; do
       local target excluded=0
       while IFS= read -r target; do
@@ -79,7 +79,7 @@ scratch_copy() {
   grep -qE '^frontend/\.claude/skills/' <<<"$files"
   grep -qE '^\.claude/commands/' <<<"$files"
   grep -qF 'playwright-cli' <<<"$files" && return 1
-  git -C "$REPO_ROOT" ls-files -- 'frontend/.claude/skills/playwright-cli/SKILL.md' | grep -qF 'playwright-cli'
+  git -C "$REPO_ROOT" ls-files -z -- 'frontend/.claude/skills/playwright-cli/SKILL.md' | tr '\0' '\n' | grep -qF 'playwright-cli'
 }
 
 @test "every GAIA-authored skill and command meets the name and description limits" {

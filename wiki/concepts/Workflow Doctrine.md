@@ -35,12 +35,18 @@ Models are ranked by fit to the task class. Cost is a secondary note, never the 
 | synthesis | Opus (Fable as the named alternative) | Wording, positioning, and design decisions where one weak choice propagates into everything after it. | Priced at the top-model rates. Cache reads dominate here too, so the cost difference never outranks fit. |
 | lookup, scaffold, mechanical | Haiku | The answer is fixed by a template, a rule id, or a written convention: scaffolding from a pattern, a fix keyed to a lint or accessibility rule id, a rule-based check. Reasoning depth adds nothing the template does not already carry. | Fit selects it and the lower price follows. A pin is a ceiling: an inline skill's pin holds for the rest of the turn it loads in, so a skill that triggers in the middle of general implementation work is not this class. |
 
-Among the doctrine sources (the rule, `.claude/doctrine/execution.md`, and this page), the table is the only text edited when a model ships. A pin site is any other place that names a model for a skill, an agent, or one dispatch. Each follows the table and is re-checked against it in the same change. `.gaia/tests/hooks/workflow-doctrine-sources.bats` fails when a file that pins a model matches no entry below.
+Among the doctrine sources (the rule, `.claude/doctrine/execution.md`, and this page), the table is the only text edited when a model ships. A pin site is any other place that names a model for a skill, an agent, or one dispatch. Each follows the table and is re-checked against it in the same change.
+<!-- gaia:maintainer-only:start -->
+`.gaia/tests/hooks/workflow-doctrine-sources.bats` fails when a file that pins a model matches no entry below.
+<!-- gaia:maintainer-only:end -->
 
 ### Pin sites
 
 - Frontmatter `model:` in skills and agents: `.claude/skills/*/SKILL.md`, `frontend/.claude/skills/*/SKILL.md`, `.claude/agents/*.md`. A skill pins only for the lookup, scaffold, mechanical row; [[Deliberate Configuration Asymmetries]] records which skills pin and why.
-- Dispatch pins in playbooks: `.claude/skills/gaia/references/plan.md` (the planner picker and the executor pin), `.claude/skills/gaia/references/spec.md` (the model gate), `.claude/skills/gaia/references/audit.md`, `.claude/skills/gaia/references/fitness.md`, `.claude/skills/gaia/references/wiki.md` and its stage files `.claude/skills/gaia/references/wiki/*.md`, the update-deps wave and override-audit agents in `.claude/skills/update-deps/SKILL.md`, the bump agents in `.claude/skills/update-gaia/SKILL.md`, and the health-audit runbooks `.gaia/cli/health/runbook.md` and `.gaia/cli/health/comprehensive/runbook.md`.
+- Dispatch pins in playbooks: `.claude/skills/gaia/references/plan.md` (the planner picker and the executor pin), `.claude/skills/gaia/references/spec.md` (the model gate), `.claude/skills/gaia/references/audit.md`, `.claude/skills/gaia/references/fitness.md`, `.claude/skills/gaia/references/wiki.md` and its stage files `.claude/skills/gaia/references/wiki/*.md`, the update-deps wave and override-audit agents in `.claude/skills/update-deps/SKILL.md`, and the bump agents in `.claude/skills/update-gaia/SKILL.md`.
+<!-- gaia:maintainer-only:start -->
+- Maintainer health-audit runbooks: `.gaia/cli/health/runbook.md` and `.gaia/cli/health/comprehensive/runbook.md`.
+<!-- gaia:maintainer-only:end -->
 - Executed wiki pages: `wiki/concepts/PR Merge Workflow.md` (the fixer dispatch) and `wiki/decisions/Claude Integration Fitness.md` (the auditor table).
 - Descriptive wiki pages that restate a pin: `wiki/concepts/GAIA Plan.md`, `wiki/concepts/GAIA Spec.md`, `wiki/concepts/Task Orchestration.md`, `wiki/concepts/Wiki Sync.md`, `wiki/concepts/Wiki Consolidate.md`, `wiki/decisions/Deliberate Configuration Asymmetries.md`.
 

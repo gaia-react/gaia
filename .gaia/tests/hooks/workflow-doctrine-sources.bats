@@ -196,7 +196,7 @@ END_MARK='<!-- gaia:maintainer-only:end -->'
 line_of() { grep -nxF -- "$2" "$1" | head -n 1 | cut -d: -f1; }
 
 wiki_structure_ok() {
-  local file_path="$1" heading previous_line_number=0 line_number measurements_heading_line start_marker_line end_marker_line
+  local file_path="$1" heading previous_line_number=0 line_number measurements_heading_line
   [ -f "$file_path" ] || return 1
   for heading in "${WIKI_HEADINGS[@]}"; do
     line_number="$(line_of "$file_path" "$heading")"
@@ -206,13 +206,14 @@ wiki_structure_ok() {
   done
   grep -qF '.claude/doctrine/execution.md' "$file_path" || return 1
   grep -qF '.claude/rules/context-discipline.md' "$file_path" || return 1
-  [ "$(grep -cxF -- "$START_MARK" "$file_path")" = 1 ] || return 1
-  [ "$(grep -cxF -- "$END_MARK" "$file_path")" = 1 ] || return 1
-  start_marker_line="$(line_of "$file_path" "$START_MARK")"
-  end_marker_line="$(line_of "$file_path" "$END_MARK")"
   measurements_heading_line="$(line_of "$file_path" '## Measurements')"
-  [ "$start_marker_line" -lt "$measurements_heading_line" ] || return 1
-  [ "$measurements_heading_line" -lt "$end_marker_line" ] || return 1
+  # Marker pairs alternate start, end, never nested or left open, and one pair
+  # brackets Measurements. Other pairs wrap maintainer-only lines elsewhere.
+  awk -v start_marker="$START_MARK" -v end_marker="$END_MARK" -v measurements="$measurements_heading_line" '
+    $0 == start_marker { if (open) exit 1; open = 1; start_line = NR; next }
+    $0 == end_marker { if (!open) exit 1; open = 0; if (start_line < measurements && measurements < NR) covered = 1 }
+    END { if (open || !covered) exit 1 }
+  ' "$file_path" || return 1
   return 0
 }
 
@@ -496,6 +497,9 @@ pad_to() { # pad_to <src> <dst> <total bytes>: src plus filler so dst ends in on
   ' "$WIKI" >"$TEMPORARY_DIRECTORY/wiki-marker.md"
   [ "$(grep -cxF -- "$END_MARK" "$TEMPORARY_DIRECTORY/wiki-marker.md")" -eq 1 ]
   if wiki_structure_ok "$TEMPORARY_DIRECTORY/wiki-marker.md"; then return 1; fi
+  { cat "$WIKI"; printf '%s\n' "$START_MARK"; } >"$TEMPORARY_DIRECTORY/wiki-open.md"
+  if wiki_structure_ok "$TEMPORARY_DIRECTORY/wiki-open.md"; then return 1; fi
+  true
 }
 
 # ------------------------------------------------------- 9. no working-doc ids
@@ -698,7 +702,7 @@ pin_sites_covered_ok() {
 pin_site_entries_live_ok() {
   local root="$1" page="$2" entry
   while IFS= read -r entry; do
-    [ -n "$(git -C "$root" ls-files -- "$entry")" ] || return 1
+    [ -n "$(git -C "$root" ls-files -z -- "$entry" | tr -d '\0')" ] || return 1
   done < <(pin_site_entries "$page")
   return 0
 }

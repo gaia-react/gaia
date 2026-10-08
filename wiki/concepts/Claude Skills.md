@@ -101,7 +101,10 @@ Every session carries a listing of the skills and commands Claude may start on i
 - A command only a person starts sets `disable-model-invocation: true`. Its description leaves the listing and Claude cannot start it on its own; it runs when typed as `/name`, and its description needs only the third-person what. `grep -l 'disable-model-invocation: true' .claude/commands/*.md` lists them.
 - A `model:` pin follows the model table in [[Workflow Doctrine]].
 
-Vendored and installer-managed skills keep their upstream frontmatter. `.gaia/tests/lib/doc-skill-frontmatter.bats` checks the `name` and `description` limits over every GAIA-authored skill and command.
+Vendored and installer-managed skills keep their upstream frontmatter.
+<!-- gaia:maintainer-only:start -->
+`.gaia/tests/lib/doc-skill-frontmatter.bats` checks the `name` and `description` limits over every GAIA-authored skill and command.
+<!-- gaia:maintainer-only:end -->
 
 ## Skill references convention
 
