@@ -174,7 +174,7 @@ On GAIA 1.6.1? Choose Abort, then paste the prompt from https://gaiareact.com/mi
 
 ### Fixed
 
-- `pnpm shadcn ...` now works from the repo root, as `frontend/CLAUDE.md` and the shadcn rules already said, and a new project's README no longer sends you to `localhost:3000`: the terminal prints the dev server URL, whose port differs per worktree. (#PR)
+- `pnpm shadcn ...` now works from the repo root, as `frontend/CLAUDE.md` and the shadcn rules already said, and a new project's README no longer sends you to `localhost:3000`: the terminal prints the dev server URL, whose port differs per worktree (#2586)
 - On a public or internal repository, the audit loop can no longer file a Critical or security-class finding from outside the branch as a public tech-debt issue: the dispositions check refuses that `file` disposition unless the repository is confirmed private, and the loop stops for a human to divert the finding instead. Before, only `code-audit-frontend` diverted such findings, so one raised by another member could reach a public issue with full detail (#2581)
 - Entering a worktree directly with `EnterWorktree`, outside a GAIA skill, now tells you the exact command to rename its `worktree-<name>` branch to the canonical name before the first push. Before, nothing prompted the rename, so the branch was pushed under the harness spelling, failed the head-branch conventions check, and needed a new PR (#2578)
 - The `/gaia-wiki` statusline nudge now clears as soon as a landed wiki chain reaches your main checkout, however it gets there. Before, pulling `main` by hand after a chain whose auto-merge was still queued left the old commit count showing for up to six hours (#2576)
