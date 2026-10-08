@@ -99,7 +99,7 @@ How the sort works, and why it is deterministic:
 
 The entire ordering is this one `--jq` expression over fields GitHub returns. There is no judgment step, so anyone can reproduce the order by re-running the command.
 
-On a `top` or single-number parse, pipe the ordering command above, run unchanged from the repository root, into the backlog pass. A named set does not need it: `## Validate named numbers` in `debt/named.md` reads the ordered backlog directly.
+Run the ordering command on every parse and keep the array it prints: that array is **the ordered backlog** every later section and sub-reference reads (each issue's title, severity, age, body, labels, and footprint). The scripts below read the same array, so each one is fed by piping the same command, run unchanged from the repository root. On a `top` or single-number parse, pipe it into the backlog pass; a named set skips the backlog pass, and `## Validate named numbers` in `debt/named.md` reads the ordered backlog directly.
 
 ```bash
 <the ordering command above> | bash .gaia/scripts/debt-backlog.sh
@@ -109,7 +109,7 @@ It prints one JSON object, and its header owns the rules it applies. `candidates
 
 **A non-zero exit stops the run before anything is claimed.** Report the reason it printed on stderr: an exclusion that did not run could offer an issue another session holds. (Run ends here; see `## Cost record (run end)`.)
 
-**When every candidate is excluded as investigate** (`candidates` is empty and `excluded.investigate` is not), say so and name those issues with their open questions, rather than reporting an empty backlog. `.claude/skills/file-tech-debt/SKILL.md` step 5 owns re-grading an investigate issue, and `/gaia-debt` never answers an investigate question.
+**When every candidate is excluded as investigate** (`candidates` is empty and `excluded.investigate` is not), say so and name those issues with their open questions, rather than reporting an empty backlog. An investigate issue returns to the pool once its question is answered and it is re-graded, the grade and the block moving together in one call: `gh issue edit <n> --remove-label severity:investigate --add-label severity:<tier> --body-file <path>`, where the body carries the answer in its failure-mode prose and no `gaia-investigate` block. `.claude/skills/file-tech-debt/SKILL.md` step 5 owns that rule, and `/gaia-debt` never answers an investigate question.
 
 ### Staleness probe
 

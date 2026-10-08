@@ -35,7 +35,7 @@ bash .gaia/scripts/debt-dedup.sh --path <repo-relative-path> --line <line>
 Its exit code is the answer:
 
 - **0**: no match. Continue to step 4.
-- **1**: a match. Read `number`, `state`, `declined`, and `inner_key` from its one JSON line and hand them back to the caller. An open match's `inner_key` is the key the caller records, never a freshly built one; a declined match gets no bookkeeping entry.
+- **1**: a match. Read `number`, `state`, `declined`, and `inner_key` from its one JSON line and hand them back to the caller. An open match's `inner_key` is the key the caller records, never a freshly built one; it is `null` when `source` is `keyless` (a hand-filed issue with no parsed key), so the caller records the number alone; a declined match gets no bookkeeping entry.
 - **2 or 3**: the check could not run (usage error, or an input it could not read or that hit its result limit). Report its stderr line, do not file, and do not treat it as a pass.
 
 The script's header owns the matching rules: path plus line with `class=` ignored, declined-closed detection, the keyless fallback for hand-filed issues, and the accepted collapse of distinct findings on one `path:line`. This recipe records nothing itself; callers own their bookkeeping (see above).
