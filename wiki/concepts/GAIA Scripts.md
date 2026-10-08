@@ -117,6 +117,7 @@ The maintainer's copy of this page carries every root file. An adopter's copy ca
 | `branch-name-lib.sh` | yes | sourced, and run as a command by the skills | GAIA's branch-naming convention: the one place a branch or worktree name is minted and read back. |
 | `context-checkpoint-lib.sh` | yes | sourced | The one place the context checkpoint line, the statusline bands, the unit round count and the per-session context file are defined, so the bar color and the checkpoint cannot disagree. The header states the override rule. |
 | `chore-deps-skip.sh` | yes | `git grep chore-deps-skip` | The chore(deps) predicate: a dep-bump subject plus a manifest-only changed-file list on stdin. |
+| `fitness-ownership.sh` | yes | `/gaia-fitness` | Classifies each file a fitness fix would touch as third-party, ignored, GAIA-shipped or the project's own, from the manifest, the vendor pins and `.gitignore`, so the heal edits only the project's own files. |
 | `gh-artifact-lib.sh` | yes | sourced | Shared breadcrumb for the GitHub pull request a run produced. |
 | `guard-awk-lib.sh` | no | sourced | Shared awk scaffolding the guard lints build their detectors on. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `hook-registration-lib.sh` | no | sourced | The shared read of `.claude/settings.json`'s registrations, and the oracle for whether a registered hook can stop a tool call. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
