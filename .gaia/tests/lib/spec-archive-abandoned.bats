@@ -363,3 +363,14 @@ _clear_abandoned_at() {
   [ "$status" -eq 0 ]
   [ ! -e "$REPO/$SPECS/SPEC-001" ]
 }
+
+@test "24: an unparseable cost.json leaves its folder for review and the sweep still reaps the next row" {
+  REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-abandoned-folder SPEC-001 --seed-abandoned-folder SPEC-002)"
+  printf '{ not json' > "$REPO/$SPECS/SPEC-001/cost.json"
+
+  run --separate-stderr _archive "$REPO"
+  [ "$status" -eq 0 ]
+  grep -qF "cost not fully represented in cost.jsonl; left SPEC-001 folder for review" <<<"$stderr"
+  [ -d "$REPO/$SPECS/SPEC-001" ]
+  [ ! -e "$REPO/$SPECS/SPEC-002" ]
+}

@@ -603,3 +603,15 @@ _seed_cost_row() {
   [ "$status" -eq 0 ]
   [ ! -e "$PLANS/PLAN-001" ]
 }
+
+@test "31: an unparseable cost.json leaves its folder for review and the sweep still reaps the next row" {
+  _seed_merged_plan PLAN-001
+  _seed_merged_plan PLAN-002
+  printf '{ not json' > "$PLANS/PLAN-001/cost.json"
+
+  run --separate-stderr _archive "$SANDBOX"
+  [ "$status" -eq 0 ]
+  grep -qF "left PLAN-001 folder for review" <<<"$stderr"
+  [ -d "$PLANS/PLAN-001" ]
+  [ ! -e "$PLANS/PLAN-002" ]
+}

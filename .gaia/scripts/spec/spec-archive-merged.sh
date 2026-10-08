@@ -106,7 +106,7 @@ _library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # copy; without it no age can be judged, and an unknown age must never read as
 # past the window, so the sweep reaps nothing.
 # shellcheck source=ledger-lib.sh
-set +e; [ -f "${_library_directory}/ledger-lib.sh" ] && . "${_library_directory}/ledger-lib.sh" 2>/dev/null; set -e
+[ -f "${_library_directory}/ledger-lib.sh" ] && . "${_library_directory}/ledger-lib.sh" 2>/dev/null || true
 if ! type gaia_ledger_age_past_window >/dev/null 2>&1; then
   echo "spec-archive-merged: ledger-lib.sh is unusable; nothing swept" >&2
   exit 0
