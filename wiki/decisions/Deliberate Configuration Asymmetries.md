@@ -63,7 +63,8 @@ overrides the session model for the rest of the turn it loads in. A
 convention skill that fires whenever code is being written (`typescript`,
 `tailwind`, `naming-conventions`) reads like a lookup, yet a pin there would
 move the rest of an implementation or review turn onto the pinned model, so
-those skills omit it. The scaffolding skills and the rule-id fix skills keep
+those skills omit it. `skeleton-loaders` omits it for the same reason: it
+triggers whenever a loading state is added to a component, mid-implementation. The scaffolding skills and the rule-id fix skills keep
 their pin, because the turn that loads them is doing exactly that bounded
 task. `react-code` omits it for the same reason, and because its trigger
 surface is decision-shaped: compiler-first memoization decisions (whether a
