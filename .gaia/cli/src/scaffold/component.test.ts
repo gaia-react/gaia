@@ -1,8 +1,6 @@
 /**
- * Strategy: copy the three component templates into a temp dir's
- * `templates/component/` so the handler can resolve them via the same
- * `fileURLToPath(import.meta.url)`-relative scheme it uses in production,
- * then invoke `run` with `--parent` pointing into the temp tree. We assert
+ * Strategy: invoke `run` with `--parent` pointing into a temp tree, so the
+ * handler renders from the shipped templates directory. We assert
  * on stdout (captured), the produced filesystem contents, and the exit
  * codes.
  */
@@ -19,12 +17,11 @@ import {
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
 import {writeFrontendRegistry} from '../util/package-fixture.js';
 import {run} from './component.js';
+import {scaffoldTemplatesDirectory} from './template.js';
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const TEMPLATES_SOURCE = path.join(HERE, 'templates', 'component');
+const TEMPLATES_SOURCE = path.join(scaffoldTemplatesDirectory(), 'component');
 
 type Sandbox = {
   cleanup: () => void;

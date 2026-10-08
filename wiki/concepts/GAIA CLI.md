@@ -16,7 +16,7 @@ GAIA ships a single bundled CLI binary that hooks and slash commands invoke, plu
 `.gaia/cli/` houses the CLI. Adopters receive a self-contained bundled binary at `.gaia/cli/gaia` (~1.1MB, `#!/usr/bin/env node` shebang), invoked by hooks and slash-command emits. The subcommand router uses a static handler map (no switch; the project's `no-switch` rule). Adopters receive only the `gaia` binary; source, tests, and fixtures are excluded from the release tarball.
 
 <!-- gaia:maintainer-only:start -->
-Maintainer source lives at `.gaia/cli/src/`. `pnpm bundle` runs `bundle:adopter` then `bundle:maintainer` (esbuild, ESM); the maintainer build emits a separate `.gaia/cli/gaia-maintainer` binary that adds the release namespace and is excluded from the adopter tarball.
+Maintainer source lives at `.gaia/cli/src/`. `pnpm bundle` runs `bundle:adopter` then `bundle:maintainer` (esbuild, ESM); the maintainer build emits a separate `.gaia/cli/gaia-maintainer` binary that adds the release namespace and is excluded from the adopter tarball. A commit that stages CLI source rebuilds and stages both bundles through the pre-commit hook, and `.gitattributes` marks the bundles as generated.
 <!-- gaia:maintainer-only:end -->
 
 Run `gaia --help` for the current, authoritative list of top-level subcommands.

@@ -21,7 +21,6 @@
  * `templates/route/` and `template.ts` / `fs.ts` / `barrel.ts`.
  */
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {hasTanstackQuery, QUERY_ON_INIT_COMMAND} from './data-layer.js';
@@ -45,7 +44,7 @@ import type {
 import {writeLocaleFiles} from './route-locale.js';
 import {deriveRouteCalls, readServiceBinding} from './route-service.js';
 import type {DataVariant, RouteShape} from './route-service.js';
-import {renderTemplate} from './template.js';
+import {renderTemplate, templatePath} from './template.js';
 import type {TemplateVars} from './template.js';
 import type {ScaffoldResult} from './types.js';
 
@@ -163,15 +162,9 @@ const parseFlags = (rest: readonly string[]): null | ParsedFlags => {
   return flags;
 };
 
-const templateDir = (): string => {
-  const here = fileURLToPath(import.meta.url);
-
-  return path.join(path.dirname(here), 'templates', 'route');
-};
-
 /** Absolute path of a template under `templates/route/`. */
 const routeTemplate = (fileName: string): string =>
-  path.join(templateDir(), fileName);
+  templatePath(path.join('route', fileName));
 
 type ResolvedNames = Pick<
   DataRouteNames,

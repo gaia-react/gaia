@@ -27,7 +27,6 @@
  */
 import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {lookupOwn} from '../util/argv.js';
@@ -40,7 +39,7 @@ import {
 import {ensureDir, writeAndRecord} from './fs.js';
 import {isSnakeCaseLayer, resolveLayer} from './layer.js';
 import {resolveScaffoldTarget} from './resolve-target.js';
-import {renderTemplate} from './template.js';
+import {renderTemplate, templatePath} from './template.js';
 import type {TemplateVars} from './template.js';
 import type {ScaffoldResult} from './types.js';
 
@@ -686,15 +685,10 @@ type EmitContext = {
   repoRoot: string;
 };
 
-const TEMPLATES_DIR = path.join(
-  path.dirname(fileURLToPath(import.meta.url)),
-  'templates'
-);
-
 const renderServiceTemplate = (
   templateName: string,
   vars: TemplateVars
-): string => renderTemplate(path.join(TEMPLATES_DIR, templateName), vars);
+): string => renderTemplate(templatePath(templateName), vars);
 
 const baseTemplateVars = (derived: DerivedNames): TemplateVars => ({
   name: derived.name,

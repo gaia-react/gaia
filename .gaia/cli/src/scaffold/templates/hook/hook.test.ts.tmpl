@@ -1,9 +1,0 @@
-import {describe, expect, test} from 'vitest';
-import {renderHook} from 'vitest-browser-react';
-import {{{name}}} from '../{{fileStem}}';
-
-describe('{{name}}', () => {
-  test('renders without crashing', async () => {
-    await expect(renderHook(() => {{name}}({{callArgs}}))).resolves.toBeDefined();
-  });
-});

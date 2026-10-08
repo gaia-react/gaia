@@ -1,8 +1,0 @@
-import type {z} from 'zod';
-import type {{{singular}}InputSchema, {{singular}}Schema, {{plural}}Schema} from './parsers';
-
-export type {{Singular}} = z.infer<typeof {{singular}}Schema>;
-
-export type {{Plural}} = z.infer<typeof {{plural}}Schema>;
-
-export type {{Singular}}Input = z.infer<typeof {{singular}}InputSchema>;

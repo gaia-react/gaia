@@ -23,7 +23,8 @@
 # Scan set (tracked files only, read from `git ls-files -z`):
 #   .claude/hooks/**, .gaia/scripts/** (not tests/ or fixtures/ directories),
 #   .github/workflows/**, .github/actions/**, .github/**/*.sh,
-#   .gaia/cli/src/** (not *.test.ts or __tests__/), .claude/agents/*.md,
+#   .gaia/cli/src/** (not *.test.ts or __tests__/), .gaia/cli/templates/**,
+#   .claude/agents/*.md,
 #   .claude/skills/**/*.md, .claude/commands/*.md, and the frontmatter of
 #   .claude/rules/*.md and .claude/rules/maintainers/*.md (the `paths:` globs;
 #   rule bodies are prose and are not scanned). `frontend/.claude/**` is
@@ -143,7 +144,7 @@ while IFS= read -r -d '' tracked_path; do
   esac
   case "$tracked_path" in
     .claude/hooks/* | .gaia/scripts/* | .github/workflows/* | .github/actions/* | .github/*.sh | \
-      .gaia/cli/src/* | .claude/rules/*.md | .claude/agents/*.md | .claude/skills/*.md | .claude/commands/*.md)
+      .gaia/cli/src/* | .gaia/cli/templates/* | .claude/rules/*.md | .claude/agents/*.md | .claude/skills/*.md | .claude/commands/*.md)
       printf '%s\n' "$tracked_path" >>"$scan_list"
       ;;
   esac

@@ -55,6 +55,28 @@ run_gate() {
   grep -qF -- 'RETIRED .claude/hooks/x.sh:2: source_file="app/routes.ts"' <<<"$output"
 }
 
+@test "a scaffold template citing a retired root path is reported" {
+  local repo
+  repo="$(make_repo template-hit)"
+  mkdir -p "$repo/.gaia/cli/templates/route"
+  cp "$FIXTURES/hook-cites-root-app.txt" "$repo/.gaia/cli/templates/route/x.ts.tmpl"
+  stage_all "$repo"
+  run_gate "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF -- 'RETIRED .gaia/cli/templates/route/x.ts.tmpl:2: source_file="app/routes.ts"' <<<"$output"
+}
+
+@test "an allowlist row for a scaffold template allows its hit and is not stale" {
+  local repo
+  repo="$(make_repo template-allowed)"
+  mkdir -p "$repo/.gaia/cli/templates/route"
+  cp "$FIXTURES/hook-cites-root-app.txt" "$repo/.gaia/cli/templates/route/x.ts.tmpl"
+  printf '.gaia/cli/templates/route/x.ts.tmpl\tapp/routes.ts\tgenerated-package-relative\n' >"$repo/.gaia/retired-paths-allowlist.tsv"
+  stage_all "$repo"
+  run_gate "$repo"
+  [ "$status" -eq 0 ]
+}
+
 @test "a command citing a moved .claude unit at its old root path fails" {
   local repo
   repo="$(make_repo unit)"

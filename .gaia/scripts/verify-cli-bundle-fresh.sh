@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# verify-cli-bundle-fresh.sh: assert the committed CLI bundles and templates are
-# exactly what rebuilding from .gaia/cli/src produces.
+# verify-cli-bundle-fresh.sh: assert the committed CLI bundles are exactly
+# what rebuilding from .gaia/cli/src produces.
 #
 # The committed .gaia/cli/gaia and .gaia/cli/gaia-maintainer bundles are what
 # the runtime and the release tarball actually execute, so a commit that edits
@@ -30,11 +30,6 @@ trap 'rm -rf "${work_directory}"' EXIT
 
 cp .gaia/cli/gaia "${work_directory}/gaia-committed"
 cp .gaia/cli/gaia-maintainer "${work_directory}/gaia-maintainer-committed"
-# bundle:adopter regenerates .gaia/cli/templates/ from src as a side effect
-# (rm -rf templates && cp -r src/scaffold/templates ...), decoupled from the
-# bundled binary bytes. Snapshot the committed copy before the bundle overwrites
-# it so the diff below can see drift.
-cp -r .gaia/cli/templates "${work_directory}/templates-committed"
 
 pnpm -C .gaia/cli bundle
 
@@ -44,14 +39,5 @@ if ! cmp -s "${work_directory}/gaia-committed" .gaia/cli/gaia; then
 fi
 if ! cmp -s "${work_directory}/gaia-maintainer-committed" .gaia/cli/gaia-maintainer; then
   echo "::error::.gaia/cli/gaia-maintainer is stale: rebuilding from src (pnpm -C .gaia/cli bundle) produces a different binary. Run the bundle and commit the result." >&2
-  exit 1
-fi
-# Template content resolves at runtime via import.meta.url and never enters the
-# bundled binary, so the byte-cmp above cannot catch a stale committed template.
-# This diff is a freshness guard for the whole .gaia/cli/templates/ tree,
-# component/, hook/, route/, service/, and workflows/ included. Diff the
-# regenerated tree against the snapshot taken before the bundle.
-if ! diff -rq "${work_directory}/templates-committed" .gaia/cli/templates; then
-  echo "::error::.gaia/cli/templates is stale: regenerating from src (pnpm -C .gaia/cli bundle) produces different template files. Run the bundle and commit the result." >&2
   exit 1
 fi

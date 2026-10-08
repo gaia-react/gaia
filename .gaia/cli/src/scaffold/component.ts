@@ -38,14 +38,13 @@
  */
 import {existsSync, statSync} from 'node:fs';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {takeNonFlagValue} from '../util/argv.js';
 import {toPackageRelative} from '../util/package-target.js';
 import {writeAndRecord} from './fs.js';
 import {resolveScaffoldTarget} from './resolve-target.js';
-import {renderTemplate} from './template.js';
+import {renderTemplate, templatePath} from './template.js';
 import type {ScaffoldResult} from './types.js';
 
 const PASCAL_CASE_PATTERN = /^[A-Z][\dA-Za-z]*$/u;
@@ -57,7 +56,7 @@ const PROP_NAME_PATTERN = /^[A-Za-z_][\w$]*$/u;
 const KEBAB_WORD_PATTERN =
   /[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|\d*(?:1ST|2ND|3RD|(?![123])\dTH)(?=\b|[a-z_])|\d*(?:1st|2nd|3rd|(?![123])\dth)(?=\b|[A-Z_])|\d+/gu;
 /* eslint-enable sonarjs/super-linear-regex */
-const TEMPLATES_DIR = 'component';
+const TEMPLATE_FAMILY = 'component';
 const COMPONENTS_DEFAULT_PARENT = 'app/components';
 const APP_SEGMENT = 'app';
 const COMPONENTS_SEGMENT = 'components';
@@ -508,22 +507,18 @@ type RenderFileOptions = {
   folder: string;
   parent: string;
   props: readonly PropertyEntry[];
-  templatesRoot: string;
 };
 
 const renderComponentFile = (options: RenderFileOptions): string => {
-  const {componentName, props, templatesRoot} = options;
-  const templatePath = path.join(
-    templatesRoot,
-    `${TEMPLATES_DIR}/index.tsx.tmpl`
-  );
+  const {componentName, props} = options;
+  const componentTemplate = templatePath(`${TEMPLATE_FAMILY}/index.tsx.tmpl`);
   const propsTypeBlock = buildPropsTypeBlock(componentName, props);
   const propsParam =
     props.length === 0 ?
       ''
     : `{${props.map((property) => property.name).join(', ')}}: ${componentName}Props`;
 
-  return renderTemplate(templatePath, {
+  return renderTemplate(componentTemplate, {
     Name: componentName,
     propsParam,
     propsTypeBlock,
@@ -531,26 +526,17 @@ const renderComponentFile = (options: RenderFileOptions): string => {
 };
 
 const renderStoryFile = (options: RenderFileOptions): string => {
-  const {componentName, folder, parent, props, templatesRoot} = options;
-  const templatePath = path.join(
-    templatesRoot,
-    `${TEMPLATES_DIR}/index.stories.tsx.tmpl`
+  const {componentName, folder, parent, props} = options;
+  const storyTemplate = templatePath(
+    `${TEMPLATE_FAMILY}/index.stories.tsx.tmpl`
   );
 
-  return renderTemplate(templatePath, {
+  return renderTemplate(storyTemplate, {
     Name: componentName,
     storyDefault: buildStoryExport('Default', componentName, props),
     storyRenders: buildStoryExport('Renders', componentName, props),
     storyTitle: buildStoryTitle(parent, folder),
   });
-};
-
-const resolveTemplatesRoot = (): string => {
-  // template.ts hard-codes the templates dir resolution; we mirror it here so
-  // we can build per-file paths without re-implementing renderTemplate.
-  const here = fileURLToPath(import.meta.url);
-
-  return path.join(path.dirname(here), 'templates');
 };
 
 const printHumanResult = (
@@ -641,7 +627,6 @@ export const run = (
   const testsDir = path.join(componentDir, 'tests');
   const storyPath = path.join(testsDir, 'index.stories.tsx');
 
-  const templatesRoot = resolveTemplatesRoot();
   const result: ScaffoldResult = {edited: [], skipped: [], written: []};
 
   const renderOptions: RenderFileOptions = {
@@ -649,7 +634,6 @@ export const run = (
     folder,
     parent,
     props: flags.props,
-    templatesRoot,
   };
 
   try {

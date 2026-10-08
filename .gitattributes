@@ -1,0 +1,3 @@
+# Generated bundles, rebuilt and staged by the pre-commit hook: hide their diffs.
+.gaia/cli/gaia linguist-generated -diff
+.gaia/cli/gaia-maintainer linguist-generated -diff

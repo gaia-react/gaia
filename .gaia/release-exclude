@@ -194,6 +194,8 @@ frontend/.playwright/e2e/react-perf-smoke.spec.ts
 .claude/rules/bats-assertions.md
 # The maintainer's pre-push verification. It only calls the verification runner under .gaia/tests, which is release-excluded above, so on an adopter clone it would run nothing. The other .githooks entries ship; this one does not.
 .githooks/pre-push
+# Generated-bundle diff attributes for the maintainer's committed CLI bundles. An adopter's own root .gitattributes would collide with a shipped one, and their bundle diffs arrive once per release.
+.gitattributes
 
 # --- 4. CLI maintainer source + maintainer binary ---
 # Adopters receive only the bundled adopter binary at .gaia/cli/gaia (and
@@ -221,12 +223,14 @@ frontend/.playwright/e2e/react-perf-smoke.spec.ts
 .gaia/cli/dist
 .gaia/cli/gaia-maintainer
 # Lives under `.gaia/scripts/` but belongs to this category by its inputs: it
-# asserts the committed bundles and templates are what rebuilding from
+# asserts the committed bundles are what rebuilding from
 # `.gaia/cli/src` produces, and both that source and `gaia-maintainer` are
 # excluded above. On an adopter clone there is nothing to rebuild from, so the
 # check could only fail or mislead. Its two callers (cli-tests.yml,
 # release.yml) are maintainer-only and release-excluded in category 9.
 .gaia/scripts/verify-cli-bundle-fresh.sh
+# The pre-commit CLI bundle rebuild. It builds from `.gaia/cli/src`, excluded above, and the hook arm that calls it is a maintainer-only block the release scrub strips.
+.gaia/scripts/cli-autobundle.sh
 # The vendored playwright-cli skill ships with its marker, but the means to
 # replace it from npm and the offline check that its bytes still match the
 # marker are the maintainer's: an adopter never re-vendors, and the check's only

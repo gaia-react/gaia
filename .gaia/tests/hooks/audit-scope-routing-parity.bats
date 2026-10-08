@@ -15,9 +15,15 @@
 #
 #   .github/workflows/<single-segment>.yml|.yaml -> code-audit-github-workflows
 #   .github/actions/**/*.yml|*.yaml               -> code-audit-github-workflows
-#   .gaia/cli/templates/workflows/code-review-audit.yml.tmpl -> ownerless
+#   .gaia/cli/templates/workflows/code-review-audit.yml.tmpl -> code-audit-maintainer-node
 #   .gaia/cli/{package.json,pnpm-lock.yaml,pnpm-workspace.yaml,tsconfig*.json,
 #              *.config.ts,*.config.mjs}          -> code-audit-maintainer-node
+#
+# The scaffold templates are one tree now: `.gaia/cli/templates/**` is the
+# source and moves from ownerless to the node member (its `before = -` rows),
+# and the retired template copies under `.gaia/cli/src/` (the scaffold copy and
+# the removed automation templates) read ownerless (their rows were the node
+# member's).
 #
 # The frontend/ move (SPEC-092) then retires the root frontend class: `app/**`,
 # `test/**`, `.storybook/**`, `.playwright/**`, root `tsconfig*.json`, and the
@@ -91,6 +97,10 @@ setup() {
     elif [[ "$path" =~ ^\.github/actions/.*\.ya?ml$ ]]; then
       expected="code-audit-github-workflows"
     elif [ "$path" = ".gaia/cli/templates/workflows/code-review-audit.yml.tmpl" ]; then
+      expected="code-audit-maintainer-node"
+    elif [ "$before" = "-" ] && [[ "$path" =~ ^\.gaia/cli/templates/ ]]; then
+      expected="code-audit-maintainer-node"
+    elif [ "$before" = "code-audit-maintainer-node" ] && [[ "$path" =~ ^\.gaia/cli/src/(scaffold|automation)/templates/ ]]; then
       expected="-"
     elif [[ "$path" =~ ^\.gaia/cli/(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|tsconfig[^/]*\.json|[^/]*\.config\.ts|[^/]*\.config\.mjs)$ ]]; then
       expected="code-audit-maintainer-node"

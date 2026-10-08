@@ -18167,7 +18167,7 @@ var run5 = (argv, options = {}) => {
 };
 
 // src/init/index.ts
-import { existsSync as existsSync15 } from "node:fs";
+import { existsSync as existsSync16 } from "node:fs";
 import path23 from "node:path";
 
 // src/init/bootstrap-env.ts
@@ -18614,7 +18614,7 @@ var run6 = (argv, options = {}) => {
 };
 
 // src/init/configure-data-layer.ts
-import { existsSync as existsSync8, readFileSync as readFileSync12 } from "node:fs";
+import { existsSync as existsSync9, readFileSync as readFileSync12 } from "node:fs";
 import path15 from "node:path";
 
 // src/scaffold/data-layer.ts
@@ -18622,10 +18622,9 @@ import { readFileSync as readFileSync8 } from "node:fs";
 import path11 from "node:path";
 
 // src/scaffold/template.ts
-import { readFileSync as readFileSync7 } from "node:fs";
+import { existsSync as existsSync5, readFileSync as readFileSync7 } from "node:fs";
 import path10 from "node:path";
 import { fileURLToPath } from "node:url";
-var TEMPLATES_DIRECTORY_NAME = "templates";
 var VAR_PATTERN = /(?<!\$)\{\{\s*([\w.]+)\s*\}\}/gu;
 var SECTION_PATTERN = /(?<!\$)\{\{#\s*(\w+)\s*\}\}([\s\S]*?)\{\{\/\s*\1\s*\}\}/gu;
 var EACH_PATTERN = /(?<!\$)\{\{#each\s+(\w+)\s*\}\}([\s\S]*?)\{\{\/each\s*\}\}/gu;
@@ -18669,12 +18668,22 @@ var substituteVars = (raw, vars) => {
   const sectioned = renderBooleanSectionsToFixedPoint(eached, vars);
   return renderScalars(sectioned, vars);
 };
-var renderTemplate = (templatePath2, vars) => substituteVars(readFileSync7(templatePath2, "utf8"), vars);
-var resolveTemplatesDirectory = () => {
-  const here = fileURLToPath(import.meta.url);
-  return path10.join(path10.dirname(here), TEMPLATES_DIRECTORY_NAME);
+var renderTemplate = (templateFile, vars) => substituteVars(readFileSync7(templateFile, "utf8"), vars);
+var scaffoldTemplatesDirectory = () => {
+  const here = path10.dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    path10.join(here, "templates"),
+    path10.resolve(here, "..", "..", "templates")
+  ];
+  const found = candidates.find((candidate) => existsSync5(candidate));
+  if (found === void 0) {
+    throw new Error(
+      `scaffold templates directory not found; tried ${candidates.join(" and ")}`
+    );
+  }
+  return found;
 };
-var templatePath = (name) => path10.join(resolveTemplatesDirectory(), name);
+var templatePath = (name) => path10.join(scaffoldTemplatesDirectory(), name);
 
 // src/scaffold/data-layer.ts
 var TANSTACK_QUERY_PACKAGE = "@tanstack/react-query";
@@ -18712,13 +18721,13 @@ var hasQueryGetters = (requestsSource, names) => missingQueryGetters(requestsSou
 var dataLayerTemplatePath = (fileName) => templatePath(path11.join("data-layer", fileName));
 
 // src/scaffold/fs.ts
-import { existsSync as existsSync5, mkdirSync as mkdirSync4, readFileSync as readFileSync9 } from "node:fs";
+import { existsSync as existsSync6, mkdirSync as mkdirSync4, readFileSync as readFileSync9 } from "node:fs";
 import path12 from "node:path";
 var ensureDir = (absPath) => {
   mkdirSync4(absPath, { recursive: true });
 };
 var writeFileIfAbsent = (absPath, contents, options = {}) => {
-  if (existsSync5(absPath)) {
+  if (existsSync6(absPath)) {
     const existing = readFileSync9(absPath, "utf8");
     if (existing === contents) return { written: false };
     throw new Error(`refusing to overwrite ${absPath}`);
@@ -18743,19 +18752,19 @@ var writeAndRecord = (absPath, contents, result) => {
 };
 
 // src/scaffold/layer.ts
-import { existsSync as existsSync6, readdirSync as readdirSync2, readFileSync as readFileSync10, statSync } from "node:fs";
+import { existsSync as existsSync7, readdirSync as readdirSync2, readFileSync as readFileSync10, statSync } from "node:fs";
 import path13 from "node:path";
-var listSubdirectories = (dir) => existsSync6(dir) ? readdirSync2(dir, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name).toSorted((a, b) => a.localeCompare(b)) : [];
+var listSubdirectories = (dir) => existsSync7(dir) ? readdirSync2(dir, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name).toSorted((a, b) => a.localeCompare(b)) : [];
 var SNAKE_CASE_FLAG = /isSnakeCaseEnabled\s*:\s*([^,}\s]+)/u;
 var isSnakeCaseLayer = (packageDir, layer) => {
   const api = path13.join(packageDir, "app", "services", layer, "api.ts");
-  return existsSync6(api) && SNAKE_CASE_FLAG.exec(readFileSync10(api, "utf8"))?.[1] === "true";
+  return existsSync7(api) && SNAKE_CASE_FLAG.exec(readFileSync10(api, "utf8"))?.[1] === "true";
 };
 var resolveLayer = (packageDir, requested) => {
   const servicesDir = path13.join(packageDir, "app", "services");
   if (requested !== void 0) {
     const requestedDir = path13.join(servicesDir, requested);
-    return existsSync6(requestedDir) && statSync(requestedDir).isDirectory() ? { layer: requested } : { error: `--layer folder not found: app/services/${requested}/` };
+    return existsSync7(requestedDir) && statSync(requestedDir).isDirectory() ? { layer: requested } : { error: `--layer folder not found: app/services/${requested}/` };
   }
   const candidates = listSubdirectories(servicesDir).filter(
     (name) => name !== "api"
@@ -18769,9 +18778,8 @@ var resolveLayer = (packageDir, requested) => {
 };
 
 // src/scaffold/service.ts
-import { existsSync as existsSync7, readFileSync as readFileSync11 } from "node:fs";
+import { existsSync as existsSync8, readFileSync as readFileSync11 } from "node:fs";
 import path14 from "node:path";
-import { fileURLToPath as fileURLToPath2 } from "node:url";
 
 // src/scaffold/resolve-target.ts
 var resolveScaffoldTarget = (cwd, subcommand) => {
@@ -19146,7 +19154,7 @@ var applyDatabaseEdits = (args) => {
 };
 var planDatabaseBarrel = (repoRoot, derived) => {
   const databasePath = path14.join(repoRoot, "test", "mocks", "database.ts");
-  if (!existsSync7(databasePath)) return void 0;
+  if (!existsSync8(databasePath)) return void 0;
   const raw = readFileSync11(databasePath, "utf8");
   const importLine = `import {${derived.plural}, reset${derived.Plural}} from './${derived.name}/data';`;
   const resetCall = `reset${derived.Plural}()`;
@@ -19159,11 +19167,7 @@ var planDatabaseBarrel = (repoRoot, derived) => {
   });
   return { next: next === raw ? void 0 : next, path: databasePath };
 };
-var TEMPLATES_DIR = path14.join(
-  path14.dirname(fileURLToPath2(import.meta.url)),
-  "templates"
-);
-var renderServiceTemplate = (templateName, vars) => renderTemplate(path14.join(TEMPLATES_DIR, templateName), vars);
+var renderServiceTemplate = (templateName, vars) => renderTemplate(templatePath(templateName), vars);
 var baseTemplateVars = (derived) => ({
   name: derived.name,
   NAME_UPPER: derived.NAME_UPPER,
@@ -19299,7 +19303,7 @@ var emitQueriesOnly = (context, result) => {
     derived.name
   );
   const requestsPath = path14.join(serviceDir, "requests.ts");
-  if (!existsSync7(requestsPath)) {
+  if (!existsSync8(requestsPath)) {
     return `service folder not found or has no requests.ts: app/services/${layer}/${derived.name}/`;
   }
   const requests = readFileSync11(requestsPath, "utf8");
@@ -19438,7 +19442,7 @@ var parseFlags2 = (argv) => {
   return { flags, ok: true };
 };
 var isAnchorMiss = (plan) => plan !== null && "message" in plan;
-var readIfPresent = (file2) => existsSync8(file2) ? readFileSync12(file2, "utf8") : null;
+var readIfPresent = (file2) => existsSync9(file2) ? readFileSync12(file2, "utf8") : null;
 var missingFile = (relative, edit) => ({
   file: relative,
   message: `${relative}: file not found; ${edit}`
@@ -19610,7 +19614,7 @@ var TEMPLATE_TARGETS = [
 ];
 var planTemplateFiles = (packageDir) => TEMPLATE_TARGETS.flatMap(([template, target]) => {
   const file2 = path15.join(packageDir, target);
-  if (existsSync8(file2)) return [];
+  if (existsSync9(file2)) return [];
   return [
     { content: readFileSync12(dataLayerTemplatePath(template), "utf8"), file: file2 }
   ];
@@ -19673,7 +19677,7 @@ var queriesOnlyHints = (packageDir) => {
     (layer) => listSubdirectories(path15.join(servicesDir, layer)).flatMap((service) => {
       const folder = path15.join(servicesDir, layer, service);
       const requests = readIfPresent(path15.join(folder, "requests.ts"));
-      if (requests === null || existsSync8(path15.join(folder, "queries.ts")) || !hasQueryGetters(requests, deriveNames(service))) {
+      if (requests === null || existsSync9(path15.join(folder, "queries.ts")) || !hasQueryGetters(requests, deriveNames(service))) {
         return [];
       }
       return [
@@ -19775,7 +19779,7 @@ var run8 = (argv, options = {}) => {
 };
 
 // src/init/configure-i18n.ts
-import { existsSync as existsSync9, readFileSync as readFileSync13 } from "node:fs";
+import { existsSync as existsSync10, readFileSync as readFileSync13 } from "node:fs";
 import path16 from "node:path";
 var HELP_TEXT9 = `Usage: gaia init configure-i18n --locales <list> --strip <bool>
 
@@ -19876,7 +19880,7 @@ export default {${exports}} as const;
 };
 var updateLanguagesIndex = (cwd, locales) => {
   const target = path16.join(cwd, LANGUAGES_INDEX);
-  if (!existsSync9(target)) return;
+  if (!existsSync10(target)) return;
   const next = renderLanguagesIndex(locales);
   const current = readFileSync13(target, "utf8");
   if (current === next) return;
@@ -19884,7 +19888,7 @@ var updateLanguagesIndex = (cwd, locales) => {
 };
 var updateI18nFallback = (cwd, fallback) => {
   const target = path16.join(cwd, I18N_FILE);
-  if (!existsSync9(target)) return;
+  if (!existsSync10(target)) return;
   const original = readFileSync13(target, "utf8");
   let next = original.replace(
     /DEFAULT_LOCALE\s*=\s*['"][^'"]+['"]/u,
@@ -19954,7 +19958,7 @@ var run9 = (argv, options = {}) => {
 };
 
 // src/init/finalize.ts
-import { existsSync as existsSync10, rmSync } from "node:fs";
+import { existsSync as existsSync11, rmSync } from "node:fs";
 import path17 from "node:path";
 var HELP_TEXT10 = `Usage: gaia init finalize
 
@@ -19972,7 +19976,7 @@ var STEP_NAME4 = "finalize";
 var INIT_COMMAND = ".claude/commands/gaia-init.md";
 var removeIfPresent = (cwd, relative) => {
   const absolute = path17.join(cwd, relative);
-  if (existsSync10(absolute)) {
+  if (existsSync11(absolute)) {
     rmSync(absolute, { force: true, recursive: true });
   }
 };
@@ -20015,7 +20019,7 @@ var run10 = async (argv, options = {}) => {
 };
 
 // src/init/rename.ts
-import { existsSync as existsSync11, readFileSync as readFileSync14 } from "node:fs";
+import { existsSync as existsSync12, readFileSync as readFileSync14 } from "node:fs";
 import path18 from "node:path";
 
 // src/init/util/js-literal.ts
@@ -20076,7 +20080,7 @@ var COMMON_TS = "app/languages/en/common.ts";
 var INDEX_PAGE_TS = "app/languages/en/pages/_index.ts";
 var renamePackageJson = (cwd, kebab) => {
   const target = path18.join(cwd, PACKAGE_JSON);
-  if (!existsSync11(target)) {
+  if (!existsSync12(target)) {
     throw new Error("package.json not found at repo root");
   }
   const raw = readFileSync14(target, "utf8");
@@ -20098,11 +20102,11 @@ var findH1Line = (lines) => {
 var claudeMdHasH1 = (source) => findH1Line(source.split("\n")) !== -1;
 var claudeMdPreconditionMet = (cwd) => {
   const target = path18.join(cwd, CLAUDE_MD);
-  return !existsSync11(target) || claudeMdHasH1(readFileSync14(target, "utf8"));
+  return !existsSync12(target) || claudeMdHasH1(readFileSync14(target, "utf8"));
 };
 var renameClaudeMd = (cwd, title) => {
   const target = path18.join(cwd, CLAUDE_MD);
-  if (!existsSync11(target)) return;
+  if (!existsSync12(target)) return;
   const lines = readFileSync14(target, "utf8").split("\n");
   const index = findH1Line(lines);
   if (index === -1) return;
@@ -20143,7 +20147,7 @@ var LANGUAGE_FILES = [
 ];
 var renameLanguageFile = (cwd, { file: file2, keys }, title) => {
   const target = path18.join(cwd, file2);
-  if (!existsSync11(target)) return;
+  if (!existsSync12(target)) return;
   const original = readFileSync14(target, "utf8");
   const next = keys.reduce(
     (source, key) => applyRewrite(source, key, title),
@@ -20226,7 +20230,7 @@ var run11 = (argv, options = {}) => {
 };
 
 // src/init/strip-branding.ts
-import { existsSync as existsSync12, readFileSync as readFileSync15, rmSync as rmSync2 } from "node:fs";
+import { existsSync as existsSync13, readFileSync as readFileSync15, rmSync as rmSync2 } from "node:fs";
 import path19 from "node:path";
 var HELP_TEXT12 = `Usage: gaia init strip-branding --title <T>
 
@@ -20268,19 +20272,19 @@ var PREVIEW_FILE = ".storybook/preview.ts";
 var PLACEHOLDER = "{{PROJECT_TITLE}}";
 var removeIfPresent2 = (cwd, relative) => {
   const absolute = path19.join(cwd, relative);
-  if (existsSync12(absolute)) {
+  if (existsSync13(absolute)) {
     rmSync2(absolute, { force: true, recursive: true });
   }
 };
 var writeReadme = (cwd, title) => {
   const templatePath2 = path19.join(cwd, README_TEMPLATE);
-  if (!existsSync12(templatePath2)) {
+  if (!existsSync13(templatePath2)) {
     throw new Error(`${README_TEMPLATE} not found; cannot replace README`);
   }
   const template = readFileSync15(templatePath2, "utf8");
   const rendered = template.split(PLACEHOLDER).join(title);
   const target = path19.join(cwd, README_TARGET);
-  if (existsSync12(target)) {
+  if (existsSync13(target)) {
     const current = readFileSync15(target, "utf8");
     if (current === rendered) return;
   }
@@ -20288,7 +20292,7 @@ var writeReadme = (cwd, title) => {
 };
 var debrandStorybook = (cwd, title) => {
   const target = path19.join(cwd, PREVIEW_FILE);
-  if (!existsSync12(target)) return;
+  if (!existsSync13(target)) return;
   const original = readFileSync15(target, "utf8");
   let next = original;
   const safeTitle = escapeJsLiteralValue(title, "'");
@@ -20364,7 +20368,7 @@ var run12 = (argv, options = {}) => {
 
 // src/init/wire-statusline.ts
 import {
-  existsSync as existsSync13,
+  existsSync as existsSync14,
   mkdirSync as mkdirSync5,
   readFileSync as readFileSync16,
   renameSync as renameSync2,
@@ -20431,7 +20435,7 @@ var insertAlphabetical = (source, key, value) => {
   return next;
 };
 var readSettings = (target) => {
-  if (!existsSync13(target)) return {};
+  if (!existsSync14(target)) return {};
   const raw = readFileSync16(target, "utf8").trim();
   if (raw.length === 0) return {};
   let parsed;
@@ -20525,7 +20529,7 @@ var run13 = (argv, options = {}) => {
 };
 
 // src/schemas/project-config.ts
-import { existsSync as existsSync14, readFileSync as readFileSync17 } from "node:fs";
+import { existsSync as existsSync15, readFileSync as readFileSync17 } from "node:fs";
 import path21 from "node:path";
 var ISOLATION_POLICIES = [
   "always-worktree",
@@ -20555,7 +20559,7 @@ var ProjectConfigSchema = external_exports.object({
 var projectConfigPath = (repoRoot) => path21.join(repoRoot, ".gaia", "project.json");
 var readProjectConfig = (repoRoot) => {
   const filePath = projectConfigPath(repoRoot);
-  if (!existsSync14(filePath)) return { status: "missing" };
+  if (!existsSync15(filePath)) return { status: "missing" };
   let text;
   try {
     text = readFileSync17(filePath, "utf8");
@@ -20987,7 +20991,7 @@ var HELP_TOKENS15 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var MANIFEST_RELATIVE = path23.join(".gaia", "manifest.json");
 var CLI_SOURCE_RELATIVE = path23.join(".gaia", "cli", "src");
 var targetRefusal = (cwd, subcommand) => {
-  if (!existsSync15(path23.join(cwd, MANIFEST_RELATIVE))) {
+  if (!existsSync16(path23.join(cwd, MANIFEST_RELATIVE))) {
     structuredError({
       code: "not_a_gaia_project",
       message: `refusing to run in ${cwd}: it has no ${MANIFEST_RELATIVE}, so it is not a GAIA project; re-run from the root of the scaffold you mean to initialize`,
@@ -20995,7 +20999,7 @@ var targetRefusal = (cwd, subcommand) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  if (existsSync15(path23.join(cwd, CLI_SOURCE_RELATIVE))) {
+  if (existsSync16(path23.join(cwd, CLI_SOURCE_RELATIVE))) {
     structuredError({
       code: "gaia_template_source",
       message: `refusing to run in ${cwd}: ${CLI_SOURCE_RELATIVE} is present, so this is the GAIA template source rather than a project scaffolded from it`,
@@ -21046,7 +21050,7 @@ import { readFileSync as readFileSync19 } from "node:fs";
 import path25 from "node:path";
 
 // src/labels/registry.ts
-import { existsSync as existsSync16, readFileSync as readFileSync18 } from "node:fs";
+import { existsSync as existsSync17, readFileSync as readFileSync18 } from "node:fs";
 import path24 from "node:path";
 
 // src/schemas/labels.ts
@@ -21178,7 +21182,7 @@ var isCreatable = (entry, audience, enabledFeatures) => {
 var labelsRegistryPath = (repoRoot) => path24.join(repoRoot, ".gaia", "labels.json");
 var forensicsWorkflowPath = (repoRoot) => path24.join(repoRoot, ".github", "workflows", "forensics-triage.yml");
 var hasDependabot = (repoRoot) => ["dependabot.yml", "dependabot.yaml"].some(
-  (fileName) => existsSync16(path24.join(repoRoot, ".github", fileName))
+  (fileName) => existsSync17(path24.join(repoRoot, ".github", fileName))
 );
 var readRegistry = (repoRoot) => {
   const filePath = labelsRegistryPath(repoRoot);
@@ -21217,11 +21221,11 @@ var suggestedColorFor = (registry2, name) => {
   const family = registry2.labels.filter((entry) => entry.color !== null && entry.name.startsWith(prefix)).toSorted((a, b) => a.name.localeCompare(b.name));
   return family[0]?.color ?? null;
 };
-var resolveAudience = (repoRoot) => existsSync16(path24.join(repoRoot, ".gaia", "cli", "src")) ? "maintainer" : "adopter";
+var resolveAudience = (repoRoot) => existsSync17(path24.join(repoRoot, ".gaia", "cli", "src")) ? "maintainer" : "adopter";
 var resolveFeatures = (repoRoot) => {
   const features = ["tech-debt"];
   if (hasDependabot(repoRoot)) features.push("dependabot");
-  if (existsSync16(forensicsWorkflowPath(repoRoot))) features.push("forensics");
+  if (existsSync17(forensicsWorkflowPath(repoRoot))) features.push("forensics");
   return features;
 };
 
@@ -21957,7 +21961,7 @@ var run19 = async (argv) => {
 };
 
 // src/packages/sync-settings.ts
-import { existsSync as existsSync17, mkdirSync as mkdirSync7, readFileSync as readFileSync20 } from "node:fs";
+import { existsSync as existsSync18, mkdirSync as mkdirSync7, readFileSync as readFileSync20 } from "node:fs";
 import path26 from "node:path";
 
 // src/packages/settings-transform.ts
@@ -22175,7 +22179,7 @@ var readJsonObject = (file2, label) => {
   }
   return parsed;
 };
-var readOverlay = (file2, label) => existsSync17(file2) ? readJsonObject(file2, label) : {};
+var readOverlay = (file2, label) => existsSync18(file2) ? readJsonObject(file2, label) : {};
 var generateAll = (repoRoot) => {
   const loaded = loadPackages(repoRoot);
   if (!loaded.ok) {
@@ -22216,7 +22220,7 @@ var generateAll = (repoRoot) => {
     throw error51;
   }
 };
-var currentContent = (absolute) => existsSync17(absolute) ? readFileSync20(absolute, "utf8") : null;
+var currentContent = (absolute) => existsSync18(absolute) ? readFileSync20(absolute, "utf8") : null;
 var parseArguments = (args) => {
   const options = { check: false, repoRoot: void 0 };
   for (let index = 0; index < args.length; index += 1) {
@@ -22388,7 +22392,7 @@ var resolveStorageRoots = ({ repoRoot }) => {
 
 // src/storage/project-id.ts
 import { createHash } from "node:crypto";
-import { existsSync as existsSync18, mkdirSync as mkdirSync8, readFileSync as readFileSync21, writeFileSync as writeFileSync3 } from "node:fs";
+import { existsSync as existsSync19, mkdirSync as mkdirSync8, readFileSync as readFileSync21, writeFileSync as writeFileSync3 } from "node:fs";
 import path29 from "node:path";
 var UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 var formatAsUuidV4 = (hex32) => {
@@ -22404,14 +22408,14 @@ var deriveProjectId = (repoRootPath) => {
 };
 var readOrCreateProjectId = (roots) => {
   const filePath = roots.projectIdPath;
-  if (existsSync18(filePath)) {
+  if (existsSync19(filePath)) {
     const existing = readFileSync21(filePath, "utf8").trim();
     if (UUID_RE.test(existing)) {
       return existing;
     }
   }
   const parent = path29.dirname(filePath);
-  if (!existsSync18(parent)) {
+  if (!existsSync19(parent)) {
     mkdirSync8(parent, { mode: 493, recursive: true });
   }
   const id = deriveProjectId(roots.mainRoot);
@@ -23034,7 +23038,7 @@ var run24 = async (argv) => {
 
 // src/residue/cache.ts
 import { createHash as createHash2 } from "node:crypto";
-import { existsSync as existsSync19, mkdirSync as mkdirSync9, readFileSync as readFileSync24, unlinkSync as unlinkSync2 } from "node:fs";
+import { existsSync as existsSync20, mkdirSync as mkdirSync9, readFileSync as readFileSync24, unlinkSync as unlinkSync2 } from "node:fs";
 import path31 from "node:path";
 var CACHE_DIR_SEGMENTS = [".gaia", "local", "cache"];
 var ATTRIBUTION_CACHE_FILE = "residual-attribution.json";
@@ -23091,7 +23095,7 @@ var writeCursor = (repoRoot, cursor) => {
 };
 var clearCursor = (repoRoot) => {
   const filePath = cursorPath(repoRoot);
-  if (!existsSync19(filePath)) return;
+  if (!existsSync20(filePath)) return;
   try {
     unlinkSync2(filePath);
   } catch {
@@ -23526,7 +23530,7 @@ var unresolvedResolver = () => ({
 import {
   appendFileSync,
   closeSync as closeSync2,
-  existsSync as existsSync20,
+  existsSync as existsSync21,
   mkdirSync as mkdirSync10,
   openSync as openSync2,
   readFileSync as readFileSync26,
@@ -23542,7 +23546,7 @@ var DAY_MS = 24 * 60 * 60 * 1e3;
 var storePath = (repoRoot) => path33.join(repoRoot, ...STORE_RELATIVE_PATH.split("/"));
 var readStore = (repoRoot) => {
   const filePath = storePath(repoRoot);
-  if (!existsSync20(filePath)) return { records: [], skipped: [] };
+  if (!existsSync21(filePath)) return { records: [], skipped: [] };
   const raw = readFileSync26(filePath, "utf8");
   const records = [];
   const skipped = [];
@@ -23607,7 +23611,7 @@ var serializeRecord = (record2) => JSON.stringify({
   source_pr: record2.source_pr
 });
 var storeNewlinePrefix = (filePath) => {
-  if (!existsSync20(filePath)) return "";
+  if (!existsSync21(filePath)) return "";
   let handle;
   try {
     const { size } = statSync2(filePath);
@@ -24421,7 +24425,7 @@ var run27 = (argv, options = {}) => {
 
 // src/sandbox/index.ts
 import { execFileSync as execFileSync2 } from "node:child_process";
-import { existsSync as existsSync22, mkdirSync as mkdirSync12, readFileSync as readFileSync29 } from "node:fs";
+import { existsSync as existsSync23, mkdirSync as mkdirSync12, readFileSync as readFileSync29 } from "node:fs";
 import path35 from "node:path";
 
 // src/sandbox/apply.ts
@@ -24467,7 +24471,7 @@ var classifyCapability = (input) => {
 };
 
 // src/sandbox/marker.ts
-import { existsSync as existsSync21, mkdirSync as mkdirSync11, readFileSync as readFileSync28 } from "node:fs";
+import { existsSync as existsSync22, mkdirSync as mkdirSync11, readFileSync as readFileSync28 } from "node:fs";
 import path34 from "node:path";
 var MARKER_FILENAME = "sandbox.json";
 var CAPABILITIES = [
@@ -24483,7 +24487,7 @@ var OUTCOMES = [
 var resolveMarkerPath = (repoRoot) => path34.join(repoRoot, ".gaia", "local", MARKER_FILENAME);
 var readSandboxMarker = (repoRoot) => {
   const filePath = resolveMarkerPath(repoRoot);
-  if (!existsSync21(filePath)) return null;
+  if (!existsSync22(filePath)) return null;
   const raw = readFileSync28(filePath, "utf8");
   const parsed = JSON.parse(raw);
   if (parsed.version !== 1) {
@@ -24507,7 +24511,7 @@ var readSandboxMarker = (repoRoot) => {
 var writeSandboxMarker = (repoRoot, marker) => {
   const filePath = resolveMarkerPath(repoRoot);
   const parent = path34.dirname(filePath);
-  if (!existsSync21(parent)) {
+  if (!existsSync22(parent)) {
     mkdirSync11(parent, { mode: 493, recursive: true });
   }
   const contents = `${JSON.stringify(marker, null, 2)}
@@ -24735,7 +24739,7 @@ var warnIfNotGitignored = (settingsPath, cwd) => {
   }
 };
 var readExistingSettings = (settingsPath) => {
-  if (!existsSync22(settingsPath)) return { ok: true, value: {} };
+  if (!existsSync23(settingsPath)) return { ok: true, value: {} };
   try {
     return {
       ok: true,
@@ -24773,7 +24777,7 @@ var runApply = (argv, options = {}) => {
     seedSandboxConfig({ dockerPresent, registry: registry2 })
   );
   const parent = path35.dirname(settingsPath);
-  if (!existsSync22(parent)) {
+  if (!existsSync23(parent)) {
     mkdirSync12(parent, { mode: 493, recursive: true });
   }
   atomicWriteFileSync(settingsPath, `${JSON.stringify(merged, null, 2)}
@@ -24951,14 +24955,13 @@ var run28 = (argv, options = {}) => {
 };
 
 // src/scaffold/component.ts
-import { existsSync as existsSync23, statSync as statSync3 } from "node:fs";
+import { existsSync as existsSync24, statSync as statSync3 } from "node:fs";
 import path36 from "node:path";
-import { fileURLToPath as fileURLToPath3 } from "node:url";
 var PASCAL_CASE_PATTERN = /^[A-Z][\dA-Za-z]*$/u;
 var KEBAB_CASE_PATTERN = /^[a-z][\da-z]*(?:-[\da-z]+)*$/u;
 var PROP_NAME_PATTERN = /^[A-Za-z_][\w$]*$/u;
 var KEBAB_WORD_PATTERN = /[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|\d*(?:1ST|2ND|3RD|(?![123])\dTH)(?=\b|[a-z_])|\d*(?:1st|2nd|3rd|(?![123])\dth)(?=\b|[A-Z_])|\d+/gu;
-var TEMPLATES_DIR2 = "component";
+var TEMPLATE_FAMILY = "component";
 var COMPONENTS_DEFAULT_PARENT = "app/components";
 var APP_SEGMENT = "app";
 var COMPONENTS_SEGMENT = "components";
@@ -25197,37 +25200,29 @@ var checkParent = (rawParent) => {
   }
   return { ok: true, parent };
 };
-var defaultIsDirectory = (absPath) => existsSync23(absPath) && statSync3(absPath).isDirectory();
+var defaultIsDirectory = (absPath) => existsSync24(absPath) && statSync3(absPath).isDirectory();
 var renderComponentFile = (options) => {
-  const { componentName, props, templatesRoot } = options;
-  const templatePath2 = path36.join(
-    templatesRoot,
-    `${TEMPLATES_DIR2}/index.tsx.tmpl`
-  );
+  const { componentName, props } = options;
+  const componentTemplate = templatePath(`${TEMPLATE_FAMILY}/index.tsx.tmpl`);
   const propsTypeBlock = buildPropsTypeBlock(componentName, props);
   const propsParam = props.length === 0 ? "" : `{${props.map((property) => property.name).join(", ")}}: ${componentName}Props`;
-  return renderTemplate(templatePath2, {
+  return renderTemplate(componentTemplate, {
     Name: componentName,
     propsParam,
     propsTypeBlock
   });
 };
 var renderStoryFile = (options) => {
-  const { componentName, folder, parent, props, templatesRoot } = options;
-  const templatePath2 = path36.join(
-    templatesRoot,
-    `${TEMPLATES_DIR2}/index.stories.tsx.tmpl`
+  const { componentName, folder, parent, props } = options;
+  const storyTemplate = templatePath(
+    `${TEMPLATE_FAMILY}/index.stories.tsx.tmpl`
   );
-  return renderTemplate(templatePath2, {
+  return renderTemplate(storyTemplate, {
     Name: componentName,
     storyDefault: buildStoryExport("Default", componentName, props),
     storyRenders: buildStoryExport("Renders", componentName, props),
     storyTitle: buildStoryTitle(parent, folder)
   });
-};
-var resolveTemplatesRoot = () => {
-  const here = fileURLToPath3(import.meta.url);
-  return path36.join(path36.dirname(here), "templates");
 };
 var printHumanResult = (result, componentName) => {
   const lines = [`Scaffolded component ${componentName}.`];
@@ -25292,14 +25287,12 @@ var run29 = (argv, options = {}) => {
   const indexPath = path36.join(componentDir, "index.tsx");
   const testsDir = path36.join(componentDir, "tests");
   const storyPath = path36.join(testsDir, "index.stories.tsx");
-  const templatesRoot = resolveTemplatesRoot();
   const result = { edited: [], skipped: [], written: [] };
   const renderOptions = {
     componentName,
     folder,
     parent,
-    props: flags.props,
-    templatesRoot
+    props: flags.props
   };
   try {
     writeAndRecord(indexPath, renderComponentFile(renderOptions), result);
@@ -25323,7 +25316,6 @@ var run29 = (argv, options = {}) => {
 
 // src/scaffold/hook.ts
 import path37 from "node:path";
-import { fileURLToPath as fileURLToPath4 } from "node:url";
 var KEBAB_HOOK_PATTERN = /^use(?:-[a-z\d]+)+$/u;
 var CAMEL_HOOK_PATTERN = /^use[A-Z][A-Za-z\d]*$/u;
 var kebabToCamel = (kebab) => kebab.split("-").map(
@@ -25389,15 +25381,7 @@ var sentinelForType = (type2) => {
   return "undefined as never";
 };
 var formatCallArgs = (params) => params.map((param) => sentinelForType(param.type)).join(", ");
-var resolveTemplateFile = (filename) => {
-  const here = fileURLToPath4(import.meta.url);
-  return path37.join(
-    path37.dirname(here),
-    "templates",
-    TEMPLATE_DIR_NAME,
-    filename
-  );
-};
+var resolveTemplateFile = (filename) => templatePath(path37.join(TEMPLATE_DIR_NAME, filename));
 var emitFiles = (options) => {
   const { fileStem, hookFilePath, name, params, returns, testFilePath } = options;
   const paramsString = formatParamsString(params);
@@ -25509,7 +25493,6 @@ var run30 = (argv, options = {}) => {
 
 // src/scaffold/route.ts
 import path40 from "node:path";
-import { fileURLToPath as fileURLToPath5 } from "node:url";
 
 // src/scaffold/route-data.ts
 var humanize = (identifier) => {
@@ -26041,7 +26024,7 @@ var buildDataStoryVars = (context) => {
 };
 
 // src/scaffold/route-locale.ts
-import { existsSync as existsSync24, readFileSync as readFileSync30 } from "node:fs";
+import { existsSync as existsSync25, readFileSync as readFileSync30 } from "node:fs";
 import path38 from "node:path";
 var CLOSE_BRACE_PATTERN = /^\s*\}[\s;]*$/u;
 var findImportInsertIndex = (lines, importName) => {
@@ -26114,7 +26097,7 @@ var insertExportEntry = (lines, args) => {
 };
 var insertIntoLocaleBarrel = (args) => {
   const { barrelPath, dryRun, importName, moduleName } = args;
-  if (!existsSync24(barrelPath)) return "missing";
+  if (!existsSync25(barrelPath)) return "missing";
   const original = readFileSync30(barrelPath, "utf8");
   const importLine = `import ${importName} from './${moduleName}';`;
   if (original.includes(importLine)) return "present";
@@ -26169,7 +26152,7 @@ var writeLocaleFiles = (args) => {
 };
 
 // src/scaffold/route-service.ts
-import { existsSync as existsSync25, readFileSync as readFileSync31 } from "node:fs";
+import { existsSync as existsSync26, readFileSync as readFileSync31 } from "node:fs";
 import path39 from "node:path";
 var deriveRouteCalls = (shape, derived) => {
   const { Plural, plural, Singular, singular } = derived;
@@ -26242,7 +26225,7 @@ var exportsName = (source, name) => new RegExp(
   String.raw`\bexport\s+(?:async\s+)?(?:const|function)\s+${name}\b`,
   "u"
 ).test(source);
-var readOptional = (filePath) => existsSync25(filePath) ? readFileSync31(filePath, "utf8") : null;
+var readOptional = (filePath) => existsSync26(filePath) ? readFileSync31(filePath, "utf8") : null;
 var requiredRequests = (args, derived) => {
   const { getter, mutation } = deriveRouteCalls(args.shape, derived);
   return args.hasAction ? [getter, mutation] : [getter];
@@ -26275,7 +26258,7 @@ var readServiceBinding = (args) => {
     args.layer,
     args.service
   );
-  if (!existsSync25(serviceDir)) {
+  if (!existsSync26(serviceDir)) {
     return {
       error: `service folder not found: app/services/${args.layer}/${args.service}/ (scaffold it with \`./.gaia/cli/gaia scaffold service ${args.service}\` first)`
     };
@@ -26378,11 +26361,7 @@ var parseFlags10 = (rest) => {
   }
   return flags;
 };
-var templateDir = () => {
-  const here = fileURLToPath5(import.meta.url);
-  return path40.join(path40.dirname(here), "templates", "route");
-};
-var routeTemplate = (fileName) => path40.join(templateDir(), fileName);
+var routeTemplate = (fileName) => templatePath(path40.join("route", fileName));
 var resolveNames = (kebabName, group) => {
   const { i18nKey, pageName, routeFile, routeName } = resolveDataRouteNames(
     kebabName,
@@ -30287,7 +30266,7 @@ var {
 } = yaml;
 
 // src/setup-ci/warn-existing-tools.ts
-import { existsSync as existsSync26, readFileSync as readFileSync32 } from "node:fs";
+import { existsSync as existsSync27, readFileSync as readFileSync32 } from "node:fs";
 import path41 from "node:path";
 var HELP_TEXT36 = `Usage: gaia setup-ci warn-existing-tools [--json]
 
@@ -30360,13 +30339,13 @@ var run37 = (argv, options = {}) => {
   const found = [];
   const dependabotStatuses = DEPENDABOT_PATHS.map(
     (segments) => path41.join(repoRoot, ...segments)
-  ).filter((filePath) => existsSync26(filePath)).map((filePath) => classifyDependabotFile(filePath));
+  ).filter((filePath) => existsSync27(filePath)).map((filePath) => classifyDependabotFile(filePath));
   const dependabotUnparseable = dependabotStatuses.includes("unparseable");
   if (dependabotUnparseable || dependabotStatuses.includes("npm")) {
     found.push("dependabot");
   }
   const hasRenovate = RENOVATE_PATHS.some(
-    (segments) => existsSync26(path41.join(repoRoot, ...segments))
+    (segments) => existsSync27(path41.join(repoRoot, ...segments))
   );
   if (hasRenovate) found.push("renovate");
   if (json3) {
@@ -30496,7 +30475,7 @@ var run39 = async (argv) => {
 
 // src/setup/util/state-file.ts
 import {
-  existsSync as existsSync27,
+  existsSync as existsSync28,
   mkdirSync as mkdirSync13,
   readFileSync as readFileSync33,
   renameSync as renameSync3,
@@ -30515,7 +30494,7 @@ var isSetupStep = (value) => SETUP_STEPS.includes(value);
 var resolveStateFilePath = (repoRoot) => path42.join(repoRoot, STATE_DIRECTORY_RELATIVE, STATE_FILENAME);
 var readStateFile = (repoRoot) => {
   const filePath = resolveStateFilePath(repoRoot);
-  if (!existsSync27(filePath)) return null;
+  if (!existsSync28(filePath)) return null;
   const raw = readFileSync33(filePath, "utf8");
   const parsed = JSON.parse(raw);
   if (parsed.version !== 1) {
@@ -30537,7 +30516,7 @@ var readStateFile = (repoRoot) => {
 var writeStateFile = (repoRoot, state) => {
   const filePath = resolveStateFilePath(repoRoot);
   const parent = path42.dirname(filePath);
-  if (!existsSync27(parent)) {
+  if (!existsSync28(parent)) {
     mkdirSync13(parent, { mode: 493, recursive: true });
   }
   const serialized = `${JSON.stringify(state, null, 2)}
@@ -33270,7 +33249,7 @@ var run50 = (argv, options = {}) => {
 
 // src/update-deps/write-security-cache.ts
 import {
-  existsSync as existsSync28,
+  existsSync as existsSync29,
   mkdirSync as mkdirSync17,
   readFileSync as readFileSync39,
   rmSync as rmSync3,
@@ -33389,7 +33368,7 @@ var run51 = (argv, options = {}) => {
   }
   const cacheDirectory = path48.join(root, ".gaia/local/cache/shared");
   const cacheFile = path48.join(cacheDirectory, "update-check.json");
-  if (!existsSync28(cacheFile)) {
+  if (!existsSync29(cacheFile)) {
     printResult4({ reason: "no-cache", written: false });
     return EXIT_CODES.OK;
   }
@@ -33481,7 +33460,7 @@ var run52 = async (argv) => {
 };
 
 // src/update/merge-audit-ci.ts
-import { existsSync as existsSync29, readFileSync as readFileSync40 } from "node:fs";
+import { existsSync as existsSync30, readFileSync as readFileSync40 } from "node:fs";
 import path49 from "node:path";
 
 // src/util/parse-value-flags.ts
@@ -33691,7 +33670,7 @@ var printHuman5 = (report2) => {
 `);
 };
 var loadAuditCi = (absPath, role) => {
-  if (!existsSync29(absPath)) {
+  if (!existsSync30(absPath)) {
     return {
       code: "audit_ci_file_missing",
       message: `${role} audit-ci file not found: ${absPath}`,
@@ -33757,7 +33736,7 @@ var run53 = (argv, options = {}) => {
 };
 
 // src/update/merge-region.ts
-import { existsSync as existsSync30, readFileSync as readFileSync41 } from "node:fs";
+import { existsSync as existsSync31, readFileSync as readFileSync41 } from "node:fs";
 import path50 from "node:path";
 
 // src/update/region-markers.ts
@@ -33911,7 +33890,7 @@ var printHuman6 = (report2) => {
 `);
 };
 var loadRegionFile = (absPath, role) => {
-  if (!existsSync30(absPath)) {
+  if (!existsSync31(absPath)) {
     return {
       code: "region_file_missing",
       message: `${role} file not found: ${absPath}`,
@@ -33981,7 +33960,7 @@ var run54 = (argv, options = {}) => {
 };
 
 // src/update/merge-workspace.ts
-import { existsSync as existsSync31, readFileSync as readFileSync42 } from "node:fs";
+import { existsSync as existsSync32, readFileSync as readFileSync42 } from "node:fs";
 import path51 from "node:path";
 var HELP_TEXT54 = `Usage: gaia update merge-workspace --baseline <file> --latest <file> --current <file> [--json]
 
@@ -34157,7 +34136,7 @@ var printHuman7 = (report2) => {
 `);
 };
 var loadWorkspace = (absPath, role) => {
-  if (!existsSync31(absPath)) {
+  if (!existsSync32(absPath)) {
     return {
       code: "workspace_file_missing",
       message: `${role} workspace file not found: ${absPath}`,
@@ -34228,7 +34207,7 @@ import { createHash as createHash3 } from "node:crypto";
 import {
   chmodSync,
   copyFileSync as copyFileSync2,
-  existsSync as existsSync32,
+  existsSync as existsSync33,
   lstatSync as lstatSync2,
   mkdirSync as mkdirSync18,
   readdirSync as readdirSync3,
@@ -34521,9 +34500,9 @@ var performBackup = (inputs) => {
   const backedUp = [];
   paths.forEach((declPath) => {
     const srcAbs = path52.resolve(root, declPath);
-    if (!existsSync32(srcAbs)) return;
+    if (!existsSync33(srcAbs)) return;
     const destinationAbs = path52.resolve(backupDir, declPath);
-    if (existsSync32(destinationAbs)) return;
+    if (existsSync33(destinationAbs)) return;
     try {
       mkdirSync18(path52.dirname(destinationAbs), { recursive: true });
       copyFileSync2(srcAbs, destinationAbs);
@@ -34551,7 +34530,7 @@ var collectScopeDigests = (root, scopeDirs) => {
   const digests = /* @__PURE__ */ new Map();
   scopeDirs.forEach((dir) => {
     const absDir = path52.resolve(root, dir);
-    if (!existsSync32(absDir)) return;
+    if (!existsSync33(absDir)) return;
     let entries;
     try {
       entries = readdirSync3(absDir, { recursive: true });
@@ -34838,7 +34817,7 @@ var loadRunInputs = (cwd, flags) => {
   const manifestPath = resolvePath4(cwd, flags.manifest);
   const root = resolvePath4(cwd, flags.root);
   const backupDir = flags.backupDir === void 0 ? void 0 : resolvePath4(cwd, flags.backupDir);
-  if (!existsSync32(manifestPath)) {
+  if (!existsSync33(manifestPath)) {
     structuredError({
       code: "manifest_not_found",
       message: `manifest not found: ${manifestPath}`,
@@ -34868,7 +34847,7 @@ var loadRunInputs = (cwd, flags) => {
     });
     return { ok: false };
   }
-  if (!existsSync32(root)) {
+  if (!existsSync33(root)) {
     structuredError({
       code: "root_not_found",
       message: `root directory not found: ${root}`,
@@ -35503,7 +35482,7 @@ var commitDetails = (sinceSha, cwd) => {
 };
 
 // src/wiki/util/statusline-cache.ts
-import { existsSync as existsSync33, readFileSync as readFileSync45 } from "node:fs";
+import { existsSync as existsSync34, readFileSync as readFileSync45 } from "node:fs";
 import path56 from "node:path";
 var CACHE_RELATIVE_PATH = path56.join(
   ".gaia",
@@ -35518,7 +35497,7 @@ var invalidateStatuslineCache = (repoRoot) => {
       resolveMainWorktreeRoot(repoRoot),
       CACHE_RELATIVE_PATH
     );
-    if (!existsSync33(cachePath)) return;
+    if (!existsSync34(cachePath)) return;
     const parsed = JSON.parse(readFileSync45(cachePath, "utf8"));
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
       return;
@@ -36141,7 +36120,7 @@ var parseConventionalCommitHeader = (subject) => {
 var isCommitType = (type2) => COMMIT_TYPES.includes(type2);
 
 // src/wiki/classify-paths.ts
-import { existsSync as existsSync34, readFileSync as readFileSync46 } from "node:fs";
+import { existsSync as existsSync35, readFileSync as readFileSync46 } from "node:fs";
 import path57 from "node:path";
 var defaultClassifyPaths = (repoRoot) => {
   const loaded = loadPackages(repoRoot);
@@ -36177,7 +36156,7 @@ var PackageJsonSchema = external_exports.object({
 var readClassifyPaths = (repoRoot) => {
   const defaults = defaultClassifyPaths(repoRoot);
   const target = path57.join(repoRoot, "package.json");
-  if (!existsSync34(target)) return defaults;
+  if (!existsSync35(target)) return defaults;
   let parsed;
   try {
     parsed = JSON.parse(readFileSync46(target, "utf8"));
@@ -36799,7 +36778,7 @@ var run63 = (argv, options = {}) => {
 };
 
 // src/wiki/log-prepend.ts
-import { existsSync as existsSync35, readFileSync as readFileSync50, renameSync as renameSync4, writeFileSync as writeFileSync9 } from "node:fs";
+import { existsSync as existsSync36, readFileSync as readFileSync50, renameSync as renameSync4, writeFileSync as writeFileSync9 } from "node:fs";
 import path61 from "node:path";
 var HELP_TEXT63 = `Usage: gaia wiki log-prepend --sha <h> --decision <WORTHY|SKIP|RE_ANCHOR> --reason "..."
 
@@ -36902,7 +36881,7 @@ var run64 = (argv, options = {}) => {
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
   const logPath = path61.join(repoRoot, "wiki", "log.md");
-  if (!existsSync35(logPath)) {
+  if (!existsSync36(logPath)) {
     structuredError({
       code: "log_missing",
       message: "wiki/log.md does not exist",
@@ -36936,7 +36915,7 @@ var run64 = (argv, options = {}) => {
 };
 
 // src/wiki/near-collisions.ts
-import { existsSync as existsSync36, readdirSync as readdirSync5, statSync as statSync6 } from "node:fs";
+import { existsSync as existsSync37, readdirSync as readdirSync5, statSync as statSync6 } from "node:fs";
 import path62 from "node:path";
 var HELP_TEXT64 = `Usage: gaia wiki near-collisions [--max-distance 3]
 
@@ -36984,7 +36963,7 @@ var levenshtein = (a, b) => {
 var isCollectibleSlugFile = (entry) => entry.isFile() && entry.name.endsWith(".md") && !SKIPPED_FILES.has(entry.name) && !entry.name.startsWith("_");
 var collectDomainSlugs = (wikiRoot) => DOMAIN_DIRS.flatMap((domain2) => {
   const domainDir = path62.join(wikiRoot, domain2);
-  if (!existsSync36(domainDir) || !statSync6(domainDir).isDirectory()) {
+  if (!existsSync37(domainDir) || !statSync6(domainDir).isDirectory()) {
     return [];
   }
   const entries = readdirSync5(domainDir, { withFileTypes: true });
@@ -37083,7 +37062,7 @@ var run65 = (argv, options = {}) => {
 };
 
 // src/wiki/page-index.ts
-import { existsSync as existsSync37, readdirSync as readdirSync6, readFileSync as readFileSync51, statSync as statSync7 } from "node:fs";
+import { existsSync as existsSync38, readdirSync as readdirSync6, readFileSync as readFileSync51, statSync as statSync7 } from "node:fs";
 import path63 from "node:path";
 
 // src/wiki/util/wikilinks.ts
@@ -37167,13 +37146,13 @@ var readPageRecord = (domainDir, domain2, entry) => {
 };
 var collectDomainPages = (wikiRoot, domain2) => {
   const domainDir = path63.join(wikiRoot, domain2);
-  if (!existsSync37(domainDir) || !statSync7(domainDir).isDirectory()) return [];
+  if (!existsSync38(domainDir) || !statSync7(domainDir).isDirectory()) return [];
   const entries = readdirSync6(domainDir, { withFileTypes: true });
   return entries.filter((entry) => isIndexablePage(entry)).map((entry) => readPageRecord(domainDir, domain2, entry));
 };
 var collectPages = (wikiRoot) => DOMAIN_DIRS2.flatMap((domain2) => collectDomainPages(wikiRoot, domain2));
 var collectRootLinkSources = (wikiRoot) => ROOT_LINK_SOURCES.filter(
-  (filename) => existsSync37(path63.join(wikiRoot, filename))
+  (filename) => existsSync38(path63.join(wikiRoot, filename))
 ).map((filename) => {
   const raw = readFileSync51(path63.join(wikiRoot, filename), "utf8");
   const { body } = parseFrontmatter(raw);
@@ -37337,7 +37316,7 @@ var run67 = (argv, options = {}) => {
 };
 
 // src/wiki/state-bump.ts
-import { existsSync as existsSync38, readFileSync as readFileSync52 } from "node:fs";
+import { existsSync as existsSync39, readFileSync as readFileSync52 } from "node:fs";
 import path64 from "node:path";
 var HELP_TEXT67 = `Usage: gaia wiki state-bump <field> <value>
 
@@ -37410,7 +37389,7 @@ var run68 = (argv, options = {}) => {
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
   const statePath = path64.join(repoRoot, "wiki", ".state.json");
-  if (!existsSync38(statePath)) {
+  if (!existsSync39(statePath)) {
     structuredError({
       code: "state_missing",
       message: "wiki/.state.json does not exist",
@@ -37448,7 +37427,7 @@ var run68 = (argv, options = {}) => {
 
 // src/wiki/state-init.ts
 import { execFileSync as execFileSync7 } from "node:child_process";
-import { existsSync as existsSync39, mkdirSync as mkdirSync19 } from "node:fs";
+import { existsSync as existsSync40, mkdirSync as mkdirSync19 } from "node:fs";
 import path65 from "node:path";
 var HELP_TEXT68 = `Usage: gaia wiki state-init <sha>
 
@@ -37528,7 +37507,7 @@ var run69 = (argv, options = {}) => {
   }
   const wikiDir = path65.join(repoRoot, "wiki");
   const statePath = path65.join(wikiDir, ".state.json");
-  if (existsSync39(statePath)) {
+  if (existsSync40(statePath)) {
     structuredError({
       code: "state_already_exists",
       message: "wiki/.state.json already exists; use `gaia wiki state-bump` to update fields",
@@ -37551,7 +37530,7 @@ var run69 = (argv, options = {}) => {
 };
 
 // src/wiki/state.ts
-import { existsSync as existsSync40, readdirSync as readdirSync7, readFileSync as readFileSync53, statSync as statSync8 } from "node:fs";
+import { existsSync as existsSync41, readdirSync as readdirSync7, readFileSync as readFileSync53, statSync as statSync8 } from "node:fs";
 import path66 from "node:path";
 var HELP_TEXT69 = `Usage: gaia wiki state [--json]
 `;
@@ -37577,7 +37556,7 @@ var countDomainPages = (wikiRoot) => {
   const counts = {};
   for (const domain2 of DOMAIN_DIRS3) {
     const domainDir = path66.join(wikiRoot, domain2);
-    if (!existsSync40(domainDir) || !statSync8(domainDir).isDirectory()) {
+    if (!existsSync41(domainDir) || !statSync8(domainDir).isDirectory()) {
       counts[domain2] = 0;
     } else {
       const entries = readdirSync7(domainDir, { withFileTypes: true });
@@ -37593,7 +37572,7 @@ var countDomainPages = (wikiRoot) => {
   return counts;
 };
 var readStateFile2 = (statePath) => {
-  if (!existsSync40(statePath)) return null;
+  if (!existsSync41(statePath)) return null;
   const raw = readFileSync53(statePath, "utf8");
   try {
     return JSON.parse(raw);
