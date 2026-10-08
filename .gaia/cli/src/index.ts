@@ -36,7 +36,7 @@ const HELP_TEXT = `Usage: gaia <subcommand> [args]
   react-perf reduce <raw.json> [--frame-budget-ms N]
   wiki state|commit-classify|state-init|state-bump|log-prepend|page-index|orphans|near-collisions|dead-paths|frontmatter|empty-sections|broken-links|chain
   fitness render-card [--cols N]
-  labels docs|sync
+  labels sync
   packages sync-settings [--check]
   harden-ledger list|record|prune|snapshot
   harden-tally
@@ -47,7 +47,7 @@ const HELP_TEXT = `Usage: gaia <subcommand> [args]
   setup-ci detect-remote|warn-existing-tools|check-admin|enable-delete-branch|write-isolation-policy|configure-dependabot-alerts
   sandbox detect|apply|record|status
   ping --event <init|setup|update> [--field value ...]
-  residue-tally [--count-only] [--attribute-only] [--cap N] [--no-cap] [--json]
+  residue-tally [--count-only]
   residue-cursor advance --token T|clear
   residue-record --disposition dismissed|kept|suppressed --token T [--token T ...] --reason-file F
 `;

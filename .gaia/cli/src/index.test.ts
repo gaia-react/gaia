@@ -76,4 +76,11 @@ describe('gaia top-level router', () => {
     await expect(run(['bogus'])).resolves.toBe(EXIT_CODES.UNKNOWN_SUBCOMMAND);
     expect(readStderrPayload()).toMatchObject({code: 'unknown_subcommand'});
   });
+
+  test('the adopter labels namespace does not serve docs', async () => {
+    await expect(run(['labels', 'docs'])).resolves.toBe(
+      EXIT_CODES.UNKNOWN_SUBCOMMAND
+    );
+    expect(readStderrPayload()).toMatchObject({code: 'unknown_subcommand'});
+  });
 });

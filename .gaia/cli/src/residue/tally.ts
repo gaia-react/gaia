@@ -1,5 +1,5 @@
 /**
- * `gaia residue-tally [--count-only] [--attribute-only] [--cap N] [--no-cap] [--json]`
+ * `gaia residue-tally [--count-only]`
  *
  * The `/gaia-residue` deterministic primitive: an I/O shell around
  * `compute-candidates.ts`'s pure core, structured like `gaia harden-tally`
@@ -17,7 +17,6 @@ import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {resolveRepoRoot} from '../util/repo-root.js';
 import {attributeBody} from './attribution.js';
-import type {AttributionResult} from './attribution.js';
 import {
   attributionBodyDigest,
   prCacheKey,
@@ -51,11 +50,8 @@ const HELP_TEXT = `Usage: gaia residue-tally [options]
   --count-only      No head fetch, no git call. Every candidate carries
                      resolution "unresolved"; store suppression matches on
                      path and line alone (count_approximate: true).
-  --attribute-only  Emit the per-pull-request attribution only: no
-                     suppression, no resolution, no cache write.
-  --cap N           Cap the emitted batch (default: GAIA_RESIDUE_CAP, or 10).
-  --no-cap          Emit every survivor.
-  --json            Accepted and ignored; JSON is the only output.
+
+  The emitted batch is capped at GAIA_RESIDUE_CAP (default 10).
 
   Network failures are non-fatal: a failed window read emits gh_ok: false
   with an empty candidate list, and the command still exits 0.
@@ -63,12 +59,6 @@ const HELP_TEXT = `Usage: gaia residue-tally [options]
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 const DEFAULT_CAP = 10;
-
-type ParsedFlags = {
-  attributeOnly: boolean;
-  cap: null | number;
-  countOnly: boolean;
-};
 
 type RunOptions = {
   cwd?: string;
@@ -86,86 +76,17 @@ const parseCapEnvironment = (env: NodeJS.ProcessEnv): number => {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : DEFAULT_CAP;
 };
 
-type MutableFlags = {
-  attributeOnly: boolean;
-  cap: number;
-  countOnly: boolean;
-  noCap: boolean;
-};
-
-// `--json` is accepted and ignored: JSON is the only output shape this emits.
-const NOOP_TOKENS = new Set(['--json']);
-
-const applyBooleanFlag = (token: string, flags: MutableFlags): boolean => {
-  if (token === '--attribute-only') flags.attributeOnly = true;
-  else if (token === '--count-only') flags.countOnly = true;
-  else if (token === '--no-cap') flags.noCap = true;
-  else return false;
-
-  return true;
-};
-
-const parseCapValue = (rawValue: string | undefined): null | number => {
-  const parsed =
-    rawValue === undefined ? Number.NaN : Number.parseInt(rawValue, 10);
-
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
-};
-
 const parseArgs = (
-  argv: readonly string[],
-  env: NodeJS.ProcessEnv
-): {error: string} | {value: ParsedFlags} => {
-  const flags: MutableFlags = {
-    attributeOnly: false,
-    cap: parseCapEnvironment(env),
-    countOnly: false,
-    noCap: false,
-  };
+  argv: readonly string[]
+): {error: string} | {value: {countOnly: boolean}} => {
+  let countOnly = false;
 
-  for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index];
-
-    if (
-      token !== undefined &&
-      (NOOP_TOKENS.has(token) || applyBooleanFlag(token, flags))
-    ) {
-      // handled above
-    } else if (token === '--cap') {
-      // Refuse rather than skip: advancing past an unparseable value swallows
-      // whatever sits in the value position, so `--cap --count-only` would eat
-      // the mode flag and silently run the resolving path `--count-only`
-      // forbids. An unknown argument is already an error; so is this.
-      const capValue = argv[index + 1];
-      const parsedCap = parseCapValue(capValue);
-
-      if (parsedCap === null) {
-        // Two conditions reach this refusal and they need different words: a
-        // value that is present and unusable, and no value at all. Naming the
-        // absent one by interpolation shows the operator a JavaScript
-        // sentinel where the cause is that they typed nothing.
-        return {
-          error:
-            capValue === undefined ?
-              '--cap needs a positive integer value'
-            : `--cap needs a positive integer: ${capValue}`,
-        };
-      }
-
-      flags.cap = parsedCap;
-      index += 1;
-    } else {
-      return {error: `unknown argument: ${token}`};
-    }
+  for (const token of argv) {
+    if (token === '--count-only') countOnly = true;
+    else return {error: `unknown argument: ${token}`};
   }
 
-  return {
-    value: {
-      attributeOnly: flags.attributeOnly,
-      cap: flags.noCap ? null : flags.cap,
-      countOnly: flags.countOnly,
-    },
-  };
+  return {value: {countOnly}};
 };
 
 // Deliberately an if-statement, not a `a > b ? a : b` reduce: these are ISO
@@ -303,36 +224,6 @@ const buildFailureEmit = (params: {
   window: params.window,
 });
 
-const runAttributeOnly = (provider: CorpusProvider): number => {
-  const mergedPrsResult = provider.mergedPrs(null);
-
-  if (!mergedPrsResult.ok) {
-    process.stdout.write(
-      `${JSON.stringify({bodies: [], gh_ok: false, schema: 'v1'})}\n`
-    );
-
-    return EXIT_CODES.OK;
-  }
-
-  const bodies = mergedPrsResult.prs.map((pr) => {
-    const attribution: AttributionResult = attributeBody(pr.body);
-
-    return {
-      entries: attribution.entries,
-      keyless: attribution.keyless,
-      keyless_count: attribution.keyless_count,
-      malformed: attribution.malformed,
-      pr_number: pr.number,
-    };
-  });
-
-  process.stdout.write(
-    `${JSON.stringify({bodies, gh_ok: true, schema: 'v1'})}\n`
-  );
-
-  return EXIT_CODES.OK;
-};
-
 // Wraps the real resolver with the attribution cache's permanent
 // `<sha>:<path>:<line>` result cache (mutates `cache.resolutions` in place;
 // the caller persists it once at the end of the run).
@@ -436,7 +327,7 @@ export const run = (
   const cwd = options.cwd ?? process.cwd();
   const now = (options.now ?? (() => new Date()))();
 
-  const parsed = parseArgs(argv, env);
+  const parsed = parseArgs(argv);
 
   if ('error' in parsed) {
     structuredError({
@@ -448,9 +339,8 @@ export const run = (
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
+  const cap = parseCapEnvironment(env);
   const provider = resolveProvider(cwd, env);
-
-  if (parsed.value.attributeOnly) return runAttributeOnly(provider);
 
   const repoRoot = resolveRoot(cwd);
   const keepWindowDays = readKeepWindowDays(env);
@@ -458,7 +348,6 @@ export const run = (
   const cursor = readCursor(repoRoot);
   const cache = readAttributionCache(repoRoot);
   const emitCursor = cursorForEmit(cursor);
-  const capForEmpty = parsed.value.cap ?? 0;
 
   const mergedPrsResult = provider.mergedPrs(
     incrementalWindowStart(cache, parsed.value.countOnly)
@@ -467,7 +356,7 @@ export const run = (
   if (!mergedPrsResult.ok) {
     printEmit(
       buildFailureEmit({
-        cap: capForEmpty,
+        cap,
         countOnly: parsed.value.countOnly,
         cursor: emitCursor,
         storeSkipped,
@@ -500,7 +389,7 @@ export const run = (
     writeAttributionCache(repoRoot, updatedCache);
     printEmit(
       buildFailureEmit({
-        cap: capForEmpty,
+        cap,
         countOnly: parsed.value.countOnly,
         cursor: emitCursor,
         storeSkipped,
@@ -520,7 +409,7 @@ export const run = (
     : makeCachingResolve(updatedCache, provider);
 
   const result = computeCandidates({
-    cap: parsed.value.cap ?? Number.MAX_SAFE_INTEGER,
+    cap,
     cursor,
     issues: issuesResult.issues,
     keepWindowDays,
@@ -537,7 +426,7 @@ export const run = (
     aged_candidate_count: result.aged_candidate_count,
     candidate_count: result.candidate_count,
     candidates: result.candidates,
-    cap: parsed.value.cap ?? result.candidate_count,
+    cap,
     count_approximate: parsed.value.countOnly,
     cursor: emitCursor,
     gh_ok: true,

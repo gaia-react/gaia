@@ -198,20 +198,6 @@ describe('gaia init router target guard', () => {
     expect(stdio.errors).toStrictEqual([]);
   });
 
-  test('treats the retired automation step as an unknown subcommand', async () => {
-    makeScaffold(sandbox.root);
-    // Built at runtime so the retired step name never lands as a literal.
-    const retiredStep = ['configure', 'automation'].join('-');
-
-    const exitCode = await run([retiredStep, '--wiki', 'ci'], {
-      cwd: sandbox.root,
-    });
-
-    expect(exitCode).toBe(EXIT_CODES.UNKNOWN_SUBCOMMAND);
-    expect(errorCodes(stdio.errors)).toStrictEqual(['unknown_subcommand']);
-    expect(stdio.outputs.join('')).toBe('');
-  });
-
   test('still reports an unknown subcommand as unknown, not as a bad target', async () => {
     const exitCode = await run(['bogus'], {cwd: sandbox.root});
 

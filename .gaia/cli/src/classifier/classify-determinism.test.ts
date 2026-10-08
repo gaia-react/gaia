@@ -6,8 +6,8 @@
  * only). Path scopes the candidate set; content decides. The bias is
  * deliberate: err EMERGENT. Over-strict is the worse failure.
  *
- * Maintainer-only by construction: `.gaia/scripts` is release-excluded, so
- * the helper and this test never ship to adopters.
+ * The helper ships to adopters (manifest `owned`, run by shipped hooks); this
+ * test is maintainer-only because `.gaia/cli/src` is release-excluded.
  *
  * The helper resolves `typescript` from `node_modules`; this `.gaia/cli`
  * workspace carries its own `typescript` devDependency, so the test runner

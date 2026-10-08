@@ -54,6 +54,11 @@ const setupSandbox = (): Sandbox => {
   };
 };
 
+const writeLedgerFixture = (ledgerPath: string, fixture: unknown): void => {
+  mkdirSync(path.dirname(ledgerPath), {recursive: true});
+  writeFileSync(ledgerPath, JSON.stringify(fixture), 'utf8');
+};
+
 const captureStdio = () => {
   const out: string[] = [];
   const err: string[] = [];
@@ -600,134 +605,89 @@ describe('harden-ledger', () => {
     });
   });
 
-  describe('version-1 ledger compatibility', () => {
-    const legacyFixture = {
-      declines: [
+  describe('ledgers that are not complete version 2', () => {
+    const entryWithoutFields = {
+      declined_at: '2026-08-01T00:00:00.000Z',
+      declined_at_pr_count: 60,
+      finding_class: 'holistic/unclassified',
+    };
+
+    const unreadableFixtures: readonly (readonly [string, unknown])[] = [
+      ['a version-1 file', {declines: [entryWithoutFields], version: 1}],
+      [
+        'a version-2 entry missing both fields',
+        {declines: [entryWithoutFields], version: 2},
+      ],
+      [
+        'a version-2 entry missing tally_schema_version',
         {
-          declined_at: '2026-08-01T00:00:00.000Z',
-          declined_at_pr_count: 60,
-          finding_class: 'holistic/unclassified',
-        },
-        {
-          declined_at: '2026-08-01T00:00:00.000Z',
-          declined_at_pr_count: 32,
-          finding_class: 'holistic/drifting-duplicate',
+          declines: [
+            {...entryWithoutFields, declined_at_audited_pr_count: 400},
+          ],
+          version: 2,
         },
       ],
-      version: 1,
-    };
+      [
+        'a version-2 entry missing declined_at_audited_pr_count',
+        {
+          declines: [
+            {...entryWithoutFields, tally_schema_version: TALLY_SCHEMA_VERSION},
+          ],
+          version: 2,
+        },
+      ],
+    ];
 
-    const writeLegacyFixture = (): void => {
-      mkdirSync(path.dirname(sandbox.ledgerPath), {recursive: true});
-      writeFileSync(sandbox.ledgerPath, JSON.stringify(legacyFixture), 'utf8');
-    };
+    test.each(unreadableFixtures)(
+      'list exits CONFIG_INVALID with a structured error naming the file for %s',
+      (_label, fixture) => {
+        writeLedgerFixture(sandbox.ledgerPath, fixture);
 
-    test('list exits 0 and prints the file with "version":1', () => {
-      writeLegacyFixture();
+        const code = run(['list'], {cwd: sandbox.root});
 
-      const code = run(['list'], {cwd: sandbox.root});
-
-      expect(code).toBe(EXIT_CODES.OK);
-      expect(io.out.join('')).toContain('"version":1');
-    });
-
-    test('a legacy entry re-surfaces with reason legacy_entry at several counts, never unreadable', () => {
-      writeLegacyFixture();
-
-      const cases: readonly (readonly [number, number])[] = [
-        [0, 0],
-        [60, 400],
-        [32, 400],
-      ];
-
-      for (const [currentPrCount, currentAuditedPrCount] of cases) {
-        expect(
-          checkSuppression(
-            'holistic/unclassified',
-            currentPrCount,
-            currentAuditedPrCount
-          )
-        ).toEqual({reason: 'legacy_entry', status: 'resurface'});
+        expect(code).toBe(EXIT_CODES.CONFIG_INVALID);
+        expect(io.err.join('')).toContain('malformed_ledger');
+        expect(io.err.join('')).toContain('declines.json');
+        expect(io.out.join('')).toBe('');
       }
-    });
+    );
 
-    test('prune keeping both legacy classes does not rewrite the version-1 file', () => {
-      writeLegacyFixture();
-      const before = readFileSync(sandbox.ledgerPath, 'utf8');
+    test.each(unreadableFixtures)(
+      'record exits CONFIG_INVALID and leaves the file untouched for %s',
+      (_label, fixture) => {
+        writeLedgerFixture(sandbox.ledgerPath, fixture);
+        const before = readFileSync(sandbox.ledgerPath, 'utf8');
 
-      const code = run(
-        [
-          'prune',
-          '--window-classes',
-          'holistic/unclassified,holistic/drifting-duplicate',
-        ],
-        {cwd: sandbox.root}
-      );
+        const code = run(
+          [
+            'record',
+            '--finding-class',
+            'holistic/other',
+            '--pr-count',
+            '5',
+            '--audited-pr-count',
+            '100',
+          ],
+          {cwd: sandbox.root, now: () => FIXED_NOW}
+        );
 
-      expect(code).toBe(EXIT_CODES.OK);
-      expect(readFileSync(sandbox.ledgerPath, 'utf8')).toBe(before);
-    });
-
-    test('prune that removes an entry rewrites as version 2 and keeps the surviving legacy entry byte-for-byte', () => {
-      writeLegacyFixture();
-
-      const code = run(['prune', '--window-classes', 'holistic/unclassified'], {
-        cwd: sandbox.root,
-      });
-
-      expect(code).toBe(EXIT_CODES.OK);
-
-      const ledger = readLedger(sandbox.ledgerPath);
-      expect(ledger.version).toBe(2);
-      expect(ledger.declines).toEqual([legacyFixture.declines[0]]);
-    });
-
-    test('record on a version-1 file upgrades it to version 2 and carries legacy entries forward', () => {
-      writeLegacyFixture();
-
-      const code = run(
-        [
-          'record',
-          '--finding-class',
-          'holistic/other',
-          '--pr-count',
-          '5',
-          '--audited-pr-count',
-          '100',
-        ],
-        {cwd: sandbox.root, now: () => FIXED_NOW}
-      );
-
-      expect(code).toBe(EXIT_CODES.OK);
-
-      const ledger = readLedger(sandbox.ledgerPath);
-      expect(ledger.version).toBe(2);
-
-      const newEntry = ledger.declines.find(
-        (decline) => decline.finding_class === 'holistic/other'
-      );
-      expect(newEntry).toEqual({
-        declined_at: FIXED_NOW.toISOString(),
-        declined_at_audited_pr_count: 100,
-        declined_at_pr_count: 5,
-        finding_class: 'holistic/other',
-        tally_schema_version: TALLY_SCHEMA_VERSION,
-      });
-      expect(ledger.declines).toContainEqual(legacyFixture.declines[0]);
-      expect(ledger.declines).toContainEqual(legacyFixture.declines[1]);
-
-      expect(run(['list'], {cwd: sandbox.root})).toBe(EXIT_CODES.OK);
-
-      for (const findingClass of [
-        'holistic/unclassified',
-        'holistic/drifting-duplicate',
-      ]) {
-        expect(checkSuppression(findingClass, 0, 0)).toEqual({
-          reason: 'legacy_entry',
-          status: 'resurface',
-        });
+        expect(code).toBe(EXIT_CODES.CONFIG_INVALID);
+        expect(io.err.join('')).toContain('malformed_ledger');
+        expect(readFileSync(sandbox.ledgerPath, 'utf8')).toBe(before);
       }
-    });
+    );
+
+    test.each(unreadableFixtures)(
+      'the suppression check fails closed as unreadable for %s',
+      (_label, fixture) => {
+        writeLedgerFixture(sandbox.ledgerPath, fixture);
+
+        expect(checkSuppression('holistic/unclassified', 60, 400).status).toBe(
+          'unreadable'
+        );
+        expect(io.err.join('')).toBe('');
+      }
+    );
   });
 
   describe('argument-error refusal', () => {

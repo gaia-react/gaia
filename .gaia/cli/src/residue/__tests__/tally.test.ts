@@ -83,10 +83,7 @@ const fixedNow = () => new Date('2026-06-01T00:00:00Z');
 const listTree = (root: string): readonly string[] =>
   collectTreeFiles(root, EVERY_EXTENSION);
 
-// Advancing past an unparseable `--cap` value consumed whatever sat in the
-// value position, so a following mode flag was swallowed and its contract
-// silently broken. An unknown argument is already an error; so is this.
-const CAP_CORPUS: FixtureCorpus = {
+const REFUSAL_CORPUS: FixtureCorpus = {
   prs: [
     {
       body: bodyWithKey(ACCEPT_HEADING, 'x/y', 'app/a.ts', 1),
@@ -97,9 +94,9 @@ const CAP_CORPUS: FixtureCorpus = {
   ],
 };
 
-const runWithCapValue = (
+const runRefused = (
   root: string,
-  value: string[]
+  argv: string[]
 ): {code: number; stderr: string} => {
   const errors: string[] = [];
 
@@ -109,7 +106,7 @@ const runWithCapValue = (
     return true;
   });
 
-  const code = run(['--cap', ...value], {
+  const code = run(argv, {
     cwd: root,
     env: {GAIA_RESIDUE_FIXTURE_DIR: root},
     now: fixedNow,
@@ -175,37 +172,6 @@ describe('gaia residue-tally', () => {
 
     for (const dir of dirs.splice(0))
       rmSync(dir, {force: true, recursive: true});
-  });
-
-  test('--attribute-only emits the frozen shape with a non-empty keyless[], writes no cache, and performs no suppression', () => {
-    const root = makeRoot({
-      prs: [
-        {
-          body: `${ACCEPT_HEADING}\n\n- a keyed entry ${keyComment('x/y', 'app/a.ts', 1)}\n- a keyless entry with no key at all\n`,
-          headRefOid: 'sha1',
-          mergedAt: '2026-01-01T00:00:00Z',
-          number: 1,
-        },
-      ],
-    });
-    const out = capture();
-
-    const exitCode = run(['--attribute-only'], {
-      cwd: root,
-      env: {GAIA_RESIDUE_FIXTURE_DIR: root},
-    });
-
-    expect(exitCode).toBe(0);
-
-    const emitted = out.json() as {
-      bodies: {keyless: unknown[]}[];
-      gh_ok: boolean;
-    };
-
-    expect(emitted.gh_ok).toBe(true);
-    expect(emitted.bodies).toHaveLength(1);
-    expect(emitted.bodies[0]?.keyless.length).toBeGreaterThan(0);
-    expect(existsSync(path.join(root, '.gaia', 'local', 'cache'))).toBe(false);
   });
 
   test('a failed pull-request window read emits gh_ok: false, candidate_count 0, empty candidates, and exits 0', () => {
@@ -465,7 +431,7 @@ describe('gaia residue-tally', () => {
     expect(emitted.aged_candidate_count).toBe(0);
   });
 
-  test('GAIA_RESIDUE_CAP=3 emits 3; --no-cap emits every survivor; an invalid GAIA_RESIDUE_CAP falls back to 10', () => {
+  test('GAIA_RESIDUE_CAP=3 emits 3; a large GAIA_RESIDUE_CAP emits every survivor; an invalid GAIA_RESIDUE_CAP falls back to 10', () => {
     const prs = Array.from({length: 25}, (_, index) => ({
       body: bodyWithKey(ACCEPT_HEADING, 'x/y', `app/file${index}.ts`, 1),
       headRefOid: 'sha',
@@ -487,9 +453,9 @@ describe('gaia residue-tally', () => {
     const rootNoCap = makeRoot({blobs: {}, issues: [], prs});
     const noCapOut = capture();
 
-    run(['--no-cap'], {
+    run([], {
       cwd: rootNoCap,
-      env: {GAIA_RESIDUE_FIXTURE_DIR: rootNoCap},
+      env: {GAIA_RESIDUE_CAP: '1000', GAIA_RESIDUE_FIXTURE_DIR: rootNoCap},
     });
     expect((noCapOut.json() as {candidate_count: number}).candidate_count).toBe(
       25
@@ -578,7 +544,7 @@ describe('gaia residue-tally', () => {
     ).not.toThrow();
   });
 
-  test('--attribute-only and --count-only never write the cursor file', () => {
+  test('--count-only never writes the cursor file', () => {
     const prs = [
       {
         body: bodyWithKey(ACCEPT_HEADING, 'x/y', 'app/a.ts', 1),
@@ -596,12 +562,6 @@ describe('gaia residue-tally', () => {
       'residual-cursor.json'
     );
 
-    run(['--attribute-only'], {
-      cwd: root,
-      env: {GAIA_RESIDUE_FIXTURE_DIR: root},
-    });
-    expect(existsSync(cursorFile)).toBe(false);
-
     run(['--count-only'], {cwd: root, env: {GAIA_RESIDUE_FIXTURE_DIR: root}});
     expect(existsSync(cursorFile)).toBe(false);
   });
@@ -617,7 +577,10 @@ describe('gaia residue-tally', () => {
 
     const firstOut = capture();
 
-    run(['--cap', '1'], {cwd: root, env: {GAIA_RESIDUE_FIXTURE_DIR: root}});
+    run([], {
+      cwd: root,
+      env: {GAIA_RESIDUE_CAP: '1', GAIA_RESIDUE_FIXTURE_DIR: root},
+    });
 
     const firstEmit = firstOut.json() as {
       candidates: {cursor_token: string; path: string}[];
@@ -631,7 +594,10 @@ describe('gaia residue-tally', () => {
 
     const secondOut = capture();
 
-    run(['--cap', '1'], {cwd: root, env: {GAIA_RESIDUE_FIXTURE_DIR: root}});
+    run([], {
+      cwd: root,
+      env: {GAIA_RESIDUE_CAP: '1', GAIA_RESIDUE_FIXTURE_DIR: root},
+    });
 
     const secondEmit = secondOut.json() as {candidates: {path: string}[]};
 
@@ -670,43 +636,17 @@ describe('gaia residue-tally', () => {
     ]);
   });
 
-  describe('--cap refuses a value it cannot use', () => {
-    test('`--cap --count-only` is refused rather than eating the mode flag', () => {
-      const {code, stderr} = runWithCapValue(makeRoot(CAP_CORPUS), [
-        '--count-only',
-      ]);
-
-      expect(code).not.toBe(0);
-      expect(stderr).toMatch(/--cap needs a positive integer/);
-    });
-
+  describe('flags no consumer passes are refused as unknown arguments', () => {
     test.each([
-      ['a non-numeric value', 'abc'],
-      ['zero', '0'],
-      ['a negative value', '-3'],
-    ])('%s is refused instead of falling back to the default', (_name, bad) => {
-      const {code, stderr} = runWithCapValue(makeRoot(CAP_CORPUS), [bad]);
+      ['--attribute-only', ['--attribute-only']],
+      ['--cap', ['--cap', '3']],
+      ['--no-cap', ['--no-cap']],
+      ['--json', ['--json']],
+    ])('%s is refused', (flag, argv) => {
+      const {code, stderr} = runRefused(makeRoot(REFUSAL_CORPUS), argv);
 
       expect(code).not.toBe(0);
-      expect(stderr).toMatch(/--cap needs a positive integer/);
-    });
-
-    test('an absent value is named as missing rather than as `undefined`', () => {
-      // Every case above supplies a token after `--cap`, so the end-of-argv
-      // arm renders its message unasserted. Interpolating the absent token
-      // shows the operator a JavaScript sentinel for a cause that is "you
-      // typed nothing".
-      const {code, stderr} = runWithCapValue(makeRoot(CAP_CORPUS), []);
-
-      expect(code).not.toBe(0);
-      expect(stderr).toMatch(/--cap needs a positive integer value/);
-      expect(stderr).not.toMatch(/undefined/);
-    });
-
-    test('a positive value is still accepted', () => {
-      const {code} = runWithCapValue(makeRoot(CAP_CORPUS), ['3']);
-
-      expect(code).toBe(0);
+      expect(stderr).toMatch(new RegExp(`unknown argument: ${flag}`));
     });
   });
 

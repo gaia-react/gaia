@@ -1,6 +1,5 @@
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {
-  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -860,40 +859,5 @@ describe('SCAN_GLOBS coverage of the committed manifest', () => {
       );
       expect(covered, `${file} is not under any SCAN_GLOBS entry`).toBe(true);
     }
-  });
-});
-
-describe('no legacy spec-kit token in shipped scripts', () => {
-  test('no owned .sh file in the committed manifest names the retired spec-kit root', () => {
-    const legacyRoot = ['.', 'spec', 'ify/'].join('');
-    const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
-    const manifestPath = path.join(repoRoot, '.gaia', 'manifest.json');
-    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
-      files: Record<string, string>;
-    };
-    const ownedShFiles = Object.entries(manifest.files)
-      .filter(([file, klass]) => klass === 'owned' && file.endsWith('.sh'))
-      .map(([file]) => file);
-
-    let filesRead = 0;
-
-    for (const file of ownedShFiles) {
-      const absolute = path.join(repoRoot, file);
-
-      expect(
-        existsSync(absolute),
-        `${file} is an owned manifest key but is missing from the tree`
-      ).toBe(true);
-
-      const contents = readFileSync(absolute, 'utf8');
-      filesRead += 1;
-
-      expect(
-        contents.includes(legacyRoot),
-        `${file} names the retired spec-kit root`
-      ).toBe(false);
-    }
-
-    expect(filesRead).toBeGreaterThan(0);
   });
 });

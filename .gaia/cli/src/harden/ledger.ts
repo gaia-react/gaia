@@ -8,9 +8,9 @@
  * triggers use (`isMaterialRise`, `material-rise.ts`): a declined class stays
  * suppressed until the live count's rise over its snapshot at the decline is
  * material, measured against the audited-PR denominator on both sides. An
- * entry recorded before the denominator existed, or under a different
- * `TALLY_SCHEMA_VERSION`, is legacy and never suppresses, because a raw count
- * with no denominator cannot be compared to a live share honestly.
+ * entry recorded under a different `TALLY_SCHEMA_VERSION` never suppresses,
+ * because its stored count was measured against semantics the live tally no
+ * longer uses.
  *
  * The tally refresher calls `checkDeclineSuppression` and `pruneDeclineLedger`
  * in process; the `/gaia-harden` command WRITES to it (`record`) on decline; a
@@ -276,11 +276,7 @@ const handleRecord = (argv: readonly string[], options: RunOptions): number => {
 export type DeclineSuppression =
   | {error: string; status: 'unreadable'}
   | {
-      reason:
-        | 'legacy_entry'
-        | 'material_rise'
-        | 'no_decline_entry'
-        | 'schema_version_mismatch';
+      reason: 'material_rise' | 'no_decline_entry' | 'schema_version_mismatch';
       status: 'resurface';
     }
   | {status: 'suppressed'};
@@ -310,16 +306,6 @@ export const checkDeclineSuppression = ({
 
   if (entry === undefined) {
     return {reason: 'no_decline_entry', status: 'resurface'};
-  }
-
-  // A legacy entry (recorded before the denominator existed, or read from a
-  // version-1 file) carries no honest live share to compare against, so it
-  // never suppresses.
-  if (
-    entry.declined_at_audited_pr_count === undefined ||
-    entry.tally_schema_version === undefined
-  ) {
-    return {reason: 'legacy_entry', status: 'resurface'};
   }
 
   // An entry recorded under a different tally schema version was measured

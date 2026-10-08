@@ -14,6 +14,7 @@ import {
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {EXIT_CODES} from '../../exit.js';
 import {run} from '../index.js';
 
 type Sandbox = {
@@ -123,7 +124,7 @@ describe('gaia sandbox detect', () => {
   test('an invalid --platform value exits non-zero', () => {
     const exit = run(['detect', '--platform', 'bogus']);
 
-    expect(exit).toBe(1);
+    expect(exit).toBe(EXIT_CODES.INVALID_ARGUMENTS);
     expect(stdio.errors.join('')).toContain('--platform must be one of');
   });
 
@@ -226,7 +227,7 @@ describe('gaia sandbox apply', () => {
       cwd: sandbox.root,
     });
 
-    expect(exit).toBe(1);
+    expect(exit).toBe(EXIT_CODES.INVALID_ARGUMENTS);
     expect(stdio.errors.join('')).toContain('--docker-present is required');
   });
 });
@@ -287,6 +288,13 @@ describe('gaia sandbox record + status', () => {
       {cwd: sandbox.root}
     );
 
-    expect(exit).toBe(1);
+    expect(exit).toBe(EXIT_CODES.INVALID_ARGUMENTS);
+  });
+
+  test('an unknown subcommand still exits with the unknown-subcommand code', () => {
+    const exit = run(['bogus'], {cwd: sandbox.root});
+
+    expect(exit).toBe(EXIT_CODES.UNKNOWN_SUBCOMMAND);
+    expect(stdio.errors.join('')).toContain('unknown_subcommand');
   });
 });
