@@ -48,7 +48,7 @@ The four core lenses (always dispatched; the set is chosen for low overlap, each
 
 Before dispatching the fan-out, pre-clear each `findings/<LENS>.json` (`rm -f`) for every lens about to be dispatched. After each lens finishes, never at the moment its dispatch call returns, classify its file per `## Pre-clear, classify, re-dispatch` in `spec/lens-dispatch.md`: a no-op lens is re-cleared and re-dispatched once, and a second consecutive no-op runs that lens inline on the main thread. A specialist lens the gauge did not select for this dispatch is never issued and is recorded `not_applicable`. Append one `coverage.jsonl` record (`phase: "lens"`, `lens: "<LENS>"`, `disposition: "first_pass"|"not_applicable"`) per in-scope lens.
 
-**The inline-lens exception.** A lens that ran inline on a second no-op produced its finding bodies on the main thread, auto mode included. It is the one place a finding body reaches main outside the two interactive carve-outs (6b, 7c); write that lens's file and carry on with only its ids, severities, and titles, exactly as for a dispatched lens.
+**The inline-lens exception.** A lens that hit a second no-op ran inline, so it produced its finding bodies on the main thread, auto mode included. It is the one place a finding body reaches main outside the two interactive carve-outs (6b, 7c); write that lens's file and carry on with only its ids, severities, and titles, exactly as for a dispatched lens.
 
 ## 7b. Refutation pass (severity discipline)
 
