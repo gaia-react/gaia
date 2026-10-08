@@ -1353,6 +1353,9 @@ first_pinned_label() { state_field '.history.checkpoints | last | .question.ques
   dispatch
   deny_prefix "BLOCKED: audit dispositions"
   reason | grep -qF -- "violation: security-not-fix"
+  reason | grep -qF -- "Every finding needs a disposition" || return 1
+  reason | grep -qF -- "diverted" || return 1
+  reason | grep -qF -- "when the branch did not author it" && return 1
   cmp "$ALF_STATE" "$BATS_TEST_TMPDIR/before"
   unit_dispatch
   deny_prefix "BLOCKED: audit dispositions"

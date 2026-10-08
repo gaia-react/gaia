@@ -1246,8 +1246,8 @@ To unblock:
 
 LOCAL-SYNC FAILURE NOTE: if a previous gh pr merge exited with
 'fatal: main is already used by worktree at <path>', the GitHub-side merge
-already succeeded. Verify with: gh pr view <N> --json state, do NOT retry
-the merge.
+already succeeded. Verify with: bash .gaia/scripts/pr-wait-merge.sh --pr <N>
+(it prints MERGED), do NOT retry the merge.
 
 See wiki/concepts/PR Merge Workflow.md for the full contract."
 
@@ -1333,8 +1333,9 @@ fi
 reason="PR merge gate: not every dispatched Code Audit Team member has cleared HEAD ${sha:0:12} (tree ${tree:0:12}).
 
 ${report}
-To unblock: spawn each PENDING member's agent on HEAD so it writes its marker
-(code-audit-frontend writes ${root}/.gaia/local/audit/${frontend_digest}.ok; each
+To unblock: run the audit loop unit on HEAD (dispatch the audit-loop-unit agent per
+wiki/concepts/PR Merge Workflow.md, #### The audit loop unit) so each PENDING member
+writes its marker (code-audit-frontend writes ${root}/.gaia/local/audit/${frontend_digest}.ok; each
 specialized member writes ${root}/.gaia/local/audit/<its-own-digest>.<member>.ok, NOT
 the frontend digest), then retry gh pr merge. Markers are keyed to each
 member's own content digest (the files it owns plus the shared gate
@@ -1351,8 +1352,8 @@ recorded act.
 
 LOCAL-SYNC FAILURE NOTE: if a previous gh pr merge exited with
 'fatal: main is already used by worktree at <path>', the GitHub-side merge
-already succeeded. Verify with: gh pr view <N> --json state, do NOT retry
-the merge.
+already succeeded. Verify with: bash .gaia/scripts/pr-wait-merge.sh --pr <N>
+(it prints MERGED), do NOT retry the merge.
 
 See wiki/concepts/PR Merge Workflow.md for the full contract."
 

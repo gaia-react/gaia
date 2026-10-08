@@ -755,6 +755,21 @@ assert_not_in_set() {
   grep -qF "code-audit-maintainer-node: PENDING" <<< "$output" || return 1
 }
 
+@test "UAT-021: the pending-members deny routes through the audit loop unit and the local-sync note names the wait script" {
+  commit_files "frontend/app/a.ts" "export const a = 1" ".gaia/scripts/x.sh" "echo x" ".gaia/cli/src/foo.ts" "export const foo = 1"
+  commit_files ".gaia/scripts/audit-write-clearance.sh" "# machinery touch"
+
+  run_merge_hook
+  [ "$status" -eq 0 ]
+  grep -qF '"permissionDecision": "deny"' <<< "$output" || return 1
+  grep -qF "code-audit-frontend: PENDING" <<< "$output" || return 1
+  grep -qF "audit-loop-unit agent" <<< "$output" || return 1
+  grep -qF "pr-wait-merge.sh --pr <N>" <<< "$output" || return 1
+  grep -qF "spawn each PENDING member" <<< "$output" && return 1
+  grep -qF "gh pr view <N> --json state" <<< "$output" && return 1
+  true
+}
+
 # ---------------------------------------------------------------------------
 # UAT-004 / C6: the gate checks the refused family before the earned family,
 # so a live refusal for the current digest denies unconditionally even with a
@@ -2023,6 +2038,8 @@ rge 30 --squash'
   run_merge_hook "gh pr merge 30 --squash"
   assert_denied_by_json
   grep -qi 'trailer' <<<"$output" && return 1
+  grep -qF "pr-wait-merge.sh --pr <N>" <<<"$output" || return 1
+  grep -qF "gh pr view <N> --json state" <<<"$output" && return 1
   return 0
 }
 

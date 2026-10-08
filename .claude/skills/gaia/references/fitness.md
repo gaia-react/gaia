@@ -278,7 +278,7 @@ Reached only on **Publish** from Step 7. It does for fitness's heal diff what `/
 bash .gaia/scripts/resolve-audit-members.sh
 ```
 
-Empty output confirms the bypass applies and no marker is owed. If it names any member, this run's heal diff reached an audited surface: spawn each member it names and complete the marker handshake in `wiki/concepts/PR Merge Workflow.md` like any in-scope PR; once that page's `#### Posting the status last` conditions hold, post the status yourself, `bash .claude/hooks/post-audit-status.sh <path to a current member marker>`, before `gh pr merge`.
+Empty output confirms the bypass applies and no marker is owed. If it names any member, this run's heal diff reached an audited surface: dispatch the `audit-loop-unit` agent per `wiki/concepts/PR Merge Workflow.md` `#### The audit loop unit` like any in-scope PR, then post the status per `#### Posting the status last` before `gh pr merge`.
 
 Run the Quality Gate (`.claude/rules/quality-gate.md`) first **only** if the applied diff touched a gate-affecting file (`.ts|tsx|js|jsx|mjs|cjs|css` or gate config); a config/docs-only heal has nothing for it to check.
 
@@ -302,7 +302,7 @@ Heal already cut and switched to `<BRANCH>`, the name Step 4 minted, so the chan
 
    ```bash
    git -C "$PROJECT_ROOT" push -u origin "<BRANCH>"
-   gh pr create --title "<commit subject>" --body-file <pr-body-file>
+   gh pr create --draft --title "<commit subject>" --body-file <pr-body-file>
    gh pr merge <N> --squash --delete-branch --auto
    ```
 

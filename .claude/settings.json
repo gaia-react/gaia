@@ -261,6 +261,11 @@
             "type": "command",
             "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-invalid-pr-title.sh\"",
             "statusMessage": "Checking PR title…"
+          },
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-pr-create-without-draft.sh\"",
+            "statusMessage": "Checking PR is a draft…"
           }
         ]
       },

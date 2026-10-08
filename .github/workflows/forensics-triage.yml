@@ -7,6 +7,11 @@ name: 'GAIA: Forensics Triage'
 # security boundary violation; the workflow's `check-scope.sh` rejects any
 # attempt to edit any path under `.github/workflows/`.
 #
+# The pull requests it opens are drafts built from untrusted issue input. This
+# workflow never takes the automatic ready flip that follows a posted
+# `GAIA-Audit` success status (post-audit-status.sh, the bypass stamp, the wiki
+# CLI land step run locally); a human marks one ready after reading it.
+#
 # Pinned action SHAs:
 #   anthropics/claude-code-action @ 63322d7b2bc79e7b621b89f41b53ceb8e5a5d314 (v1.0)
 #   actions/checkout              @ 3d3c42e5aac5ba805825da76410c181273ba90b1 (v7.0.1)

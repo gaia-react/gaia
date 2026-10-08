@@ -358,7 +358,7 @@ git add -A && git commit -F <commit-message-file> && git push -u origin <HARDEN_
 ```
 
 ```bash
-gh pr create --title "<commit subject>" --body-file <pr-body-file>
+gh pr create --draft --title "<commit subject>" --body-file <pr-body-file>
 ```
 
 <!-- gaia:maintainer-only:start -->

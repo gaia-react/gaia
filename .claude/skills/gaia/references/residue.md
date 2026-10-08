@@ -76,7 +76,7 @@ State the default posture explicitly before offering them: dismiss or keep is th
 
 ### Promote
 
-One human answer per residual, never batched, collected through an explicit user-question step. It calls the existing recipe in `.claude/skills/file-tech-debt/SKILL.md` rather than reimplementing filing, and hands it:
+One human answer per residual, never batched, collected through an explicit user-question step. It files through `bash .gaia/scripts/file-tech-debt.sh file --finding <finding.json> --outcome-file <outcome.jsonl>` (the recipe in `.claude/skills/file-tech-debt/SKILL.md` section 0 owns the finding JSON, the screen, the probe and the divert) rather than reimplementing filing, and hands it:
 
 - **The finding class is the residual's own.** Pass the `class` carried in the candidate's `raw_key` verbatim as the recipe's `<finding_class>`, so the filed issue's dedup key is byte-identical to the residual's own key. Never mint a fresh class.
 - **`footprint:<class>`** comes from the recipe's own step 6 rubric, applied to the cited line the command has already read. It is a reach grade (`narrow`, `wide`, or `spec`), never the finding class above.
@@ -85,6 +85,7 @@ One human answer per residual, never batched, collected through an explicit user
 - **`audience:<side>`** comes from the cited path, per the recipe's own adopter/maintainer split. Maintainer repository only; scrubbed from adopter bundles.
   <!-- gaia:maintainer-only:end -->
 - **`difficulty:<grade>`** is supplied: the command has already read the cited line to resolve it, so a promoted residual is graded using the recipe's own rubric.
+- **`security`** is the human's read of the residual's failure-mode text, true when it reads as an exploitable weakness; the script diverts a security-class finding to a local record rather than filing it publicly, and an absent value is treated as security-class.
 
 When the recipe refuses to file because the key matches one of its own dedup arms, append a `suppressed` record (see Record below), so no refusal is silent and no residual is offered forever.
 
@@ -159,7 +160,7 @@ git checkout -b "$BRANCH"
 git add -A
 git commit -F <commit-message-file>
 git push -u origin "$BRANCH"
-gh pr create --title "<commit subject>" --body-file <pr-body-file>
+gh pr create --draft --title "<commit subject>" --body-file <pr-body-file>
 ```
 
 Before any `gh pr merge`:
@@ -168,7 +169,7 @@ Before any `gh pr merge`:
 bash .gaia/scripts/resolve-audit-members.sh
 ```
 
-Empty output confirms no marker is owed. If it names any member, spawn each member it names and complete the marker handshake in `wiki/concepts/PR Merge Workflow.md` like any in-scope PR.
+Empty output confirms no marker is owed. If it names any member, dispatch the `audit-loop-unit` agent per `wiki/concepts/PR Merge Workflow.md` `#### The audit loop unit` like any in-scope PR, then post the status per `#### Posting the status last`.
 
 **Merge decision.** Ask once via `AskUserQuestion` whether to merge:
 

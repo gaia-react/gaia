@@ -199,6 +199,9 @@ export type OutOfScopeStampOptions = {
   runner: CommandRunner;
 };
 
+/** Whether the landing PR is ready for review after the stamp step. */
+export type OutOfScopeStampResult = 'flip-failed' | 'not-posted' | 'ready';
+
 const OUT_OF_SCOPE_DESCRIPTION = 'skipped: out of scope';
 
 const PullRequestRecordSchema = z.object({
@@ -248,8 +251,9 @@ const readPullRequestRecord = (
 /**
  * Post the `GAIA-Audit` out-of-scope success status on the landing branch's
  * head, for the wiki-only PR the CLI merges itself with auto-merge, outside the
- * Claude Code merge hook that stamps every other bypass PR. Call it after
- * `gh pr create` and before the auto-merge step.
+ * Claude Code merge hook that stamps every other bypass PR, then mark the draft
+ * PR ready for review. Call it after `gh pr create --draft` and before the
+ * auto-merge step.
  *
  * The subject is the pull request, not the local checkout: both landers cut
  * their branch from a local default branch that can carry commits origin never
@@ -263,23 +267,31 @@ const readPullRequestRecord = (
  * no member for the diff. The roster check keeps a later roster entry that owns
  * a `wiki/` path from letting the path check alone clear an in-scope PR. Any
  * failure to answer refuses too, since "could not answer" is not "nobody is
- * owed". Never changes the land's exit code.
+ * owed".
+ *
+ * The ready flip runs strictly after the status POST, so a reviewer is notified
+ * only once the status exists. The result tells the caller whether the pull
+ * request is now ready: `not-posted` leaves it a draft for the PR Merge
+ * Workflow to flip, and `flip-failed` leaves a posted status on a still-draft
+ * PR. Each prints its own next step, and the status is never rolled back.
  */
-export const postOutOfScopeStamp = (options: OutOfScopeStampOptions): void => {
-  const {cwd, prefix, runner} = options;
+export const postOutOfScopeStamp = (
+  options: OutOfScopeStampOptions
+): OutOfScopeStampResult => {
+  const {branch, cwd, prefix, runner} = options;
 
-  const refusePost = (reason: string): void => {
+  const refusePost = (reason: string): OutOfScopeStampResult => {
     process.stderr.write(
       `${prefix}: GAIA-Audit out-of-scope stamp not posted: ${reason}; run the PR Merge Workflow on this pull request\n`
     );
+
+    return 'not-posted';
   };
 
   const read = readPullRequestRecord(options);
 
   if ('reason' in read) {
-    refusePost(read.reason);
-
-    return;
+    return refusePost(read.reason);
   }
 
   const {record} = read;
@@ -288,31 +300,25 @@ export const postOutOfScopeStamp = (options: OutOfScopeStampOptions): void => {
   const headSha = commandSucceeded(head) ? safeOutput(head.stdout).trim() : '';
 
   if (headSha === '') {
-    refusePost('could not resolve the head commit');
-
-    return;
+    return refusePost('could not resolve the head commit');
   }
 
   if (record.headRefOid !== headSha) {
-    refusePost('the pull request head is not the commit this checkout holds');
-
-    return;
+    return refusePost(
+      'the pull request head is not the commit this checkout holds'
+    );
   }
 
   if (
     record.files.length === 0 ||
     record.files.some((file) => !file.path.startsWith('wiki/'))
   ) {
-    refusePost('the pull request changes paths outside wiki/');
-
-    return;
+    return refusePost('the pull request changes paths outside wiki/');
   }
 
   // A base name that starts with `-` would be read as an option by `git fetch`.
   if (record.baseRefName.startsWith('-')) {
-    refusePost('the pull request base name is not a branch name');
-
-    return;
+    return refusePost('the pull request base name is not a branch name');
   }
 
   const fetchBase = runner('git', ['fetch', 'origin', record.baseRefName], {
@@ -320,11 +326,9 @@ export const postOutOfScopeStamp = (options: OutOfScopeStampOptions): void => {
   });
 
   if (!commandSucceeded(fetchBase)) {
-    refusePost(
+    return refusePost(
       `could not fetch origin/${record.baseRefName} (${failureDetail(fetchBase)})`
     );
-
-    return;
   }
 
   const members = runner(
@@ -340,11 +344,9 @@ export const postOutOfScopeStamp = (options: OutOfScopeStampOptions): void => {
   );
 
   if (!commandSucceeded(members)) {
-    refusePost(
+    return refusePost(
       `resolve-audit-members.sh could not answer (${failureDetail(members)})`
     );
-
-    return;
   }
 
   const dispatched = safeOutput(members.stdout)
@@ -353,11 +355,9 @@ export const postOutOfScopeStamp = (options: OutOfScopeStampOptions): void => {
     .filter((line) => line.length > 0);
 
   if (dispatched.length > 0) {
-    refusePost(
+    return refusePost(
       `the Code Audit Team dispatches ${dispatched.join(', ')} for this diff`
     );
-
-    return;
   }
 
   const post = runner(
@@ -378,8 +378,20 @@ export const postOutOfScopeStamp = (options: OutOfScopeStampOptions): void => {
   );
 
   if (!commandSucceeded(post)) {
-    refusePost(`the status POST failed (${failureDetail(post)})`);
+    return refusePost(`the status POST failed (${failureDetail(post)})`);
   }
+
+  const ready = runner('gh', ['pr', 'ready', branch], {cwd});
+
+  if (!commandSucceeded(ready)) {
+    process.stderr.write(
+      `${prefix}: GAIA-Audit status posted but the draft flip failed (${failureDetail(ready)}); run: gh pr ready ${branch}\n`
+    );
+
+    return 'flip-failed';
+  }
+
+  return 'ready';
 };
 
 export type FinalizeMergeOptions = MergeWaitOptions & {

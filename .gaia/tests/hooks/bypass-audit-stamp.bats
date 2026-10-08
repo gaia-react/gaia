@@ -26,8 +26,8 @@ setup() {
 }
 
 # assert_one_post <description>: exactly one status POST, to the pull request's
-# head, carrying the bypass fields and <description>, and it is the last gh call
-# the gate made (the allow follows it with nothing on stdout).
+# head, carrying the bypass fields and <description>, followed by the ready flip
+# as the last gh call the gate made (the allow follows with nothing on stdout).
 assert_one_post() {
   local head posts
   head="$(git -C "$REPO" rev-parse HEAD)"
@@ -37,7 +37,10 @@ assert_one_post() {
   grep -qF -- '-f state=success' <<<"$posts" || return 1
   grep -qF -- '-f context=GAIA-Audit' <<<"$posts" || return 1
   grep -qxF -- "api -X POST repos/test-owner/test-repo/statuses/${head} -f state=success -f context=GAIA-Audit -f description=$1" <<<"$posts" || return 1
-  [ "$(tail -n 1 "$MGF_GH_LOG")" = "$posts" ] || { printf 'the POST is not the last gh call:\n%s\n' "$(cat "$MGF_GH_LOG")" >&2; return 1; }
+  # The status comes first and the draft flip is the last gh call: a reviewer is
+  # notified only after the status that justifies it.
+  [ "$(tail -n 2 "$MGF_GH_LOG")" = "${posts}
+pr ready 12" ] || { printf 'the POST is not followed by the ready flip as the last gh call:\n%s\n' "$(cat "$MGF_GH_LOG")" >&2; return 1; }
 }
 
 assert_allowed_silently() {
@@ -204,6 +207,27 @@ moved_head_after_record() {
   # The real hook posts on local HEAD (the test above); the mutant posts on the
   # moved head, so that test's assertion is red against it.
   mgf_post_lines | grep -qF -- 'statuses/0123456789abcdef0123456789abcdef01234567'
+}
+
+@test "a failed ready flip still allows the bypass, keeps the posted status and names the manual flip on stderr" {
+  mgf_commit "wiki/page.md" "doc"
+  mgf_record 12 false "docs: page" "wiki/page.md"
+  : > "$MGF_STUB_DIRECTORY/ready-fails"
+
+  mgf_run_merge "gh pr merge 12 --squash"
+  assert_allowed_silently
+  [ "$(mgf_post_count)" -eq 1 ]
+  grep -qF -- 'gh pr ready 12' <<<"$stderr" || return 1
+}
+
+@test "a rejected POST flips nothing" {
+  mgf_commit "wiki/page.md" "doc"
+  mgf_record 12 false "docs: page" "wiki/page.md"
+  sed -i.bak 's/\*" -X POST "\*) exit 0 ;;/*" -X POST "*) exit 1 ;;/' "$MGF_STUB_DIRECTORY/bin/gh"
+
+  mgf_run_merge "gh pr merge 12 --squash"
+  assert_allowed_silently
+  ! grep -qF -- 'pr ready' "$MGF_GH_LOG"
 }
 
 @test "a rejected POST still allows the bypass and names the manual command on stderr" {

@@ -656,7 +656,7 @@ Each entry carries a writer-assigned `entry_id`, and a refused write records the
 
 The ledger holds in-scope remaining work only, the `remaining[]` open findings plus `fixed_last_round[]`; out-of-scope findings live in filed `tech-debt` issues and the PR-body headings instead, a distinct, non-overlapping concern. `pr-merge-audit-check.sh` reads only `<digest>.ok`, so a `<base>.rerun.json` is invisible to it.
 
-The ledger is local-flow-only: the audit, the writer's accounting check, and the resolver's refusal link skip it when `GITHUB_ACTIONS` is `true` (`CI` set on its own does not skip it), and cross-round state there rides in the `GAIA-Audit` status (read by `.github/audit/resolve-audit-base.sh`) instead. A separate per-member findings sidecar shares the ledger's base-sha key but is a different artifact feeding a different consumer; see [[#Marker key]] for how the two are distinguished. See [[Audit Disposition and Debt Fix]].
+The audit, the writer's accounting check, and the resolver's refusal link all read the ledger; it lives under `.gaia/local/audit/` and never leaves the machine. A separate per-member findings sidecar shares the ledger's base-sha key but is a different artifact feeding a different consumer; see [[#Marker key]] for how the two are distinguished. See [[Audit Disposition and Debt Fix]].
 
 #### Findings block
 

@@ -471,10 +471,14 @@ type QueueAutoMergeOptions = {
 type QueueAutoMergeResult = {artifact?: GhArtifact; failureCode?: number};
 
 /**
- * Push the chain branch, open its PR, post the out-of-scope stamp, and queue
- * auto-merge. Runs while still on the chain branch so `gh pr merge` targets its
- * PR; once `push` succeeds the branch exists on the remote and is left for the
- * maintainer to resolve rather than force-reverted.
+ * Push the chain branch, open its PR as a draft, post the out-of-scope stamp,
+ * mark the PR ready, and queue auto-merge. Runs while still on the chain branch
+ * so `gh pr merge` targets its PR; once `push` succeeds the branch exists on the
+ * remote and is left for the maintainer to resolve rather than force-reverted.
+ * A flip that failed stops the land before the merge step with the PR still an
+ * open draft; a stamp that did not post goes on to the merge step, where GitHub
+ * refuses auto-merge on the draft after the refusal line has named the next
+ * step.
  */
 const queueAutoMerge = (
   options: QueueAutoMergeOptions
@@ -487,7 +491,7 @@ const queueAutoMerge = (
   const remoteSequence: {args: string[]; command: string}[] = [
     {args: ['push', '-u', 'origin', branch], command: 'git'},
     {
-      args: ['pr', 'create', '--title', prTitle, '--body', prBody],
+      args: ['pr', 'create', '--draft', '--title', prTitle, '--body', prBody],
       command: 'gh',
     },
     autoMergeStep,
@@ -500,12 +504,20 @@ const queueAutoMerge = (
     // GAIA-Audit for a wiki-only chain PR on a branch that requires it. The
     // poster refuses a diff that leaves `wiki/` or that the roster dispatches.
     if (step === autoMergeStep) {
-      postOutOfScopeStamp({
+      const stamp = postOutOfScopeStamp({
         branch,
         cwd: repoRoot,
         prefix: 'chain finish',
         runner,
       });
+
+      if (stamp === 'flip-failed') {
+        process.stderr.write(
+          `chain finish: ${branch} stays an open draft PR and auto-merge is not queued\n`
+        );
+
+        return {artifact, failureCode: EXIT_CODES.UNKNOWN_SUBCOMMAND};
+      }
     }
 
     const result = runner(step.command, step.args, {cwd: repoRoot});

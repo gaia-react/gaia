@@ -175,6 +175,10 @@ EOF
 case "$1" in
   auth) exit 0 ;;
   pr)
+    if [ "$2" = ready ]; then
+      printf '%s\n' "$*" >> "$stub_directory/call-order"
+      exit "$(cat "$stub_directory/ready-rc" 2>/dev/null || printf 0)"
+    fi
     pr_head="$(cat "$stub_directory/pr-head")"
     [ -n "$pr_head" ] || exit 1
     printf '%s\n' "$pr_head"
@@ -183,6 +187,7 @@ case "$1" in
   repo) printf 'gaia-react/gaia\n'; exit 0 ;;
   api)
     printf '%s\n' "$*" >> "$stub_directory/api-calls"
+    printf '%s\n' "$*" >> "$stub_directory/call-order"
     exit "$(cat "$stub_directory/api-rc")"
     ;;
   *) exit 0 ;;
@@ -600,4 +605,98 @@ assert_no_post() {
   [ "$status" -eq 0 ]
   [ "$output" = "status: declined: clearance reader unavailable" ]
   assert_no_post || return 1
+}
+
+# -----------------------------------------------------------------------------
+# Draft flip: the status posts first, the pull request is flipped second
+# -----------------------------------------------------------------------------
+
+# The stub's call log in order, each status POST reduced to `post <state>`; the
+# flip is `pr ready` (or `pr ready --undo`).
+call_order() {
+  sed -e 's/^api .*state=\([a-z]*\).*$/post \1/' "$BATS_TEST_TMPDIR/call-order"
+}
+
+@test "a success posts the status first and then marks the pull request ready" {
+  push_head_to_upstream
+  pushed_sha=$(git -C "$REPO" rev-parse HEAD)
+  install_gh_stub "$pushed_sha"
+  marker=$(write_marker code-audit-frontend)
+
+  cd "$REPO"
+  run "$HOOK_ABSOLUTE_PATH" "$marker"
+
+  [ "$status" -eq 0 ]
+  [ "$(call_order)" = "post success
+pr ready" ]
+}
+
+@test "a refusal posts failure first and then converts the pull request back to draft" {
+  push_head_to_upstream
+  pushed_sha=$(git -C "$REPO" rev-parse HEAD)
+  install_gh_stub "$pushed_sha"
+  refusal=$(write_refusal code-audit-frontend)
+
+  cd "$REPO"
+  run "$HOOK_ABSOLUTE_PATH" "$refusal"
+
+  [ "$status" -eq 0 ]
+  [ "$(call_order)" = "post failure
+pr ready --undo" ]
+}
+
+@test "a declined post flips nothing" {
+  push_head_to_upstream
+  install_gh_stub "$(git -C "$REPO" rev-parse HEAD)"
+  empty_commit
+  marker=$(write_marker code-audit-frontend)
+
+  cd "$REPO"
+  run "$HOOK_ABSOLUTE_PATH" "$marker"
+
+  [ "$status" -eq 0 ]
+  [ ! -s "$BATS_TEST_TMPDIR/call-order" ]
+}
+
+@test "no pull request resolved: the status posts and there is no flip to make" {
+  install_gh_stub ""
+  marker=$(write_marker code-audit-frontend)
+
+  cd "$REPO"
+  run "$HOOK_ABSOLUTE_PATH" "$marker"
+
+  [ "$status" -eq 0 ]
+  [ "$(call_order)" = "post success" ]
+}
+
+@test "a failed ready flip after a success exits non-zero naming the manual command, and the status stays posted" {
+  push_head_to_upstream
+  pushed_sha=$(git -C "$REPO" rev-parse HEAD)
+  install_gh_stub "$pushed_sha"
+  printf '1' > "$BATS_TEST_TMPDIR/ready-rc"
+  marker=$(write_marker code-audit-frontend)
+  short=$(git -C "$REPO" rev-parse --short "$pushed_sha")
+
+  cd "$REPO"
+  run "$HOOK_ABSOLUTE_PATH" "$marker"
+
+  [ "$status" -ne 0 ]
+  grep -qF -- "status: posted GAIA-Audit success ${short}" <<<"$output" || return 1
+  grep -qF -- 'run it by hand: gh pr ready' <<<"$output" || return 1
+  grep -qF -- "state=success" "$API_CALLS" || return 1
+}
+
+@test "a failed undo flip after a refusal exits non-zero naming the manual undo command" {
+  push_head_to_upstream
+  pushed_sha=$(git -C "$REPO" rev-parse HEAD)
+  install_gh_stub "$pushed_sha"
+  printf '1' > "$BATS_TEST_TMPDIR/ready-rc"
+  refusal=$(write_refusal code-audit-frontend)
+
+  cd "$REPO"
+  run "$HOOK_ABSOLUTE_PATH" "$refusal"
+
+  [ "$status" -ne 0 ]
+  grep -qF -- 'run it by hand: gh pr ready --undo' <<<"$output" || return 1
+  grep -qF -- "state=failure" "$API_CALLS" || return 1
 }

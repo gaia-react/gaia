@@ -11,11 +11,18 @@
 # decides that a bypass applies; this file only posts, and it posts exactly
 # the description it is given.
 #
-# Best-effort and silent on stdout: it always returns 0, because the caller is
-# a PreToolUse hook whose stdout is its decision channel and whose allow must
-# not turn into a failure over a status it could not post. Any failure (gh
-# absent or unauthenticated, an unresolvable repository or head sha, a
-# rejected POST) prints one stderr line naming the manual command instead.
+# Best-effort and silent on stdout: the caller is a PreToolUse hook whose
+# stdout is its decision channel and whose allow must not turn into a failure
+# over a status it could not post, so a status that is not posted returns 0.
+# Any failure (gh absent or unauthenticated, an unresolvable repository or head
+# sha, a rejected POST) prints one stderr line naming the manual command
+# instead.
+#
+# Pull requests open as drafts, and a draft cannot be merged, so once the
+# status has posted this marks the pull request ready for review
+# (`gh pr ready <pr-number>`), strictly after the status. A flip that fails
+# prints one stderr line naming the manual command and returns 1; the posted
+# status is never rolled back, and the caller ignores the return value.
 #
 # The status lands on exactly the <head-sha> it is given, which the caller has
 # already proven is the content it classified; this file never re-reads the
@@ -60,6 +67,16 @@ audit_post_bypass_status() {
       >/dev/null 2>&1 </dev/null; then
       failure="gh api rejected the status POST for ${head_sha}"
     fi
+  fi
+
+  if [ -z "$failure" ]; then
+    if ! GH_NO_UPDATE_NOTIFIER=1 GH_PROMPT_DISABLED=1 \
+      gh pr ready "$pr_number" >/dev/null 2>&1 </dev/null; then
+      printf 'GAIA-Audit bypass status posted, but the draft flip failed. Mark the pull request ready by hand: gh pr ready %s\n' \
+        "$pr_number" >&2
+      return 1
+    fi
+    return 0
   fi
 
   if [ -n "$failure" ]; then

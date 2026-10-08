@@ -101,7 +101,19 @@
 #          member resolver could not answer
 #          members pending <list>
 #          post failed
+#   1 , The status posted but the draft flip did not (see Draft flip). One
+#        stderr line names the manual `gh pr ready` command; the status is
+#        never rolled back.
 #   2 , Usage error (no marker path argument). Stderr.
+#
+# Draft flip
+#   Pull requests open as drafts. Once a status has posted, this hook flips the
+#   draft: `gh pr ready` after a success, `gh pr ready --undo` after a failure
+#   (a refusal converts the pull request back to draft). The flip always comes
+#   second, so a reviewer is notified only after the status that justifies it
+#   exists. It targets the pull request of the current branch, the same one the
+#   `gh pr view` below resolves the head sha from, and is skipped when that read
+#   found no pull request.
 #
 # References
 #   Audit-marker handshake: .claude/agents/code-audit-*.md members via .claude/hooks/lib/audit-member-protocol.md "Gate handshake (per-member marker)"
@@ -519,6 +531,22 @@ if gh api "repos/${repo}/statuses/${head_sha}" \
     emit_posted_failure "$posted_short"
   else
     emit_posted "$posted_short"
+  fi
+  # Draft flip, strictly after the status (see the header). `gh pr ready`
+  # resolves the pull request from the current branch exactly as the head read
+  # above did, so it needs no number; with no pull request resolved there is
+  # nothing to flip.
+  if [ -n "$pr_view" ]; then
+    flip_undo=""
+    flip_manual="gh pr ready"
+    if [ "$post_state" = "failure" ]; then
+      flip_undo="--undo"
+      flip_manual="gh pr ready --undo"
+    fi
+    if ! ( cd "$repo_root" && gh pr ready ${flip_undo:+"$flip_undo"} >/dev/null 2>&1 </dev/null ); then
+      emit_error "the GAIA-Audit ${post_state} status posted but the draft flip failed; run it by hand: ${flip_manual}"
+      exit 1
+    fi
   fi
   exit 0
 fi

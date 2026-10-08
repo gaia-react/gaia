@@ -98,6 +98,12 @@ case "$1 ${2-}" in
     answer "$(cat "$stub_directory/record.json")"
     exit 0
     ;;
+  "pr ready")
+    # The draft flip after a posted status; a case plants ready-fails to make
+    # it refuse.
+    [ ! -f "$stub_directory/ready-fails" ] || exit 1
+    exit 0
+    ;;
   "api "*)
     case " $* " in
       *" -X POST "*) exit 0 ;;

@@ -380,7 +380,7 @@ check_dispositions() {
   [ "$check_exit_status" -eq 0 ] && return 0
   [ -n "$dispositions_output" ] || dispositions_output='(the check printed nothing)'
   dispositions_output=$(printf '%s\n' "$dispositions_output" | head -n 40)
-  finish_deny "$(printf 'BLOCKED: audit dispositions on branch %s: the dispositions check failed (exit %s), so no audit dispatch proceeds until every dispositions file in %s passes. Nothing was recorded. A Critical or security finding is disposed fix (or file, when the branch did not author it and the repo is confirmed PRIVATE), every non-fix disposition carries a reason, and a vetoed key is fix. Inside an audit-loop-unit: stop with stop_reason dispositions-check-failed and return. To see the violations again (read-only): bash %s/audit-dispositions-check.sh check-all --root %s --run-folder %s\n%s' \
+  finish_deny "$(printf 'BLOCKED: audit dispositions on branch %s: the dispositions check failed (exit %s), so no audit dispatch proceeds until every dispositions file in %s passes. Nothing was recorded. Every finding needs a disposition: it is fixed, waived with a reason, filed, or, for a security-class finding the branch did not author, diverted (a security-class finding the branch authored is fixed), and a waiver-vetoed key is fixed. The audit loop unit disposes and audit-dispositions-check.sh bounds it. Inside an audit-loop-unit: stop with stop_reason dispositions-check-failed and return. To see the violations again (read-only): bash %s/audit-dispositions-check.sh check-all --root %s --run-folder %s\n%s' \
     "$BRANCH_KEY" "$check_exit_status" "$run_directory" "$scripts" "$root" "$run_directory" "$dispositions_output")"
 }
 
