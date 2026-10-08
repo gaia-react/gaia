@@ -36,7 +36,10 @@
 #
 # Mutation. Each target is read through an overridable variable, so a mutated
 # scratch copy can be pointed at without touching the real file:
-#   DOC_DEBT_NAMED_SET_DEBT_MD     the playbook
+#   DOC_DEBT_NAMED_SET_DEBT_MD     the playbook's core (debt.md)
+#   DOC_DEBT_NAMED_SET_NAMED_MD    the named-number sub-reference (debt/named.md),
+#                                  which owns validation, the direct-number
+#                                  path, and the named-set flow
 #   DOC_DEBT_NAMED_SET_COMMAND_MD  the command file
 #   DOC_DEBT_NAMED_SET_REPO_ROOT   the tree the budget-constant owner check scans
 # Every fixture is generated at runtime under $BATS_TEST_TMPDIR, and a line
@@ -48,6 +51,7 @@
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   DEBT_MD="${DOC_DEBT_NAMED_SET_DEBT_MD:-$REPO_ROOT/.claude/skills/gaia/references/debt.md}"
+  NAMED_MD="${DOC_DEBT_NAMED_SET_NAMED_MD:-$REPO_ROOT/.claude/skills/gaia/references/debt/named.md}"
   COMMAND_MD="${DOC_DEBT_NAMED_SET_COMMAND_MD:-$REPO_ROOT/.claude/commands/gaia-debt.md}"
   SCAN_ROOT="${DOC_DEBT_NAMED_SET_REPO_ROOT:-$REPO_ROOT}"
   NAMED_SET_HEADING='## Fix a named set (two or more numbers)'
@@ -93,7 +97,7 @@ line_of() {
 }
 
 named_set_section() {
-  extract_section "$NAMED_SET_HEADING"
+  extract_section "$NAMED_SET_HEADING" "$NAMED_MD"
 }
 
 # --- 1. argument parsing ----------------------------------------------------
@@ -123,10 +127,49 @@ named_set_section() {
   grep -qF -- '/gaia-debt [<issue-number> ...] [[use] worktree|branch]' <<<"$section"
 }
 
+# playbook_set <core-file>: the core plus every sub-reference beside it under
+# debt/, one path per line, core first.
+playbook_set() {
+  local core="$1" file
+  printf '%s\n' "$core"
+  for file in "$(dirname "$core")"/debt/*.md; do
+    [ -f "$file" ] && printf '%s\n' "$file"
+  done
+  return 0
+}
+
+# no_list_or_why_section <core-file>: fails when any file in the playbook set
+# carries a list or why subcommand heading, or when the set holds no
+# sub-reference (a short glob would otherwise pass over the core alone).
+no_list_or_why_section() {
+  local files file count=0 expected
+  files="$(playbook_set "$1")"
+  # An independent count of the sub-references, so a glob that reads fewer
+  # files than exist fails instead of passing over a subset.
+  expected="$(find "$(dirname "$1")/debt" -maxdepth 1 -type f -name '*.md' 2>/dev/null | wc -l | tr -d ' ')"
+  while IFS= read -r file; do
+    [ -s "$file" ] || return 1
+    count=$((count + 1))
+    grep -qE -- '^## (list|why) subcommand' "$file" && return 1
+  done <<<"$files"
+  [ "$expected" -ge 1 ] || return 1
+  [ "$count" -eq $((expected + 1)) ] || return 1
+  return 0
+}
+
 @test "the debt reference carries no list or why subcommand section" {
-  [ -s "$DEBT_MD" ]
-  grep -qE -- '^## (list|why) subcommand' "$DEBT_MD" && return 1
-  true
+  no_list_or_why_section "$DEBT_MD"
+}
+
+@test "the list-or-why check reads every sub-reference, not only the core" {
+  copy="$BATS_TEST_TMPDIR/references"
+  mkdir -p "$copy/debt"
+  cp "$DEBT_MD" "$copy/debt.md"
+  cp "$(dirname "$DEBT_MD")"/debt/*.md "$copy/debt/"
+  no_list_or_why_section "$copy/debt.md"
+  printf '\n## why subcommand\n' >>"$copy/debt/named.md"
+  run no_list_or_why_section "$copy/debt.md"
+  [ "$status" -ne 0 ]
 }
 
 @test "argument parsing no longer falls an unparsed first token through to the top of the backlog" {
@@ -150,7 +193,7 @@ named_set_section() {
 # --- 2. the validation reason table -----------------------------------------
 
 validate_has_row() {
-  section="$(extract_section '## Validate named numbers')"
+  section="$(extract_section '## Validate named numbers' "$NAMED_MD")"
   [ -n "$section" ]
   grep -qF -- "$1" <<<"$section"
 }
@@ -188,7 +231,7 @@ validate_has_row() {
 }
 
 @test "validation states first-match precedence and reads url to tell a pull request apart" {
-  section="$(extract_section '## Validate named numbers')"
+  section="$(extract_section '## Validate named numbers' "$NAMED_MD")"
   [ -n "$section" ]
   grep -qiF -- 'first matching row wins' <<<"$section"
   grep -qF -- 'gh issue view <n> --json state,labels,url' <<<"$section"
@@ -197,14 +240,14 @@ validate_has_row() {
 }
 
 @test "validation stops the run on any ineligible number, with no fall-through" {
-  section="$(extract_section '## Validate named numbers')"
+  section="$(extract_section '## Validate named numbers' "$NAMED_MD")"
   [ -n "$section" ]
   grep -qiF -- 'any ineligible number ends the run with nothing claimed' <<<"$section"
   grep -qiF -- 'no fall-through' <<<"$section"
 }
 
 @test "validation of every named number precedes the security pre-filter" {
-  section="$(extract_section '## Validate named numbers')$(named_set_section)"
+  section="$(extract_section '## Validate named numbers' "$NAMED_MD")$(named_set_section)"
   [ -n "$section" ]
   grep -qiF -- 'validation of every named number precedes the security pre-filter' <<<"$section"
 }
@@ -212,7 +255,7 @@ validate_has_row() {
 # --- 3. the direct-number path ----------------------------------------------
 
 @test "the direct-number ineligible arm stops instead of falling through" {
-  section="$(extract_section '## Fix a specific issue (direct-number path)')"
+  section="$(extract_section '## Fix a specific issue (direct-number path)' "$NAMED_MD")"
   [ -n "$section" ]
   ineligible="$(extract_between '**Ineligible**' '**Eligible**' <<<"$section")"
   [ -n "$ineligible" ]
@@ -222,20 +265,20 @@ validate_has_row() {
 }
 
 @test "the direct-number cluster offer keeps its operator-chosen next-available option" {
-  section="$(extract_section '## Fix a specific issue (direct-number path)')"
+  section="$(extract_section '## Fix a specific issue (direct-number path)' "$NAMED_MD")"
   [ -n "$section" ]
   grep -qE -- '^[[:space:]]*3\. `Next available highest-priority item\(s\) instead`' <<<"$section"
 }
 
 @test "the direct-number path stops when the named issue is lost at claim time" {
-  section="$(extract_section '## Fix a specific issue (direct-number path)')"
+  section="$(extract_section '## Fix a specific issue (direct-number path)' "$NAMED_MD")"
   [ -n "$section" ]
   grep -qF -- 'losing `#<N>` at the claim-time re-read' <<<"$section"
   grep -qiF -- 'stops the run' <<<"$section"
 }
 
 @test "the direct-number singleton claims only the named issue" {
-  section="$(extract_section '## Fix a specific issue (direct-number path)')"
+  section="$(extract_section '## Fix a specific issue (direct-number path)' "$NAMED_MD")"
   [ -n "$section" ]
   grep -qF -- 'claims only `#<N>`' <<<"$section"
 }
