@@ -2,11 +2,15 @@ import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {execFileSync} from 'node:child_process';
 import {chmodSync, readFileSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
-import {assertNotOk, assertOk, setupSandbox} from '../../__tests__/sandbox.js';
-import type {Sandbox} from '../../__tests__/sandbox.js';
-import {runGh} from '../gh.js';
+import {
+  assertNotOk,
+  assertOk,
+  setupSandbox,
+} from '../setup-ci/__tests__/sandbox.js';
+import type {Sandbox} from '../setup-ci/__tests__/sandbox.js';
+import {defaultRunner, runGhAsync, runGit} from './run-process.js';
 
-describe('runGh wrapper', () => {
+describe('runGhAsync wrapper', () => {
   let sandbox: Sandbox;
   let restore: (() => void) | undefined;
 
@@ -27,7 +31,7 @@ describe('runGh wrapper', () => {
     });
     restore = handle.restore;
 
-    const result = await runGh({args: ['version']});
+    const result = await runGhAsync({args: ['version']});
     expect(result.ok).toBe(true);
     assertOk(result);
 
@@ -38,7 +42,7 @@ describe('runGh wrapper', () => {
     const handle = sandbox.installGhShim({exitCode: 7});
     restore = handle.restore;
 
-    const result = await runGh({args: ['version']});
+    const result = await runGhAsync({args: ['version']});
     expect(result.ok).toBe(false);
     assertNotOk(result);
 
@@ -62,7 +66,7 @@ describe('runGh wrapper', () => {
     execFileSync(shimPath, {env: {...process.env, GH_SHIM_WARMUP: '1'}});
 
     const started = Date.now();
-    const result = await runGh({
+    const result = await runGhAsync({
       args: ['api', 'repos/acme/widgets'],
       env: {
         ...process.env,
@@ -89,5 +93,39 @@ describe('runGh wrapper', () => {
       },
       {interval: 20, timeout: 1000}
     );
+  });
+});
+
+describe('runGit', () => {
+  test('returns stdout and exit code 0 on success', () => {
+    const result = runGit(['--version']);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toMatch(/^git version/u);
+  });
+
+  test('returns a non-zero exit code and stderr instead of throwing', () => {
+    const result = runGit(['definitely-not-a-git-subcommand']);
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).not.toBe('');
+  });
+});
+
+describe('defaultRunner', () => {
+  // Asserted against a child that writes past Node's 1 MiB spawnSync default
+  // rather than against the constant, so the test fails if the bound is
+  // removed by any means.
+  test('reads child stdout past the 1 MiB spawnSync default', () => {
+    const size = 2 * 1024 * 1024;
+
+    const result = defaultRunner(
+      process.execPath,
+      ['-e', `process.stdout.write('x'.repeat(${size}))`],
+      {cwd: process.cwd()}
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.stdout).toHaveLength(size);
   });
 });

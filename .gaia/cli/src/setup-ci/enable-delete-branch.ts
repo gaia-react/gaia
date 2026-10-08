@@ -18,7 +18,7 @@
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
-import {runGh} from './util/gh.js';
+import {runGhAsync} from '../util/run-process.js';
 
 const HELP_TEXT = `Usage: gaia setup-ci enable-delete-branch --owner <o> --repo <r>
 
@@ -76,7 +76,7 @@ export const run = async (
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
-  const result = await runGh({
+  const result = await runGhAsync({
     args: [
       'api',
       '-X',

@@ -2,9 +2,9 @@ import {afterEach, describe, expect, test, vi} from 'vitest';
 import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import * as runProcess from '../../ci/util/run-process.js';
-import type {ProcessResult} from '../../ci/util/run-process.js';
 import * as gitEnvironment from '../../util/git-env.js';
+import * as runProcess from '../../util/run-process.js';
+import type {ProcessResult} from '../../util/run-process.js';
 import {fixtureProvider, liveProvider, resolveProvider} from '../corpus.js';
 
 const okResult = (stdout: string): ProcessResult => ({

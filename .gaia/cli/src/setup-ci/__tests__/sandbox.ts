@@ -10,7 +10,7 @@
  *    `<sandbox>/bin/gh` that records argv to a sandbox file and emits
  *    scripted stdout / exit code. Tests that assert the secret never
  *    appears on argv use this shim end-to-end (PATH override) rather
- *    than spying on `runGh` directly.
+ *    than spying on `runGhAsync` directly.
  */
 import {execFileSync} from 'node:child_process';
 import {
@@ -49,7 +49,7 @@ export function assertNotOk<T extends {ok: boolean}>(
   }
 }
 
-/** Same narrowing, for the `{ok: boolean, ...}` result shape (e.g. runGh). */
+/** Same narrowing, for the `{ok: boolean, ...}` result shape (e.g. runGhAsync). */
 export function assertOk<T extends {ok: boolean}>(
   result: T
 ): asserts result is Extract<T, {ok: true}> {

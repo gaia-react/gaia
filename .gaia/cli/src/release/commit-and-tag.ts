@@ -19,13 +19,14 @@
  * The version is read from `package.json`. Stdout is a one-line summary
  * per mode; stderr explains every refusal.
  */
-import {spawnSync} from 'node:child_process';
 import type {SpawnSyncReturns} from 'node:child_process';
 import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {atomicWriteFileSync} from '../util/atomic-write.js';
+import {defaultRunner} from '../util/run-process.js';
+import type {CommandRunner} from '../util/run-process.js';
 
 const HELP_TEXT = `Usage: gaia-maintainer release commit-and-tag (--commit | --tag) [--no-push]
 
@@ -43,18 +44,7 @@ const HELP_TEXT = `Usage: gaia-maintainer release commit-and-tag (--commit | --t
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 const UNEXPECTED_EXIT = 2;
 
-export type CommandRunner = (
-  command: string,
-  args: readonly string[],
-  options: {cwd: string}
-) => SpawnSyncReturns<string>;
-
-export const defaultRunner: CommandRunner = (command, args, options) =>
-  spawnSync(command, args as string[], {
-    cwd: options.cwd,
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
+export type {CommandRunner} from '../util/run-process.js';
 
 type FlagParseFailure = {
   message: string;

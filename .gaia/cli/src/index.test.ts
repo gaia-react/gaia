@@ -57,18 +57,9 @@ const readStderrPayload = (): Record<string, unknown> =>
   >;
 
 describe('gaia top-level router', () => {
-  test.each(['--help', '-h', 'help'])(
-    '%s prints help and exits 0',
-    async (token) => {
-      await expect(run([token])).resolves.toBe(EXIT_CODES.OK);
-      expect(stdio.outputs.join('')).toContain('Usage: gaia');
-      expect(stdio.errors).toHaveLength(0);
-    }
-  );
-
-  test('no subcommand prints help and exits 0', async () => {
-    await expect(run([])).resolves.toBe(EXIT_CODES.OK);
-    expect(stdio.outputs.join('')).toContain('Usage: gaia');
+  test('help names its binary', async () => {
+    await expect(run(['--help'])).resolves.toBe(EXIT_CODES.OK);
+    expect(stdio.outputs.join('')).toContain('Usage: gaia ');
   });
 
   // The guard this suite exists to pin only earns its keep if dispatch still

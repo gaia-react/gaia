@@ -15,7 +15,7 @@
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
-import {runGh} from './util/gh.js';
+import {runGhAsync} from '../util/run-process.js';
 
 const HELP_TEXT = `Usage: gaia setup-ci check-admin --owner <o> --repo <r> [--json]
 
@@ -59,14 +59,14 @@ const probeAdmin = async (
   cwd: string
 ): Promise<CheckAdminOutput> => {
   // Step 1: gh auth status.
-  const authResult = await runGh({args: ['auth', 'status'], cwd});
+  const authResult = await runGhAsync({args: ['auth', 'status'], cwd});
 
   if (!authResult.ok) {
     return {admin: false, auth_status: 'unauthenticated'};
   }
 
   // Step 2: gh api repos/<owner>/<repo> --jq .permissions.admin.
-  const apiResult = await runGh({
+  const apiResult = await runGhAsync({
     args: ['api', `repos/${owner}/${repo}`, '--jq', '.permissions.admin'],
     cwd,
   });

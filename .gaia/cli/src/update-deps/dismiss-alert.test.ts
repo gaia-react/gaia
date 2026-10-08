@@ -1,6 +1,6 @@
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {EXIT_CODES} from '../exit.js';
-import type {GhOptions, GhResult} from '../setup-ci/util/gh.js';
+import type {GhOptions, GhResult} from '../util/run-process.js';
 import {run} from './dismiss-alert.js';
 import type {DismissAlertOptions} from './dismiss-alert.js';
 

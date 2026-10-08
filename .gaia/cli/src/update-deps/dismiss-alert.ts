@@ -7,10 +7,10 @@
  * shell), and gh's stderr is never echoed because it can carry a token.
  */
 import {EXIT_CODES} from '../exit.js';
-import {runGh} from '../setup-ci/util/gh.js';
-import type {GhOptions, GhResult} from '../setup-ci/util/gh.js';
 import {structuredError} from '../stderr.js';
 import {resolveRepoRoot} from '../util/repo-root.js';
+import {runGhAsync} from '../util/run-process.js';
+import type {GhOptions, GhResult} from '../util/run-process.js';
 import {
   ADVISORY_SPAWN_TIMEOUT_MS,
   resolveGithubRepository,
@@ -201,7 +201,7 @@ export const run = async (
 
   if (!repository.ok) return fail(repository.reason, args.alert);
 
-  const result = await (options.ghRunner ?? runGh)({
+  const result = await (options.ghRunner ?? runGhAsync)({
     args: [
       'api',
       '-X',

@@ -6,10 +6,6 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
-// src/index.maintainer.ts
-import { realpathSync } from "node:fs";
-import { pathToFileURL } from "node:url";
-
 // src/exit.ts
 var EXIT_CODES = {
   CONFIG_INVALID: 30,
@@ -36,7 +32,6 @@ var takeValue = (argv, index, flag) => {
 };
 
 // src/release/bump.ts
-import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -103,8 +98,19 @@ var parseConventionalCommitHeader = (subject) => {
 };
 var isCommitType = (type2) => COMMIT_TYPES.includes(type2);
 
+// src/util/run-process.ts
+import { spawn, spawnSync } from "node:child_process";
+
 // src/util/git-buffer.ts
 var MAX_GIT_BUFFER_BYTES = 64 * 1024 * 1024;
+
+// src/util/run-process.ts
+var defaultRunner = (command, args, options) => spawnSync(command, args, {
+  cwd: options.cwd,
+  encoding: "utf8",
+  maxBuffer: MAX_GIT_BUFFER_BYTES,
+  stdio: ["ignore", "pipe", "pipe"]
+});
 
 // src/release/bump.ts
 var HELP_TEXT = `Usage: gaia-maintainer release bump [--auto]
@@ -120,12 +126,6 @@ var HELP_TEXT = `Usage: gaia-maintainer release bump [--auto]
 `;
 var HELP_TOKENS = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var UNEXPECTED_EXIT = 2;
-var defaultRunner = (command, args, options) => spawnSync(command, args, {
-  cwd: options.cwd,
-  encoding: "utf8",
-  maxBuffer: MAX_GIT_BUFFER_BYTES,
-  stdio: ["ignore", "pipe", "pipe"]
-});
 var parseFlags = (argv) => {
   let auto = false;
   for (const token of argv) {
@@ -384,7 +384,6 @@ var run = (argv, options = {}) => {
 };
 
 // src/release/changelog.ts
-import { spawnSync as spawnSync2 } from "node:child_process";
 import { existsSync as existsSync2, readFileSync as readFileSync2 } from "node:fs";
 import path2 from "node:path";
 var HELP_TEXT2 = `Usage: gaia-maintainer release changelog [--draft] [--version <X.Y.Z>]
@@ -406,12 +405,6 @@ var HELP_TEXT2 = `Usage: gaia-maintainer release changelog [--draft] [--version 
 `;
 var HELP_TOKENS2 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var UNEXPECTED_EXIT2 = 2;
-var defaultRunner2 = (command, args, options) => spawnSync2(command, args, {
-  cwd: options.cwd,
-  encoding: "utf8",
-  maxBuffer: MAX_GIT_BUFFER_BYTES,
-  stdio: ["ignore", "pipe", "pipe"]
-});
 var parseFlags2 = (argv) => {
   let draft = false;
   let version2;
@@ -630,7 +623,7 @@ var run2 = (argv, options = {}) => {
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
   const cwd = options.cwd ?? process.cwd();
-  const runner = options.runner ?? defaultRunner2;
+  const runner = options.runner ?? defaultRunner;
   const version2 = tryReadVersionOrReport(cwd, parsed.flags.version);
   if (version2 === null) return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   if (parsed.flags.draft) {
@@ -681,7 +674,6 @@ var run2 = (argv, options = {}) => {
 };
 
 // src/release/commit-and-tag.ts
-import { spawnSync as spawnSync3 } from "node:child_process";
 import { existsSync as existsSync3, readFileSync as readFileSync3 } from "node:fs";
 import path3 from "node:path";
 var HELP_TEXT3 = `Usage: gaia-maintainer release commit-and-tag (--commit | --tag) [--no-push]
@@ -698,11 +690,6 @@ var HELP_TEXT3 = `Usage: gaia-maintainer release commit-and-tag (--commit | --ta
 `;
 var HELP_TOKENS3 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var UNEXPECTED_EXIT3 = 2;
-var defaultRunner3 = (command, args, options) => spawnSync3(command, args, {
-  cwd: options.cwd,
-  encoding: "utf8",
-  stdio: ["ignore", "pipe", "pipe"]
-});
 var parseFlags3 = (argv) => {
   let mode;
   let noPush = false;
@@ -887,7 +874,7 @@ var run3 = (argv, options = {}) => {
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
   const cwd = options.cwd ?? process.cwd();
-  const runner = options.runner ?? defaultRunner3;
+  const runner = options.runner ?? defaultRunner;
   let version2;
   try {
     version2 = readVersion2(cwd);
@@ -19625,9 +19612,6 @@ var run5 = (argv, options = {}) => {
   });
 };
 
-// src/release/preflight.ts
-import { spawnSync as spawnSync4 } from "node:child_process";
-
 // src/wiki/state.ts
 import { existsSync as existsSync8, readdirSync, readFileSync as readFileSync10, statSync } from "node:fs";
 import path9 from "node:path";
@@ -19882,11 +19866,6 @@ var HELP_TEXT7 = `Usage: gaia-maintainer release preflight [--branch <name>]
 var HELP_TOKENS7 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var UNEXPECTED_EXIT6 = 2;
 var DEFAULT_BRANCH = "main";
-var defaultRunner4 = (command, args, options) => spawnSync4(command, args, {
-  cwd: options.cwd,
-  encoding: "utf8",
-  stdio: ["ignore", "pipe", "pipe"]
-});
 var parseFlags5 = (argv) => {
   let allowedBranch = DEFAULT_BRANCH;
   for (let index = 0; index < argv.length; index += 1) {
@@ -20027,7 +20006,7 @@ var run7 = (argv, options = {}) => {
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
   const cwd = options.cwd ?? process.cwd();
-  const runner = options.runner ?? defaultRunner4;
+  const runner = options.runner ?? defaultRunner;
   const wikiStateProbe = options.wikiStateProbe ?? runWikiStateJson;
   const branchState = tryReadBranchState(runner, cwd);
   if (branchState === null) return UNEXPECTED_EXIT6;
@@ -21761,28 +21740,18 @@ var run11 = async (argv) => {
   return EXIT_CODES.UNKNOWN_SUBCOMMAND;
 };
 
-// src/index.maintainer.ts
-var HELP_TEXT12 = `Usage: gaia-maintainer <subcommand> [args]
-
-Maintainer-only binary. Adopters use 'gaia' (no release namespace).
-
-  release preflight|bump|changelog|scrub-wiki|manifest|scrub|runtime-deps|commit-and-tag|exclude-regex
-`;
-var printHelp = () => {
-  process.stdout.write(HELP_TEXT12);
-};
+// src/util/router.ts
+import { realpathSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 var HELP_TOKENS12 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
-var SUBCOMMAND_HANDLERS2 = {
-  release: run11
-};
-var run12 = async (argv) => {
+var createSubcommandRouter = (options) => async (argv) => {
   const subcommand = argv[0];
   const rest = argv.slice(1);
   if (subcommand === void 0 || HELP_TOKENS12.has(subcommand)) {
-    printHelp();
+    process.stdout.write(options.helpText);
     return EXIT_CODES.OK;
   }
-  const handler = lookupOwn(SUBCOMMAND_HANDLERS2, subcommand);
+  const handler = lookupOwn(options.handlers, subcommand);
   if (handler !== void 0) {
     const result = await handler(rest);
     return typeof result === "number" ? result : EXIT_CODES.OK;
@@ -21790,11 +21759,14 @@ var run12 = async (argv) => {
   structuredError({ code: "unknown_subcommand", subcommand });
   return EXIT_CODES.UNKNOWN_SUBCOMMAND;
 };
-var invokedPath = process.argv[1];
-var isDirectRun = invokedPath !== void 0 && import.meta.url === pathToFileURL(realpathSync(invokedPath)).href;
-if (isDirectRun) {
+var runWhenInvokedDirectly = async (importMetaUrl, run13) => {
+  const invokedPath = process.argv[1];
+  const isDirectRun = invokedPath !== void 0 && importMetaUrl === pathToFileURL(realpathSync(invokedPath)).href;
+  if (!isDirectRun) {
+    return;
+  }
   try {
-    process.exitCode = await run12(process.argv.slice(2));
+    process.exitCode = await run13(process.argv.slice(2));
   } catch (error51) {
     structuredError({
       code: "cli_internal_error",
@@ -21802,7 +21774,23 @@ if (isDirectRun) {
     });
     process.exitCode = EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-}
+};
+
+// src/index.maintainer.ts
+var HELP_TEXT12 = `Usage: gaia-maintainer <subcommand> [args]
+
+Maintainer-only binary. Adopters use 'gaia' (no release namespace).
+
+  release preflight|bump|changelog|scrub-wiki|manifest|scrub|runtime-deps|commit-and-tag|exclude-regex
+`;
+var SUBCOMMAND_HANDLERS2 = {
+  release: run11
+};
+var run12 = createSubcommandRouter({
+  handlers: SUBCOMMAND_HANDLERS2,
+  helpText: HELP_TEXT12
+});
+await runWhenInvokedDirectly(import.meta.url, run12);
 export {
   run12 as run
 };

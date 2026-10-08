@@ -27,7 +27,6 @@
  * exits 0 on `--auto` for major and writes nothing, expecting the
  * maintainer-facing slash command to confirm before re-invoking.
  */
-import {spawnSync} from 'node:child_process';
 import type {SpawnSyncReturns} from 'node:child_process';
 import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';
@@ -39,7 +38,8 @@ import {
   parseConventionalCommitHeader,
 } from '../util/conventional-commit.js';
 import type {CommitType} from '../util/conventional-commit.js';
-import {MAX_GIT_BUFFER_BYTES} from '../util/git-buffer.js';
+import {defaultRunner} from '../util/run-process.js';
+import type {CommandRunner} from '../util/run-process.js';
 
 const HELP_TEXT = `Usage: gaia-maintainer release bump [--auto]
 
@@ -58,26 +58,9 @@ const UNEXPECTED_EXIT = 2;
 
 export type BumpKind = 'major' | 'minor' | 'patch';
 
-export type CommandRunner = (
-  command: string,
-  args: readonly string[],
-  options: {cwd: string}
-) => SpawnSyncReturns<string>;
+export type {CommandRunner} from '../util/run-process.js';
 
-/**
- * `collectCommits` asks git for every subject *and body* since the last tag,
- * so its output grows with the distance from that tag and passes Node's 1 MiB
- * `spawnSync` default well before a release is due. Bumping is runbook step 2
- * and the changelog is step 5, so an unbounded runner here blocks the release
- * three steps before `release changelog` is ever reached.
- */
-export const defaultRunner: CommandRunner = (command, args, options) =>
-  spawnSync(command, args as string[], {
-    cwd: options.cwd,
-    encoding: 'utf8',
-    maxBuffer: MAX_GIT_BUFFER_BYTES,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
+export {defaultRunner};
 
 type FlagParseFailure = {
   message: string;

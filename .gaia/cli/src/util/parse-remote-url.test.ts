@@ -1,5 +1,5 @@
 import {describe, expect, test} from 'vitest';
-import {parseRemoteUrl} from '../parse-remote-url.js';
+import {parseRemoteUrl} from './parse-remote-url.js';
 
 describe('parseRemoteUrl', () => {
   describe('accepted forms', () => {

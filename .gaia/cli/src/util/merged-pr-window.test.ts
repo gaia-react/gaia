@@ -3,9 +3,9 @@ import {
   MERGED_PR_PAGE_CEILING,
   MERGED_PR_WINDOW_MAX_PAGES,
   readMergedPrWindow,
-} from '../util/merged-pr-window.js';
-import * as runProcess from '../util/run-process.js';
-import type {ProcessResult} from '../util/run-process.js';
+} from './merged-pr-window.js';
+import * as runProcess from './run-process.js';
+import type {ProcessResult} from './run-process.js';
 
 type Row = {createdAt: string; mergedAt: string; number: number};
 

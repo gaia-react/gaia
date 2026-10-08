@@ -1,16 +1,17 @@
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
+import {execFileSync} from 'node:child_process';
 import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {MERGED_PR_PAGE_CEILING} from '../../ci/util/merged-pr-window.js';
-import * as runProcess from '../../ci/util/run-process.js';
-import type {ProcessResult} from '../../ci/util/run-process.js';
 import {
   ReviewTallyInputSchema,
   snapshotFromTally,
   writeReviewSnapshot,
 } from '../../schemas/review-snapshot.js';
 import type {ReviewSnapshot} from '../../schemas/review-snapshot.js';
+import {MERGED_PR_PAGE_CEILING} from '../../util/merged-pr-window.js';
+import * as runProcess from '../../util/run-process.js';
+import type {ProcessResult} from '../../util/run-process.js';
 import {markerComment} from '../marker.js';
 import {isMaterialRise, TALLY_SCHEMA_VERSION} from '../material-rise.js';
 import {run} from '../tally.js';
@@ -185,115 +186,85 @@ const recurringFinding = (prNumber: number) =>
   ]);
 
 type FakeLedger = {
+  calls: {prune: (readonly string[])[]};
   has: (findingClass: string) => boolean;
-  runLedger: (argv: readonly string[]) => ProcessResult;
+  ledger: LedgerAccess;
+  record: (
+    findingClass: string,
+    prCount: number,
+    auditedPrCount: number
+  ) => void;
 };
 
-type FakeStore = Map<
-  string,
-  {declined_at_audited_pr_count: number; declined_at_pr_count: number}
+type LedgerAccess = NonNullable<
+  NonNullable<Parameters<typeof run>[1]>['ledger']
 >;
 
-const fakeFlag = (
-  argv: readonly string[],
-  name: string
-): string | undefined => {
-  const index = argv.indexOf(name);
-
-  return index === -1 ? undefined : argv[index + 1];
+// A ledger with no decline entries: every class re-surfaces.
+const noDeclines: LedgerAccess = {
+  check: () => ({reason: 'no_decline_entry', status: 'resurface'}),
+  prune: () => undefined,
 };
 
-const fakeRecord = (store: FakeStore, argv: readonly string[]): void => {
-  const findingClass = fakeFlag(argv, '--finding-class');
-  const prCount = Number(fakeFlag(argv, '--pr-count'));
-  const auditedPrCount = Number(fakeFlag(argv, '--audited-pr-count'));
-
-  if (findingClass !== undefined) {
-    store.set(findingClass, {
-      declined_at_audited_pr_count: auditedPrCount,
-      declined_at_pr_count: prCount,
-    });
-  }
+// A ledger whose file cannot be read: the tally must keep every class
+// suppressed rather than re-surface a declined candidate.
+const unreadableLedger: LedgerAccess = {
+  check: () => ({error: 'corrupt', status: 'unreadable'}),
+  prune: () => undefined,
 };
 
-// Mirrors the real `harden-ledger is-suppressed`, which delegates to the same
-// `isMaterialRise` the tally imports, so this fake agrees with the real
-// ledger instead of a rule nothing ships any more.
-const fakeIsSuppressed = (
-  store: FakeStore,
-  argv: readonly string[]
-): number => {
-  const findingClass = fakeFlag(argv, '--finding-class') ?? '';
-  const currentPrCount = Number(fakeFlag(argv, '--current-pr-count'));
-  const currentAuditedPrCount = Number(
-    fakeFlag(argv, '--current-audited-pr-count')
-  );
-  const entry = store.get(findingClass);
-
-  if (entry === undefined) return 1;
-
-  return (
-      isMaterialRise({
-        baseAuditedPrCount: entry.declined_at_audited_pr_count,
-        baseCount: entry.declined_at_pr_count,
-        liveAuditedPrCount: currentAuditedPrCount,
-        liveCount: currentPrCount,
-      })
-    ) ?
-      1
-    : 0;
-};
-
-// Mirrors `handlePrune`: every key the window-classes set does not name is
-// dropped, the classless fallback included. `ledger.test.ts` owns the proof of
-// the real filter; this fake exists so the composed suppress-then-prune seam in
-// `run()` can be driven without spawning a process.
-const fakePrune = (store: FakeStore, argv: readonly string[]): void => {
-  const windowClasses = new Set(
-    (fakeFlag(argv, '--window-classes') ?? '')
-      .split(',')
-      .map((value) => value.trim())
-      .filter((value) => value.length > 0)
-  );
-
-  for (const findingClass of [...store.keys()].filter(
-    (key) => !windowClasses.has(key)
-  )) {
-    store.delete(findingClass);
-  }
-};
-
-// A fake, stateful `runLedger` over an in-memory store keyed on
-// `finding_class`, dispatching on the subcommand each `argv` carries
-// (`record`, `prune`, `is-suppressed`) the same way the real
-// `harden-ledger` CLI does, so a test can drive the composed
-// suppress-then-prune call site in `run()` without spawning a process.
+// A fake, stateful ledger over an in-memory store keyed on `finding_class`,
+// deciding through the same `isMaterialRise` the real ledger uses, so a test
+// can drive the composed suppress-then-prune call site in `run()` without a
+// ledger file. `ledger.test.ts` owns the proof of the real filter.
 const makeFakeLedger = (): FakeLedger => {
-  const store: FakeStore = new Map();
+  const store = new Map<
+    string,
+    {declined_at_audited_pr_count: number; declined_at_pr_count: number}
+  >();
+  const calls: FakeLedger['calls'] = {prune: []};
 
-  const runLedger = (argv: readonly string[]): ProcessResult => {
-    const [, subcommand] = argv;
+  return {
+    calls,
+    has: (findingClass) => store.has(findingClass),
+    ledger: {
+      check: (findingClass, currentPrCount, currentAuditedPrCount) => {
+        const entry = store.get(findingClass);
 
-    if (subcommand === 'record') {
-      fakeRecord(store, argv);
+        if (entry === undefined) {
+          return {reason: 'no_decline_entry', status: 'resurface'};
+        }
 
-      return {exitCode: 0, stderr: '', stdout: ''};
-    }
+        return (
+            isMaterialRise({
+              baseAuditedPrCount: entry.declined_at_audited_pr_count,
+              baseCount: entry.declined_at_pr_count,
+              liveAuditedPrCount: currentAuditedPrCount,
+              liveCount: currentPrCount,
+            })
+          ) ?
+            {reason: 'material_rise', status: 'resurface'}
+          : {status: 'suppressed'};
+      },
+      // Every key the window-classes set does not name is dropped, the
+      // classless fallback included.
+      prune: (windowClasses) => {
+        calls.prune.push(windowClasses);
 
-    if (subcommand === 'is-suppressed') {
-      return {exitCode: fakeIsSuppressed(store, argv), stderr: '', stdout: ''};
-    }
-
-    if (subcommand === 'prune') {
-      fakePrune(store, argv);
-
-      return {exitCode: 0, stderr: '', stdout: ''};
-    }
-
-    return {exitCode: 1, stderr: '', stdout: ''};
+        for (const findingClass of [...store.keys()].filter(
+          (key) => !windowClasses.includes(key)
+        )) {
+          store.delete(findingClass);
+        }
+      },
+    },
+    record: (findingClass, prCount, auditedPrCount) => {
+      store.set(findingClass, {
+        declined_at_audited_pr_count: auditedPrCount,
+        declined_at_pr_count: prCount,
+      });
+    },
   };
-
-  return {has: (findingClass) => store.has(findingClass), runLedger};
 };
 
 describe('harden-tally run', () => {
@@ -346,7 +317,7 @@ describe('harden-tally run', () => {
 
     const exit = run([], {
       cwd: sandbox.root,
-      runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
+      ledger: noDeclines,
     });
     expect(exit).toBe(0);
 
@@ -396,7 +367,7 @@ describe('harden-tally run', () => {
 
     run([], {
       cwd: sandbox.root,
-      runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
+      ledger: noDeclines,
     });
 
     const printed = parseStdout(stdout.out);
@@ -452,7 +423,7 @@ describe('harden-tally run', () => {
 
     run([], {
       cwd: sandbox.root,
-      runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
+      ledger: noDeclines,
     });
 
     const printed = parseStdout(stdout.out);
@@ -526,7 +497,7 @@ describe('harden-tally run', () => {
 
     run([], {
       cwd: sandbox.root,
-      runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
+      ledger: noDeclines,
     });
 
     const printed = parseStdout(stdout.out);
@@ -586,7 +557,7 @@ describe('harden-tally run', () => {
 
     run([], {
       cwd: sandbox.root,
-      runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
+      ledger: noDeclines,
     });
 
     const printed = parseStdout(stdout.out);
@@ -614,7 +585,7 @@ describe('harden-tally run', () => {
 
     run([], {
       cwd: sandbox.root,
-      runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
+      ledger: noDeclines,
     });
 
     expect(parseStdout(stdout.out).candidate_count).toBe(0);
@@ -635,7 +606,7 @@ describe('harden-tally run', () => {
 
     run([], {
       cwd: sandbox.root,
-      runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
+      ledger: noDeclines,
     });
 
     expect(parseStdout(stdout.out).candidate_count).toBe(0);
@@ -660,7 +631,7 @@ describe('harden-tally run', () => {
 
     run([], {
       cwd: sandbox.root,
-      runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
+      ledger: noDeclines,
     });
 
     const printed = parseStdout(stdout.out);
@@ -688,7 +659,7 @@ describe('harden-tally run', () => {
 
     run([], {
       cwd: sandbox.root,
-      runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
+      ledger: noDeclines,
     });
 
     const printed = parseStdout(stdout.out);
@@ -720,7 +691,7 @@ describe('harden-tally run', () => {
 
     run([], {
       cwd: sandbox.root,
-      runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
+      ledger: noDeclines,
     });
 
     expect(parseStdout(stdout.out).unclassified).toBeNull();
@@ -751,7 +722,7 @@ describe('harden-tally run', () => {
 
     run([], {
       cwd: sandbox.root,
-      runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
+      ledger: noDeclines,
     });
 
     expect(parseStdout(stdout.out).candidate_count).toBe(0);
@@ -776,7 +747,10 @@ describe('harden-tally run', () => {
     // Ledger says suppressed (exit 0): no candidate.
     run([], {
       cwd: sandbox.root,
-      runLedger: () => ({exitCode: 0, stderr: '', stdout: ''}),
+      ledger: {
+        check: () => ({status: 'suppressed'}),
+        prune: () => undefined,
+      },
     });
     expect(parseStdout(stdout.out).candidate_count).toBe(0);
 
@@ -784,10 +758,10 @@ describe('harden-tally run', () => {
     stdout.out.length = 0;
     run([], {
       cwd: sandbox.root,
-      runLedger: (argv) =>
-        argv.includes('is-suppressed') ?
-          {exitCode: 1, stderr: '', stdout: ''}
-        : {exitCode: 0, stderr: '', stdout: ''},
+      ledger: {
+        check: () => ({reason: 'material_rise', status: 'resurface'}),
+        prune: () => undefined,
+      },
     });
     expect(parseStdout(stdout.out).candidate_count).toBe(1);
   });
@@ -809,20 +783,89 @@ describe('harden-tally run', () => {
       )
     );
 
-    const ledgerCalls: string[][] = [];
-    run([], {
-      cwd: sandbox.root,
-      runLedger: (argv) => {
-        ledgerCalls.push([...argv]);
+    const fake = makeFakeLedger();
+    run([], {cwd: sandbox.root, ledger: fake.ledger});
 
-        return {exitCode: 1, stderr: '', stdout: ''};
-      },
-    });
+    expect(fake.calls.prune).toEqual([['axe/color-contrast']]);
+  });
 
-    const pruneCall = ledgerCalls.find((c) => c.includes('prune'));
-    expect(pruneCall).toBeDefined();
-    const idx = (pruneCall ?? []).indexOf('--window-classes');
-    expect((pruneCall ?? [])[idx + 1]).toBe('axe/color-contrast');
+  test('keeps an at-threshold class suppressed when the ledger is unreadable', () => {
+    vi.spyOn(runProcess, 'runGh').mockReturnValue(
+      stubGh(
+        [3, 2, 1].map((n) =>
+          ghPr(n, [
+            findingsComment(n, 'ci', [
+              {
+                area_tags: [],
+                finding_class: 'axe/color-contrast',
+                severity: 'warning',
+              },
+            ]),
+          ])
+        )
+      )
+    );
+
+    run([], {cwd: sandbox.root, ledger: unreadableLedger});
+    expect(parseStdout(stdout.out).candidate_count).toBe(0);
+
+    // The same window with a readable, empty ledger surfaces the class, so the
+    // zero above is the guard refusing and not an empty window.
+    stdout.out.length = 0;
+    run([], {cwd: sandbox.root, ledger: noDeclines});
+    expect(parseStdout(stdout.out).candidate_count).toBe(1);
+  });
+
+  test('suppresses every class and skips the prune when no repository root resolves', () => {
+    vi.spyOn(runProcess, 'runGh').mockReturnValue(
+      stubGh(
+        [3, 2, 1].map((n) =>
+          ghPr(n, [
+            findingsComment(n, 'ci', [
+              {
+                area_tags: [],
+                finding_class: 'axe/color-contrast',
+                severity: 'warning',
+              },
+            ]),
+          ])
+        )
+      )
+    );
+
+    // The sandbox is a bare directory, not a git repository.
+    run([], {cwd: sandbox.root});
+
+    expect(parseStdout(stdout.out).candidate_count).toBe(0);
+  });
+
+  test('reads a real ledger in process and writes nothing to stderr when a class re-surfaces', () => {
+    execFileSync('git', ['init', '-q', '-b', 'main'], {cwd: sandbox.root});
+    vi.spyOn(runProcess, 'runGh').mockReturnValue(
+      stubGh(
+        [3, 2, 1].map((n) =>
+          ghPr(n, [
+            findingsComment(n, 'ci', [
+              {
+                area_tags: [],
+                finding_class: 'axe/color-contrast',
+                severity: 'warning',
+              },
+            ]),
+          ])
+        )
+      )
+    );
+    const stderr = vi
+      .spyOn(process.stderr, 'write')
+      .mockImplementation(() => true);
+
+    // No decline entry for the class: the ledger answers `no_decline_entry`
+    // and the prune finds nothing to drop. Neither may print.
+    run([], {cwd: sandbox.root});
+
+    expect(parseStdout(stdout.out).candidate_count).toBe(1);
+    expect(stderr).not.toHaveBeenCalled();
   });
 
   test('leaves the ledger unpruned when the window read failed', () => {
@@ -833,28 +876,11 @@ describe('harden-tally run', () => {
     });
 
     const fake = makeFakeLedger();
-    fake.runLedger([
-      'harden-ledger',
-      'record',
-      '--finding-class',
-      'knip/exports',
-      '--pr-count',
-      '4',
-      '--audited-pr-count',
-      '4',
-    ]);
+    fake.record('knip/exports', 4, 4);
 
-    const ledgerCalls: string[][] = [];
-    run([], {
-      cwd: sandbox.root,
-      runLedger: (argv) => {
-        ledgerCalls.push([...argv]);
+    run([], {cwd: sandbox.root, ledger: fake.ledger});
 
-        return fake.runLedger(argv);
-      },
-    });
-
-    expect(ledgerCalls.find((call) => call.includes('prune'))).toBeUndefined();
+    expect(fake.calls.prune).toEqual([]);
     expect(fake.has('knip/exports')).toBe(true);
   });
 
@@ -867,7 +893,7 @@ describe('harden-tally run', () => {
 
     const exit = run([], {
       cwd: sandbox.root,
-      runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
+      ledger: noDeclines,
     });
     expect(exit).toBe(0);
 
@@ -882,7 +908,7 @@ describe('harden-tally run', () => {
 
     const exit = run([], {
       cwd: sandbox.root,
-      runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
+      ledger: noDeclines,
     });
     expect(exit).toBe(0);
 
@@ -910,22 +936,13 @@ describe('harden-tally run', () => {
 
     const fake = makeFakeLedger();
 
-    run([], {cwd: sandbox.root, runLedger: fake.runLedger});
+    run([], {cwd: sandbox.root, ledger: fake.ledger});
     expect(parseStdout(stdout.out).unclassified).not.toBeNull();
 
-    fake.runLedger([
-      'harden-ledger',
-      'record',
-      '--finding-class',
-      'holistic/unclassified',
-      '--pr-count',
-      '3',
-      '--audited-pr-count',
-      '3',
-    ]);
+    fake.record('holistic/unclassified', 3, 3);
 
     stdout.out.length = 0;
-    run([], {cwd: sandbox.root, runLedger: fake.runLedger});
+    run([], {cwd: sandbox.root, ledger: fake.ledger});
 
     expect(parseStdout(stdout.out).unclassified).toBeNull();
     expect(fake.has('holistic/unclassified')).toBe(true);
@@ -936,28 +953,19 @@ describe('harden-tally run', () => {
 
     // Suppress a classless cluster at a high-water count of 8.
     stubClasslessWindow([8, 7, 6, 5, 4, 3, 2, 1]);
-    run([], {cwd: sandbox.root, runLedger: fake.runLedger});
-    fake.runLedger([
-      'harden-ledger',
-      'record',
-      '--finding-class',
-      'holistic/unclassified',
-      '--pr-count',
-      '8',
-      '--audited-pr-count',
-      '8',
-    ]);
+    run([], {cwd: sandbox.root, ledger: fake.ledger});
+    fake.record('holistic/unclassified', 8, 8);
 
     // The cluster ages out of the window, taking its baseline with it.
     stubClasslessWindow([9]);
     stdout.out.length = 0;
-    run([], {cwd: sandbox.root, runLedger: fake.runLedger});
+    run([], {cwd: sandbox.root, ledger: fake.ledger});
     expect(fake.has('holistic/unclassified')).toBe(false);
 
     // A genuinely different classless cluster now surfaces at 3, not at 11.
     stubClasslessWindow([12, 11, 10]);
     stdout.out.length = 0;
-    run([], {cwd: sandbox.root, runLedger: fake.runLedger});
+    run([], {cwd: sandbox.root, ledger: fake.ledger});
 
     const unclassified = parseStdout(stdout.out).unclassified as Record<
       string,
@@ -988,7 +996,7 @@ describe('harden-tally run', () => {
 
     run([], {
       cwd: sandbox.root,
-      runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
+      ledger: noDeclines,
     });
 
     const printed = parseStdout(stdout.out);
@@ -1004,22 +1012,13 @@ describe('harden-tally run', () => {
     );
 
     const fake = makeFakeLedger();
-    fake.runLedger([
-      'harden-ledger',
-      'record',
-      '--finding-class',
-      'knip/exports',
-      '--pr-count',
-      '4',
-      '--audited-pr-count',
-      '4',
-    ]);
+    fake.record('knip/exports', 4, 4);
 
     const stderr = vi
       .spyOn(process.stderr, 'write')
       .mockImplementation(() => true);
 
-    const exit = run([], {cwd: sandbox.root, runLedger: fake.runLedger});
+    const exit = run([], {cwd: sandbox.root, ledger: fake.ledger});
     expect(exit).toBe(0);
 
     const printed = parseStdout(stdout.out);
@@ -1038,7 +1037,7 @@ describe('harden-tally run', () => {
 
     run([], {
       cwd: sandbox.root,
-      runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
+      ledger: noDeclines,
     });
 
     const args = ghSpy.mock.calls[0]?.[0] ?? [];
@@ -1080,7 +1079,7 @@ describe('harden-tally run', () => {
 
     run([], {
       cwd: sandbox.root,
-      runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
+      ledger: noDeclines,
     });
 
     const printed = parseStdout(stdout.out);
@@ -1101,7 +1100,7 @@ describe('harden-tally run', () => {
 
     run([], {
       cwd: sandbox.root,
-      runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
+      ledger: noDeclines,
     });
     const firstEmitted = ReviewTallyInputSchema.parse(parseStdout(stdout.out));
 
@@ -1113,7 +1112,7 @@ describe('harden-tally run', () => {
     stdout.out.length = 0;
     run([], {
       cwd: sandbox.root,
-      runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
+      ledger: noDeclines,
     });
 
     const printed = parseStdout(stdout.out);
@@ -1149,7 +1148,7 @@ describe('harden-tally run', () => {
 
     run([], {
       cwd: sandbox.root,
-      runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
+      ledger: noDeclines,
     });
     expect(parseStdout(stdout.out).triggers).toEqual([{type: 'schema_change'}]);
 
@@ -1162,7 +1161,7 @@ describe('harden-tally run', () => {
     stdout.out.length = 0;
     run([], {
       cwd: sandbox.root,
-      runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
+      ledger: noDeclines,
     });
     expect(parseStdout(stdout.out).triggers).toEqual([]);
 
@@ -1173,7 +1172,7 @@ describe('harden-tally run', () => {
     stdout.out.length = 0;
     run([], {
       cwd: sandbox.root,
-      runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
+      ledger: noDeclines,
     });
     expect(parseStdout(stdout.out).triggers).toEqual([{type: 'schema_change'}]);
 
@@ -1188,7 +1187,7 @@ describe('harden-tally run', () => {
     stdout.out.length = 0;
     run([], {
       cwd: sandbox.root,
-      runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
+      ledger: noDeclines,
     });
     expect(parseStdout(stdout.out).triggers).toEqual([]);
   });
@@ -1209,7 +1208,7 @@ describe('harden-tally run', () => {
 
       run([], {
         cwd: sandbox.root,
-        runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
+        ledger: noDeclines,
       });
 
       const printed = parseStdout(stdout.out);
@@ -1246,7 +1245,7 @@ describe('harden-tally run', () => {
 
     run([], {
       cwd: sandbox.root,
-      runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
+      ledger: noDeclines,
     });
 
     const printed = parseStdout(stdout.out);
@@ -1267,10 +1266,10 @@ describe('harden-tally run', () => {
     // JSON, and therefore absent from the snapshot built from it.
     run([], {
       cwd: sandbox.root,
-      runLedger: (argv) =>
-        argv.includes('is-suppressed') ?
-          {exitCode: 0, stderr: '', stdout: ''}
-        : {exitCode: 1, stderr: '', stdout: ''},
+      ledger: {
+        check: () => ({status: 'suppressed'}),
+        prune: () => undefined,
+      },
     });
     const suppressedEmitted = ReviewTallyInputSchema.parse(
       parseStdout(stdout.out)
@@ -1291,7 +1290,7 @@ describe('harden-tally run', () => {
     stdout.out.length = 0;
     run([], {
       cwd: sandbox.root,
-      runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
+      ledger: noDeclines,
     });
 
     expect(parseStdout(stdout.out).triggers).toEqual([

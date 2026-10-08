@@ -1,5 +1,5 @@
 /**
- * `gaia harden-ledger {list|record|is-suppressed|prune|snapshot}`
+ * `gaia harden-ledger {list|record|prune|snapshot}`
  *
  * The machine-local decline ledger CLI. When an engineer declines a hardening
  * candidate the decline is recorded only on their machine (gitignored), so it
@@ -12,10 +12,11 @@
  * `TALLY_SCHEMA_VERSION`, is legacy and never suppresses, because a raw count
  * with no denominator cannot be compared to a live share honestly.
  *
- * The tally refresher READS this surface (`is-suppressed`, `prune`); the
- * `/gaia-harden` command WRITES to it (`record`) on decline; a completed
- * review WRITES to the sibling `snapshot` verbs (dispatched to
- * `snapshot.ts`). All three bind to the verbs and exit-code semantics below.
+ * The tally refresher calls `checkDeclineSuppression` and `pruneDeclineLedger`
+ * in process; the `/gaia-harden` command WRITES to it (`record`) on decline; a
+ * completed review WRITES to the sibling `snapshot` verbs (dispatched to
+ * `snapshot.ts`). The two functions write nothing to stdout or stderr: the
+ * tally runs on every statusline refresh, so any output would land there.
  *
  * Ledger file: `.gaia/local/harden/declines.json` (gitignored). Schema and
  * atomic writer in `schemas/decline-ledger.ts`. The path is shared across the
@@ -45,13 +46,6 @@ const HELP_TEXT = `Usage: gaia harden-ledger <subcommand> [args]
     Upsert one bounded entry keyed by finding_class (re-record overwrites the
     timestamp, PR count, and audited-PR denominator). One entry per class.
     Stamps the entry with the live TALLY_SCHEMA_VERSION.
-
-  is-suppressed --finding-class <c> --current-pr-count <n> --current-audited-pr-count <d>
-    Exit 0 (suppressed) when an entry exists, is version-2-complete, was
-    recorded under the live TALLY_SCHEMA_VERSION, and the rise from its
-    snapshot to the current count/denominator is not material (see
-    material-rise.ts). Exit 1 (not suppressed) otherwise. Exit 2
-    (INVALID_ARGUMENTS) on a malformed call.
 
   prune --window-classes <c1,c2,...>
     Remove any decline entry whose finding_class is not in the comma-separated
@@ -101,17 +95,31 @@ const resolveRoot = (
 };
 
 /**
- * Read the ledger, translating the discriminated result into the in-memory
- * ledger or `null` on a malformed file (after surfacing a structured error).
- * A missing file resolves to the empty ledger.
+ * Read the ledger as the in-memory ledger or the read error. A missing file
+ * resolves to the empty ledger. Writes nothing; the caller owns reporting.
+ */
+const readLedger = (
+  repoRoot: string
+): {error: string} | {ledger: DeclineLedger} => {
+  const result = readDeclineLedger(repoRoot);
+
+  if (result.status === 'malformed') return {error: result.error};
+  if (result.status === 'missing') return {ledger: emptyDeclineLedger()};
+
+  return {ledger: result.ledger};
+};
+
+/**
+ * `readLedger` for a verb: a malformed file surfaces a structured error and
+ * yields `null`.
  */
 const loadLedger = (
   repoRoot: string,
   subcommand: string
 ): DeclineLedger | null => {
-  const result = readDeclineLedger(repoRoot);
+  const result = readLedger(repoRoot);
 
-  if (result.status === 'malformed') {
+  if ('error' in result) {
     structuredError({
       code: 'malformed_ledger',
       message: result.error,
@@ -120,8 +128,6 @@ const loadLedger = (
 
     return null;
   }
-
-  if (result.status === 'missing') return emptyDeclineLedger();
 
   return result.ledger;
 };
@@ -265,118 +271,45 @@ const handleRecord = (argv: readonly string[], options: RunOptions): number => {
   return EXIT_CODES.OK;
 };
 
-// --- is-suppressed -------------------------------------------------------
+// --- suppression check ----------------------------------------------------
 
-type IsSuppressedArgs = {
-  currentAuditedPrCount: number | undefined;
-  currentPrCount: number | undefined;
-  findingClass: string | undefined;
-};
-
-const parseIsSuppressedArgs = (
-  argv: readonly string[]
-): ParseResult<IsSuppressedArgs> => {
-  let findingClass: string | undefined;
-  let currentPrCount: number | undefined;
-  let currentAuditedPrCount: number | undefined;
-
-  for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index];
-
-    if (token === '--finding-class') {
-      findingClass = argv[index + 1];
-      index += 1;
-    } else if (token === '--current-pr-count') {
-      currentPrCount = parseCountFlag(argv[index + 1]);
-      index += 1;
-    } else if (token === '--current-audited-pr-count') {
-      currentAuditedPrCount = parseCountFlag(argv[index + 1]);
-      index += 1;
-    } else {
-      return {error: `unknown argument: ${token}`};
+export type DeclineSuppression =
+  | {error: string; status: 'unreadable'}
+  | {
+      reason:
+        | 'legacy_entry'
+        | 'material_rise'
+        | 'no_decline_entry'
+        | 'schema_version_mismatch';
+      status: 'resurface';
     }
-  }
+  | {status: 'suppressed'};
 
-  return {value: {currentAuditedPrCount, currentPrCount, findingClass}};
-};
+/**
+ * Whether a declined class stays suppressed at the live counts. A corrupt
+ * ledger is `unreadable`, never `resurface`, so the caller can fail closed.
+ */
+export const checkDeclineSuppression = ({
+  currentAuditedPrCount,
+  currentPrCount,
+  findingClass,
+  repoRoot,
+}: {
+  currentAuditedPrCount: number;
+  currentPrCount: number;
+  findingClass: string;
+  repoRoot: string;
+}): DeclineSuppression => {
+  const result = readLedger(repoRoot);
 
-const handleIsSuppressed = (
-  argv: readonly string[],
-  options: RunOptions
-): number => {
-  const parsed = parseIsSuppressedArgs(argv);
+  if ('error' in result) return {error: result.error, status: 'unreadable'};
 
-  if ('error' in parsed) {
-    structuredError({
-      code: 'invalid_arguments',
-      message: parsed.error,
-      subcommand: 'harden-ledger is-suppressed',
-    });
-
-    return EXIT_CODES.INVALID_ARGUMENTS;
-  }
-
-  const {currentAuditedPrCount, currentPrCount, findingClass} = parsed.value;
-
-  if (findingClass === undefined || findingClass === '') {
-    structuredError({
-      code: 'invalid_arguments',
-      message: 'harden-ledger is-suppressed requires --finding-class <c>',
-      subcommand: 'harden-ledger is-suppressed',
-    });
-
-    return EXIT_CODES.INVALID_ARGUMENTS;
-  }
-
-  if (currentPrCount === undefined) {
-    structuredError({
-      code: 'invalid_arguments',
-      message:
-        'harden-ledger is-suppressed requires --current-pr-count <n> (non-negative integer)',
-      subcommand: 'harden-ledger is-suppressed',
-    });
-
-    return EXIT_CODES.INVALID_ARGUMENTS;
-  }
-
-  if (currentAuditedPrCount === undefined) {
-    structuredError({
-      code: 'invalid_arguments',
-      message:
-        'harden-ledger is-suppressed requires --current-audited-pr-count <d> (non-negative integer)',
-      subcommand: 'harden-ledger is-suppressed',
-    });
-
-    return EXIT_CODES.INVALID_ARGUMENTS;
-  }
-
-  const repoRoot = resolveRoot(options, 'is-suppressed');
-
-  if (repoRoot === null) return EXIT_CODES.STORAGE_INACCESSIBLE;
-
-  const ledger = loadLedger(repoRoot, 'is-suppressed');
-
-  // Fail loud on a corrupt file rather than treating it as empty (which would
-  // wrongly re-surface a declined candidate).
-  if (ledger === null) return EXIT_CODES.CONFIG_INVALID;
-
-  const notSuppressed = (reason: string): number => {
-    structuredError({
-      code: 'not_suppressed',
-      finding_class: findingClass,
-      reason,
-    });
-
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  };
-
-  const entry = ledger.declines.find(
+  const entry = result.ledger.declines.find(
     (decline) => decline.finding_class === findingClass
   );
 
-  // No entry: not suppressed (re-surface).
   if (entry === undefined) {
-    return notSuppressed('no_decline_entry');
+    return {reason: 'no_decline_entry', status: 'resurface'};
   }
 
   // A legacy entry (recorded before the denominator existed, or read from a
@@ -386,7 +319,7 @@ const handleIsSuppressed = (
     entry.declined_at_audited_pr_count === undefined ||
     entry.tally_schema_version === undefined
   ) {
-    return notSuppressed('legacy_entry');
+    return {reason: 'legacy_entry', status: 'resurface'};
   }
 
   // An entry recorded under a different tally schema version was measured
@@ -394,24 +327,51 @@ const handleIsSuppressed = (
   // recurrence threshold, or audited-PR predicate), so its stored count is
   // not comparable to the live one.
   if (entry.tally_schema_version !== TALLY_SCHEMA_VERSION) {
-    return notSuppressed('schema_version_mismatch');
+    return {reason: 'schema_version_mismatch', status: 'resurface'};
   }
 
-  const suppressed = !isMaterialRise({
+  const materialRise = isMaterialRise({
     baseAuditedPrCount: entry.declined_at_audited_pr_count,
     baseCount: entry.declined_at_pr_count,
     liveAuditedPrCount: currentAuditedPrCount,
     liveCount: currentPrCount,
   });
 
-  if (!suppressed) {
-    return notSuppressed('material_rise');
-  }
+  if (materialRise) return {reason: 'material_rise', status: 'resurface'};
 
-  return EXIT_CODES.OK;
+  return {status: 'suppressed'};
 };
 
 // --- prune ---------------------------------------------------------------
+
+/**
+ * Drops every decline whose class is not in `windowClasses`; returns the read
+ * error for a corrupt ledger and writes nothing in that case.
+ */
+export const pruneDeclineLedger = ({
+  repoRoot,
+  windowClasses,
+}: {
+  repoRoot: string;
+  windowClasses: readonly string[];
+}): {error: string} | {pruned: boolean} => {
+  const result = readLedger(repoRoot);
+
+  if ('error' in result) return {error: result.error};
+
+  const {ledger} = result;
+  const keep = new Set(windowClasses);
+  const kept = ledger.declines.filter((decline) =>
+    keep.has(decline.finding_class)
+  );
+
+  // Idempotent: only write when the prune actually removes an entry.
+  if (kept.length === ledger.declines.length) return {pruned: false};
+
+  writeDeclineLedger(repoRoot, {...ledger, declines: kept});
+
+  return {pruned: true};
+};
 
 const parsePruneArgs = (
   argv: readonly string[]
@@ -462,24 +422,22 @@ const handlePrune = (argv: readonly string[], options: RunOptions): number => {
 
   if (repoRoot === null) return EXIT_CODES.STORAGE_INACCESSIBLE;
 
-  const ledger = loadLedger(repoRoot, 'prune');
-
-  if (ledger === null) return EXIT_CODES.CONFIG_INVALID;
-
-  const keep = new Set(
-    windowClasses
+  const outcome = pruneDeclineLedger({
+    repoRoot,
+    windowClasses: windowClasses
       .split(',')
       .map((value) => value.trim())
-      .filter((value) => value.length > 0)
-  );
+      .filter((value) => value.length > 0),
+  });
 
-  const kept = ledger.declines.filter((decline) =>
-    keep.has(decline.finding_class)
-  );
+  if ('error' in outcome) {
+    structuredError({
+      code: 'malformed_ledger',
+      message: outcome.error,
+      subcommand: 'harden-ledger prune',
+    });
 
-  // Idempotent: only write when the prune actually removes an entry.
-  if (kept.length !== ledger.declines.length) {
-    writeDeclineLedger(repoRoot, {...ledger, declines: kept});
+    return EXIT_CODES.CONFIG_INVALID;
   }
 
   return EXIT_CODES.OK;
@@ -501,7 +459,6 @@ export const run = (
 
   if (sub === 'list') return handleList(rest, options);
   if (sub === 'record') return handleRecord(rest, options);
-  if (sub === 'is-suppressed') return handleIsSuppressed(rest, options);
   if (sub === 'prune') return handlePrune(rest, options);
   if (sub === 'snapshot') return runSnapshot(rest, options);
 

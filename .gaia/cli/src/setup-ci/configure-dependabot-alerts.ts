@@ -22,7 +22,7 @@
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
-import {runGh} from './util/gh.js';
+import {runGhAsync} from '../util/run-process.js';
 
 const SUBCOMMAND = 'setup-ci configure-dependabot-alerts';
 
@@ -149,14 +149,14 @@ const configureAndVerify = async (
   const alertsPath = `repos/${owner}/${repo}/vulnerability-alerts`;
   const fixesPath = `repos/${owner}/${repo}/automated-security-fixes`;
 
-  const enableAlerts = await runGh({
+  const enableAlerts = await runGhAsync({
     args: ['api', '-X', 'PUT', alertsPath],
     cwd,
   });
 
   if (!enableAlerts.ok) return fail('enable_alerts', state, target);
 
-  const readFixes = await runGh({args: ['api', fixesPath], cwd});
+  const readFixes = await runGhAsync({args: ['api', fixesPath], cwd});
 
   if (!readFixes.ok) return fail('read_security_fixes', state, target);
 
@@ -170,7 +170,7 @@ const configureAndVerify = async (
   state.fixesEnabled = fixesBefore;
 
   if (fixesBefore) {
-    const disableFixes = await runGh({
+    const disableFixes = await runGhAsync({
       args: ['api', '-X', 'DELETE', fixesPath],
       cwd,
     });
@@ -182,7 +182,7 @@ const configureAndVerify = async (
     state.changed.push(FIXES_DISABLED_CHANGE);
   }
 
-  const verifyAlerts = await runGh({args: ['api', alertsPath], cwd});
+  const verifyAlerts = await runGhAsync({args: ['api', alertsPath], cwd});
 
   if (!verifyAlerts.ok) {
     state.alertsEnabled = false;
@@ -190,7 +190,7 @@ const configureAndVerify = async (
     return fail('verify_alerts', state, target);
   }
 
-  const verifyFixes = await runGh({args: ['api', fixesPath], cwd});
+  const verifyFixes = await runGhAsync({args: ['api', fixesPath], cwd});
   const fixesAfter = verifyFixes.ok ? parseEnabled(verifyFixes.stdout) : null;
 
   state.fixesEnabled = fixesAfter;
