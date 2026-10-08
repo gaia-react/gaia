@@ -14,13 +14,12 @@
  * template needs nested sections, simplify the template instead of growing the
  * engine. See task-scaffold-shared.md ("Template engine").
  */
-import {readFileSync} from 'node:fs';
+import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 export type TemplateVars = Record<string, boolean | string | string[]>;
 
-const TEMPLATES_DIRECTORY_NAME = 'templates';
 // The negative lookbehind on `$` keeps `${{ ... }}` GitHub Actions
 // expressions intact in a template that carries them. Scalars and sections
 // never need a leading `$`, so the constraint is harmless for the scaffolder
@@ -118,19 +117,38 @@ export const substituteVars = (raw: string, vars: TemplateVars): string => {
  * that omitted sections never leak unfilled `{{var}}` placeholders.
  */
 export const renderTemplate = (
-  templatePath: string,
+  templateFile: string,
   vars: TemplateVars
-): string => substituteVars(readFileSync(templatePath, 'utf8'), vars);
+): string => substituteVars(readFileSync(templateFile, 'utf8'), vars);
 
-const resolveTemplatesDirectory = (): string => {
-  const here = fileURLToPath(import.meta.url);
+/**
+ * Absolute path of the shipped `.gaia/cli/templates` tree, from source and from
+ * the bundled binary.
+ *
+ * Call it inside function bodies only: the bundled binary runs from copies
+ * without `templates/` beside it, and this throws when no tree exists.
+ */
+export const scaffoldTemplatesDirectory = (): string => {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  // The bundle sits at `.gaia/cli/gaia`, source at `.gaia/cli/src/scaffold/`.
+  const candidates = [
+    path.join(here, 'templates'),
+    path.resolve(here, '..', '..', 'templates'),
+  ];
+  const found = candidates.find((candidate) => existsSync(candidate));
 
-  return path.join(path.dirname(here), TEMPLATES_DIRECTORY_NAME);
+  if (found === undefined) {
+    throw new Error(
+      `scaffold templates directory not found; tried ${candidates.join(' and ')}`
+    );
+  }
+
+  return found;
 };
 
 /** Absolute path of a template under the scaffold templates directory. */
 export const templatePath = (name: string): string =>
-  path.join(resolveTemplatesDirectory(), name);
+  path.join(scaffoldTemplatesDirectory(), name);
 
 /**
  * Resolve a template path under the scaffold templates directory, then read

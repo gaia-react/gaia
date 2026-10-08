@@ -67,7 +67,7 @@ The tag push triggers [`release.yml`](../../.github/workflows/release.yml), whic
 
 The scrubbed `wiki/log.md` contains only the release marker; none of GAIA's internal change history.
 
-Three staleness gates run ahead of the tarball build so a stale committed artifact cannot ship silently: a binary rebuild-freshness check byte-compares the committed `.gaia/cli/gaia`/`gaia-maintainer` against a fresh bundle from source; a templates freshness check snapshots committed `.gaia/cli/templates/` before the bundle, regenerates from source, and `diff -rq`s the two, since template content resolves at runtime via `import.meta.url` and never enters the bundled binary, so the byte-compare alone cannot catch a stale committed template; and `gaia-maintainer release scrub-wiki --check` compares committed `wiki/log.md` against fresh-rendered release-clean output (dates normalized out of the comparison) and exits non-zero on drift without rendering anything, so a skipped scrub can no longer ship a stale wiki. Any gate failing halts the release before the tarball builds.
+Two staleness gates run ahead of the tarball build so a stale committed artifact cannot ship silently: a binary rebuild-freshness check byte-compares the committed `.gaia/cli/gaia`/`gaia-maintainer` against a fresh bundle from source; and `gaia-maintainer release scrub-wiki --check` compares committed `wiki/log.md` against fresh-rendered release-clean output (dates normalized out of the comparison) and exits non-zero on drift without rendering anything, so a skipped scrub can no longer ship a stale wiki. Any gate failing halts the release before the tarball builds.
 
 ### Bundle-time enforcement
 

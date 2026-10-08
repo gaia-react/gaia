@@ -6,7 +6,7 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
-// src/index.maintainer.ts
+// src/util/router.ts
 import { realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
@@ -34,11 +34,50 @@ var takeValue = (argv, index, flag) => {
     return { message: `${flag} requires a value`, ok: false };
   return { ok: true, value };
 };
+var takeNonFlagValue = (argv, index, flag) => {
+  const value = argv.at(index);
+  if (value === void 0 || value.startsWith("--"))
+    return { message: `${flag} requires a value`, ok: false };
+  return { ok: true, value };
+};
 
-// src/release/bump.ts
-import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
-import path from "node:path";
+// src/util/router.ts
+var HELP_TOKENS = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var createSubcommandRouter = (options) => async (argv) => {
+  const subcommand = argv[0];
+  const rest = argv.slice(1);
+  if (subcommand === void 0 || HELP_TOKENS.has(subcommand)) {
+    process.stdout.write(options.helpText);
+    return EXIT_CODES.OK;
+  }
+  const handler = lookupOwn(options.handlers, subcommand);
+  if (handler !== void 0) {
+    const result = await handler(rest);
+    return typeof result === "number" ? result : EXIT_CODES.OK;
+  }
+  structuredError({ code: "unknown_subcommand", subcommand });
+  return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+};
+var runWhenInvokedDirectly = async (importMetaUrl, run15) => {
+  const invokedPath = process.argv[1];
+  const isDirectRun = invokedPath !== void 0 && importMetaUrl === pathToFileURL(realpathSync(invokedPath)).href;
+  if (!isDirectRun) {
+    return;
+  }
+  try {
+    process.exitCode = await run15(process.argv.slice(2));
+  } catch (error51) {
+    structuredError({
+      code: "cli_internal_error",
+      message: error51 instanceof Error ? error51.message : String(error51)
+    });
+    process.exitCode = EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+};
+
+// src/labels/docs.ts
+import { readFileSync as readFileSync2 } from "node:fs";
+import path2 from "node:path";
 
 // src/util/atomic-write.ts
 import { randomBytes } from "node:crypto";
@@ -71,845 +110,13 @@ var atomicWriteFileSync = (filePath, data, options) => {
   }
 };
 
-// src/util/conventional-commit.ts
-var COMMIT_TYPES = [
-  "build",
-  "chore",
-  "ci",
-  "debt",
-  "docs",
-  "feat",
-  "fix",
-  "perf",
-  "refactor",
-  "revert",
-  "style",
-  "test",
-  "wiki"
-];
-var HEADER_PATTERN = /^(?<type>[a-z]+)(?:\((?<scope>[^)]*)\))?(?<breaking>!?):/u;
-var parseConventionalCommitHeader = (subject) => {
-  const trimmed = subject.trim();
-  const match = HEADER_PATTERN.exec(trimmed);
-  if (match?.groups === void 0) return void 0;
-  const { breaking, scope, type: type2 } = match.groups;
-  if (type2 === void 0) return void 0;
-  return {
-    breaking: breaking === "!",
-    rest: trimmed.slice(match[0].length).trim(),
-    scope,
-    type: type2
-  };
-};
-var isCommitType = (type2) => COMMIT_TYPES.includes(type2);
+// src/util/git-env.ts
+import { execFileSync } from "node:child_process";
 
 // src/util/git-buffer.ts
 var MAX_GIT_BUFFER_BYTES = 64 * 1024 * 1024;
 
-// src/release/bump.ts
-var HELP_TEXT = `Usage: gaia-maintainer release bump [--auto]
-
-  Compute the next semver bump from conventional-commit subjects since
-  the last tag. Without --auto, prints the proposal. With --auto, writes
-  package.json and .gaia/VERSION.
-
-  Exit codes:
-    0  success
-    1  user-correctable error (no commits, malformed package.json)
-    2  unexpected (git failure)
-`;
-var HELP_TOKENS = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
-var UNEXPECTED_EXIT = 2;
-var defaultRunner = (command, args, options) => spawnSync(command, args, {
-  cwd: options.cwd,
-  encoding: "utf8",
-  maxBuffer: MAX_GIT_BUFFER_BYTES,
-  stdio: ["ignore", "pipe", "pipe"]
-});
-var parseFlags = (argv) => {
-  let auto = false;
-  for (const token of argv) {
-    if (token === "--auto") {
-      auto = true;
-    } else {
-      return { message: `unknown flag: ${token}`, ok: false };
-    }
-  }
-  return { flags: { auto }, ok: true };
-};
-var TYPE_TO_BUMP = {
-  build: "patch",
-  chore: "patch",
-  ci: "patch",
-  debt: "patch",
-  docs: "patch",
-  feat: "minor",
-  fix: "patch",
-  perf: "patch",
-  refactor: "patch",
-  // A revert changes released behavior, so it has to ship. Kept at `patch`
-  // rather than inferred from what it undoes: reverting a `feat` arguably
-  // warrants more, and a revert that genuinely removes a shipped capability
-  // carries the `!` marker, which already outranks this table.
-  revert: "patch",
-  style: "patch",
-  test: "patch",
-  wiki: null
-};
-var classifyCommit = (commit) => {
-  const { body, subject } = commit;
-  if (/(^|\n)BREAKING CHANGE: /u.test(body)) return "major";
-  const header = parseConventionalCommitHeader(subject);
-  if (header === void 0) return null;
-  const { breaking, type: type2 } = header;
-  if (breaking) return "major";
-  if (!isCommitType(type2)) return null;
-  return TYPE_TO_BUMP[type2];
-};
-var RANK = { major: 3, minor: 2, patch: 1 };
-var aggregateBump = (commits) => {
-  let highest = null;
-  for (const commit of commits) {
-    const classified = classifyCommit(commit);
-    if (classified !== null && (highest === null || RANK[classified] > RANK[highest])) {
-      highest = classified;
-    }
-  }
-  return highest;
-};
-var applyBump = (current, kind) => {
-  const parts = current.split(".").map((segment) => Number.parseInt(segment, 10));
-  if (parts.length !== 3 || parts.some((value) => Number.isNaN(value))) {
-    throw new Error(`current version is not semver: "${current}"`);
-  }
-  const [major, minor, patch] = parts;
-  if (kind === "major") return `${major + 1}.0.0`;
-  if (kind === "minor") return `${major}.${minor + 1}.0`;
-  return `${major}.${minor}.${patch + 1}`;
-};
-var expectSuccess = (result, command, args) => {
-  if (result.error !== void 0) {
-    throw new Error(
-      `${command} ${args.join(" ")} failed: ${result.error.message}`
-    );
-  }
-  if ((result.status ?? -1) !== 0) {
-    const stderr = result.stderr.trim();
-    throw new Error(
-      `${command} ${args.join(" ")} exited ${result.status ?? -1}: ${stderr}`
-    );
-  }
-  return result.stdout;
-};
-var tryRun = ({ args, command, cwd, runner }) => {
-  const result = runner(command, args, { cwd });
-  if (result.error !== void 0 || (result.status ?? -1) !== 0) return null;
-  return result.stdout;
-};
-var RECORD_SEPARATOR = "---END-COMMIT---";
-var collectCommits = (cwd, runner, range) => {
-  const out = expectSuccess(
-    runner(
-      "git",
-      ["log", "--no-merges", `--format=%s%n%b%n${RECORD_SEPARATOR}`, range],
-      { cwd }
-    ),
-    "git",
-    ["log"]
-  );
-  const commits = [];
-  for (const chunk of out.split(RECORD_SEPARATOR)) {
-    const trimmed = chunk.trim();
-    if (trimmed !== "") {
-      const lines = trimmed.split("\n");
-      const subject = lines[0] ?? "";
-      const body = lines.slice(1).join("\n");
-      commits.push({ body, subject });
-    }
-  }
-  return commits;
-};
-var lastTag = (cwd, runner) => {
-  const out = tryRun({
-    args: ["describe", "--tags", "--abbrev=0"],
-    command: "git",
-    cwd,
-    runner
-  });
-  if (out === null) return null;
-  const trimmed = out.trim();
-  if (trimmed.length === 0) return null;
-  return trimmed;
-};
-var readPackageJson = (cwd) => {
-  const target = path.join(cwd, "package.json");
-  if (!existsSync(target)) {
-    throw new Error("package.json not found at repo root");
-  }
-  const raw = readFileSync(target, "utf8");
-  const parsed = JSON.parse(raw);
-  if (typeof parsed.version !== "string") {
-    throw new TypeError('package.json has no string "version"');
-  }
-  return { path: target, raw, version: parsed.version };
-};
-var writePackageJsonVersion = (packagePath, raw, newVersion) => {
-  const replaced = raw.replace(
-    /"version"\s*:\s*"[^"]+"/u,
-    `"version": "${newVersion}"`
-  );
-  if (replaced === raw) {
-    throw new Error('failed to rewrite "version" field in package.json');
-  }
-  atomicWriteFileSync(packagePath, replaced);
-};
-var PACKAGE_VERSION_FILES = ["frontend/package.json"];
-var writePackageVersions = (cwd, newVersion) => {
-  for (const relative of PACKAGE_VERSION_FILES) {
-    const target = path.join(cwd, relative);
-    if (existsSync(target)) {
-      writePackageJsonVersion(target, readFileSync(target, "utf8"), newVersion);
-    }
-  }
-};
-var writeVersionFile = (cwd, newVersion) => {
-  const target = path.join(cwd, ".gaia", "VERSION");
-  if (!existsSync(target)) return;
-  const original = readFileSync(target, "utf8");
-  const trailing = original.endsWith("\n") ? "\n" : "";
-  atomicWriteFileSync(target, `${newVersion}${trailing}`);
-};
-var tryReadPackageJsonOrReport = (cwd) => {
-  try {
-    return readPackageJson(cwd);
-  } catch (error51) {
-    structuredError({
-      code: "package_json_invalid",
-      message: error51 instanceof Error ? error51.message : String(error51),
-      subcommand: "release bump"
-    });
-    return null;
-  }
-};
-var tryCollectCommitsOrReport = (cwd, runner, range) => {
-  try {
-    return collectCommits(cwd, runner, range);
-  } catch (error51) {
-    process.stderr.write(
-      `bump: ${error51 instanceof Error ? error51.message : String(error51)}
-`
-    );
-    return null;
-  }
-};
-var tryApplyBumpOrReport = (version2, kind) => {
-  try {
-    return applyBump(version2, kind);
-  } catch (error51) {
-    structuredError({
-      code: "invalid_version",
-      message: error51 instanceof Error ? error51.message : String(error51),
-      subcommand: "release bump"
-    });
-    return null;
-  }
-};
-var tryWriteVersionOrReport = (pkg, cwd, nextVersion) => {
-  try {
-    writePackageJsonVersion(pkg.path, pkg.raw, nextVersion);
-    writePackageVersions(cwd, nextVersion);
-    writeVersionFile(cwd, nextVersion);
-    return true;
-  } catch (error51) {
-    structuredError({
-      code: "version_write_failed",
-      message: error51 instanceof Error ? error51.message : String(error51),
-      subcommand: "release bump"
-    });
-    return false;
-  }
-};
-var run = (argv, options = {}) => {
-  const [firstArgument] = argv;
-  if (firstArgument !== void 0 && HELP_TOKENS.has(firstArgument)) {
-    process.stdout.write(HELP_TEXT);
-    return EXIT_CODES.OK;
-  }
-  const parsed = parseFlags(argv);
-  if (!parsed.ok) {
-    structuredError({
-      code: "invalid_arguments",
-      message: parsed.message,
-      subcommand: "release bump"
-    });
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  }
-  const cwd = options.cwd ?? process.cwd();
-  const runner = options.runner ?? defaultRunner;
-  const pkg = tryReadPackageJsonOrReport(cwd);
-  if (pkg === null) return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  const tag = lastTag(cwd, runner);
-  const range = tag === null ? "HEAD" : `${tag}..HEAD`;
-  const commits = tryCollectCommitsOrReport(cwd, runner, range);
-  if (commits === null) return UNEXPECTED_EXIT;
-  if (commits.length === 0) {
-    process.stderr.write("bump: no commits since last tag; nothing to bump\n");
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  }
-  const kind = aggregateBump(commits);
-  if (kind === null) {
-    process.stderr.write(
-      "bump: no conventional-commit prefixes found; cannot determine bump\n"
-    );
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  }
-  const nextVersion = tryApplyBumpOrReport(pkg.version, kind);
-  if (nextVersion === null) return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  if (!parsed.flags.auto) {
-    process.stdout.write(`v${pkg.version} -> v${nextVersion} (${kind})
-`);
-    return EXIT_CODES.OK;
-  }
-  if (kind === "major") {
-    process.stderr.write(
-      `bump: major bump detected (v${pkg.version} -> v${nextVersion}); refusing --auto without explicit confirmation
-`
-    );
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  }
-  if (!tryWriteVersionOrReport(pkg, cwd, nextVersion)) return UNEXPECTED_EXIT;
-  process.stdout.write(`${nextVersion}
-`);
-  return EXIT_CODES.OK;
-};
-
-// src/release/changelog.ts
-import { spawnSync as spawnSync2 } from "node:child_process";
-import { existsSync as existsSync2, readFileSync as readFileSync2 } from "node:fs";
-import path2 from "node:path";
-var HELP_TEXT2 = `Usage: gaia-maintainer release changelog [--draft] [--version <X.Y.Z>]
-
-  Graduate the hand-written \`## [Unreleased]\` block to
-  \`## [X.Y.Z] - YYYY-MM-DD\` and open a fresh empty one above it.
-
-  Flags:
-    --draft               Render a block from conventional-commit subjects
-                          since the last tag to stdout and write nothing.
-                          A review aid: fold anything it shows that the
-                          Unreleased block is missing in by hand.
-    --version <X.Y.Z>     Override the new version (default: package.json).
-
-  Exit codes:
-    0  success
-    1  user-correctable error
-    2  unexpected (git failure)
-`;
-var HELP_TOKENS2 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
-var UNEXPECTED_EXIT2 = 2;
-var defaultRunner2 = (command, args, options) => spawnSync2(command, args, {
-  cwd: options.cwd,
-  encoding: "utf8",
-  maxBuffer: MAX_GIT_BUFFER_BYTES,
-  stdio: ["ignore", "pipe", "pipe"]
-});
-var parseFlags2 = (argv) => {
-  let draft = false;
-  let version2;
-  for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index];
-    if (token === "--draft") {
-      draft = true;
-    } else if (token === "--version") {
-      const taken = takeValue(argv, index + 1, "--version");
-      if (!taken.ok) return taken;
-      version2 = taken.value;
-      index += 1;
-    } else {
-      return { message: `unknown flag: ${token}`, ok: false };
-    }
-  }
-  return { flags: { draft, version: version2 }, ok: true };
-};
-var TYPE_TO_SECTION = {
-  build: null,
-  chore: null,
-  ci: null,
-  debt: "Fixed",
-  docs: "Changed",
-  feat: "Added",
-  fix: "Fixed",
-  perf: "Changed",
-  refactor: "Changed",
-  revert: "Fixed",
-  style: null,
-  test: null,
-  wiki: null
-};
-var groupCommits = (commits) => {
-  const sections = { Added: [], Changed: [], Fixed: [] };
-  for (const commit of commits) {
-    const header = parseConventionalCommitHeader(commit.subject);
-    if (header !== void 0 && isCommitType(header.type)) {
-      const target = TYPE_TO_SECTION[header.type];
-      if (target && header.rest.length > 0) {
-        sections[target].push(header.rest);
-      }
-    }
-  }
-  return sections;
-};
-var todayUtc = (now = /* @__PURE__ */ new Date()) => {
-  const year = now.getUTCFullYear();
-  const month = String(now.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(now.getUTCDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-};
-var renderBlock = (sections) => {
-  const lines = [];
-  const order = ["Added", "Changed", "Fixed"];
-  for (const section of order) {
-    const items = sections[section];
-    if (items.length > 0) {
-      lines.push(`### ${section}`, "");
-      for (const item of items) lines.push(`- ${item}`);
-      lines.push("");
-    }
-  }
-  let joined = lines.join("\n");
-  while (joined.endsWith("\n\n")) joined = joined.slice(0, -1);
-  return joined;
-};
-var RECORD_SEPARATOR2 = "---END-COMMIT---";
-var collectCommits2 = (cwd, runner, range) => {
-  const result = runner(
-    "git",
-    ["log", "--no-merges", `--format=%s%n%b%n${RECORD_SEPARATOR2}`, range],
-    { cwd }
-  );
-  if (result.error !== void 0) {
-    throw new Error(`git log failed: ${result.error.message}`);
-  }
-  if ((result.status ?? -1) !== 0) {
-    const stderr = result.stderr.trim();
-    throw new Error(`git log exited ${result.status ?? -1}: ${stderr}`);
-  }
-  const out = result.stdout;
-  const commits = [];
-  for (const chunk of out.split(RECORD_SEPARATOR2)) {
-    const trimmed = chunk.trim();
-    if (trimmed !== "") {
-      const lines = trimmed.split("\n");
-      const subject = lines[0] ?? "";
-      const body = lines.slice(1).join("\n");
-      commits.push({ body, subject });
-    }
-  }
-  return commits;
-};
-var lastTag2 = (cwd, runner) => {
-  const result = runner("git", ["describe", "--tags", "--abbrev=0"], { cwd });
-  if (result.error !== void 0) return null;
-  if ((result.status ?? -1) !== 0) return null;
-  const out = result.stdout.trim();
-  if (out.length === 0) return null;
-  return out;
-};
-var readVersion = (cwd, override) => {
-  if (override !== void 0 && override.length > 0) return override;
-  const target = path2.join(cwd, "package.json");
-  if (!existsSync2(target)) {
-    throw new Error("package.json not found at repo root");
-  }
-  const parsed = JSON.parse(readFileSync2(target, "utf8"));
-  if (typeof parsed.version !== "string") {
-    throw new TypeError('package.json has no string "version"');
-  }
-  return parsed.version;
-};
-var UNRELEASED_HEADING = "## [Unreleased]";
-var GRADUATE_REFUSALS = {
-  "empty-unreleased": {
-    code: "empty_unreleased_section",
-    message: "CHANGELOG.md has an empty `## [Unreleased]` section; write the release entries under it before graduating (`release changelog --draft` renders a starting point)"
-  },
-  "no-unreleased": {
-    code: "no_unreleased_section",
-    message: "CHANGELOG.md has no `## [Unreleased]` heading to graduate"
-  }
-};
-var UNRELEASED_REF_PREFIX = "[Unreleased]:";
-var updateLinkReferences = (body, newVersion) => {
-  const lines = body.split("\n");
-  const refIndex = lines.findIndex(
-    (line) => line.startsWith(UNRELEASED_REF_PREFIX)
-  );
-  if (refIndex === -1) {
-    return body;
-  }
-  const target = (lines[refIndex] ?? "").slice(UNRELEASED_REF_PREFIX.length).trim();
-  const compareIndex = target.indexOf("/compare/");
-  if (compareIndex === -1) {
-    return body;
-  }
-  const baseUrl = target.slice(0, compareIndex);
-  lines.splice(
-    refIndex,
-    1,
-    `${UNRELEASED_REF_PREFIX} ${baseUrl}/compare/v${newVersion}...HEAD`,
-    `[${newVersion}]: ${baseUrl}/releases/tag/v${newVersion}`
-  );
-  return lines.join("\n");
-};
-var LINK_DEFINITION = /^\[[^\]]+\]:/u;
-var hasUnreleasedEntries = (lines, unreleasedIndex) => {
-  for (const line of lines.slice(unreleasedIndex + 1)) {
-    if (line.startsWith("## ") || LINK_DEFINITION.test(line)) return false;
-    if (line.trim() !== "") return true;
-  }
-  return false;
-};
-var graduateChangelog = ({
-  current,
-  newVersion,
-  today
-}) => {
-  const versionHeading = `## [${newVersion}] - ${today}`;
-  if (current.includes(`## [${newVersion}]`)) {
-    return { kind: "duplicate" };
-  }
-  const lines = current.split("\n");
-  const unreleasedIndex = lines.findIndex(
-    (line) => line.trim() === UNRELEASED_HEADING
-  );
-  if (unreleasedIndex === -1) {
-    return { kind: "no-unreleased" };
-  }
-  if (!hasUnreleasedEntries(lines, unreleasedIndex)) {
-    return { kind: "empty-unreleased" };
-  }
-  lines.splice(unreleasedIndex, 1, UNRELEASED_HEADING, "", versionHeading);
-  const updated = updateLinkReferences(lines.join("\n"), newVersion);
-  return { kind: "ok", updated };
-};
-var tryReadVersionOrReport = (cwd, override) => {
-  try {
-    return readVersion(cwd, override);
-  } catch (error51) {
-    structuredError({
-      code: "package_json_invalid",
-      message: error51 instanceof Error ? error51.message : String(error51),
-      subcommand: "release changelog"
-    });
-    return null;
-  }
-};
-var tryCollectCommitsOrReport2 = (cwd, runner, range) => {
-  try {
-    return collectCommits2(cwd, runner, range);
-  } catch (error51) {
-    process.stderr.write(
-      `changelog: ${error51 instanceof Error ? error51.message : String(error51)}
-`
-    );
-    return null;
-  }
-};
-var run2 = (argv, options = {}) => {
-  const [firstArgument] = argv;
-  if (firstArgument !== void 0 && HELP_TOKENS2.has(firstArgument)) {
-    process.stdout.write(HELP_TEXT2);
-    return EXIT_CODES.OK;
-  }
-  const parsed = parseFlags2(argv);
-  if (!parsed.ok) {
-    structuredError({
-      code: "invalid_arguments",
-      message: parsed.message,
-      subcommand: "release changelog"
-    });
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  }
-  const cwd = options.cwd ?? process.cwd();
-  const runner = options.runner ?? defaultRunner2;
-  const version2 = tryReadVersionOrReport(cwd, parsed.flags.version);
-  if (version2 === null) return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  if (parsed.flags.draft) {
-    const tag = lastTag2(cwd, runner);
-    const range = tag === null ? "HEAD" : `${tag}..HEAD`;
-    const commits = tryCollectCommitsOrReport2(cwd, runner, range);
-    if (commits === null) return UNEXPECTED_EXIT2;
-    process.stdout.write(renderBlock(groupCommits(commits)));
-    return EXIT_CODES.OK;
-  }
-  const changelogPath = path2.join(cwd, "CHANGELOG.md");
-  if (!existsSync2(changelogPath)) {
-    structuredError({
-      code: "changelog_missing",
-      message: "CHANGELOG.md not found at repo root",
-      subcommand: "release changelog"
-    });
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  }
-  const current = readFileSync2(changelogPath, "utf8");
-  const today = options.today ?? todayUtc();
-  const outcome = graduateChangelog({
-    current,
-    newVersion: version2,
-    today
-  });
-  if (outcome.kind === "duplicate") {
-    return EXIT_CODES.OK;
-  }
-  if (outcome.kind !== "ok") {
-    structuredError({
-      ...GRADUATE_REFUSALS[outcome.kind],
-      subcommand: "release changelog"
-    });
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  }
-  try {
-    atomicWriteFileSync(changelogPath, outcome.updated);
-  } catch (error51) {
-    structuredError({
-      code: "changelog_write_failed",
-      message: error51 instanceof Error ? error51.message : String(error51),
-      subcommand: "release changelog"
-    });
-    return UNEXPECTED_EXIT2;
-  }
-  return EXIT_CODES.OK;
-};
-
-// src/release/commit-and-tag.ts
-import { spawnSync as spawnSync3 } from "node:child_process";
-import { existsSync as existsSync3, readFileSync as readFileSync3 } from "node:fs";
-import path3 from "node:path";
-var HELP_TEXT3 = `Usage: gaia-maintainer release commit-and-tag (--commit | --tag) [--no-push]
-
-  --commit      Stage release-related files and commit, then amend
-                wiki/.state.json with the new commit SHA.
-  --tag         Tag HEAD as vX.Y.Z and push the tag to origin.
-  --no-push     With --tag: skip the tag push step.
-
-  Exit codes:
-    0  success
-    1  user-correctable error
-    2  unexpected (git failure)
-`;
-var HELP_TOKENS3 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
-var UNEXPECTED_EXIT3 = 2;
-var defaultRunner3 = (command, args, options) => spawnSync3(command, args, {
-  cwd: options.cwd,
-  encoding: "utf8",
-  stdio: ["ignore", "pipe", "pipe"]
-});
-var parseFlags3 = (argv) => {
-  let mode;
-  let noPush = false;
-  for (const token of argv) {
-    if (token === "--commit" || token === "--tag") {
-      if (mode !== void 0) {
-        return {
-          message: "--commit and --tag are mutually exclusive",
-          ok: false
-        };
-      }
-      mode = token === "--commit" ? "commit" : "tag";
-    } else if (token === "--no-push") {
-      noPush = true;
-    } else {
-      return { message: `unknown flag: ${token}`, ok: false };
-    }
-  }
-  if (mode === void 0) {
-    return { message: "one of --commit or --tag is required", ok: false };
-  }
-  return { flags: { mode, noPush }, ok: true };
-};
-var readVersion2 = (cwd) => {
-  const target = path3.join(cwd, "package.json");
-  if (!existsSync3(target)) {
-    throw new Error("package.json not found at repo root");
-  }
-  const parsed = JSON.parse(readFileSync3(target, "utf8"));
-  if (typeof parsed.version !== "string") {
-    throw new TypeError('package.json has no string "version"');
-  }
-  return parsed.version;
-};
-var stepSucceeded = (result) => result.error === void 0 && (result.status ?? -1) === 0;
-var passthroughFailure = (result, step) => {
-  const stderr = result.stderr.trim();
-  const errorPart = result.error === void 0 ? "" : ` (${result.error.message})`;
-  const status = result.status ?? -1;
-  process.stderr.write(
-    `commit-and-tag: ${step.command} ${step.args.join(" ")} exited ${status}${errorPart}
-`
-  );
-  if (stderr.length > 0) {
-    process.stderr.write(`${stderr}
-`);
-  }
-  return UNEXPECTED_EXIT3;
-};
-var RELEASE_FILES = [
-  "package.json",
-  "frontend/package.json",
-  ".gaia/VERSION",
-  ".gaia/manifest.json",
-  "CHANGELOG.md",
-  "wiki/log.md"
-];
-var writeStateSha = (cwd, sha) => {
-  const target = path3.join(cwd, "wiki", ".state.json");
-  if (!existsSync3(target)) return;
-  const raw = readFileSync3(target, "utf8");
-  let parsed;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw new Error("wiki/.state.json is not valid JSON");
-  }
-  const next = {};
-  let saw = false;
-  for (const key of Object.keys(parsed)) {
-    if (key === "last_evaluated_sha") {
-      next[key] = sha;
-      saw = true;
-    } else if (key === "last_evaluated_at") {
-      next[key] = (/* @__PURE__ */ new Date()).toISOString();
-    } else {
-      next[key] = parsed[key];
-    }
-  }
-  if (!saw) next.last_evaluated_sha = sha;
-  const trailingNewline = raw.endsWith("\n") ? "\n" : "";
-  atomicWriteFileSync(
-    target,
-    `${JSON.stringify(next, null, 2)}${trailingNewline}`
-  );
-};
-var amendStateFile = (ctx) => {
-  const statePath = path3.join(ctx.cwd, "wiki", ".state.json");
-  if (!existsSync3(statePath)) return null;
-  const amendSequence = [
-    { args: ["add", "wiki/.state.json"], command: "git" },
-    { args: ["commit", "--amend", "--no-edit"], command: "git" }
-  ];
-  for (const step of amendSequence) {
-    const result = ctx.runner(step.command, step.args, { cwd: ctx.cwd });
-    if (!stepSucceeded(result)) return passthroughFailure(result, step);
-  }
-  return null;
-};
-var runCommitMode = (ctx) => {
-  const presentFiles = RELEASE_FILES.filter(
-    (file2) => existsSync3(path3.join(ctx.cwd, file2))
-  );
-  if (presentFiles.length === 0) {
-    process.stderr.write("commit-and-tag: no release files present to stage\n");
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  }
-  const message = `chore(release): v${ctx.version}`;
-  const sequence = [
-    { args: ["add", ...presentFiles], command: "git" },
-    { args: ["commit", "-m", message], command: "git" }
-  ];
-  for (const step of sequence) {
-    const result = ctx.runner(step.command, step.args, { cwd: ctx.cwd });
-    if (!stepSucceeded(result)) return passthroughFailure(result, step);
-  }
-  const headResult = ctx.runner("git", ["rev-parse", "HEAD"], { cwd: ctx.cwd });
-  if (!stepSucceeded(headResult)) {
-    return passthroughFailure(headResult, {
-      args: ["rev-parse", "HEAD"],
-      command: "git"
-    });
-  }
-  const newSha = headResult.stdout.trim();
-  try {
-    writeStateSha(ctx.cwd, newSha);
-  } catch (error51) {
-    process.stderr.write(
-      `commit-and-tag: ${error51 instanceof Error ? error51.message : String(error51)}
-`
-    );
-    return UNEXPECTED_EXIT3;
-  }
-  const amendFailure = amendStateFile(ctx);
-  if (amendFailure !== null) return amendFailure;
-  process.stdout.write(
-    `commit-and-tag: committed v${ctx.version} (${newSha.slice(0, 7)})
-`
-  );
-  return EXIT_CODES.OK;
-};
-var runTagMode = (ctx) => {
-  const tagName = `v${ctx.version}`;
-  const message = `Release v${ctx.version}`;
-  const tagStep = {
-    args: ["tag", "-a", tagName, "-m", message],
-    command: "git"
-  };
-  const tagResult = ctx.runner(tagStep.command, tagStep.args, { cwd: ctx.cwd });
-  if (!stepSucceeded(tagResult)) return passthroughFailure(tagResult, tagStep);
-  if (!ctx.noPush) {
-    const pushStep = {
-      args: ["push", "origin", tagName],
-      command: "git"
-    };
-    const pushResult = ctx.runner(pushStep.command, pushStep.args, {
-      cwd: ctx.cwd
-    });
-    if (!stepSucceeded(pushResult))
-      return passthroughFailure(pushResult, pushStep);
-  }
-  process.stdout.write(
-    `commit-and-tag: tagged ${tagName}${ctx.noPush ? " (push skipped)" : " and pushed"}
-`
-  );
-  return EXIT_CODES.OK;
-};
-var run3 = (argv, options = {}) => {
-  const [firstArgument] = argv;
-  if (firstArgument !== void 0 && HELP_TOKENS3.has(firstArgument)) {
-    process.stdout.write(HELP_TEXT3);
-    return EXIT_CODES.OK;
-  }
-  const parsed = parseFlags3(argv);
-  if (!parsed.ok) {
-    structuredError({
-      code: "invalid_arguments",
-      message: parsed.message,
-      subcommand: "release commit-and-tag"
-    });
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  }
-  const cwd = options.cwd ?? process.cwd();
-  const runner = options.runner ?? defaultRunner3;
-  let version2;
-  try {
-    version2 = readVersion2(cwd);
-  } catch (error51) {
-    structuredError({
-      code: "package_json_invalid",
-      message: error51 instanceof Error ? error51.message : String(error51),
-      subcommand: "release commit-and-tag"
-    });
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  }
-  if (parsed.flags.mode === "commit") {
-    return runCommitMode({ cwd, runner, version: version2 });
-  }
-  return runTagMode({ cwd, noPush: parsed.flags.noPush, runner, version: version2 });
-};
-
-// src/release/exclude-regex.ts
-import { readFileSync as readFileSync7 } from "node:fs";
-import path7 from "node:path";
-
 // src/util/git-env.ts
-import { execFileSync } from "node:child_process";
 var execGaiaGitRaw = (args, cwd) => {
   const env = { ...process.env };
   delete env.GIT_DIR;
@@ -932,6 +139,10 @@ var execGaiaGit = (args, cwd) => execGaiaGitRaw(args, cwd).trim();
 
 // src/util/repo-root.ts
 var resolveRepoRoot = (cwd = process.cwd()) => execGaiaGit(["rev-parse", "--show-toplevel"], cwd);
+
+// src/labels/registry.ts
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 
 // node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/external.js
 var external_exports = {};
@@ -1699,10 +910,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema2) {
   return mergeDefs(schema2._zod.def);
 }
-function getElementAtPath(obj, path15) {
-  if (!path15)
+function getElementAtPath(obj, path17) {
+  if (!path17)
     return obj;
-  return path15.reduce((acc, key) => acc?.[key], obj);
+  return path17.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -2111,11 +1322,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path15, issues) {
+function prefixIssues(path17, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path15);
+    iss.path.unshift(path17);
     return iss;
   });
 }
@@ -2262,16 +1473,16 @@ function flattenError(error51, mapper = (issue2) => issue2.message) {
 }
 function formatError(error51, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error52, path15 = []) => {
+  const processError = (error52, path17 = []) => {
     for (const issue2 of error52.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path15, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path17, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path15, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path17, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path15, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path17, ...issue2.path]);
       } else {
-        const fullpath = [...path15, ...issue2.path];
+        const fullpath = [...path17, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -2298,17 +1509,17 @@ function formatError(error51, mapper = (issue2) => issue2.message) {
 }
 function treeifyError(error51, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error52, path15 = []) => {
+  const processError = (error52, path17 = []) => {
     var _a3, _b;
     for (const issue2 of error52.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path15, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path17, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path15, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path17, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path15, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path17, ...issue2.path]);
       } else {
-        const fullpath = [...path15, ...issue2.path];
+        const fullpath = [...path17, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -2340,8 +1551,8 @@ function treeifyError(error51, mapper = (issue2) => issue2.message) {
 }
 function toDotPath(_path) {
   const segs = [];
-  const path15 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
-  for (const seg of path15) {
+  const path17 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path17) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -15033,13 +14244,13 @@ function resolveRef(ref, ctx) {
   if (!ref.startsWith("#")) {
     throw new Error("External $ref is not supported, only local refs (#/...) are allowed");
   }
-  const path15 = ref.slice(1).split("/").filter(Boolean);
-  if (path15.length === 0) {
+  const path17 = ref.slice(1).split("/").filter(Boolean);
+  if (path17.length === 0) {
     return ctx.rootSchema;
   }
   const defsKey = ctx.version === "draft-2020-12" ? "$defs" : "definitions";
-  if (path15[0] === defsKey) {
-    const key = path15[1];
+  if (path17[0] === defsKey) {
+    const key = path17[1];
     if (!key || !ctx.defs[key]) {
       throw new Error(`Reference not found: ${ref}`);
     }
@@ -15447,10 +14658,1177 @@ function date4(params) {
 // node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/external.js
 config(en_default());
 
+// src/schemas/labels.ts
+var LABEL_AXES = [
+  "type",
+  "urgency",
+  "effort",
+  "reach",
+  "lifecycle",
+  "disposition",
+  "origin",
+  "attention",
+  "audience",
+  "third-party",
+  "blocked"
+];
+var LABEL_FEATURES = ["tech-debt", "dependabot", "forensics"];
+var LABEL_AUDIENCES = ["adopter", "maintainer"];
+var BANNED_DESCRIPTION_CHARACTERS = ["\u2014", "\u2013"];
+var LabelAxisSchema = external_exports.literal(LABEL_AXES);
+var LabelFeatureSchema = external_exports.literal(LABEL_FEATURES);
+var LabelAudienceSchema = external_exports.literal(LABEL_AUDIENCES);
+var LabelEntrySchema = external_exports.object({
+  audience: LabelAudienceSchema,
+  axis: LabelAxisSchema,
+  blocked: external_exports.boolean(),
+  color: external_exports.string().regex(/^[0-9a-f]{6}$/).nullable(),
+  deprecated: external_exports.boolean(),
+  description: external_exports.string().min(1).max(100),
+  features: external_exports.array(LabelFeatureSchema),
+  managed: external_exports.boolean(),
+  name: external_exports.string().min(1),
+  reason: external_exports.string().min(1).nullable(),
+  renamedFrom: external_exports.array(external_exports.string().min(1))
+}).superRefine((entry, ctx) => {
+  if (entry.blocked) {
+    if (entry.color !== null) {
+      ctx.addIssue({
+        code: "custom",
+        message: "color must be null when blocked is true",
+        path: ["color"]
+      });
+    }
+    if (entry.managed) {
+      ctx.addIssue({
+        code: "custom",
+        message: "managed must be false when blocked is true",
+        path: ["managed"]
+      });
+    }
+    if (typeof entry.reason !== "string") {
+      ctx.addIssue({
+        code: "custom",
+        message: "reason must be a non-empty string when blocked is true",
+        path: ["reason"]
+      });
+    }
+  } else {
+    if (entry.color === null) {
+      ctx.addIssue({
+        code: "custom",
+        message: "color must be a hex string when blocked is false",
+        path: ["color"]
+      });
+    }
+    if (entry.reason !== null) {
+      ctx.addIssue({
+        code: "custom",
+        message: "reason must be null when blocked is false",
+        path: ["reason"]
+      });
+    }
+  }
+});
+var LabelRegistrySchema = external_exports.object({
+  description: external_exports.string().min(1),
+  labels: external_exports.array(LabelEntrySchema),
+  version: external_exports.literal(1)
+}).superRefine((registry2, ctx) => {
+  const firstIndexByName = /* @__PURE__ */ new Map();
+  registry2.labels.forEach((entry, index) => {
+    if (firstIndexByName.has(entry.name)) {
+      ctx.addIssue({
+        code: "custom",
+        message: `duplicate label name: ${entry.name}`,
+        path: ["labels", index, "name"]
+      });
+    } else {
+      firstIndexByName.set(entry.name, index);
+    }
+  });
+  const firstIndexByColor = /* @__PURE__ */ new Map();
+  registry2.labels.forEach((entry, index) => {
+    if (entry.color === null) return;
+    if (firstIndexByColor.has(entry.color)) {
+      ctx.addIssue({
+        code: "custom",
+        message: `duplicate label color: ${entry.color}`,
+        path: ["labels", index, "color"]
+      });
+    } else {
+      firstIndexByColor.set(entry.color, index);
+    }
+  });
+  registry2.labels.forEach((entry, index) => {
+    const bannedCharacter = BANNED_DESCRIPTION_CHARACTERS.find(
+      (character) => entry.description.includes(character)
+    );
+    if (bannedCharacter !== void 0) {
+      ctx.addIssue({
+        code: "custom",
+        message: `description contains a banned character: ${JSON.stringify(bannedCharacter)}`,
+        path: ["labels", index, "description"]
+      });
+    }
+  });
+});
+
+// src/schemas/zod-error.ts
+var summarizeZodError = (filePath, error51) => {
+  const lines = error51.issues.map((issue2) => {
+    const pathString = issue2.path.length === 0 ? "<root>" : issue2.path.join(".");
+    return `${pathString}: ${issue2.message}`;
+  });
+  return `${filePath}: ${lines.join("; ")}`;
+};
+
+// src/labels/registry.ts
+var labelsRegistryPath = (repoRoot) => path.join(repoRoot, ".gaia", "labels.json");
+var readRegistry = (repoRoot) => {
+  const filePath = labelsRegistryPath(repoRoot);
+  let raw;
+  try {
+    raw = readFileSync(filePath, "utf8");
+  } catch (error51) {
+    const detail = error51 instanceof Error ? error51.message : String(error51);
+    throw new Error(`${filePath}: unreadable: ${detail}`);
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error51) {
+    const detail = error51 instanceof Error ? error51.message : String(error51);
+    throw new Error(`${filePath}: invalid JSON: ${detail}`);
+  }
+  const result = LabelRegistrySchema.safeParse(parsed);
+  if (!result.success) {
+    throw new Error(summarizeZodError(filePath, result.error));
+  }
+  return result.data;
+};
+
+// src/labels/docs.ts
+var HELP_TEXT = `Usage: gaia-maintainer labels docs [--repo-root <path>]
+
+  Rewrites the generated span of wiki/concepts/GitHub Labels.md from
+  .gaia/labels.json. Deterministic and offline. Exits 2 on a usage or
+  environment error.
+`;
+var HELP_TOKENS2 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var GENERATED_START_MARKER = "<!-- gaia:labels:generated-start -->";
+var GENERATED_END_MARKER = "<!-- gaia:labels:generated-end -->";
+var maintainerMarker = (edge) => `<!-- gaia:maintainer-only:${edge} -->`;
+var MAINTAINER_START_MARKER = maintainerMarker("start");
+var MAINTAINER_END_MARKER = maintainerMarker("end");
+var PALETTE_RULE = "Warm families (red, orange, amber) are reserved for attention: urgency, defect type, the gates that require a human, and the active-work claim, whose yellow marks an issue as in flight. Every other entry takes a cool or neutral family instead, high-frequency structural labels stay near grey so they recede, no two entries share a hex value, and every hex value is lowercase.";
+var MAINTAINER_INTRO = "These labels serve the GAIA maintainer repository. Sync never creates them on an adopter repository, and the bundle-time scrub removes this section from the page an adopter receives.";
+var TABLE_HEADER = "| Label | Color | Description | Created by |";
+var TABLE_SEPARATOR = "| --- | --- | --- | --- |";
+var AXIS_TITLES = {
+  attention: "Attention gate",
+  audience: "Audience",
+  blocked: "Blocked",
+  disposition: "Disposition",
+  effort: "Effort",
+  lifecycle: "Lifecycle",
+  origin: "Origin and trigger",
+  reach: "Reach of fix",
+  "third-party": "Third-party",
+  type: "Type",
+  urgency: "Urgency"
+};
+var createdBy = (entry) => {
+  if (!entry.managed) return "documented only";
+  return entry.features.length === 0 ? "always" : entry.features.join(", ");
+};
+var entryRow = (entry) => `| \`${entry.name}\` | \`${entry.color ?? "none"}\` | ${entry.description} | ${createdBy(entry)} |`;
+var axisOrder = (entries) => {
+  const seen = [];
+  for (const entry of entries) {
+    if (!seen.includes(entry.axis)) seen.push(entry.axis);
+  }
+  return seen;
+};
+var axisSections = (entries) => axisOrder(entries).flatMap((axis) => [
+  `### ${AXIS_TITLES[axis]}`,
+  "",
+  TABLE_HEADER,
+  TABLE_SEPARATOR,
+  ...entries.filter((entry) => entry.axis === axis).map(entryRow),
+  ""
+]);
+var renderGeneratedSpan = (registry2) => {
+  const documented = registry2.labels.filter(
+    (entry) => !entry.blocked && !entry.deprecated
+  );
+  const adopter = documented.filter((entry) => entry.audience === "adopter");
+  const maintainer = documented.filter(
+    (entry) => entry.audience === "maintainer"
+  );
+  const lines = [
+    "",
+    "## GAIA labels",
+    "",
+    ...axisSections(adopter),
+    "## Palette rule",
+    "",
+    PALETTE_RULE,
+    ""
+  ];
+  if (maintainer.length > 0) {
+    lines.push(
+      MAINTAINER_START_MARKER,
+      "",
+      "## Maintainer-only labels",
+      "",
+      MAINTAINER_INTRO,
+      "",
+      ...axisSections(maintainer),
+      MAINTAINER_END_MARKER
+    );
+  }
+  lines.push(
+    "## Deliberately absent",
+    "",
+    "| Label | Reason |",
+    "| --- | --- |",
+    ...registry2.labels.filter((entry) => entry.blocked).map((entry) => `| \`${entry.name}\` | ${entry.reason ?? ""} |`),
+    ""
+  );
+  return lines.join("\n");
+};
+var markerLines = (lines, marker) => lines.flatMap((line, index) => line === marker ? [index] : []);
+var spliceGeneratedSpan = (pageText, span) => {
+  const lines = pageText.split("\n");
+  const starts = markerLines(lines, GENERATED_START_MARKER);
+  const ends = markerLines(lines, GENERATED_END_MARKER);
+  if (starts.length !== 1 || ends.length !== 1) {
+    throw new Error(
+      `expected exactly one ${GENERATED_START_MARKER} line and one ${GENERATED_END_MARKER} line, found ${starts.length} and ${ends.length}`
+    );
+  }
+  const start = starts[0] ?? 0;
+  const end = ends[0] ?? 0;
+  if (start >= end) {
+    throw new Error(
+      `${GENERATED_END_MARKER} appears at line ${end + 1}, at or above its start marker at line ${start + 1}`
+    );
+  }
+  return [
+    ...lines.slice(0, start + 1),
+    ...span.split("\n"),
+    ...lines.slice(end)
+  ].join("\n");
+};
+var parseArgs = (argv) => {
+  let repoRoot;
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+    if (token === "--repo-root") {
+      const value = takeNonFlagValue(argv, index + 1, "--repo-root");
+      if (!value.ok) {
+        structuredError({
+          code: "invalid_arguments",
+          message: value.message,
+          subcommand: "labels docs"
+        });
+        return { code: EXIT_CODES.INVALID_ARGUMENTS };
+      }
+      repoRoot = value.value;
+      index += 1;
+    } else {
+      structuredError({
+        code: "invalid_arguments",
+        message: `unknown argument: ${token ?? ""}`,
+        subcommand: "labels docs"
+      });
+      return { code: EXIT_CODES.INVALID_ARGUMENTS };
+    }
+  }
+  return { repoRoot };
+};
+var PAGE_RELATIVE_PATH = "wiki/concepts/GitHub Labels.md";
+var run = (argv) => {
+  const first = argv[0];
+  if (first !== void 0 && HELP_TOKENS2.has(first)) {
+    process.stdout.write(HELP_TEXT);
+    return EXIT_CODES.OK;
+  }
+  const parsed = parseArgs(argv);
+  if ("code" in parsed) return parsed.code;
+  let committed;
+  let next;
+  let pagePath;
+  try {
+    const repoRoot = parsed.repoRoot ?? resolveRepoRoot();
+    pagePath = path2.join(repoRoot, PAGE_RELATIVE_PATH);
+    const registry2 = readRegistry(repoRoot);
+    committed = readFileSync2(pagePath, "utf8");
+    next = spliceGeneratedSpan(committed, renderGeneratedSpan(registry2));
+  } catch (error51) {
+    structuredError({
+      code: "labels_docs_environment",
+      message: error51 instanceof Error ? error51.message : String(error51),
+      page: PAGE_RELATIVE_PATH,
+      subcommand: "labels docs"
+    });
+    return EXIT_CODES.INVALID_ARGUMENTS;
+  }
+  const rewritten = next !== committed;
+  if (rewritten) atomicWriteFileSync(pagePath, next);
+  const outcome = rewritten ? "rewritten" : "already current";
+  process.stdout.write(`labels-docs: ${PAGE_RELATIVE_PATH} ${outcome}
+`);
+  return EXIT_CODES.OK;
+};
+
+// src/labels/maintainer.ts
+var HELP_TEXT2 = `Usage: gaia-maintainer labels <subcommand> [args]
+
+  docs [--repo-root <path>]
+                             Regenerate the generated span of the wiki page.
+`;
+var SUBCOMMAND_HANDLERS = {
+  docs: run
+};
+var run2 = createSubcommandRouter({
+  handlers: SUBCOMMAND_HANDLERS,
+  helpText: HELP_TEXT2
+});
+
+// src/release/bump.ts
+import { existsSync as existsSync2, readFileSync as readFileSync3 } from "node:fs";
+import path3 from "node:path";
+
+// src/util/conventional-commit.ts
+var COMMIT_TYPES = [
+  "build",
+  "chore",
+  "ci",
+  "debt",
+  "docs",
+  "feat",
+  "fix",
+  "perf",
+  "refactor",
+  "revert",
+  "style",
+  "test",
+  "wiki"
+];
+var HEADER_PATTERN = /^(?<type>[a-z]+)(?:\((?<scope>[^)]*)\))?(?<breaking>!?):/u;
+var parseConventionalCommitHeader = (subject) => {
+  const trimmed = subject.trim();
+  const match = HEADER_PATTERN.exec(trimmed);
+  if (match?.groups === void 0) return void 0;
+  const { breaking, scope, type: type2 } = match.groups;
+  if (type2 === void 0) return void 0;
+  return {
+    breaking: breaking === "!",
+    rest: trimmed.slice(match[0].length).trim(),
+    scope,
+    type: type2
+  };
+};
+var isCommitType = (type2) => COMMIT_TYPES.includes(type2);
+
+// src/util/run-process.ts
+import { spawn, spawnSync } from "node:child_process";
+var defaultRunner = (command, args, options) => spawnSync(command, args, {
+  cwd: options.cwd,
+  encoding: "utf8",
+  maxBuffer: MAX_GIT_BUFFER_BYTES,
+  stdio: ["ignore", "pipe", "pipe"]
+});
+
+// src/release/bump.ts
+var HELP_TEXT3 = `Usage: gaia-maintainer release bump [--auto]
+
+  Compute the next semver bump from conventional-commit subjects since
+  the last tag. Without --auto, prints the proposal. With --auto, writes
+  package.json and .gaia/VERSION.
+
+  Exit codes:
+    0  success
+    1  user-correctable error (no commits, malformed package.json)
+    2  unexpected (git failure)
+`;
+var HELP_TOKENS3 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var UNEXPECTED_EXIT = 2;
+var parseFlags = (argv) => {
+  let auto = false;
+  for (const token of argv) {
+    if (token === "--auto") {
+      auto = true;
+    } else {
+      return { message: `unknown flag: ${token}`, ok: false };
+    }
+  }
+  return { flags: { auto }, ok: true };
+};
+var TYPE_TO_BUMP = {
+  build: "patch",
+  chore: "patch",
+  ci: "patch",
+  debt: "patch",
+  docs: "patch",
+  feat: "minor",
+  fix: "patch",
+  perf: "patch",
+  refactor: "patch",
+  // A revert changes released behavior, so it has to ship. Kept at `patch`
+  // rather than inferred from what it undoes: reverting a `feat` arguably
+  // warrants more, and a revert that genuinely removes a shipped capability
+  // carries the `!` marker, which already outranks this table.
+  revert: "patch",
+  style: "patch",
+  test: "patch",
+  wiki: null
+};
+var classifyCommit = (commit) => {
+  const { body, subject } = commit;
+  if (/(^|\n)BREAKING CHANGE: /u.test(body)) return "major";
+  const header = parseConventionalCommitHeader(subject);
+  if (header === void 0) return null;
+  const { breaking, type: type2 } = header;
+  if (breaking) return "major";
+  if (!isCommitType(type2)) return null;
+  return TYPE_TO_BUMP[type2];
+};
+var RANK = { major: 3, minor: 2, patch: 1 };
+var aggregateBump = (commits) => {
+  let highest = null;
+  for (const commit of commits) {
+    const classified = classifyCommit(commit);
+    if (classified !== null && (highest === null || RANK[classified] > RANK[highest])) {
+      highest = classified;
+    }
+  }
+  return highest;
+};
+var applyBump = (current, kind) => {
+  const parts = current.split(".").map((segment) => Number.parseInt(segment, 10));
+  if (parts.length !== 3 || parts.some((value) => Number.isNaN(value))) {
+    throw new Error(`current version is not semver: "${current}"`);
+  }
+  const [major, minor, patch] = parts;
+  if (kind === "major") return `${major + 1}.0.0`;
+  if (kind === "minor") return `${major}.${minor + 1}.0`;
+  return `${major}.${minor}.${patch + 1}`;
+};
+var expectSuccess = (result, command, args) => {
+  if (result.error !== void 0) {
+    throw new Error(
+      `${command} ${args.join(" ")} failed: ${result.error.message}`
+    );
+  }
+  if ((result.status ?? -1) !== 0) {
+    const stderr = result.stderr.trim();
+    throw new Error(
+      `${command} ${args.join(" ")} exited ${result.status ?? -1}: ${stderr}`
+    );
+  }
+  return result.stdout;
+};
+var tryRun = ({ args, command, cwd, runner }) => {
+  const result = runner(command, args, { cwd });
+  if (result.error !== void 0 || (result.status ?? -1) !== 0) return null;
+  return result.stdout;
+};
+var RECORD_SEPARATOR = "---END-COMMIT---";
+var collectCommits = (cwd, runner, range) => {
+  const out = expectSuccess(
+    runner(
+      "git",
+      ["log", "--no-merges", `--format=%s%n%b%n${RECORD_SEPARATOR}`, range],
+      { cwd }
+    ),
+    "git",
+    ["log"]
+  );
+  const commits = [];
+  for (const chunk of out.split(RECORD_SEPARATOR)) {
+    const trimmed = chunk.trim();
+    if (trimmed !== "") {
+      const lines = trimmed.split("\n");
+      const subject = lines[0] ?? "";
+      const body = lines.slice(1).join("\n");
+      commits.push({ body, subject });
+    }
+  }
+  return commits;
+};
+var lastTag = (cwd, runner) => {
+  const out = tryRun({
+    args: ["describe", "--tags", "--abbrev=0"],
+    command: "git",
+    cwd,
+    runner
+  });
+  if (out === null) return null;
+  const trimmed = out.trim();
+  if (trimmed.length === 0) return null;
+  return trimmed;
+};
+var readPackageJson = (cwd) => {
+  const target = path3.join(cwd, "package.json");
+  if (!existsSync2(target)) {
+    throw new Error("package.json not found at repo root");
+  }
+  const raw = readFileSync3(target, "utf8");
+  const parsed = JSON.parse(raw);
+  if (typeof parsed.version !== "string") {
+    throw new TypeError('package.json has no string "version"');
+  }
+  return { path: target, raw, version: parsed.version };
+};
+var writePackageJsonVersion = (packagePath, raw, newVersion) => {
+  const replaced = raw.replace(
+    /"version"\s*:\s*"[^"]+"/u,
+    `"version": "${newVersion}"`
+  );
+  if (replaced === raw) {
+    throw new Error('failed to rewrite "version" field in package.json');
+  }
+  atomicWriteFileSync(packagePath, replaced);
+};
+var PACKAGE_VERSION_FILES = ["frontend/package.json"];
+var writePackageVersions = (cwd, newVersion) => {
+  for (const relative of PACKAGE_VERSION_FILES) {
+    const target = path3.join(cwd, relative);
+    if (existsSync2(target)) {
+      writePackageJsonVersion(target, readFileSync3(target, "utf8"), newVersion);
+    }
+  }
+};
+var writeVersionFile = (cwd, newVersion) => {
+  const target = path3.join(cwd, ".gaia", "VERSION");
+  if (!existsSync2(target)) return;
+  const original = readFileSync3(target, "utf8");
+  const trailing = original.endsWith("\n") ? "\n" : "";
+  atomicWriteFileSync(target, `${newVersion}${trailing}`);
+};
+var tryReadPackageJsonOrReport = (cwd) => {
+  try {
+    return readPackageJson(cwd);
+  } catch (error51) {
+    structuredError({
+      code: "package_json_invalid",
+      message: error51 instanceof Error ? error51.message : String(error51),
+      subcommand: "release bump"
+    });
+    return null;
+  }
+};
+var tryCollectCommitsOrReport = (cwd, runner, range) => {
+  try {
+    return collectCommits(cwd, runner, range);
+  } catch (error51) {
+    process.stderr.write(
+      `bump: ${error51 instanceof Error ? error51.message : String(error51)}
+`
+    );
+    return null;
+  }
+};
+var tryApplyBumpOrReport = (version2, kind) => {
+  try {
+    return applyBump(version2, kind);
+  } catch (error51) {
+    structuredError({
+      code: "invalid_version",
+      message: error51 instanceof Error ? error51.message : String(error51),
+      subcommand: "release bump"
+    });
+    return null;
+  }
+};
+var tryWriteVersionOrReport = (pkg, cwd, nextVersion) => {
+  try {
+    writePackageJsonVersion(pkg.path, pkg.raw, nextVersion);
+    writePackageVersions(cwd, nextVersion);
+    writeVersionFile(cwd, nextVersion);
+    return true;
+  } catch (error51) {
+    structuredError({
+      code: "version_write_failed",
+      message: error51 instanceof Error ? error51.message : String(error51),
+      subcommand: "release bump"
+    });
+    return false;
+  }
+};
+var run3 = (argv, options = {}) => {
+  const [firstArgument] = argv;
+  if (firstArgument !== void 0 && HELP_TOKENS3.has(firstArgument)) {
+    process.stdout.write(HELP_TEXT3);
+    return EXIT_CODES.OK;
+  }
+  const parsed = parseFlags(argv);
+  if (!parsed.ok) {
+    structuredError({
+      code: "invalid_arguments",
+      message: parsed.message,
+      subcommand: "release bump"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  const cwd = options.cwd ?? process.cwd();
+  const runner = options.runner ?? defaultRunner;
+  const pkg = tryReadPackageJsonOrReport(cwd);
+  if (pkg === null) return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  const tag = lastTag(cwd, runner);
+  const range = tag === null ? "HEAD" : `${tag}..HEAD`;
+  const commits = tryCollectCommitsOrReport(cwd, runner, range);
+  if (commits === null) return UNEXPECTED_EXIT;
+  if (commits.length === 0) {
+    process.stderr.write("bump: no commits since last tag; nothing to bump\n");
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  const kind = aggregateBump(commits);
+  if (kind === null) {
+    process.stderr.write(
+      "bump: no conventional-commit prefixes found; cannot determine bump\n"
+    );
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  const nextVersion = tryApplyBumpOrReport(pkg.version, kind);
+  if (nextVersion === null) return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  if (!parsed.flags.auto) {
+    process.stdout.write(`v${pkg.version} -> v${nextVersion} (${kind})
+`);
+    return EXIT_CODES.OK;
+  }
+  if (kind === "major") {
+    process.stderr.write(
+      `bump: major bump detected (v${pkg.version} -> v${nextVersion}); refusing --auto without explicit confirmation
+`
+    );
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  if (!tryWriteVersionOrReport(pkg, cwd, nextVersion)) return UNEXPECTED_EXIT;
+  process.stdout.write(`${nextVersion}
+`);
+  return EXIT_CODES.OK;
+};
+
+// src/release/changelog.ts
+import { existsSync as existsSync3, readFileSync as readFileSync4 } from "node:fs";
+import path4 from "node:path";
+var HELP_TEXT4 = `Usage: gaia-maintainer release changelog [--draft] [--version <X.Y.Z>]
+
+  Graduate the hand-written \`## [Unreleased]\` block to
+  \`## [X.Y.Z] - YYYY-MM-DD\` and open a fresh empty one above it.
+
+  Flags:
+    --draft               Render a block from conventional-commit subjects
+                          since the last tag to stdout and write nothing.
+                          A review aid: fold anything it shows that the
+                          Unreleased block is missing in by hand.
+    --version <X.Y.Z>     Override the new version (default: package.json).
+
+  Exit codes:
+    0  success
+    1  user-correctable error
+    2  unexpected (git failure)
+`;
+var HELP_TOKENS4 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var UNEXPECTED_EXIT2 = 2;
+var parseFlags2 = (argv) => {
+  let draft = false;
+  let version2;
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+    if (token === "--draft") {
+      draft = true;
+    } else if (token === "--version") {
+      const taken = takeValue(argv, index + 1, "--version");
+      if (!taken.ok) return taken;
+      version2 = taken.value;
+      index += 1;
+    } else {
+      return { message: `unknown flag: ${token}`, ok: false };
+    }
+  }
+  return { flags: { draft, version: version2 }, ok: true };
+};
+var TYPE_TO_SECTION = {
+  build: null,
+  chore: null,
+  ci: null,
+  debt: "Fixed",
+  docs: "Changed",
+  feat: "Added",
+  fix: "Fixed",
+  perf: "Changed",
+  refactor: "Changed",
+  revert: "Fixed",
+  style: null,
+  test: null,
+  wiki: null
+};
+var groupCommits = (commits) => {
+  const sections = { Added: [], Changed: [], Fixed: [] };
+  for (const commit of commits) {
+    const header = parseConventionalCommitHeader(commit.subject);
+    if (header !== void 0 && isCommitType(header.type)) {
+      const target = TYPE_TO_SECTION[header.type];
+      if (target && header.rest.length > 0) {
+        sections[target].push(header.rest);
+      }
+    }
+  }
+  return sections;
+};
+var todayUtc = (now = /* @__PURE__ */ new Date()) => {
+  const year = now.getUTCFullYear();
+  const month = String(now.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(now.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+var renderBlock = (sections) => {
+  const lines = [];
+  const order = ["Added", "Changed", "Fixed"];
+  for (const section of order) {
+    const items = sections[section];
+    if (items.length > 0) {
+      lines.push(`### ${section}`, "");
+      for (const item of items) lines.push(`- ${item}`);
+      lines.push("");
+    }
+  }
+  let joined = lines.join("\n");
+  while (joined.endsWith("\n\n")) joined = joined.slice(0, -1);
+  return joined;
+};
+var RECORD_SEPARATOR2 = "---END-COMMIT---";
+var collectCommits2 = (cwd, runner, range) => {
+  const result = runner(
+    "git",
+    ["log", "--no-merges", `--format=%s%n%b%n${RECORD_SEPARATOR2}`, range],
+    { cwd }
+  );
+  if (result.error !== void 0) {
+    throw new Error(`git log failed: ${result.error.message}`);
+  }
+  if ((result.status ?? -1) !== 0) {
+    const stderr = result.stderr.trim();
+    throw new Error(`git log exited ${result.status ?? -1}: ${stderr}`);
+  }
+  const out = result.stdout;
+  const commits = [];
+  for (const chunk of out.split(RECORD_SEPARATOR2)) {
+    const trimmed = chunk.trim();
+    if (trimmed !== "") {
+      const lines = trimmed.split("\n");
+      const subject = lines[0] ?? "";
+      const body = lines.slice(1).join("\n");
+      commits.push({ body, subject });
+    }
+  }
+  return commits;
+};
+var lastTag2 = (cwd, runner) => {
+  const result = runner("git", ["describe", "--tags", "--abbrev=0"], { cwd });
+  if (result.error !== void 0) return null;
+  if ((result.status ?? -1) !== 0) return null;
+  const out = result.stdout.trim();
+  if (out.length === 0) return null;
+  return out;
+};
+var readVersion = (cwd, override) => {
+  if (override !== void 0 && override.length > 0) return override;
+  const target = path4.join(cwd, "package.json");
+  if (!existsSync3(target)) {
+    throw new Error("package.json not found at repo root");
+  }
+  const parsed = JSON.parse(readFileSync4(target, "utf8"));
+  if (typeof parsed.version !== "string") {
+    throw new TypeError('package.json has no string "version"');
+  }
+  return parsed.version;
+};
+var UNRELEASED_HEADING = "## [Unreleased]";
+var GRADUATE_REFUSALS = {
+  "empty-unreleased": {
+    code: "empty_unreleased_section",
+    message: "CHANGELOG.md has an empty `## [Unreleased]` section; write the release entries under it before graduating (`release changelog --draft` renders a starting point)"
+  },
+  "no-unreleased": {
+    code: "no_unreleased_section",
+    message: "CHANGELOG.md has no `## [Unreleased]` heading to graduate"
+  }
+};
+var UNRELEASED_REF_PREFIX = "[Unreleased]:";
+var updateLinkReferences = (body, newVersion) => {
+  const lines = body.split("\n");
+  const refIndex = lines.findIndex(
+    (line) => line.startsWith(UNRELEASED_REF_PREFIX)
+  );
+  if (refIndex === -1) {
+    return body;
+  }
+  const target = (lines[refIndex] ?? "").slice(UNRELEASED_REF_PREFIX.length).trim();
+  const compareIndex = target.indexOf("/compare/");
+  if (compareIndex === -1) {
+    return body;
+  }
+  const baseUrl = target.slice(0, compareIndex);
+  lines.splice(
+    refIndex,
+    1,
+    `${UNRELEASED_REF_PREFIX} ${baseUrl}/compare/v${newVersion}...HEAD`,
+    `[${newVersion}]: ${baseUrl}/releases/tag/v${newVersion}`
+  );
+  return lines.join("\n");
+};
+var LINK_DEFINITION = /^\[[^\]]+\]:/u;
+var hasUnreleasedEntries = (lines, unreleasedIndex) => {
+  for (const line of lines.slice(unreleasedIndex + 1)) {
+    if (line.startsWith("## ") || LINK_DEFINITION.test(line)) return false;
+    if (line.trim() !== "") return true;
+  }
+  return false;
+};
+var graduateChangelog = ({
+  current,
+  newVersion,
+  today
+}) => {
+  const versionHeading = `## [${newVersion}] - ${today}`;
+  if (current.includes(`## [${newVersion}]`)) {
+    return { kind: "duplicate" };
+  }
+  const lines = current.split("\n");
+  const unreleasedIndex = lines.findIndex(
+    (line) => line.trim() === UNRELEASED_HEADING
+  );
+  if (unreleasedIndex === -1) {
+    return { kind: "no-unreleased" };
+  }
+  if (!hasUnreleasedEntries(lines, unreleasedIndex)) {
+    return { kind: "empty-unreleased" };
+  }
+  lines.splice(unreleasedIndex, 1, UNRELEASED_HEADING, "", versionHeading);
+  const updated = updateLinkReferences(lines.join("\n"), newVersion);
+  return { kind: "ok", updated };
+};
+var tryReadVersionOrReport = (cwd, override) => {
+  try {
+    return readVersion(cwd, override);
+  } catch (error51) {
+    structuredError({
+      code: "package_json_invalid",
+      message: error51 instanceof Error ? error51.message : String(error51),
+      subcommand: "release changelog"
+    });
+    return null;
+  }
+};
+var tryCollectCommitsOrReport2 = (cwd, runner, range) => {
+  try {
+    return collectCommits2(cwd, runner, range);
+  } catch (error51) {
+    process.stderr.write(
+      `changelog: ${error51 instanceof Error ? error51.message : String(error51)}
+`
+    );
+    return null;
+  }
+};
+var run4 = (argv, options = {}) => {
+  const [firstArgument] = argv;
+  if (firstArgument !== void 0 && HELP_TOKENS4.has(firstArgument)) {
+    process.stdout.write(HELP_TEXT4);
+    return EXIT_CODES.OK;
+  }
+  const parsed = parseFlags2(argv);
+  if (!parsed.ok) {
+    structuredError({
+      code: "invalid_arguments",
+      message: parsed.message,
+      subcommand: "release changelog"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  const cwd = options.cwd ?? process.cwd();
+  const runner = options.runner ?? defaultRunner;
+  const version2 = tryReadVersionOrReport(cwd, parsed.flags.version);
+  if (version2 === null) return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  if (parsed.flags.draft) {
+    const tag = lastTag2(cwd, runner);
+    const range = tag === null ? "HEAD" : `${tag}..HEAD`;
+    const commits = tryCollectCommitsOrReport2(cwd, runner, range);
+    if (commits === null) return UNEXPECTED_EXIT2;
+    process.stdout.write(renderBlock(groupCommits(commits)));
+    return EXIT_CODES.OK;
+  }
+  const changelogPath = path4.join(cwd, "CHANGELOG.md");
+  if (!existsSync3(changelogPath)) {
+    structuredError({
+      code: "changelog_missing",
+      message: "CHANGELOG.md not found at repo root",
+      subcommand: "release changelog"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  const current = readFileSync4(changelogPath, "utf8");
+  const today = options.today ?? todayUtc();
+  const outcome = graduateChangelog({
+    current,
+    newVersion: version2,
+    today
+  });
+  if (outcome.kind === "duplicate") {
+    return EXIT_CODES.OK;
+  }
+  if (outcome.kind !== "ok") {
+    structuredError({
+      ...GRADUATE_REFUSALS[outcome.kind],
+      subcommand: "release changelog"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  try {
+    atomicWriteFileSync(changelogPath, outcome.updated);
+  } catch (error51) {
+    structuredError({
+      code: "changelog_write_failed",
+      message: error51 instanceof Error ? error51.message : String(error51),
+      subcommand: "release changelog"
+    });
+    return UNEXPECTED_EXIT2;
+  }
+  return EXIT_CODES.OK;
+};
+
+// src/release/commit-and-tag.ts
+import { existsSync as existsSync4, readFileSync as readFileSync5 } from "node:fs";
+import path5 from "node:path";
+var HELP_TEXT5 = `Usage: gaia-maintainer release commit-and-tag (--commit | --tag) [--no-push]
+
+  --commit      Stage release-related files and commit, then amend
+                wiki/.state.json with the new commit SHA.
+  --tag         Tag HEAD as vX.Y.Z and push the tag to origin.
+  --no-push     With --tag: skip the tag push step.
+
+  Exit codes:
+    0  success
+    1  user-correctable error
+    2  unexpected (git failure)
+`;
+var HELP_TOKENS5 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var UNEXPECTED_EXIT3 = 2;
+var parseFlags3 = (argv) => {
+  let mode;
+  let noPush = false;
+  for (const token of argv) {
+    if (token === "--commit" || token === "--tag") {
+      if (mode !== void 0) {
+        return {
+          message: "--commit and --tag are mutually exclusive",
+          ok: false
+        };
+      }
+      mode = token === "--commit" ? "commit" : "tag";
+    } else if (token === "--no-push") {
+      noPush = true;
+    } else {
+      return { message: `unknown flag: ${token}`, ok: false };
+    }
+  }
+  if (mode === void 0) {
+    return { message: "one of --commit or --tag is required", ok: false };
+  }
+  return { flags: { mode, noPush }, ok: true };
+};
+var readVersion2 = (cwd) => {
+  const target = path5.join(cwd, "package.json");
+  if (!existsSync4(target)) {
+    throw new Error("package.json not found at repo root");
+  }
+  const parsed = JSON.parse(readFileSync5(target, "utf8"));
+  if (typeof parsed.version !== "string") {
+    throw new TypeError('package.json has no string "version"');
+  }
+  return parsed.version;
+};
+var stepSucceeded = (result) => result.error === void 0 && (result.status ?? -1) === 0;
+var passthroughFailure = (result, step) => {
+  const stderr = result.stderr.trim();
+  const errorPart = result.error === void 0 ? "" : ` (${result.error.message})`;
+  const status = result.status ?? -1;
+  process.stderr.write(
+    `commit-and-tag: ${step.command} ${step.args.join(" ")} exited ${status}${errorPart}
+`
+  );
+  if (stderr.length > 0) {
+    process.stderr.write(`${stderr}
+`);
+  }
+  return UNEXPECTED_EXIT3;
+};
+var RELEASE_FILES = [
+  "package.json",
+  "frontend/package.json",
+  ".gaia/VERSION",
+  ".gaia/manifest.json",
+  "CHANGELOG.md",
+  "wiki/log.md"
+];
+var writeStateSha = (cwd, sha) => {
+  const target = path5.join(cwd, "wiki", ".state.json");
+  if (!existsSync4(target)) return;
+  const raw = readFileSync5(target, "utf8");
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("wiki/.state.json is not valid JSON");
+  }
+  const next = {};
+  let saw = false;
+  for (const key of Object.keys(parsed)) {
+    if (key === "last_evaluated_sha") {
+      next[key] = sha;
+      saw = true;
+    } else if (key === "last_evaluated_at") {
+      next[key] = (/* @__PURE__ */ new Date()).toISOString();
+    } else {
+      next[key] = parsed[key];
+    }
+  }
+  if (!saw) next.last_evaluated_sha = sha;
+  const trailingNewline = raw.endsWith("\n") ? "\n" : "";
+  atomicWriteFileSync(
+    target,
+    `${JSON.stringify(next, null, 2)}${trailingNewline}`
+  );
+};
+var amendStateFile = (ctx) => {
+  const statePath = path5.join(ctx.cwd, "wiki", ".state.json");
+  if (!existsSync4(statePath)) return null;
+  const amendSequence = [
+    { args: ["add", "wiki/.state.json"], command: "git" },
+    { args: ["commit", "--amend", "--no-edit"], command: "git" }
+  ];
+  for (const step of amendSequence) {
+    const result = ctx.runner(step.command, step.args, { cwd: ctx.cwd });
+    if (!stepSucceeded(result)) return passthroughFailure(result, step);
+  }
+  return null;
+};
+var runCommitMode = (ctx) => {
+  const presentFiles = RELEASE_FILES.filter(
+    (file2) => existsSync4(path5.join(ctx.cwd, file2))
+  );
+  if (presentFiles.length === 0) {
+    process.stderr.write("commit-and-tag: no release files present to stage\n");
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  const message = `chore(release): v${ctx.version}`;
+  const sequence = [
+    { args: ["add", ...presentFiles], command: "git" },
+    { args: ["commit", "-m", message], command: "git" }
+  ];
+  for (const step of sequence) {
+    const result = ctx.runner(step.command, step.args, { cwd: ctx.cwd });
+    if (!stepSucceeded(result)) return passthroughFailure(result, step);
+  }
+  const headResult = ctx.runner("git", ["rev-parse", "HEAD"], { cwd: ctx.cwd });
+  if (!stepSucceeded(headResult)) {
+    return passthroughFailure(headResult, {
+      args: ["rev-parse", "HEAD"],
+      command: "git"
+    });
+  }
+  const newSha = headResult.stdout.trim();
+  try {
+    writeStateSha(ctx.cwd, newSha);
+  } catch (error51) {
+    process.stderr.write(
+      `commit-and-tag: ${error51 instanceof Error ? error51.message : String(error51)}
+`
+    );
+    return UNEXPECTED_EXIT3;
+  }
+  const amendFailure = amendStateFile(ctx);
+  if (amendFailure !== null) return amendFailure;
+  process.stdout.write(
+    `commit-and-tag: committed v${ctx.version} (${newSha.slice(0, 7)})
+`
+  );
+  return EXIT_CODES.OK;
+};
+var runTagMode = (ctx) => {
+  const tagName = `v${ctx.version}`;
+  const message = `Release v${ctx.version}`;
+  const tagStep = {
+    args: ["tag", "-a", tagName, "-m", message],
+    command: "git"
+  };
+  const tagResult = ctx.runner(tagStep.command, tagStep.args, { cwd: ctx.cwd });
+  if (!stepSucceeded(tagResult)) return passthroughFailure(tagResult, tagStep);
+  if (!ctx.noPush) {
+    const pushStep = {
+      args: ["push", "origin", tagName],
+      command: "git"
+    };
+    const pushResult = ctx.runner(pushStep.command, pushStep.args, {
+      cwd: ctx.cwd
+    });
+    if (!stepSucceeded(pushResult))
+      return passthroughFailure(pushResult, pushStep);
+  }
+  process.stdout.write(
+    `commit-and-tag: tagged ${tagName}${ctx.noPush ? " (push skipped)" : " and pushed"}
+`
+  );
+  return EXIT_CODES.OK;
+};
+var run5 = (argv, options = {}) => {
+  const [firstArgument] = argv;
+  if (firstArgument !== void 0 && HELP_TOKENS5.has(firstArgument)) {
+    process.stdout.write(HELP_TEXT5);
+    return EXIT_CODES.OK;
+  }
+  const parsed = parseFlags3(argv);
+  if (!parsed.ok) {
+    structuredError({
+      code: "invalid_arguments",
+      message: parsed.message,
+      subcommand: "release commit-and-tag"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  const cwd = options.cwd ?? process.cwd();
+  const runner = options.runner ?? defaultRunner;
+  let version2;
+  try {
+    version2 = readVersion2(cwd);
+  } catch (error51) {
+    structuredError({
+      code: "package_json_invalid",
+      message: error51 instanceof Error ? error51.message : String(error51),
+      subcommand: "release commit-and-tag"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  if (parsed.flags.mode === "commit") {
+    return runCommitMode({ cwd, runner, version: version2 });
+  }
+  return runTagMode({ cwd, noPush: parsed.flags.noPush, runner, version: version2 });
+};
+
+// src/release/exclude-regex.ts
+import { readFileSync as readFileSync9 } from "node:fs";
+import path9 from "node:path";
+
 // src/release/manifest.ts
 import { execFileSync as execFileSync2 } from "node:child_process";
-import { readFileSync as readFileSync6 } from "node:fs";
-import path6 from "node:path";
+import { readFileSync as readFileSync8 } from "node:fs";
+import path8 from "node:path";
 
 // src/util/escape-regexp.ts
 var METACHARACTERS = /[.*+?^${}()|[\]\\]/g;
@@ -15628,8 +16006,8 @@ var applyWithholds = (excludeText, withholds) => {
 };
 
 // src/release/region-scan.ts
-import { existsSync as existsSync5, readFileSync as readFileSync5 } from "node:fs";
-import path5 from "node:path";
+import { existsSync as existsSync6, readFileSync as readFileSync7 } from "node:fs";
+import path7 from "node:path";
 
 // src/update/region-markers.ts
 var scanRegion = (source, startMarker, endMarker) => {
@@ -18735,14 +19113,14 @@ var {
 } = yaml;
 
 // src/release/region-registry.ts
-import { existsSync as existsSync4, readFileSync as readFileSync4 } from "node:fs";
-import path4 from "node:path";
+import { existsSync as existsSync5, readFileSync as readFileSync6 } from "node:fs";
+import path6 from "node:path";
 var rosterAgentPaths = (repoRoot) => {
-  const rosterPath = path4.join(repoRoot, ".gaia/audit-ci.yml");
-  if (!existsSync4(rosterPath)) return /* @__PURE__ */ new Set();
+  const rosterPath = path6.join(repoRoot, ".gaia/audit-ci.yml");
+  if (!existsSync5(rosterPath)) return /* @__PURE__ */ new Set();
   let parsed;
   try {
-    parsed = load(readFileSync4(rosterPath, "utf8"));
+    parsed = load(readFileSync6(rosterPath, "utf8"));
   } catch {
     return /* @__PURE__ */ new Set();
   }
@@ -18775,10 +19153,10 @@ var scanEntry = (repoRoot, shippedFiles, entry) => {
   );
   const paths = [];
   for (const key of sortedKeys) {
-    const absPath = path5.join(repoRoot, key);
-    if (existsSync5(absPath)) {
+    const absPath = path7.join(repoRoot, key);
+    if (existsSync6(absPath)) {
       const scan = scanRegion(
-        readFileSync5(absPath, "utf8"),
+        readFileSync7(absPath, "utf8"),
         entry.startMarker,
         entry.endMarker
       );
@@ -18903,8 +19281,8 @@ var ManifestSchema = external_exports.object({
   regions: external_exports.array(RegionDeclarationSchema).optional(),
   version: external_exports.string()
 });
-var resolveExcludePath = (repoRoot) => path6.resolve(repoRoot, ".gaia/release-exclude");
-var resolveManifestPath = (repoRoot) => path6.resolve(repoRoot, ".gaia/manifest.json");
+var resolveExcludePath = (repoRoot) => path8.resolve(repoRoot, ".gaia/release-exclude");
+var resolveManifestPath = (repoRoot) => path8.resolve(repoRoot, ".gaia/manifest.json");
 var listGitFiles = (cwd) => splitZStream(
   execFileSync2("git", gitZArgs("ls-files"), {
     cwd,
@@ -18914,9 +19292,9 @@ var listGitFiles = (cwd) => splitZStream(
 );
 var buildManifest = (cwd, options = {}) => {
   const repoRoot = options.repoRoot ?? resolveRepoRoot(cwd);
-  const versionPath = path6.resolve(repoRoot, ".gaia/VERSION");
-  const version2 = readFileSync6(versionPath, "utf8").trim();
-  const excludeText = options.excludeText ?? readFileSync6(resolveExcludePath(repoRoot), "utf8");
+  const versionPath = path8.resolve(repoRoot, ".gaia/VERSION");
+  const version2 = readFileSync8(versionPath, "utf8").trim();
+  const excludeText = options.excludeText ?? readFileSync8(resolveExcludePath(repoRoot), "utf8");
   validateExcludeText(excludeText);
   const excludePatterns = parseExcludePatterns(excludeText);
   const isExcluded = (candidate) => excludePatterns.some((pattern) => pattern.test(candidate));
@@ -19053,7 +19431,7 @@ var computeDrift = (expected, actual) => {
 };
 
 // src/release/exclude-regex.ts
-var HELP_TEXT4 = `Usage: gaia-maintainer release exclude-regex [--exclude-file <path>]
+var HELP_TEXT6 = `Usage: gaia-maintainer release exclude-regex [--exclude-file <path>]
 
   Compile .gaia/release-exclude into the anchored-regex file the release
   staging filter feeds to \`grep -vE -f\`. One \`^<escaped>(/|$)\` per
@@ -19068,9 +19446,9 @@ var HELP_TEXT4 = `Usage: gaia-maintainer release exclude-regex [--exclude-file <
        metacharacter or indentation) in the exclude source
     2  unexpected (exclude source unreadable / IO error)
 `;
-var HELP_TOKENS4 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS6 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var UNEXPECTED_EXIT4 = 2;
-var parseArgs = (argv) => {
+var parseArgs2 = (argv) => {
   let excludeFile;
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
@@ -19086,13 +19464,13 @@ var parseArgs = (argv) => {
   }
   return { excludeFile, ok: true };
 };
-var run4 = (argv, options = {}) => {
+var run6 = (argv, options = {}) => {
   const [firstArgument] = argv;
-  if (firstArgument !== void 0 && HELP_TOKENS4.has(firstArgument)) {
-    process.stdout.write(HELP_TEXT4);
+  if (firstArgument !== void 0 && HELP_TOKENS6.has(firstArgument)) {
+    process.stdout.write(HELP_TEXT6);
     return EXIT_CODES.OK;
   }
-  const parsed = parseArgs(argv);
+  const parsed = parseArgs2(argv);
   if (!parsed.ok) {
     structuredError({
       code: "invalid_arguments",
@@ -19105,8 +19483,8 @@ var run4 = (argv, options = {}) => {
   const { excludeFile } = parsed;
   let text;
   try {
-    const source = excludeFile === void 0 ? resolveExcludePath(resolveRepoRoot(cwd)) : path7.isAbsolute(excludeFile) ? excludeFile : path7.join(cwd, excludeFile);
-    text = readFileSync7(source, "utf8");
+    const source = excludeFile === void 0 ? resolveExcludePath(resolveRepoRoot(cwd)) : path9.isAbsolute(excludeFile) ? excludeFile : path9.join(cwd, excludeFile);
+    text = readFileSync9(source, "utf8");
   } catch (error51) {
     structuredError({
       code: "exclude_read_failed",
@@ -19130,11 +19508,11 @@ var run4 = (argv, options = {}) => {
 };
 
 // src/release/manifest-cli.ts
-import { existsSync as existsSync7, readFileSync as readFileSync9 } from "node:fs";
-import path8 from "node:path";
+import { existsSync as existsSync8, readFileSync as readFileSync11 } from "node:fs";
+import path10 from "node:path";
 
 // src/release/manifest-cli-args.ts
-var HELP_TEXT5 = `Usage: gaia-maintainer release manifest [--out <path>] [--stdout]
+var HELP_TEXT7 = `Usage: gaia-maintainer release manifest [--out <path>] [--stdout]
                                        [--ship <path>]...
                                        [--withhold <path> --category <N> --reason <text>]...
                                        [--withdraw <path> --category <N> --reason <text>]...
@@ -19181,7 +19559,7 @@ var HELP_TEXT5 = `Usage: gaia-maintainer release manifest [--out <path>] [--stdo
        drift
     2  unexpected (filesystem / git failure)
 `;
-var HELP_TOKENS5 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS7 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var closeBoundaryAnswer = (state) => {
   const { pending, withdraws, withholds } = state;
   if (pending === void 0) return void 0;
@@ -19330,7 +19708,7 @@ var parseFlags4 = (argv) => {
 };
 
 // src/release/manifest-cli-check.ts
-import { existsSync as existsSync6, readFileSync as readFileSync8 } from "node:fs";
+import { existsSync as existsSync7, readFileSync as readFileSync10 } from "node:fs";
 var UNEXPECTED_EXIT5 = 2;
 var renderVersionDriftLines = (result) => result.versionDrift === void 0 ? [] : [
   "",
@@ -19390,9 +19768,9 @@ var renderCheckReport = (result, jsonMode) => {
 `;
 };
 var readCommittedManifest = (manifestPath) => {
-  if (!existsSync6(manifestPath)) return { kind: "absent" };
+  if (!existsSync7(manifestPath)) return { kind: "absent" };
   try {
-    const rawJson = JSON.parse(readFileSync8(manifestPath, "utf8"));
+    const rawJson = JSON.parse(readFileSync10(manifestPath, "utf8"));
     return { kind: "ok", manifest: ManifestSchema.parse(rawJson) };
   } catch (error51) {
     const message = error51 instanceof external_exports.ZodError ? `committed manifest is malformed: ${external_exports.prettifyError(error51)}` : error51 instanceof Error ? error51.message : String(error51);
@@ -19456,7 +19834,7 @@ var trySnapshotOrReport = (cwd, generatedAt) => {
   try {
     const repoRoot = resolveRepoRoot(cwd);
     const manifestPath = resolveManifestPath(repoRoot);
-    const excludeText = readFileSync9(resolveExcludePath(repoRoot), "utf8");
+    const excludeText = readFileSync11(resolveExcludePath(repoRoot), "utf8");
     const expected = buildManifest(cwd, { excludeText, generatedAt, repoRoot });
     const committed = readCommittedManifest(manifestPath);
     if (committed.kind === "invalid") {
@@ -19489,9 +19867,9 @@ var trySnapshotOrReport = (cwd, generatedAt) => {
 };
 var resolveOutputTarget = (cwd, repoRoot, outPath) => {
   if (outPath === void 0) {
-    return path8.join(repoRoot, ".gaia", "manifest.json");
+    return path10.join(repoRoot, ".gaia", "manifest.json");
   }
-  return path8.isAbsolute(outPath) ? outPath : path8.join(cwd, outPath);
+  return path10.isAbsolute(outPath) ? outPath : path10.join(cwd, outPath);
 };
 var tryWriteManifestOrReport = (target, serialized) => {
   try {
@@ -19530,7 +19908,7 @@ var reportSummary = (manifest, cwd, target) => {
   }
   const total = Object.keys(manifest.files).length;
   process.stdout.write(
-    `release manifest: wrote ${total} files (owned=${counts.owned}, shared=${counts.shared}, wiki-owned=${counts["wiki-owned"]}) \u2192 ${path8.relative(cwd, target) || target}
+    `release manifest: wrote ${total} files (owned=${counts.owned}, shared=${counts.shared}, wiki-owned=${counts["wiki-owned"]}) \u2192 ${path10.relative(cwd, target) || target}
 `
   );
 };
@@ -19567,10 +19945,10 @@ var applyAnswersAndEmit = (options) => {
   reportSummary(manifest, cwd, target);
   return EXIT_CODES.OK;
 };
-var run5 = (argv, options = {}) => {
+var run7 = (argv, options = {}) => {
   const [firstArgument] = argv;
-  if (firstArgument !== void 0 && HELP_TOKENS5.has(firstArgument)) {
-    process.stdout.write(HELP_TEXT5);
+  if (firstArgument !== void 0 && HELP_TOKENS7.has(firstArgument)) {
+    process.stdout.write(HELP_TEXT7);
     return EXIT_CODES.OK;
   }
   const parsed = parseFlags4(argv);
@@ -19606,10 +19984,10 @@ var run5 = (argv, options = {}) => {
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
   const target = stdout ? void 0 : resolveOutputTarget(cwd, snapshot.repoRoot, outPath);
-  if (target !== void 0 && !existsSync7(path8.dirname(target))) {
+  if (target !== void 0 && !existsSync8(path10.dirname(target))) {
     structuredError({
       code: "output_dir_missing",
-      message: `output directory does not exist: ${path8.dirname(target)}`,
+      message: `output directory does not exist: ${path10.dirname(target)}`,
       subcommand: "release manifest"
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
@@ -19623,12 +20001,9 @@ var run5 = (argv, options = {}) => {
   });
 };
 
-// src/release/preflight.ts
-import { spawnSync as spawnSync4 } from "node:child_process";
-
 // src/wiki/state.ts
-import { existsSync as existsSync8, readdirSync, readFileSync as readFileSync10, statSync } from "node:fs";
-import path9 from "node:path";
+import { existsSync as existsSync9, readdirSync, readFileSync as readFileSync12, statSync } from "node:fs";
+import path11 from "node:path";
 
 // src/wiki/util/git.ts
 import { execFileSync as execFileSync3 } from "node:child_process";
@@ -19716,10 +20091,10 @@ var recentCommits = (sinceSha, cwd, limit = 5) => {
 };
 
 // src/wiki/state.ts
-var HELP_TEXT6 = `Usage: gaia wiki state [--json]
+var HELP_TEXT8 = `Usage: gaia wiki state [--json]
 `;
 var ALL_ZERO_SHA = "0".repeat(40);
-var HELP_TOKENS6 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS8 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var classifySeverity = (commitCount) => {
   if (commitCount <= 0) return "none";
   if (commitCount <= 5) return "low";
@@ -19739,8 +20114,8 @@ var DOMAIN_DIRS = [
 var countDomainPages = (wikiRoot) => {
   const counts = {};
   for (const domain2 of DOMAIN_DIRS) {
-    const domainDir = path9.join(wikiRoot, domain2);
-    if (!existsSync8(domainDir) || !statSync(domainDir).isDirectory()) {
+    const domainDir = path11.join(wikiRoot, domain2);
+    if (!existsSync9(domainDir) || !statSync(domainDir).isDirectory()) {
       counts[domain2] = 0;
     } else {
       const entries = readdirSync(domainDir, { withFileTypes: true });
@@ -19756,8 +20131,8 @@ var countDomainPages = (wikiRoot) => {
   return counts;
 };
 var readStateFile = (statePath) => {
-  if (!existsSync8(statePath)) return null;
-  const raw = readFileSync10(statePath, "utf8");
+  if (!existsSync9(statePath)) return null;
+  const raw = readFileSync12(statePath, "utf8");
   try {
     return JSON.parse(raw);
   } catch {
@@ -19791,8 +20166,8 @@ var printHuman = (state, write) => {
 var parseStateArgs = (argv, write) => {
   let json3 = false;
   for (const token of argv) {
-    if (HELP_TOKENS6.has(token)) {
-      write(HELP_TEXT6);
+    if (HELP_TOKENS8.has(token)) {
+      write(HELP_TEXT8);
       return { exitCode: EXIT_CODES.OK, ok: false };
     }
     if (token === "--json") {
@@ -19808,7 +20183,7 @@ var parseStateArgs = (argv, write) => {
   }
   return { json: json3, ok: true };
 };
-var run6 = (argv, options = {}) => {
+var run8 = (argv, options = {}) => {
   const write = options.write ?? ((chunk) => {
     process.stdout.write(chunk);
   });
@@ -19828,8 +20203,8 @@ var run6 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const wikiRoot = path9.join(repoRoot, "wiki");
-  const statePath = path9.join(wikiRoot, ".state.json");
+  const wikiRoot = path11.join(repoRoot, "wiki");
+  const statePath = path11.join(wikiRoot, ".state.json");
   const stateFile = readStateFile(statePath);
   const stateSha = stateFile?.last_evaluated_sha ?? "";
   const stateAt = stateFile?.last_evaluated_at ?? "";
@@ -19865,7 +20240,7 @@ var run6 = (argv, options = {}) => {
 };
 
 // src/release/preflight.ts
-var HELP_TEXT7 = `Usage: gaia-maintainer release preflight [--branch <name>]
+var HELP_TEXT9 = `Usage: gaia-maintainer release preflight [--branch <name>]
 
   Verify branch state, working tree, and wiki sync before cutting a release.
 
@@ -19877,14 +20252,9 @@ var HELP_TEXT7 = `Usage: gaia-maintainer release preflight [--branch <name>]
     1  user-correctable refusal (wrong branch, dirty tree, wiki drift)
     2  unexpected (git failure)
 `;
-var HELP_TOKENS7 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS9 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var UNEXPECTED_EXIT6 = 2;
 var DEFAULT_BRANCH = "main";
-var defaultRunner4 = (command, args, options) => spawnSync4(command, args, {
-  cwd: options.cwd,
-  encoding: "utf8",
-  stdio: ["ignore", "pipe", "pipe"]
-});
 var parseFlags5 = (argv) => {
   let allowedBranch = DEFAULT_BRANCH;
   for (let index = 0; index < argv.length; index += 1) {
@@ -19921,7 +20291,7 @@ var refuse = (message) => {
 };
 var runWikiStateJson = (cwd) => {
   const chunks = [];
-  const exit = run6(["--json"], {
+  const exit = run8(["--json"], {
     cwd,
     write: (chunk) => {
       chunks.push(chunk);
@@ -20009,10 +20379,10 @@ var isDriftBenign = (runner, cwd, driftBase) => {
   // benign one.
   driftSubjects.length > 0 && driftSubjects.every((subject) => subject.startsWith("wiki:"));
 };
-var run7 = (argv, options = {}) => {
+var run9 = (argv, options = {}) => {
   const [firstArgument] = argv;
-  if (firstArgument !== void 0 && HELP_TOKENS7.has(firstArgument)) {
-    process.stdout.write(HELP_TEXT7);
+  if (firstArgument !== void 0 && HELP_TOKENS9.has(firstArgument)) {
+    process.stdout.write(HELP_TEXT9);
     return EXIT_CODES.OK;
   }
   const parsed = parseFlags5(argv);
@@ -20025,7 +20395,7 @@ var run7 = (argv, options = {}) => {
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
   const cwd = options.cwd ?? process.cwd();
-  const runner = options.runner ?? defaultRunner4;
+  const runner = options.runner ?? defaultRunner;
   const wikiStateProbe = options.wikiStateProbe ?? runWikiStateJson;
   const branchState = tryReadBranchState(runner, cwd);
   if (branchState === null) return UNEXPECTED_EXIT6;
@@ -20064,21 +20434,21 @@ var run7 = (argv, options = {}) => {
 };
 
 // src/release/runtime-deps.ts
-import { readFileSync as readFileSync11, statSync as statSync2 } from "node:fs";
-import path11 from "node:path";
+import { readFileSync as readFileSync13, statSync as statSync2 } from "node:fs";
+import path13 from "node:path";
 
 // src/util/tree-walk.ts
 import { readdirSync as readdirSync2 } from "node:fs";
-import path10 from "node:path";
+import path12 from "node:path";
 var EVERY_EXTENSION = "every-extension";
 var normalizeEntry = (entry, separator) => entry.split(separator).join("/");
 var collectTreeFiles = (root, extensions) => {
   const walk = (directory) => readdirSync2(directory, { withFileTypes: true }).flatMap((entry) => {
-    const absolute = path10.join(directory, entry.name);
+    const absolute = path12.join(directory, entry.name);
     if (entry.isDirectory()) {
       return walk(absolute);
     }
-    return entry.isFile() && (extensions === EVERY_EXTENSION || extensions.has(path10.extname(entry.name).toLowerCase())) ? [normalizeEntry(path10.relative(root, absolute), path10.sep)] : [];
+    return entry.isFile() && (extensions === EVERY_EXTENSION || extensions.has(path12.extname(entry.name).toLowerCase())) ? [normalizeEntry(path12.relative(root, absolute), path12.sep)] : [];
   });
   return walk(root).toSorted((a, b) => a.localeCompare(b));
 };
@@ -20127,7 +20497,7 @@ var SCAN_GLOBS = [
 ];
 
 // src/release/runtime-deps.ts
-var HELP_TEXT8 = `Usage: gaia-maintainer release runtime-deps [--staging <dir>] [--manifest <path>] [--json]
+var HELP_TEXT10 = `Usage: gaia-maintainer release runtime-deps [--staging <dir>] [--manifest <path>] [--json]
 
   Scan shipped shell scripts for runtime path references that resolve to
   release-excluded files.
@@ -20144,7 +20514,7 @@ var HELP_TEXT8 = `Usage: gaia-maintainer release runtime-deps [--staging <dir>] 
     1  leaks detected, missing inputs, bad flags
     2  unexpected (manifest load failure, script walk failure)
 `;
-var HELP_TOKENS8 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS10 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var UNEXPECTED_EXIT7 = 2;
 var ADOPTER_OWNED_SENTINELS2 = /* @__PURE__ */ new Set([
   ...ADOPTER_OWNED_SENTINELS,
@@ -20280,10 +20650,10 @@ var extractPathRefs = (filePath, source, allowlist = PROSE_PATH_ALLOWLIST) => {
 var computeShippedDirs = (manifest) => {
   const dirs = /* @__PURE__ */ new Set();
   for (const filePath of manifest) {
-    let dir = path11.dirname(filePath);
+    let dir = path13.dirname(filePath);
     while (dir !== "." && !dirs.has(dir)) {
       dirs.add(dir);
-      const parent = path11.dirname(dir);
+      const parent = path13.dirname(dir);
       if (parent === dir) break;
       dir = parent;
     }
@@ -20305,7 +20675,7 @@ var SHELL_EXTENSIONS = /* @__PURE__ */ new Set([".sh"]);
 var walkScripts = (root) => {
   const out = [];
   for (const sub of SCAN_GLOBS) {
-    const absolute = path11.join(root, sub);
+    const absolute = path13.join(root, sub);
     let exists = true;
     try {
       statSync2(absolute);
@@ -20315,7 +20685,7 @@ var walkScripts = (root) => {
     if (exists) {
       out.push(
         ...collectTreeFiles(absolute, SHELL_EXTENSIONS).map(
-          (relativePath) => path11.posix.join(sub, relativePath)
+          (relativePath) => path13.posix.join(sub, relativePath)
         )
       );
     }
@@ -20323,7 +20693,7 @@ var walkScripts = (root) => {
   return out;
 };
 var loadManifest = (manifestPath) => {
-  const raw = readFileSync11(manifestPath, "utf8");
+  const raw = readFileSync13(manifestPath, "utf8");
   const parsed = JSON.parse(raw);
   if (parsed.files === void 0) {
     throw new Error(`manifest at ${manifestPath} has no "files" field`);
@@ -20374,7 +20744,7 @@ var renderReport = (report, jsonMode) => {
 };
 var resolvePathFlag = (cwd, fallback, flag) => {
   if (flag === void 0) return fallback;
-  return path11.isAbsolute(flag) ? flag : path11.join(cwd, flag);
+  return path13.isAbsolute(flag) ? flag : path13.join(cwd, flag);
 };
 var tryVerifyRootExists = (root) => {
   try {
@@ -20415,7 +20785,7 @@ var collectLeaks = (root, scriptFiles, manifest) => {
   const leaks = [];
   const shippedDirs = computeShippedDirs(manifest);
   for (const scriptPath of scriptFiles) {
-    const rawSource = readFileSync11(path11.join(root, scriptPath), "utf8");
+    const rawSource = readFileSync13(path13.join(root, scriptPath), "utf8");
     const source = stripMarkerBlocks(
       rawSource,
       MAINTAINER_ONLY_START,
@@ -20431,10 +20801,10 @@ var collectLeaks = (root, scriptFiles, manifest) => {
   }
   return leaks;
 };
-var run8 = (argv, options = {}) => {
+var run10 = (argv, options = {}) => {
   const [firstArgument] = argv;
-  if (firstArgument !== void 0 && HELP_TOKENS8.has(firstArgument)) {
-    process.stdout.write(HELP_TEXT8);
+  if (firstArgument !== void 0 && HELP_TOKENS10.has(firstArgument)) {
+    process.stdout.write(HELP_TEXT10);
     return EXIT_CODES.OK;
   }
   const parsed = parseFlags6(argv);
@@ -20458,7 +20828,7 @@ var run8 = (argv, options = {}) => {
   }
   const manifestPath = resolvePathFlag(
     cwd,
-    path11.join(root, ".gaia", "manifest.json"),
+    path13.join(root, ".gaia", "manifest.json"),
     parsed.flags.manifestPath
   );
   const manifest = tryLoadManifestOrReport(manifestPath);
@@ -20478,9 +20848,9 @@ var run8 = (argv, options = {}) => {
 };
 
 // src/release/scrub-wiki.ts
-import { existsSync as existsSync9, mkdirSync, readFileSync as readFileSync12 } from "node:fs";
-import path12 from "node:path";
-var HELP_TEXT9 = `Usage: gaia-maintainer release scrub-wiki [--version <X.Y.Z>] [--date <YYYY-MM-DD>] [--check]
+import { existsSync as existsSync10, mkdirSync, readFileSync as readFileSync14 } from "node:fs";
+import path14 from "node:path";
+var HELP_TEXT11 = `Usage: gaia-maintainer release scrub-wiki [--version <X.Y.Z>] [--date <YYYY-MM-DD>] [--check]
 
   Overwrite wiki/log.md with release-clean content (Step 6 of the runbook).
 
@@ -20498,7 +20868,7 @@ var HELP_TEXT9 = `Usage: gaia-maintainer release scrub-wiki [--version <X.Y.Z>] 
     1  user-correctable error; --check: committed wiki/log.md is stale or missing
     2  unexpected (filesystem failure)
 `;
-var HELP_TOKENS9 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS11 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var UNEXPECTED_EXIT8 = 2;
 var parseFlags7 = (argv) => {
   let check2 = false;
@@ -20532,11 +20902,11 @@ var todayUtc2 = (now = /* @__PURE__ */ new Date()) => {
 };
 var readVersion3 = (cwd, override) => {
   if (override !== void 0 && override.length > 0) return override;
-  const target = path12.join(cwd, "package.json");
-  if (!existsSync9(target)) {
+  const target = path14.join(cwd, "package.json");
+  if (!existsSync10(target)) {
     throw new Error("package.json not found at repo root");
   }
-  const parsed = JSON.parse(readFileSync12(target, "utf8"));
+  const parsed = JSON.parse(readFileSync14(target, "utf8"));
   if (typeof parsed.version !== "string") {
     throw new TypeError('package.json has no string "version"');
   }
@@ -20566,8 +20936,8 @@ var runCheck2 = (args) => {
   const drifted = [];
   try {
     for (const target of targets) {
-      const missing = !existsSync9(target.path);
-      const stale = !missing && normalizeDates(readFileSync12(target.path, "utf8")) !== normalizeDates(target.rendered);
+      const missing = !existsSync10(target.path);
+      const stale = !missing && normalizeDates(readFileSync14(target.path, "utf8")) !== normalizeDates(target.rendered);
       if (missing || stale) {
         drifted.push(target.label);
       }
@@ -20590,10 +20960,10 @@ var runCheck2 = (args) => {
   }
   return EXIT_CODES.OK;
 };
-var run9 = (argv, options = {}) => {
+var run11 = (argv, options = {}) => {
   const [firstArgument] = argv;
-  if (firstArgument !== void 0 && HELP_TOKENS9.has(firstArgument)) {
-    process.stdout.write(HELP_TEXT9);
+  if (firstArgument !== void 0 && HELP_TOKENS11.has(firstArgument)) {
+    process.stdout.write(HELP_TEXT11);
     return EXIT_CODES.OK;
   }
   const parsed = parseFlags7(argv);
@@ -20618,8 +20988,8 @@ var run9 = (argv, options = {}) => {
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
   const date5 = parsed.flags.date ?? options.today ?? todayUtc2();
-  const wikiDir = path12.join(cwd, "wiki");
-  if (!existsSync9(wikiDir)) {
+  const wikiDir = path14.join(cwd, "wiki");
+  if (!existsSync10(wikiDir)) {
     structuredError({
       code: "wiki_dir_missing",
       message: `wiki/ directory not found at ${wikiDir}`,
@@ -20627,7 +20997,7 @@ var run9 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const logPath = path12.join(wikiDir, "log.md");
+  const logPath = path14.join(wikiDir, "log.md");
   if (parsed.flags.check) {
     return runCheck2({ date: date5, logPath, version: version2 });
   }
@@ -20646,8 +21016,8 @@ var run9 = (argv, options = {}) => {
 };
 
 // src/release/scrub.ts
-import { readFileSync as readFileSync13, statSync as statSync3 } from "node:fs";
-import path14 from "node:path";
+import { readFileSync as readFileSync15, statSync as statSync3 } from "node:fs";
+import path16 from "node:path";
 
 // src/wiki/util/wikilinks.ts
 var WIKILINK_PATTERN = /\[\[([^\][]+)\]\]/gu;
@@ -20667,7 +21037,7 @@ var extractWikilinks = (body) => {
 };
 
 // src/release/excluded-refs.ts
-import path13 from "node:path";
+import path15 from "node:path";
 var WORKFLOWS_PREFIX = ".github/workflows/";
 var COMMAND_PATTERN = /^\.claude\/(?:commands\/(?<command>[\w-]+)\.md|skills\/(?<skill>[\w-]+))$/;
 var AGENT_PATTERN = /^\.claude\/agents\/(?<agent>[\w-]+)\.md$/;
@@ -20678,7 +21048,7 @@ var NAME_LEFT_BOUNDARY = String.raw`(?<![\w/.-])`;
 var isUnder = (file2, entry) => file2 === entry || file2.startsWith(`${entry}/`);
 var isReferenceableEntry = (entry, tracked) => entry.includes("/") && !entry.startsWith(WORKFLOWS_PREFIX) && tracked.some((file2) => isUnder(file2, entry));
 var isCodeFile = (file2, isExecutable) => {
-  const extension = path13.extname(file2);
+  const extension = path15.extname(file2);
   return extension === "" ? isExecutable(file2) : CODE_EXTENSIONS.has(extension);
 };
 var sortTokens = (tokens) => {
@@ -20706,8 +21076,8 @@ var deriveExcludedRefTokens = ({
     if (command !== void 0) commands.add(command);
     if (agent !== void 0) agents.add(agent);
     for (const file2 of tracked) {
-      if (isUnder(file2, entry) && !shippedBasenames.has(path13.basename(file2)) && isCodeFile(file2, isExecutable)) {
-        basenames.add(path13.basename(file2));
+      if (isUnder(file2, entry) && !shippedBasenames.has(path15.basename(file2)) && isCodeFile(file2, isExecutable)) {
+        basenames.add(path15.basename(file2));
       }
     }
   }
@@ -20762,7 +21132,7 @@ var compileExcludedRefMatcher = (tokens) => {
 };
 
 // src/release/scrub.ts
-var HELP_TEXT10 = `Usage: gaia-maintainer release scrub <staging-dir> [--config <path>] [--json]
+var HELP_TEXT12 = `Usage: gaia-maintainer release scrub <staging-dir> [--config <path>] [--json]
 
   Apply bundle-time scrub transforms (marker-strip + leak-check) to a
   staging directory produced by release.yml. Writes in place inside
@@ -20779,7 +21149,7 @@ var HELP_TEXT10 = `Usage: gaia-maintainer release scrub <staging-dir> [--config 
     1  leaks detected, unbalanced markers, missing staging dir, bad flags
     2  config parse error or filesystem IO failure
 `;
-var HELP_TOKENS10 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS12 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var UNEXPECTED_EXIT9 = 2;
 var DEFAULT_CONFIG_PATH = ".gaia/release-scrub.yml";
 var RELEASE_EXCLUDE_PATH = ".gaia/release-exclude";
@@ -20885,8 +21255,8 @@ var applyMarkerStrip = (stagingRoot, files, transform2) => {
   let blocksStripped = 0;
   for (const relativePath of files) {
     if (matchesAnyGlob(relativePath, transform2.paths)) {
-      const absolutePath = path14.join(stagingRoot, relativePath);
-      const source = readFileSync13(absolutePath, "utf8");
+      const absolutePath = path16.join(stagingRoot, relativePath);
+      const source = readFileSync15(absolutePath, "utf8");
       const hasAnyMarker = source.includes(transform2.start) || source.includes(transform2.end);
       if (hasAnyMarker) {
         const result = stripMarkerBlocks(
@@ -20929,7 +21299,7 @@ var deleteKeyPath = (obj, segments) => {
 var stripJsonKeysFromFile = (absolutePath, relativePath, keySegments) => {
   let parsed;
   try {
-    parsed = JSON.parse(readFileSync13(absolutePath, "utf8"));
+    parsed = JSON.parse(readFileSync15(absolutePath, "utf8"));
   } catch (error51) {
     throw new Error(
       `Failed to parse JSON at ${relativePath}: ${error51 instanceof Error ? error51.message : String(error51)}`
@@ -20954,7 +21324,7 @@ var applyJsonStrip = (stagingRoot, files, transform2) => {
   const keySegments = transform2.keys.map((k) => parseKeyPath(k));
   for (const relativePath of files) {
     if (matchesAnyGlob(relativePath, transform2.paths)) {
-      const absolutePath = path14.join(stagingRoot, relativePath);
+      const absolutePath = path16.join(stagingRoot, relativePath);
       const removed = stripJsonKeysFromFile(
         absolutePath,
         relativePath,
@@ -21009,7 +21379,7 @@ var removeMatchingArrayElements = (node, segments, match) => {
 var stripArrayElementsFromFile = (absolutePath, relativePath, selectors) => {
   let parsed;
   try {
-    parsed = JSON.parse(readFileSync13(absolutePath, "utf8"));
+    parsed = JSON.parse(readFileSync15(absolutePath, "utf8"));
   } catch (error51) {
     throw new Error(
       `Failed to parse JSON at ${relativePath}: ${error51 instanceof Error ? error51.message : String(error51)}`
@@ -21040,7 +21410,7 @@ var applyJsonStripArrayElement = (stagingRoot, files, transform2) => {
   }));
   for (const relativePath of files) {
     if (matchesAnyGlob(relativePath, transform2.paths)) {
-      const absolutePath = path14.join(stagingRoot, relativePath);
+      const absolutePath = path16.join(stagingRoot, relativePath);
       const removed = stripArrayElementsFromFile(
         absolutePath,
         relativePath,
@@ -21090,7 +21460,7 @@ var rewriteMatchingFields = (node, segments, substitution) => {
 var rewriteFieldsInFile = (absolutePath, relativePath, rewrites) => {
   let parsed;
   try {
-    parsed = JSON.parse(readFileSync13(absolutePath, "utf8"));
+    parsed = JSON.parse(readFileSync15(absolutePath, "utf8"));
   } catch (error51) {
     throw new Error(
       `Failed to parse JSON at ${relativePath}: ${error51 instanceof Error ? error51.message : String(error51)}`
@@ -21130,7 +21500,7 @@ var applyJsonFieldRewrite = (stagingRoot, files, transform2) => {
   }));
   for (const relativePath of files) {
     if (matchesAnyGlob(relativePath, transform2.paths)) {
-      const absolutePath = path14.join(stagingRoot, relativePath);
+      const absolutePath = path16.join(stagingRoot, relativePath);
       const rewritten = rewriteFieldsInFile(
         absolutePath,
         relativePath,
@@ -21172,7 +21542,7 @@ var scanForLeaks = ({ allowlist, check: check2, files, scopeSkip, stagingRoot },
   const leaks = [];
   for (const relativePath of files) {
     if (isInCheckScope(relativePath, check2, scopeSkip)) {
-      const source = readFileSync13(path14.join(stagingRoot, relativePath), "utf8");
+      const source = readFileSync15(path16.join(stagingRoot, relativePath), "utf8");
       for (const [index, line] of source.split("\n").entries()) {
         if (!allowlist.isAllowed(line)) {
           leaks.push(...findLeaksInLine(line, index + 1, relativePath));
@@ -21198,7 +21568,7 @@ var runLeakCheck = (args) => {
   });
 };
 var isDerivedCheck = (check2) => "derive" in check2;
-var slugFromPath = (filePath) => path14.basename(filePath, ".md");
+var slugFromPath = (filePath) => path16.basename(filePath, ".md");
 var isDirectory = (absolutePath) => {
   try {
     return statSync3(absolutePath).isDirectory();
@@ -21212,16 +21582,16 @@ var addSlugsForExcludeLine = (line, cwd, addSlug) => {
     addSlug(slugFromPath(line));
     return;
   }
-  const absolute = path14.join(cwd, line);
+  const absolute = path16.join(cwd, line);
   if (!isDirectory(absolute)) return;
-  addSlug(path14.basename(line));
+  addSlug(path16.basename(line));
   for (const relative of collectTreeFiles(absolute, EVERY_EXTENSION)) {
     if (relative.endsWith(".md")) addSlug(slugFromPath(relative));
   }
 };
 var buildExcludedSlugSet = (cwd) => {
   const lines = parseExcludeLines(
-    readFileSync13(path14.join(cwd, RELEASE_EXCLUDE_PATH), "utf8")
+    readFileSync15(path16.join(cwd, RELEASE_EXCLUDE_PATH), "utf8")
   );
   const slugs = /* @__PURE__ */ new Set();
   const addSlug = (value) => {
@@ -21253,7 +21623,7 @@ var runDerivedWikilinkCheck = ({
 };
 var buildNeverPresentWorkflowSet = (cwd) => {
   const lines = parseExcludeLines(
-    readFileSync13(path14.join(cwd, RELEASE_EXCLUDE_PATH), "utf8")
+    readFileSync15(path16.join(cwd, RELEASE_EXCLUDE_PATH), "utf8")
   );
   const paths = /* @__PURE__ */ new Set();
   for (const line of lines) {
@@ -21291,7 +21661,7 @@ var addTitlesForExcludeLine = (line, cwd, addTitle) => {
     addTitle(slugFromPath(line));
     return;
   }
-  const absolute = path14.join(cwd, line);
+  const absolute = path16.join(cwd, line);
   if (!isDirectory(absolute)) return;
   for (const relative of collectTreeFiles(absolute, EVERY_EXTENSION)) {
     if (relative.endsWith(".md")) addTitle(slugFromPath(relative));
@@ -21299,7 +21669,7 @@ var addTitlesForExcludeLine = (line, cwd, addTitle) => {
 };
 var buildExcludedTitleSet = (cwd) => {
   const lines = parseExcludeLines(
-    readFileSync13(path14.join(cwd, RELEASE_EXCLUDE_PATH), "utf8")
+    readFileSync15(path16.join(cwd, RELEASE_EXCLUDE_PATH), "utf8")
   );
   const titles = /* @__PURE__ */ new Set();
   for (const line of lines) {
@@ -21349,8 +21719,8 @@ var runDerivedTitleCheck = ({
   const leaks = [];
   for (const relativePath of files) {
     if (isInCheckScope(relativePath, check2, scopeSkip)) {
-      const content = readFileSync13(
-        path14.join(stagingRoot, relativePath),
+      const content = readFileSync15(
+        path16.join(stagingRoot, relativePath),
         "utf8"
       );
       leaks.push(
@@ -21366,7 +21736,7 @@ var runDerivedTitleCheck = ({
 };
 var isExecutableIn = (cwd) => (relativePath) => {
   try {
-    return (statSync3(path14.join(cwd, relativePath)).mode & 73) !== 0;
+    return (statSync3(path16.join(cwd, relativePath)).mode & 73) !== 0;
   } catch {
     return false;
   }
@@ -21381,11 +21751,11 @@ var runDerivedRefsCheck = ({
 }) => {
   const tokens = deriveExcludedRefTokens({
     excludeLines: parseExcludeLines(
-      readFileSync13(path14.join(cwd, RELEASE_EXCLUDE_PATH), "utf8")
+      readFileSync15(path16.join(cwd, RELEASE_EXCLUDE_PATH), "utf8")
     ),
     isExecutable: isExecutableIn(cwd),
     optOut: check2["ref-opt-out"] ?? [],
-    shippedBasenames: new Set(files.map((file2) => path14.basename(file2))),
+    shippedBasenames: new Set(files.map((file2) => path16.basename(file2))),
     tracked: listGitFiles(cwd)
   });
   const matcher = compileExcludedRefMatcher(tokens);
@@ -21408,7 +21778,7 @@ var runDerivedRefsCheck = ({
   };
 };
 var loadConfig = (configPath) => {
-  const raw = readFileSync13(configPath, "utf8");
+  const raw = readFileSync15(configPath, "utf8");
   const parsed = load(raw);
   return ConfigSchema.parse(parsed);
 };
@@ -21472,7 +21842,7 @@ var renderHumanReport = (report, jsonMode) => {
   return `${out.join("\n")}
 `;
 };
-var resolveAbsolute = (cwd, value) => path14.isAbsolute(value) ? value : path14.join(cwd, value);
+var resolveAbsolute = (cwd, value) => path16.isAbsolute(value) ? value : path16.join(cwd, value);
 var tryVerifyExists = (target) => {
   try {
     statSync3(target);
@@ -21609,10 +21979,10 @@ var tryRunTransformsOrReport = (config2, ctx) => {
     return null;
   }
 };
-var run10 = (argv, options = {}) => {
+var run12 = (argv, options = {}) => {
   const [firstArgument] = argv;
-  if (firstArgument !== void 0 && HELP_TOKENS10.has(firstArgument)) {
-    process.stdout.write(HELP_TEXT10);
+  if (firstArgument !== void 0 && HELP_TOKENS12.has(firstArgument)) {
+    process.stdout.write(HELP_TEXT12);
     return EXIT_CODES.OK;
   }
   const parsed = parseFlags8(argv);
@@ -21634,7 +22004,7 @@ var run10 = (argv, options = {}) => {
   }
   const cwd = options.cwd ?? process.cwd();
   const stagingDir = resolveAbsolute(cwd, parsed.flags.stagingDir);
-  const configPath = parsed.flags.configPath === void 0 ? path14.join(cwd, DEFAULT_CONFIG_PATH) : resolveAbsolute(cwd, parsed.flags.configPath);
+  const configPath = parsed.flags.configPath === void 0 ? path16.join(cwd, DEFAULT_CONFIG_PATH) : resolveAbsolute(cwd, parsed.flags.configPath);
   if (!tryVerifyExists(stagingDir)) {
     structuredError({
       code: "staging_dir_missing",
@@ -21682,7 +22052,7 @@ var run10 = (argv, options = {}) => {
 };
 
 // src/release/index.ts
-var HELP_TEXT11 = `Usage: gaia-maintainer release <subcommand> [args]
+var HELP_TEXT13 = `Usage: gaia-maintainer release <subcommand> [args]
 
   preflight [--branch <name>]                 Branch + working-tree + wiki state checks.
   bump [--auto]                               Conventional-commit semver bump.
@@ -21703,26 +22073,26 @@ var HELP_TEXT11 = `Usage: gaia-maintainer release <subcommand> [args]
   commit-and-tag (--commit | --tag) [--no-push]
                                               Commit + amend state, or tag + push.
 `;
-var HELP_TOKENS11 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
-var SUBCOMMAND_HANDLERS = {
-  bump: run,
-  changelog: run2,
-  "commit-and-tag": run3,
-  "exclude-regex": run4,
-  manifest: run5,
-  preflight: run7,
-  "runtime-deps": run8,
-  scrub: run10,
-  "scrub-wiki": run9
+var HELP_TOKENS13 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var SUBCOMMAND_HANDLERS2 = {
+  bump: run3,
+  changelog: run4,
+  "commit-and-tag": run5,
+  "exclude-regex": run6,
+  manifest: run7,
+  preflight: run9,
+  "runtime-deps": run10,
+  scrub: run12,
+  "scrub-wiki": run11
 };
-var run11 = async (argv) => {
+var run13 = async (argv) => {
   const subcommand = argv[0];
   const rest = argv.slice(1);
-  if (subcommand === void 0 || HELP_TOKENS11.has(subcommand)) {
-    process.stdout.write(HELP_TEXT11);
+  if (subcommand === void 0 || HELP_TOKENS13.has(subcommand)) {
+    process.stdout.write(HELP_TEXT13);
     return EXIT_CODES.OK;
   }
-  const handler = lookupOwn(SUBCOMMAND_HANDLERS, subcommand);
+  const handler = lookupOwn(SUBCOMMAND_HANDLERS2, subcommand);
   if (handler !== void 0) {
     const result = await handler(rest);
     return typeof result === "number" ? result : EXIT_CODES.OK;
@@ -21736,47 +22106,23 @@ var run11 = async (argv) => {
 };
 
 // src/index.maintainer.ts
-var HELP_TEXT12 = `Usage: gaia-maintainer <subcommand> [args]
+var HELP_TEXT14 = `Usage: gaia-maintainer <subcommand> [args]
 
 Maintainer-only binary. Adopters use 'gaia' (no release namespace).
 
+  labels docs [--repo-root <path>]
+
   release preflight|bump|changelog|scrub-wiki|manifest|scrub|runtime-deps|commit-and-tag|exclude-regex
 `;
-var printHelp = () => {
-  process.stdout.write(HELP_TEXT12);
+var SUBCOMMAND_HANDLERS3 = {
+  labels: run2,
+  release: run13
 };
-var HELP_TOKENS12 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
-var SUBCOMMAND_HANDLERS2 = {
-  release: run11
-};
-var run12 = async (argv) => {
-  const subcommand = argv[0];
-  const rest = argv.slice(1);
-  if (subcommand === void 0 || HELP_TOKENS12.has(subcommand)) {
-    printHelp();
-    return EXIT_CODES.OK;
-  }
-  const handler = lookupOwn(SUBCOMMAND_HANDLERS2, subcommand);
-  if (handler !== void 0) {
-    const result = await handler(rest);
-    return typeof result === "number" ? result : EXIT_CODES.OK;
-  }
-  structuredError({ code: "unknown_subcommand", subcommand });
-  return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-};
-var invokedPath = process.argv[1];
-var isDirectRun = invokedPath !== void 0 && import.meta.url === pathToFileURL(realpathSync(invokedPath)).href;
-if (isDirectRun) {
-  try {
-    process.exitCode = await run12(process.argv.slice(2));
-  } catch (error51) {
-    structuredError({
-      code: "cli_internal_error",
-      message: error51 instanceof Error ? error51.message : String(error51)
-    });
-    process.exitCode = EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  }
-}
+var run14 = createSubcommandRouter({
+  handlers: SUBCOMMAND_HANDLERS3,
+  helpText: HELP_TEXT14
+});
+await runWhenInvokedDirectly(import.meta.url, run14);
 export {
-  run12 as run
+  run14 as run
 };

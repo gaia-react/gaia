@@ -12,11 +12,12 @@
  * Stderr: clear refusal on each failure.
  * Exit: 0 / 1 / 2.
  */
-import {spawnSync} from 'node:child_process';
 import type {SpawnSyncReturns} from 'node:child_process';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {takeValue} from '../util/argv.js';
+import {defaultRunner} from '../util/run-process.js';
+import type {CommandRunner} from '../util/run-process.js';
 import {run as runWikiState} from '../wiki/state.js';
 
 const HELP_TEXT = `Usage: gaia-maintainer release preflight [--branch <name>]
@@ -36,18 +37,7 @@ const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 const UNEXPECTED_EXIT = 2;
 const DEFAULT_BRANCH = 'main';
 
-export type CommandRunner = (
-  command: string,
-  args: readonly string[],
-  options: {cwd: string}
-) => SpawnSyncReturns<string>;
-
-export const defaultRunner: CommandRunner = (command, args, options) =>
-  spawnSync(command, args as string[], {
-    cwd: options.cwd,
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
+export type {CommandRunner} from '../util/run-process.js';
 
 type FlagParseFailure = {
   message: string;

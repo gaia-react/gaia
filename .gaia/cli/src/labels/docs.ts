@@ -1,5 +1,5 @@
 /**
- * `gaia labels docs [--repo-root <path>] [--check]`
+ * `gaia-maintainer labels docs [--repo-root <path>]`
  *
  * Rewrites the generated span of `wiki/concepts/GitHub Labels.md` from
  * `.gaia/labels.json`. `renderGeneratedSpan` and `spliceGeneratedSpan` are
@@ -12,16 +12,15 @@
  *
  * Everything above the start marker and below the end marker is hand-authored
  * and the generator never touches a byte of it, which is what makes the
- * "Project labels" appendix safe to edit and `--check` deterministic.
+ * "Project labels" appendix safe to edit and the regeneration deterministic.
  *
  * The `## GAIA labels` tables carry no maintainer-audience row, and the
  * maintainer-only material sits in one marker-wrapped section of its own.
  * `.gaia/release-scrub.yml` marker-strips `wiki/**` and drops the same entries
  * from the shipped registry, so a maintainer row left inside an adopter table
- * would red an adopter's own `gaia labels docs --check` on a page they never
- * edited. The blank lines bracketing the maintainer block sit INSIDE the
- * marker pair for the same reason: the strip must leave exactly the bytes a
- * maintainer-free registry renders.
+ * would ship in the page adopters receive. The blank lines bracketing the
+ * maintainer block sit INSIDE the marker pair for the same reason: the strip
+ * must leave exactly the bytes a maintainer-free registry renders.
  */
 import {readFileSync} from 'node:fs';
 import path from 'node:path';
@@ -33,21 +32,14 @@ import {atomicWriteFileSync} from '../util/atomic-write.js';
 import {resolveRepoRoot} from '../util/repo-root.js';
 import {readRegistry} from './registry.js';
 
-const HELP_TEXT = `Usage: gaia labels docs [--repo-root <path>] [--check]
+const HELP_TEXT = `Usage: gaia-maintainer labels docs [--repo-root <path>]
 
   Rewrites the generated span of wiki/concepts/GitHub Labels.md from
-  .gaia/labels.json. Deterministic and offline.
-
-  --check   Do not write. Exit 0 when the committed span already equals a
-            fresh generation, 1 when it differs (printing a unified diff),
-            2 on a usage or environment error.
+  .gaia/labels.json. Deterministic and offline. Exits 2 on a usage or
+  environment error.
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
-
-/** Non-zero exits `gaia labels docs` contracts with its CI caller. */
-const EXIT_DIFFERS = 1;
-const EXIT_ENVIRONMENT = 2;
 
 /** The two literal marker lines delimiting the generated span. */
 export const GENERATED_START_MARKER = '<!-- gaia:labels:generated-start -->';
@@ -65,10 +57,10 @@ export const GENERATED_END_MARKER = '<!-- gaia:labels:generated-end -->';
  * backstop against a revert to a literal; `docs.test.ts` pins only the spelling,
  * which a literal would satisfy too.
  *
- * This cannot move to a maintainer-only module instead: the span emits the
- * marker block on a runtime registry condition, not a compile-time one, so
- * esbuild has nothing to tree-shake, and the adopter needs the same renderer for
- * `docs --check` anyway.
+ * The span emits the marker block on a runtime registry condition, not a
+ * compile-time one, so esbuild has nothing to tree-shake here: the
+ * interpolation stays as the backstop even though only the maintainer binary
+ * imports this module.
  */
 const maintainerMarker = (edge: 'end' | 'start'): string =>
   `<!-- gaia:maintainer-only:${edge} -->`;
@@ -209,58 +201,15 @@ export const spliceGeneratedSpan = (pageText: string, span: string): string => {
   ].join('\n');
 };
 
-/** One hunk covering everything between the common prefix and suffix. */
-const unifiedDiff = (
-  label: string,
-  committed: readonly string[],
-  generated: readonly string[]
-): string => {
-  let prefix = 0;
-
-  while (
-    prefix < committed.length &&
-    prefix < generated.length &&
-    committed[prefix] === generated[prefix]
-  ) {
-    prefix += 1;
-  }
-
-  let suffix = 0;
-
-  while (
-    suffix < committed.length - prefix &&
-    suffix < generated.length - prefix &&
-    committed[committed.length - 1 - suffix] ===
-      generated[generated.length - 1 - suffix]
-  ) {
-    suffix += 1;
-  }
-
-  const removed = committed.slice(prefix, committed.length - suffix);
-  const added = generated.slice(prefix, generated.length - suffix);
-
-  return [
-    `--- ${label} (committed)`,
-    `+++ ${label} (generated)`,
-    `@@ -${prefix + 1},${removed.length} +${prefix + 1},${added.length} @@`,
-    ...removed.map((line) => `-${line}`),
-    ...added.map((line) => `+${line}`),
-    '',
-  ].join('\n');
-};
-
-type ParsedArgs = {check: boolean; repoRoot: string | undefined};
+type ParsedArgs = {repoRoot: string | undefined};
 
 const parseArgs = (argv: readonly string[]): ParsedArgs | {code: number} => {
-  let check = false;
   let repoRoot: string | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
 
-    if (token === '--check') {
-      check = true;
-    } else if (token === '--repo-root') {
+    if (token === '--repo-root') {
       const value = takeNonFlagValue(argv, index + 1, '--repo-root');
 
       if (!value.ok) {
@@ -270,7 +219,7 @@ const parseArgs = (argv: readonly string[]): ParsedArgs | {code: number} => {
           subcommand: 'labels docs',
         });
 
-        return {code: EXIT_ENVIRONMENT};
+        return {code: EXIT_CODES.INVALID_ARGUMENTS};
       }
       repoRoot = value.value;
       index += 1;
@@ -281,11 +230,11 @@ const parseArgs = (argv: readonly string[]): ParsedArgs | {code: number} => {
         subcommand: 'labels docs',
       });
 
-      return {code: EXIT_ENVIRONMENT};
+      return {code: EXIT_CODES.INVALID_ARGUMENTS};
     }
   }
 
-  return {check, repoRoot};
+  return {repoRoot};
 };
 
 /** The page this command owns, relative to the repository root. */
@@ -309,12 +258,9 @@ export const run = (argv: readonly string[]): number => {
   let pagePath: string;
 
   try {
-    // Inside the try, like the sibling handler in sync.ts:
-    // resolveRepoRoot spawns git and throws outside a worktree, and escaping
-    // to the top-level catch would exit 1, the code this subcommand's help
-    // reserves for "the committed span differs". A caller keyed on that, the
-    // label-registry workflow among them, would be told to regenerate the page
-    // when the actual repair is to run from inside the repository.
+    // Inside the try, like the sibling handler in sync.ts: resolveRepoRoot
+    // spawns git and throws outside a worktree, and the repair is to run from
+    // inside the repository, which the environment exit reports.
     const repoRoot = parsed.repoRoot ?? resolveRepoRoot();
 
     pagePath = path.join(repoRoot, PAGE_RELATIVE_PATH);
@@ -331,26 +277,16 @@ export const run = (argv: readonly string[]): number => {
       subcommand: 'labels docs',
     });
 
-    return EXIT_ENVIRONMENT;
+    return EXIT_CODES.INVALID_ARGUMENTS;
   }
 
-  if (!parsed.check) {
-    const rewritten = next !== committed;
+  const rewritten = next !== committed;
 
-    if (rewritten) atomicWriteFileSync(pagePath, next);
+  if (rewritten) atomicWriteFileSync(pagePath, next);
 
-    const outcome = rewritten ? 'rewritten' : 'already current';
+  const outcome = rewritten ? 'rewritten' : 'already current';
 
-    process.stdout.write(`labels-docs: ${PAGE_RELATIVE_PATH} ${outcome}\n`);
+  process.stdout.write(`labels-docs: ${PAGE_RELATIVE_PATH} ${outcome}\n`);
 
-    return EXIT_CODES.OK;
-  }
-
-  if (next === committed) return EXIT_CODES.OK;
-
-  process.stdout.write(
-    unifiedDiff(PAGE_RELATIVE_PATH, committed.split('\n'), next.split('\n'))
-  );
-
-  return EXIT_DIFFERS;
+  return EXIT_CODES.OK;
 };

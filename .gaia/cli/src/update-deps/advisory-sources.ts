@@ -6,9 +6,9 @@
  * `advisory-model.ts`.
  */
 import {execFileSync, spawnSync} from 'node:child_process';
-import {runGh} from '../setup-ci/util/gh.js';
-import type {GhOptions, GhResult} from '../setup-ci/util/gh.js';
-import {parseRemoteUrl} from '../setup-ci/util/parse-remote-url.js';
+import {parseRemoteUrl} from '../util/parse-remote-url.js';
+import {runGhAsync} from '../util/run-process.js';
+import type {GhOptions, GhResult} from '../util/run-process.js';
 import type {AdvisoryReasonToken} from './advisory-reasons.js';
 import type {PnpmRunner} from './run.js';
 
@@ -224,7 +224,7 @@ export const fetchDependabotAlerts = async (
   const common = {
     cwd: options.cwd,
     env: options.env,
-    ghRunner: options.ghRunner ?? runGh,
+    ghRunner: options.ghRunner ?? runGhAsync,
     owner: options.owner,
     repo: options.repo,
   };

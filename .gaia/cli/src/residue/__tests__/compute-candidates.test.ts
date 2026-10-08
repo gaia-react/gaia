@@ -337,7 +337,7 @@ describe('computeCandidates, counts, ordering, and cursor', () => {
     expect(result.candidate_count).toBe(3);
   });
 
-  test('--no-cap emits every survivor', () => {
+  test('a cap above the survivor count emits every survivor', () => {
     const result = computeCandidates({
       ...baseArgs,
       cap: Number.MAX_SAFE_INTEGER,

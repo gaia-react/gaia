@@ -127,7 +127,7 @@ Amending either list requires a SPEC reopen; adding a path through a PR-only cha
 Adding a new label to the vocabulary:
 
 1. Add the entry to `.gaia/labels.json`.
-2. Run `.gaia/cli/gaia labels docs` to regenerate `wiki/concepts/GitHub Labels.md`.
+2. Run `.gaia/cli/gaia-maintainer labels docs` to regenerate `wiki/concepts/GitHub Labels.md`.
 3. Run `.gaia/cli/gaia labels sync` to create the label on the upstream repo.
 4. Update the label vocabulary table on this page.
 5. Wire any handler that needs to apply the new label.

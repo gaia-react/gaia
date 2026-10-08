@@ -19,7 +19,9 @@ The registry documents each label's shape; it does not document how one is used 
 ## Commands
 
 - `.gaia/cli/gaia labels sync` reconciles this repository's labels against the registry.
-- `.gaia/cli/gaia labels docs` regenerates the span below from the registry.
+<!-- gaia:maintainer-only:start -->
+- `.gaia/cli/gaia-maintainer labels docs` regenerates the span below from the registry.
+<!-- gaia:maintainer-only:end -->
 
 Sync is conservative by design. It renames rather than deleting and recreating, because a delete strips the label from every issue and pull request carrying it. It reports an unknown live label instead of touching it. Color is operator wins and description is GAIA wins, so a deliberate recolor survives an update while a stale description does not. A rename is the one exception: it carries the registry's color with it, under no flag. Sync cannot tell a registry recolor from an operator's own, so a renamed entry's leftover color would sit unreconciled indefinitely; the rename resolves that in the registry's favour, at the cost of an operator's recolor of the old name not surviving the rename. Nothing is deleted without `--prune-deprecated` or `--enforce-blocked`, and `--enforce-blocked` counts a label's carriers on both surfaces, issues and pull requests, before reading it as uncarried; a label it cannot count on either surface is never deleted. A token without label-write scope produces a list of manual `gh` commands and a zero exit rather than a failed setup. That list means two different things, so the degraded output and the `--json` `degradedAt` field name which refusal happened: after a refused write it is the mutations still owed, while after a refused read the plan was computed against an assumed-empty repository and the list is the whole registry.
 A label GAIA no longer files is kept in the registry with `"deprecated": true` and no feature, and `.gaia/labels.json` is the authority on which entries those are. `gaia labels sync --prune-deprecated` removes them from a repository, and the generated span below leaves deprecated entries out. The `security` label belongs to the `dependabot` feature, owed only when the repository's own Dependabot config file is present.
@@ -151,7 +153,7 @@ The wrapped `gaia-debt-key` format (step 1 of `.claude/skills/file-tech-debt/SKI
 
 One carve-out, so the per-namespace paragraphs below do not each have to restate it: `.gaia/cli/src/labels/registry.ts`'s `NAMESPACE_PREFIXES` array hardcodes **every** governed prefix, held as bare prefixes that no search for a full spelling reaches, so it is an edit for every namespace rename without exception.
 
-`.gaia/labels.json` is the registry where every spelling this section governs is defined, rather than a consumer of them. Rename there by changing the entry's `name` and appending the old spelling to its `renamedFrom`, then regenerate the wiki page with `.gaia/cli/gaia labels docs`. `labels sync` takes its label definitions from that file and nowhere else, so a rename that works every consumer and skips the registry leaves sync creating the old label forever and the new one never.
+`.gaia/labels.json` is the registry where every spelling this section governs is defined, rather than a consumer of them. Rename there by changing the entry's `name` and appending the old spelling to its `renamedFrom`, then regenerate the wiki page with `.gaia/cli/gaia-maintainer labels docs`. `labels sync` takes its label definitions from that file and nowhere else, so a rename that works every consumer and skips the registry leaves sync creating the old label forever and the new one never.
 
 `check-debt-issue-metadata.sh` is the only consumer that gates on a label spelling rather than merely tolerating one. It hardcodes the permitted value set for every namespace steps 6 and 7 of `.claude/skills/file-tech-debt/SKILL.md` define, and the key's line shape, so it is the consumer a spelling change breaks first and loudest, which is the intended direction: a rename that forgets this file fails a filing immediately instead of degrading a count silently.
 
@@ -169,7 +171,7 @@ Nothing catches that omission, which is why it is called out. No test couples th
 
 ## Project labels
 
-This section is where a project documents the labels it adds for itself. `gaia labels docs` never rewrites it.
+This section is where a project documents the labels it adds for itself. The generator never rewrites it.
 
 A project label that falls into one of the GAIA axes above can take that family's color, so the palette stays readable across both sets. `gaia labels sync` reports a label it does not recognize and suggests the family color when the name carries a known namespace prefix, but it never recolors one without `--adopt-palette`.
 

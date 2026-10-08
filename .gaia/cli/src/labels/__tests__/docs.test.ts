@@ -1,4 +1,4 @@
-import {describe, expect, test} from 'vitest';
+import {afterEach, describe, expect, test, vi} from 'vitest';
 import {readFileSync} from 'node:fs';
 import path from 'node:path';
 import type {LabelRegistry} from '../../schemas/labels.js';
@@ -7,6 +7,7 @@ import {
   GENERATED_END_MARKER,
   GENERATED_START_MARKER,
   renderGeneratedSpan,
+  run,
   spliceGeneratedSpan,
 } from '../docs.js';
 import {readRegistry} from '../registry.js';
@@ -273,5 +274,25 @@ describe('labels/docs spliceGeneratedSpan', () => {
     expect(() => spliceGeneratedSpan(page, 'x')).toThrow(
       GENERATED_START_MARKER
     );
+  });
+});
+
+describe('labels/docs run', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  test('--check is refused as an unknown argument', () => {
+    const errors: string[] = [];
+
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk: unknown) => {
+      errors.push(String(chunk));
+
+      return true;
+    });
+
+    expect(run(['--repo-root', repoRoot, '--check'])).toBe(2);
+    expect(errors.join('')).toContain('invalid_arguments');
+    expect(errors.join('')).toContain('--check');
   });
 });

@@ -12,7 +12,7 @@ tags: [decision, dependencies, security, ci]
 
 ## Decision
 
-GAIA owns dependency updates. Dependabot alerts are the data source for security work, and `/update-deps` resolves the advisories they report and runs every version update. GAIA renders no Dependabot config and enables no repository setting that makes Dependabot open pull requests, for version updates or security fixes: alerts stay on, automated security fixes stay off. `/update-deps` resolves each advisory through the local quality gate, and accepting an advisory instead of fixing it is a visible alert dismissal on the repository, not a private suppression. `/setup-gaia` sets the posture with `gaia setup-ci configure-dependabot-alerts` and records nothing in [[Project Config]].
+GAIA owns dependency updates. Dependabot alerts are the data source for security work, and `/update-deps` resolves the advisories they report and runs every version update. GAIA renders no Dependabot config and enables no repository setting that makes Dependabot open pull requests, for version updates or security fixes: alerts stay on, automated security fixes stay off. `/update-deps` resolves each advisory through the local quality gate, and accepting an advisory instead of fixing it is a visible alert dismissal on the repository, not a private suppression. `/setup-gaia` sets the posture with `gaia setup configure-dependabot-alerts` and records nothing in [[Project Config]].
 
 ## Why
 

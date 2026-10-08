@@ -104,7 +104,7 @@ The maintainer's copy of this page carries every root file. An adopter's copy ca
 | Script | Ships | Invoker | What it is |
 |---|---|---|---|
 | `verify-audit-roster.sh` | yes | run by hand (maintainer-side) | Deterministic check of the Code Audit Team roster against the member definitions it generates. |
-| `verify-cli-bundle-fresh.sh` | no | `cli-tests.yml`, `release.yml` | Asserts the committed CLI bundles and templates are exactly what rebuilding from source produces. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
+| `verify-cli-bundle-fresh.sh` | no | `cli-tests.yml`, `release.yml` | Asserts the committed CLI bundles are exactly what rebuilding from source produces. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `verify-required-checks.sh` | no | `/gaia-release` preflight | Detects drift between the checks this repo requires to merge and the live GitHub ruleset. It never writes to the ruleset. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 
 ### Unprefixed

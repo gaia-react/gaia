@@ -23,6 +23,8 @@ Any non-empty `CI`, including `CI=false` or `CI=0`, skips hook setup. A shell th
 The hook decides which package a staged path belongs to from the registry and descriptors in [[Package Descriptor]], and refuses to commit when that registry cannot be read. For each affected package it runs typecheck, lint-staged, and `test:lint-staged`. It also guards generated settings drift, retired root frontend paths, and duplicate react-doctor configs. The hook file is the source of truth for the arms.
 <!-- gaia:maintainer-only:start -->
 
+When a commit stages CLI source, the CLI package manifest or its lockfile, the hook rebuilds both CLI bundles and stages them. It refuses when CLI source has unstaged or untracked changes, and warns and continues when the CLI has no install. The rules live in `.gaia/scripts/cli-autobundle.sh`.
+
 ## The pre-push hook
 
 `.githooks/pre-push` runs on branch pushes only, through the same `core.hooksPath`. It hands the pushed commits to the verification runner's `push` mode (`.gaia/tests/verify-harness.sh`), which runs the distribution checks and nothing else; the runner's header names them. Tag pushes and ref deletions exit at once, and a push that mixes a tag with a branch verifies the branch.

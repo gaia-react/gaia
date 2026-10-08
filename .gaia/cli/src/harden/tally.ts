@@ -22,23 +22,20 @@
  * evaluated by `evaluateTriggers` (`triggers.ts`).
  */
 import path from 'node:path';
+import {EXIT_CODES} from '../exit.js';
+import {readReviewSnapshot} from '../schemas/review-snapshot.js';
+import {structuredError} from '../stderr.js';
 import {
   MERGED_PR_PAGE_CEILING,
   MERGED_PR_WINDOW_MAX_PAGES,
   readMergedPrWindow,
-} from '../ci/util/merged-pr-window.js';
-import {EXIT_CODES} from '../exit.js';
-import {readReviewSnapshot} from '../schemas/review-snapshot.js';
-import {structuredError} from '../stderr.js';
+} from '../util/merged-pr-window.js';
+import {resolveRepoRoot} from '../util/repo-root.js';
 import {computeTally, windowClasses} from './compute-tally.js';
 import type {TallyPrRecord, TallyResult} from './compute-tally.js';
 import {coveredClassesFromRules} from './covered-classes.js';
-import {
-  defaultLedgerRunner,
-  makeLedgerSuppressionPredicate,
-  pruneLedger,
-} from './ledger-bridge.js';
-import type {LedgerRunner} from './ledger-bridge.js';
+import {checkDeclineSuppression, pruneDeclineLedger} from './ledger.js';
+import type {DeclineSuppression} from './ledger.js';
 import {TALLY_SCHEMA_VERSION} from './material-rise.js';
 import {parseFindingsBlock} from './parse-findings-block.js';
 import {evaluateTriggers} from './triggers.js';
@@ -70,6 +67,15 @@ const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
 export const WINDOW_DAYS = 90;
 
+type DeclineLedgerAccess = {
+  check: (
+    findingClass: string,
+    currentPrCount: number,
+    currentAuditedPrCount: number
+  ) => DeclineSuppression;
+  prune: (windowClasses: readonly string[]) => void;
+};
+
 /** The emitted tally JSON: the pure result plus the window-read fields. */
 type EmittedTally = TallyResult & {
   gh_ok: boolean;
@@ -81,7 +87,34 @@ type EmittedTally = TallyResult & {
 
 type RunOptions = {
   cwd?: string;
-  runLedger?: LedgerRunner;
+  ledger?: DeclineLedgerAccess;
+};
+
+/**
+ * The decline ledger bound to one repository root, or `null` when the root
+ * cannot be resolved so the caller can fail closed.
+ */
+const openDeclineLedger = (cwd: string): DeclineLedgerAccess | null => {
+  let repoRoot: string;
+
+  try {
+    repoRoot = resolveRepoRoot(cwd);
+  } catch {
+    return null;
+  }
+
+  return {
+    check: (findingClass, currentPrCount, currentAuditedPrCount) =>
+      checkDeclineSuppression({
+        currentAuditedPrCount,
+        currentPrCount,
+        findingClass,
+        repoRoot,
+      }),
+    prune: (classes) => {
+      pruneDeclineLedger({repoRoot, windowClasses: classes});
+    },
+  };
 };
 
 /**
@@ -214,7 +247,7 @@ export const run = (
   }
 
   const cwd = options.cwd ?? process.cwd();
-  const runLedger = options.runLedger ?? defaultLedgerRunner;
+  const ledger = options.ledger ?? openDeclineLedger(cwd);
   const now = new Date();
 
   const {ghOk, prs} = fetchWindowPrs(cwd, now);
@@ -223,7 +256,16 @@ export const run = (
   const tallyResult = computeTally({
     coveredClass: (findingClass) => covered.has(findingClass),
     prs,
-    suppressedClass: makeLedgerSuppressionPredicate({cwd, runLedger}),
+    // Fail closed: an unresolvable root or an unreadable ledger keeps a class
+    // suppressed, so a corrupt file never silently re-surfaces a decline.
+    suppressedClass: (findingClass, currentPrCount, currentAuditedPrCount) => {
+      if (ledger === null) return true;
+
+      return (
+        ledger.check(findingClass, currentPrCount, currentAuditedPrCount)
+          .status !== 'resurface'
+      );
+    },
     windowDays: WINDOW_DAYS,
   });
 
@@ -231,8 +273,8 @@ export const run = (
   // `ghOk` because a failed window read also yields an empty `prs`, which the
   // prune would read as authoritative evidence that every declined class
   // stopped recurring and wipe the ledger. An unread window is not evidence, so
-  // this fails closed, matching `makeLedgerSuppressionPredicate`.
-  if (ghOk) pruneLedger({cwd, runLedger, windowClasses: windowClasses(prs)});
+  // this fails closed, matching the suppression predicate.
+  if (ghOk && ledger !== null) ledger.prune(windowClasses(prs));
 
   // Read the review snapshot unconditionally (not gated on `ghOk`), so a
   // malformed snapshot is always reported. A malformed snapshot reads as

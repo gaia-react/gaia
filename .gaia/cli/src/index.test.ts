@@ -57,18 +57,9 @@ const readStderrPayload = (): Record<string, unknown> =>
   >;
 
 describe('gaia top-level router', () => {
-  test.each(['--help', '-h', 'help'])(
-    '%s prints help and exits 0',
-    async (token) => {
-      await expect(run([token])).resolves.toBe(EXIT_CODES.OK);
-      expect(stdio.outputs.join('')).toContain('Usage: gaia');
-      expect(stdio.errors).toHaveLength(0);
-    }
-  );
-
-  test('no subcommand prints help and exits 0', async () => {
-    await expect(run([])).resolves.toBe(EXIT_CODES.OK);
-    expect(stdio.outputs.join('')).toContain('Usage: gaia');
+  test('help names its binary', async () => {
+    await expect(run(['--help'])).resolves.toBe(EXIT_CODES.OK);
+    expect(stdio.outputs.join('')).toContain('Usage: gaia ');
   });
 
   // The guard this suite exists to pin only earns its keep if dispatch still
@@ -83,6 +74,20 @@ describe('gaia top-level router', () => {
 
   test('an unknown subcommand is rejected', async () => {
     await expect(run(['bogus'])).resolves.toBe(EXIT_CODES.UNKNOWN_SUBCOMMAND);
+    expect(readStderrPayload()).toMatchObject({code: 'unknown_subcommand'});
+  });
+
+  test('the retired setup-ci namespace is an unknown subcommand', async () => {
+    await expect(run(['setup-ci', 'detect-remote'])).resolves.toBe(
+      EXIT_CODES.UNKNOWN_SUBCOMMAND
+    );
+    expect(readStderrPayload()).toMatchObject({code: 'unknown_subcommand'});
+  });
+
+  test('the adopter labels namespace does not serve docs', async () => {
+    await expect(run(['labels', 'docs'])).resolves.toBe(
+      EXIT_CODES.UNKNOWN_SUBCOMMAND
+    );
     expect(readStderrPayload()).toMatchObject({code: 'unknown_subcommand'});
   });
 });

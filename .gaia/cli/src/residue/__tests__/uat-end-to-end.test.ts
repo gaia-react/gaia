@@ -110,6 +110,8 @@ const assertExactNewFiles = (
 };
 
 const FIXTURE_ENV = {GAIA_RESIDUE_FIXTURE_DIR: CORPUS_DIR};
+// A cap above any fixture's survivor count, so the batch is never trimmed.
+const UNCAPPED_ENV = {...FIXTURE_ENV, GAIA_RESIDUE_CAP: '1000'};
 
 // UAT-014: an attribution recorded as keyless, the shape the pre-change
 // reader produced for a spaced path it could not parse as a key at all.
@@ -195,9 +197,9 @@ describe('UAT-006', () => {
     const root = makeTemporaryRoot();
     const out = capture();
 
-    const exitCode = runTally(['--no-cap'], {
+    const exitCode = runTally([], {
       cwd: root,
-      env: FIXTURE_ENV,
+      env: UNCAPPED_ENV,
       now: FIXED_NOW,
     });
 
@@ -230,9 +232,9 @@ describe('UAT-007', () => {
     const root = makeTemporaryRoot();
     const out = capture();
 
-    const exit1 = runTally(['--no-cap'], {
+    const exit1 = runTally([], {
       cwd: root,
-      env: FIXTURE_ENV,
+      env: UNCAPPED_ENV,
       now: FIXED_NOW,
     });
 
@@ -279,9 +281,9 @@ describe('UAT-007', () => {
     expect(record.source_pr).toBe(2001);
     expect(record.cited_line_text).toContain('evictedCount');
 
-    const exit2 = runTally(['--no-cap'], {
+    const exit2 = runTally([], {
       cwd: root,
-      env: FIXTURE_ENV,
+      env: UNCAPPED_ENV,
       now: FIXED_NOW,
     });
 
@@ -299,9 +301,9 @@ describe('UAT-007', () => {
     // constant that would pass regardless of what the store held.
     rmSync(path.join(root, '.gaia', 'audit-residual-dismissals.jsonl'));
 
-    const exit3 = runTally(['--no-cap'], {
+    const exit3 = runTally([], {
       cwd: root,
-      env: FIXTURE_ENV,
+      env: UNCAPPED_ENV,
       now: FIXED_NOW,
     });
 
@@ -331,7 +333,7 @@ describe('UAT-010', () => {
     const out = capture();
     const tallyExit = runTally([], {
       cwd: root,
-      env: FIXTURE_ENV,
+      env: UNCAPPED_ENV,
       now: FIXED_NOW,
     });
 
@@ -393,9 +395,9 @@ describe('resolution classification (acceptance criterion 6)', () => {
   test('the four dedicated resolution-class coordinates resolve exactly as designed', () => {
     const root = makeTemporaryRoot();
     const out = capture();
-    const exitCode = runTally(['--no-cap'], {
+    const exitCode = runTally([], {
       cwd: root,
-      env: FIXTURE_ENV,
+      env: UNCAPPED_ENV,
       now: FIXED_NOW,
     });
 
@@ -463,9 +465,9 @@ describe('UAT-011', () => {
     ]);
 
     const out = capture();
-    const defaultExit = runTally(['--no-cap'], {
+    const defaultExit = runTally([], {
       cwd: root,
-      env: FIXTURE_ENV,
+      env: UNCAPPED_ENV,
       now: FIXED_NOW,
     });
 
@@ -485,9 +487,9 @@ describe('UAT-011', () => {
       )
     ).toBe(false); // 3 days < the default 14-day window: still suppressed
 
-    const widenedExit = runTally(['--no-cap'], {
+    const widenedExit = runTally([], {
       cwd: root,
-      env: {...FIXTURE_ENV, GAIA_RESIDUE_KEEP_DAYS: '30'},
+      env: {...UNCAPPED_ENV, GAIA_RESIDUE_KEEP_DAYS: '30'},
       now: FIXED_NOW,
     });
 
@@ -504,32 +506,13 @@ describe('UAT-011', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// UAT-013: the subcommand set's author/no-author contract.
-//
-// DEVIATION FROM THE PLAN DOC (see Notes for orchestrator): `--count-only`
-// does NOT author nothing. `run()` in tally.ts calls `writeAttributionCache`
-// unconditionally on every non-`--attribute-only` path that reaches a
-// successful pull-request read, `--count-only` included -- only the
-// resolution half of RD-004's degradation (no head fetch, no git call) is
-// actually gated on the flag. This test asserts the REAL behavior rather
-// than the plan doc's "each author nothing" claim.
-// ---------------------------------------------------------------------------
+// `--count-only` writes the attribution cache: `run()` in tally.ts calls
+// `writeAttributionCache` on every path that reaches a successful pull-request
+// read. Only the resolution half (no head fetch, no git call) is gated on the
+// flag.
 
 describe('UAT-013', () => {
-  test('--attribute-only writes no file anywhere under a temp root', () => {
-    const root = makeTemporaryRoot();
-    capture();
-    const exitCode = runTally(['--attribute-only'], {
-      cwd: root,
-      env: FIXTURE_ENV,
-    });
-
-    expect(exitCode).toBe(0);
-    expect(listTree(root)).toStrictEqual([]);
-  });
-
-  test('--count-only writes the attribution cache only (not the cursor, not the store): a documented deviation from the plan doc', () => {
+  test('--count-only writes the attribution cache only (not the cursor, not the store)', () => {
     const root = makeTemporaryRoot();
     capture();
     const exitCode = runTally(['--count-only'], {
@@ -549,7 +532,7 @@ describe('UAT-013', () => {
     const out = capture();
     const exitCode = runTally([], {
       cwd: root,
-      env: FIXTURE_ENV,
+      env: UNCAPPED_ENV,
       now: FIXED_NOW,
     });
 
@@ -742,9 +725,9 @@ describe('UAT-014: the attribution cache schema bump is the discriminator, not t
     );
 
     const out = capture();
-    const exitCode = runTally(['--no-cap'], {
+    const exitCode = runTally([], {
       cwd: root,
-      env: FIXTURE_ENV,
+      env: UNCAPPED_ENV,
       now: FIXED_NOW,
     });
 
@@ -795,9 +778,9 @@ describe('UAT-014: the attribution cache schema bump is the discriminator, not t
     );
 
     const out = capture();
-    const exitCode = runTally(['--no-cap'], {
+    const exitCode = runTally([], {
       cwd: root,
-      env: FIXTURE_ENV,
+      env: UNCAPPED_ENV,
       now: FIXED_NOW,
     });
 

@@ -12,9 +12,9 @@ import {
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
-import type {GhOptions, GhResult} from '../setup-ci/util/gh.js';
 import {writeFrontendRegistry} from '../util/package-fixture.js';
 import {BUILTIN_DESCRIPTOR} from '../util/packages.js';
+import type {GhOptions, GhResult} from '../util/run-process.js';
 import {run} from './advisories.js';
 import type {AdvisoriesOptions} from './advisories.js';
 import {twoDocumentLockfile} from './advisory-fixture.js';

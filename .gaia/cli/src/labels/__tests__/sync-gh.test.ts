@@ -8,13 +8,13 @@
  * label delete, the second decides what the manual command list is a list of.
  */
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
-import type {ProcessResult} from '../../ci/util/run-process.js';
-import {runGh} from '../../ci/util/run-process.js';
 import {resolveRepoRootFromImportMeta} from '../../util/repo-root-fixture.js';
+import type {ProcessResult} from '../../util/run-process.js';
+import {runGh} from '../../util/run-process.js';
 import type {DegradeSource, SyncReport} from '../sync.js';
 import {DEGRADED_LINE, run} from '../sync.js';
 
-vi.mock('../../ci/util/run-process.js', () => ({runGh: vi.fn()}));
+vi.mock('../../util/run-process.js', () => ({runGh: vi.fn()}));
 
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 

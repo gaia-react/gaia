@@ -1,8 +1,15 @@
 import {afterEach, beforeEach, describe, expect, test} from 'vitest';
-import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {loadTemplate, renderTemplate, substituteVars} from './template.js';
+import {fileURLToPath} from 'node:url';
+import {
+  loadTemplate,
+  renderTemplate,
+  scaffoldTemplatesDirectory,
+  substituteVars,
+  templatePath,
+} from './template.js';
 
 type Sandbox = {
   cleanup: () => void;
@@ -140,6 +147,30 @@ describe('renderTemplate', () => {
     const filePath = writeTemplateFile(sandbox.dir, 'empty.tpl', '');
 
     expect(renderTemplate(filePath, {})).toBe('');
+  });
+});
+
+describe('scaffoldTemplatesDirectory', () => {
+  test('is the shipped templates tree beside the CLI package', () => {
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const expected = path.resolve(here, '..', '..', 'templates');
+
+    expect(scaffoldTemplatesDirectory()).toBe(expected);
+  });
+
+  test.each(['component', 'hook', 'route', 'service', 'data-layer'])(
+    'contains the %s templates',
+    (family) => {
+      expect(existsSync(path.join(scaffoldTemplatesDirectory(), family))).toBe(
+        true
+      );
+    }
+  );
+
+  test('templatePath builds on the resolved directory', () => {
+    expect(templatePath('hook/hook.ts.tmpl')).toBe(
+      path.join(scaffoldTemplatesDirectory(), 'hook', 'hook.ts.tmpl')
+    );
   });
 });
 

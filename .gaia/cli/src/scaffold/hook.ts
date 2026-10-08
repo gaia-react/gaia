@@ -15,12 +15,11 @@
  * differing files cause `writeFileIfAbsent` to throw to protect customizations.
  */
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {writeFileIfAbsent} from './fs.js';
 import {resolveScaffoldTarget} from './resolve-target.js';
-import {renderTemplate} from './template.js';
+import {renderTemplate, templatePath} from './template.js';
 import type {ScaffoldResult} from './types.js';
 
 const KEBAB_HOOK_PATTERN = /^use(?:-[a-z\d]+)+$/u;
@@ -132,16 +131,8 @@ const sentinelForType = (type: string): string => {
 const formatCallArgs = (params: readonly Param[]): string =>
   params.map((param) => sentinelForType(param.type)).join(', ');
 
-const resolveTemplateFile = (filename: string): string => {
-  const here = fileURLToPath(import.meta.url);
-
-  return path.join(
-    path.dirname(here),
-    'templates',
-    TEMPLATE_DIR_NAME,
-    filename
-  );
-};
+const resolveTemplateFile = (filename: string): string =>
+  templatePath(path.join(TEMPLATE_DIR_NAME, filename));
 
 type EmitOptions = {
   fileStem: string;

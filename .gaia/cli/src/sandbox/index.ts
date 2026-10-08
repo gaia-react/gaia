@@ -53,7 +53,7 @@ type RunOptions = {
 const failInvalid = (subcommand: string, message: string): number => {
   structuredError({code: 'invalid_arguments', message, subcommand});
 
-  return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  return EXIT_CODES.INVALID_ARGUMENTS;
 };
 
 /**

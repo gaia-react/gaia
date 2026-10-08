@@ -262,7 +262,7 @@ path_without() {
   remote_has_branch feat/no-jq
 }
 
-@test "nothing the hook or the runner adds ships, and the shipped hooks stay byte-identical" {
+@test "nothing the hook or the runner adds ships, and the shipped hooks match the source less their maintainer-only blocks" {
   # The exclusion below is not vacuous: both files are tracked on the fixture.
   [ -n "$(git -C "$REPO" ls-files -z -- .githooks/pre-push | tr -d '\0')" ]
   [ -n "$(git -C "$REPO" ls-files -z -- .gaia/tests/verify-harness.sh | tr -d '\0')" ]
@@ -281,7 +281,18 @@ path_without() {
   staged_hooks="$(cd "$staging" && find .githooks -type f | LC_ALL=C sort)"
   [ -n "$manifest_hooks" ]
   [ "$staged_hooks" = "$manifest_hooks" ]
+  # A hook carrying a maintainer-only block ships with exactly that block
+  # removed; every other hook ships byte-identical. At least one hook carries
+  # a block, so the stripped arm is exercised rather than vacuous.
+  stripped_count=0
   while IFS= read -r hook_path; do
-    cmp "$staging/$hook_path" "$REPO/$hook_path"
+    if grep -qF -- '# gaia:maintainer-only:start' "$REPO/$hook_path"; then
+      stripped_count=$((stripped_count + 1))
+      sed '/^# gaia:maintainer-only:start$/,/^# gaia:maintainer-only:end$/d' "$REPO/$hook_path" > "$BATS_TEST_TMPDIR/expected-hook"
+      cmp "$staging/$hook_path" "$BATS_TEST_TMPDIR/expected-hook"
+    else
+      cmp "$staging/$hook_path" "$REPO/$hook_path"
+    fi
   done <<<"$manifest_hooks"
+  [ "$stripped_count" -gt 0 ]
 }

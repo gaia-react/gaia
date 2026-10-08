@@ -9,9 +9,9 @@
  */
 import {readFileSync} from 'node:fs';
 import path from 'node:path';
-import {readMergedPrWindow} from '../ci/util/merged-pr-window.js';
-import {runGh} from '../ci/util/run-process.js';
 import {execGaiaGit, execGaiaGitRaw} from '../util/git-env.js';
+import {readMergedPrWindow} from '../util/merged-pr-window.js';
+import {runGh} from '../util/run-process.js';
 
 export type CorpusProvider = {
   /** The full text of `path` at object `sha`, or null when unresolvable. */

@@ -1,3 +1,19 @@
+import {EXIT_CODES} from '../exit.js';
+import type {
+  LabelAudience,
+  LabelEntry,
+  LabelFeature,
+  LabelRegistry,
+} from '../schemas/labels.js';
+import {
+  audienceCovers,
+  isCreatable,
+  LABEL_AUDIENCES,
+  LABEL_FEATURES,
+} from '../schemas/labels.js';
+import {structuredError} from '../stderr.js';
+import {lookupOwn, takeNonFlagValue} from '../util/argv.js';
+import {resolveRepoRoot} from '../util/repo-root.js';
 /**
  * `gaia labels sync` reconciles a repository's labels against
  * `.gaia/labels.json`.
@@ -32,24 +48,8 @@
  * ambiguity in the registry's favour. The cost is real and accepted: an
  * operator's recolor of the old name does not survive the rename.
  */
-import type {ProcessResult} from '../ci/util/run-process.js';
-import {runGh} from '../ci/util/run-process.js';
-import {EXIT_CODES} from '../exit.js';
-import type {
-  LabelAudience,
-  LabelEntry,
-  LabelFeature,
-  LabelRegistry,
-} from '../schemas/labels.js';
-import {
-  audienceCovers,
-  isCreatable,
-  LABEL_AUDIENCES,
-  LABEL_FEATURES,
-} from '../schemas/labels.js';
-import {structuredError} from '../stderr.js';
-import {lookupOwn, takeNonFlagValue} from '../util/argv.js';
-import {resolveRepoRoot} from '../util/repo-root.js';
+import type {ProcessResult} from '../util/run-process.js';
+import {runGh} from '../util/run-process.js';
 import {
   readRegistry,
   resolveAudience,

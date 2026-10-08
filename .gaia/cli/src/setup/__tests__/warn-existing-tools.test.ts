@@ -1,0 +1,215 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
+import {mkdirSync, writeFileSync} from 'node:fs';
+import path from 'node:path';
+import {run} from '../warn-existing-tools.js';
+import {setupSandbox} from './sandbox.js';
+import type {Sandbox} from './sandbox.js';
+
+const captureStdio = (): {
+  err: string[];
+  out: string[];
+  restore: () => void;
+} => {
+  const out: string[] = [];
+  const err: string[] = [];
+  const stdoutSpy = vi
+    .spyOn(process.stdout, 'write')
+    .mockImplementation((chunk: unknown) => {
+      out.push(typeof chunk === 'string' ? chunk : String(chunk));
+
+      return true;
+    });
+  const stderrSpy = vi
+    .spyOn(process.stderr, 'write')
+    .mockImplementation((chunk: unknown) => {
+      err.push(typeof chunk === 'string' ? chunk : String(chunk));
+
+      return true;
+    });
+
+  return {
+    err,
+    out,
+    restore: () => {
+      stdoutSpy.mockRestore();
+      stderrSpy.mockRestore();
+    },
+  };
+};
+
+const NPM_CONFIG =
+  'version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n';
+
+const ACTIONS_CONFIG =
+  'version: 2\nupdates:\n  - package-ecosystem: github-actions\n    directory: /\n';
+
+const readOutput = (stdio: {out: string[]}): Record<string, unknown> =>
+  JSON.parse(stdio.out.join('').trim()) as Record<string, unknown>;
+
+const writeFileAt = (root: string, relPath: string, content: string): void => {
+  const target = path.join(root, relPath);
+  mkdirSync(path.dirname(target), {recursive: true});
+  writeFileSync(target, content, 'utf8');
+};
+
+describe('setup warn-existing-tools', () => {
+  let sandbox: Sandbox;
+  let stdio: ReturnType<typeof captureStdio>;
+
+  beforeEach(() => {
+    sandbox = setupSandbox('gaia-setup-warn-');
+    stdio = captureStdio();
+  });
+
+  afterEach(() => {
+    stdio.restore();
+    sandbox.cleanup();
+    vi.restoreAllMocks();
+  });
+
+  test('returns empty array on a clean repo', () => {
+    const exit = run(['--json'], {cwd: sandbox.root});
+    expect(exit).toBe(0);
+
+    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<
+      string,
+      unknown
+    >;
+    expect(parsed.found).toEqual([]);
+  });
+
+  test.each<[string, string, string, string[]]>([
+    [
+      'detects .github/dependabot.yml',
+      '.github/dependabot.yml',
+      NPM_CONFIG,
+      ['dependabot'],
+    ],
+    [
+      'detects .github/dependabot.yaml',
+      '.github/dependabot.yaml',
+      NPM_CONFIG,
+      ['dependabot'],
+    ],
+    ['detects renovate.json', 'renovate.json', '{}\n', ['renovate']],
+  ])('%s', (_label, file, contents, found) => {
+    writeFileAt(sandbox.root, file, contents);
+
+    const exit = run(['--json'], {cwd: sandbox.root});
+    expect(exit).toBe(0);
+
+    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<
+      string,
+      unknown
+    >;
+    expect(parsed.found).toEqual(found);
+  });
+
+  test('detects .renovaterc.json and .github/renovate.json under same name', () => {
+    writeFileAt(sandbox.root, '.renovaterc.json', '{}\n');
+    writeFileAt(sandbox.root, '.github/renovate.json', '{}\n');
+
+    const exit = run(['--json'], {cwd: sandbox.root});
+    expect(exit).toBe(0);
+
+    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<
+      string,
+      unknown
+    >;
+    expect(parsed.found).toEqual(['renovate']);
+  });
+
+  test('reports both when both exist', () => {
+    writeFileAt(sandbox.root, '.github/dependabot.yml', NPM_CONFIG);
+    writeFileAt(sandbox.root, 'renovate.json', '{}\n');
+
+    const exit = run(['--json'], {cwd: sandbox.root});
+    expect(exit).toBe(0);
+
+    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<
+      string,
+      unknown
+    >;
+    expect(parsed.found).toEqual(['dependabot', 'renovate']);
+  });
+
+  test('deduplicates when both .yml and .yaml exist', () => {
+    writeFileAt(sandbox.root, '.github/dependabot.yml', NPM_CONFIG);
+    writeFileAt(sandbox.root, '.github/dependabot.yaml', NPM_CONFIG);
+
+    const exit = run(['--json'], {cwd: sandbox.root});
+    expect(exit).toBe(0);
+
+    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<
+      string,
+      unknown
+    >;
+    expect(parsed.found).toEqual(['dependabot']);
+  });
+
+  test('a config with only non-npm entries reports nothing', () => {
+    writeFileAt(sandbox.root, '.github/dependabot.yml', ACTIONS_CONFIG);
+
+    const exit = run(['--json'], {cwd: sandbox.root});
+    expect(exit).toBe(0);
+
+    expect(readOutput(stdio)).toEqual({
+      dependabot_unparseable: false,
+      found: [],
+    });
+  });
+
+  test('a config with no updates list reports nothing', () => {
+    writeFileAt(sandbox.root, '.github/dependabot.yml', 'version: 2\n');
+
+    run(['--json'], {cwd: sandbox.root});
+
+    expect(readOutput(stdio).found).toEqual([]);
+  });
+
+  test('an npm entry among other ecosystems reports dependabot', () => {
+    writeFileAt(
+      sandbox.root,
+      '.github/dependabot.yml',
+      `${ACTIONS_CONFIG}  - package-ecosystem: npm\n    directory: /\n`
+    );
+
+    run(['--json'], {cwd: sandbox.root});
+
+    expect(readOutput(stdio)).toEqual({
+      dependabot_unparseable: false,
+      found: ['dependabot'],
+    });
+  });
+
+  test('an unparseable config reports dependabot and flags it unparseable', () => {
+    writeFileAt(sandbox.root, '.github/dependabot.yml', 'updates: [unclosed\n');
+
+    run(['--json'], {cwd: sandbox.root});
+
+    expect(readOutput(stdio)).toEqual({
+      dependabot_unparseable: true,
+      found: ['dependabot'],
+    });
+  });
+
+  test('emits a human report without --json', () => {
+    writeFileAt(sandbox.root, '.github/dependabot.yml', NPM_CONFIG);
+
+    const exit = run([], {cwd: sandbox.root});
+    expect(exit).toBe(0);
+    expect(stdio.out.join('')).toContain('detected: dependabot');
+  });
+
+  test('rejects unknown flags', () => {
+    const exit = run(['--bogus'], {cwd: sandbox.root});
+    expect(exit).not.toBe(0);
+    expect(stdio.err.join('')).toContain('unknown flag');
+  });
+
+  test('--help exits 0', () => {
+    const exit = run(['--help'], {cwd: sandbox.root});
+    expect(exit).toBe(0);
+    expect(stdio.out.join('')).toContain('Usage:');
+  });
+});

@@ -26,7 +26,7 @@ A reader treats an unknown or invalid value as absent, so a typo or a value a ne
 Two CLI commands write the file, each creating it (with `version` set) when it does not exist:
 
 - `gaia init write-project-config`, called by `/gaia-init` for the sandbox recommendation and the isolation policy (see [[GAIA Init Workflow]]).
-- `gaia setup-ci write-isolation-policy`, called by `/setup-gaia` when a repo admin records the isolation policy.
+- `gaia setup write-isolation-policy`, called by `/setup-gaia` when a repo admin records the isolation policy.
 
 A writer merges into the existing JSON, so a key it does not know survives, and writes atomically.
 

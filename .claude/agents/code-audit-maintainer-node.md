@@ -11,9 +11,9 @@ You audit the framework's own Node/CLI TypeScript, the code behind GAIA's CLI: r
 
 <!-- gaia:audit-remit:start -->
 - `.gaia/cli/src/**/*.ts`
-- `.gaia/cli/src/**/*.tmpl`
+- `.gaia/cli/templates/**/*.tmpl`
 - `.gaia/cli/src/**/*.snap`
-- `.gaia/cli/src/**/.gitkeep`
+- `.gaia/cli/templates/.gitkeep`
 - `.gaia/cli/package.json`
 - `.gaia/cli/pnpm-lock.yaml`
 - `.gaia/cli/pnpm-workspace.yaml`

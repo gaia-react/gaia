@@ -27,8 +27,6 @@
  * Idempotent: re-running with the same `--version` is a no-op once the
  * version block already exists.
  */
-import {spawnSync} from 'node:child_process';
-import type {SpawnSyncReturns} from 'node:child_process';
 import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
@@ -40,7 +38,8 @@ import {
   parseConventionalCommitHeader,
 } from '../util/conventional-commit.js';
 import type {CommitType} from '../util/conventional-commit.js';
-import {MAX_GIT_BUFFER_BYTES} from '../util/git-buffer.js';
+import {defaultRunner} from '../util/run-process.js';
+import type {CommandRunner} from '../util/run-process.js';
 
 const HELP_TEXT = `Usage: gaia-maintainer release changelog [--draft] [--version <X.Y.Z>]
 
@@ -63,25 +62,9 @@ const HELP_TEXT = `Usage: gaia-maintainer release changelog [--draft] [--version
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 const UNEXPECTED_EXIT = 2;
 
-export type CommandRunner = (
-  command: string,
-  args: readonly string[],
-  options: {cwd: string}
-) => SpawnSyncReturns<string>;
+export type {CommandRunner} from '../util/run-process.js';
 
-/**
- * `collectCommits` asks git for every subject *and body* since the last tag,
- * so its output grows with the distance from that tag and passes Node's 1 MiB
- * `spawnSync` default well before a release is due, failing the command
- * closed with ENOBUFS.
- */
-export const defaultRunner: CommandRunner = (command, args, options) =>
-  spawnSync(command, args as string[], {
-    cwd: options.cwd,
-    encoding: 'utf8',
-    maxBuffer: MAX_GIT_BUFFER_BYTES,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
+export {defaultRunner};
 
 type FlagParseFailure = {
   message: string;

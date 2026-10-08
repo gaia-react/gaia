@@ -9,8 +9,8 @@
  * recompute lines up. A non-keep verdict carries a machine-checkable
  * `artifact`.
  *
- * Maintainer-only by construction: `.gaia/scripts` is release-excluded, so
- * the writer and this test never ship to adopters.
+ * The writer ships to adopters (manifest `owned`, run by shipped hooks); this
+ * test is maintainer-only because `.gaia/cli/src` is release-excluded.
  *
  * The writer resolves its sibling signal helper, which resolves `typescript`
  * from `node_modules`; this `.gaia/cli` workspace carries its own

@@ -9,9 +9,6 @@
  * bundle by construction.
  */
 
-import {realpathSync} from 'node:fs';
-import {pathToFileURL} from 'node:url';
-import {EXIT_CODES} from './exit.js';
 import {run as runFitness} from './fitness/index.js';
 import {run as runHardenLedger} from './harden/ledger.js';
 import {run as runHardenTally} from './harden/tally.js';
@@ -25,12 +22,11 @@ import {run as runResidueRecord} from './residue/record-cmd.js';
 import {run as runResidueTally} from './residue/tally.js';
 import {run as runSandbox} from './sandbox/index.js';
 import {run as runScaffold} from './scaffold/index.js';
-import {run as runSetupCi} from './setup-ci/index.js';
 import {run as runSetup} from './setup/index.js';
-import {structuredError} from './stderr.js';
 import {run as runUpdateDeps} from './update-deps/index.js';
 import {run as runUpdate} from './update/index.js';
-import {lookupOwn} from './util/argv.js';
+import {createSubcommandRouter, runWhenInvokedDirectly} from './util/router.js';
+import type {SubcommandHandler} from './util/router.js';
 import {run as runWiki} from './wiki/index.js';
 
 const HELP_TEXT = `Usage: gaia <subcommand> [args]
@@ -39,31 +35,20 @@ const HELP_TEXT = `Usage: gaia <subcommand> [args]
   react-perf reduce <raw.json> [--frame-budget-ms N]
   wiki state|commit-classify|state-init|state-bump|log-prepend|page-index|orphans|near-collisions|dead-paths|frontmatter|empty-sections|broken-links|chain
   fitness render-card [--cols N]
-  labels docs|sync
+  labels sync
   packages sync-settings [--check]
-  harden-ledger list|record|is-suppressed|prune|snapshot
+  harden-ledger list|record|prune|snapshot
   harden-tally
   update merge-workspace|merge-audit-ci|merge-region|regen-regions
   update-deps run|decline|global-tools|advisories|advisory-landed|dismiss-alert|write-security-cache|check-security-override
   init strip-branding|configure-i18n|configure-data-layer|rename|wire-statusline|bootstrap-env|write-project-config|finalize|resume
-  setup status|mark-step|finalize
-  setup-ci detect-remote|warn-existing-tools|check-admin|enable-delete-branch|write-isolation-policy|configure-dependabot-alerts
+  setup status|mark-step|finalize|detect-remote|warn-existing-tools|check-admin|enable-delete-branch|write-isolation-policy|configure-dependabot-alerts
   sandbox detect|apply|record|status
   ping --event <init|setup|update> [--field value ...]
-  residue-tally [--count-only] [--attribute-only] [--cap N] [--no-cap] [--json]
+  residue-tally [--count-only]
   residue-cursor advance --token T|clear
   residue-record --disposition dismissed|kept|suppressed --token T [--token T ...] --reason-file F
 `;
-
-const printHelp = (): void => {
-  process.stdout.write(HELP_TEXT);
-};
-
-type SubcommandHandler = (
-  args: string[]
-) => number | Promise<number | undefined> | undefined;
-
-const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
 const SUBCOMMAND_HANDLERS: Readonly<
   Partial<Record<string, SubcommandHandler>>
@@ -82,59 +67,14 @@ const SUBCOMMAND_HANDLERS: Readonly<
   sandbox: runSandbox,
   scaffold: runScaffold,
   setup: runSetup,
-  'setup-ci': runSetupCi,
   update: runUpdate,
   'update-deps': runUpdateDeps,
   wiki: runWiki,
 };
 
-export const run = async (argv: readonly string[]): Promise<number> => {
-  const subcommand = argv[0];
-  const rest = argv.slice(1);
+export const run = createSubcommandRouter({
+  handlers: SUBCOMMAND_HANDLERS,
+  helpText: HELP_TEXT,
+});
 
-  if (subcommand === undefined || HELP_TOKENS.has(subcommand)) {
-    printHelp();
-
-    return EXIT_CODES.OK;
-  }
-
-  const handler = lookupOwn(SUBCOMMAND_HANDLERS, subcommand);
-
-  if (handler !== undefined) {
-    const result = await handler(rest);
-
-    return typeof result === 'number' ? result : EXIT_CODES.OK;
-  }
-
-  structuredError({code: 'unknown_subcommand', subcommand});
-
-  return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-};
-
-// Auto-execute only when invoked directly as the bundled binary, not when a
-// test imports this module. Both binaries are invoked by explicit path
-// (`node .gaia/cli/gaia ...`), so argv[1] is this file; a test runner's
-// argv[1] is vitest, so the guard is false and no process.exit fires.
-const invokedPath = process.argv[1];
-const isDirectRun =
-  invokedPath !== undefined &&
-  import.meta.url === pathToFileURL(realpathSync(invokedPath)).href;
-
-if (isDirectRun) {
-  // Set `process.exitCode` and let the event loop drain rather than calling
-  // `process.exit()`. `process.stdout` is asynchronous when it is a pipe, so
-  // an immediate `process.exit()` discards whatever is still buffered: a
-  // `wiki commit-classify --json` over a non-trivial range truncated at
-  // exactly 65536 bytes (the pipe capacity) and handed its caller unparseable
-  // JSON, while the same command redirected to a file wrote all of it. The
-  // sync playbook reads that command through a pipe.
-  try {
-    process.exitCode = await run(process.argv.slice(2));
-  } catch (error: unknown) {
-    structuredError({
-      code: 'cli_internal_error',
-      message: error instanceof Error ? error.message : String(error),
-    });
-    process.exitCode = EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  }
-}
+await runWhenInvokedDirectly(import.meta.url, run);

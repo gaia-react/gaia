@@ -82,7 +82,7 @@ From `.gaia/local/setup-state.json` (per-machine, gitignored), cache `completed_
 Then read the **repo / branch / push / required-check** state, not merely whether an `origin` remote exists:
 
 ```bash
-.gaia/cli/gaia setup-ci detect-remote --json
+.gaia/cli/gaia setup detect-remote --json
 ```
 
 Cache `found`, `host`, `owner`, `repo`. When `found` and `host == "github.com"`, probe the live repo state (each degrades to "absent" on a non-zero exit):
@@ -95,7 +95,7 @@ gh api "repos/<owner>/<repo>/branches/<default-branch>" --jq '.name' 2>/dev/null
 When the repo exists, run the admin probe once and cache `admin` and `auth_status` (Phase 3 reuses them):
 
 ```bash
-.gaia/cli/gaia setup-ci check-admin --owner <owner> --repo <repo> --json
+.gaia/cli/gaia setup check-admin --owner <owner> --repo <repo> --json
 ```
 
 When `admin` is `true` and `auth_status == "ok"`, read the default branch's required contexts:
@@ -434,7 +434,7 @@ Exit the repo phase without mutating GitHub.
 Reached from Option 1 (after create) or Option 2 (adopt). Run the admin probe for the now-existing repo (Option 1's repo did not exist when Phase 1 ran, so its cached values cannot be reused here):
 
 ```bash
-.gaia/cli/gaia setup-ci check-admin --owner <owner> --repo <repo> --json
+.gaia/cli/gaia setup check-admin --owner <owner> --repo <repo> --json
 ```
 
 Cache `admin` and `auth_status`. **If `admin` is not `true` (or `auth_status != "ok"`)**, none of the GitHub mutations below fire; print the admin-note and skip straight to Phase 3.5 (which runs its own admin probe and fails closed the same way):
@@ -517,7 +517,7 @@ If `false`, AskUserQuestion:
 On Enable:
 
 ```bash
-.gaia/cli/gaia setup-ci enable-delete-branch --owner <owner> --repo <repo>
+.gaia/cli/gaia setup enable-delete-branch --owner <owner> --repo <repo>
 ```
 
 If already `true`, print `delete_branch_on_merge is already enabled.` and continue.
@@ -527,7 +527,7 @@ If already `true`, print `delete_branch_on_merge is already enabled.` and contin
 **Dependabot posture.** Dependabot is a data source for `/update-deps`, never a pull-request producer: alerts stay on and automated security fixes stay off. First warn about any existing Dependabot or Renovate config, without editing either file:
 
 ```bash
-.gaia/cli/gaia setup-ci warn-existing-tools --json
+.gaia/cli/gaia setup warn-existing-tools --json
 ```
 
 When `found` contains `dependabot` and `dependabot_unparseable` is not true, print:
@@ -557,7 +557,7 @@ To remove the overlap: disable Renovate's npm and pnpm package management. /setu
 Then set the posture through the CLI, which owns the GitHub calls:
 
 ```bash
-.gaia/cli/gaia setup-ci configure-dependabot-alerts --owner <owner> --repo <repo> --json
+.gaia/cli/gaia setup configure-dependabot-alerts --owner <owner> --repo <repo> --json
 ```
 
 On success, print `Dependabot alerts are on and automated security fixes are off for <owner>/<repo>.` When `changed` is non-empty, also print each change; the change is reported, not asked about. On failure, print `Could not set the Dependabot posture on <owner>/<repo> (failed at <step>). Finish with repo-admin access:` followed by each `manual_commands` entry, and note that an organization-enforced security configuration can refuse the change, in which case an organization admin must change it. Do not halt setup on a failure.
@@ -597,7 +597,7 @@ Gated behind Gate 1, so the `gh api` round-trip only costs anything on a repo th
 Phase 1's cached `detect-remote` values (`found`, `host`, `owner`, `repo`):
 
 ```bash
-.gaia/cli/gaia setup-ci check-admin --owner <owner> --repo <repo> --json
+.gaia/cli/gaia setup check-admin --owner <owner> --repo <repo> --json
 ```
 
 Fail closed, silently (skip the question, no error, no output), on any of:
@@ -647,7 +647,7 @@ not a per-task prompt.
 ### The write
 
 ```bash
-.gaia/cli/gaia setup-ci write-isolation-policy <always-worktree|prefer-worktree|prefer-branch>
+.gaia/cli/gaia setup write-isolation-policy <always-worktree|prefer-worktree|prefer-branch>
 ```
 
 If this exits non-zero, surface the structured-error JSON verbatim and skip **The commit** below. Do not
@@ -706,7 +706,7 @@ GAIA lints pull request titles as Conventional Commits because a squash merge la
 When Phase 3's Recommended defaults ran this invocation, reuse the `admin` and `auth_status` it cached. Otherwise run the probe with Phase 1's cached `detect-remote` values:
 
 ```bash
-.gaia/cli/gaia setup-ci check-admin --owner <owner> --repo <repo> --json
+.gaia/cli/gaia setup check-admin --owner <owner> --repo <repo> --json
 ```
 
 Fail closed, silently (skip the question, no error, no output), on any of: `detect-remote` reported `found: false`; `host != "github.com"`; `admin` is not `true`; `auth_status` is not `"ok"`. Merge settings are a repository setting, so a non-admin is not its audience.

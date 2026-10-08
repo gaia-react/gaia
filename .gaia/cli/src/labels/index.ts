@@ -1,13 +1,12 @@
 /**
  * `gaia labels`: the commands that read `.gaia/labels.json`, named below.
  *
- * `sync` reconciles a repository against the registry, and `docs` regenerates
- * the span of `wiki/concepts/GitHub Labels.md`.
+ * `sync` reconciles a repository against the registry. The page generator
+ * lives in the maintainer binary only.
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {lookupOwn} from '../util/argv.js';
-import {run as runDocumentation} from './docs.js';
 import {run as runSync} from './sync.js';
 
 const HELP_TEXT = `Usage: gaia labels <subcommand> [args]
@@ -16,8 +15,6 @@ const HELP_TEXT = `Usage: gaia labels <subcommand> [args]
        [--prune-deprecated] [--enforce-blocked] [--json]
        [--audience adopter|maintainer] [--feature <key>]...
                              Reconcile a repository against the registry.
-  docs [--repo-root <path>] [--check]
-                             Regenerate the generated span of the wiki page.
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
@@ -27,7 +24,6 @@ type SubcommandHandler = (args: readonly string[]) => number | Promise<number>;
 const SUBCOMMAND_HANDLERS: Readonly<
   Partial<Record<string, SubcommandHandler>>
 > = {
-  docs: runDocumentation,
   sync: runSync,
 };
 

@@ -540,8 +540,8 @@ check_no_dependabot_question() {
 
 # check_posture_subcommand <file>: the page invokes the posture subcommand.
 check_posture_subcommand() {
-  grep -qF -- 'setup-ci configure-dependabot-alerts' "$1" || {
-    echo "the page does not invoke setup-ci configure-dependabot-alerts" >&2
+  grep -qF -- 'setup configure-dependabot-alerts' "$1" || {
+    echo "the page does not invoke setup configure-dependabot-alerts" >&2
     return 1
   }
 }
@@ -553,7 +553,7 @@ check_posture_subcommand() {
 @test "the posture-subcommand check fails when the call is removed" {
   local copy
   copy="$(scratch_copy "$PAGE" "posture-call-removed.md")"
-  grep -vF -- 'setup-ci configure-dependabot-alerts' "$PAGE" >"$copy" || true
+  grep -vF -- 'setup configure-dependabot-alerts' "$PAGE" >"$copy" || true
   cmp -s "$PAGE" "$copy" && return 1
   run check_posture_subcommand "$copy"
   [ "$status" -ne 0 ]
@@ -563,7 +563,7 @@ check_posture_subcommand() {
   local copy literal
   literal="$(printf 'write-dependabot-%s' config)"
   copy="$(scratch_copy "$PAGE" "writer-put-back.md")"
-  printf '\n.gaia/cli/gaia setup-ci %s --json\n' "$literal" >>"$copy"
+  printf '\n.gaia/cli/gaia setup %s --json\n' "$literal" >>"$copy"
   run check_no_ci_phases "$copy"
   [ "$status" -ne 0 ]
 }
@@ -604,7 +604,7 @@ check_posture_warns_only() {
     echo "the posture step is absent" >&2
     return 1
   }
-  grep -qF -- 'setup-ci warn-existing-tools' <<<"$section" || {
+  grep -qF -- 'setup warn-existing-tools' <<<"$section" || {
     echo "the posture step does not invoke warn-existing-tools" >&2
     return 1
   }
@@ -630,7 +630,7 @@ check_posture_warns_only() {
 @test "the posture check fails when the warn-existing-tools call is removed" {
   local copy
   copy="$(scratch_copy "$PAGE" "posture-no-warn.md")"
-  grep -vF -- 'setup-ci warn-existing-tools' "$PAGE" >"$copy" || true
+  grep -vF -- 'setup warn-existing-tools' "$PAGE" >"$copy" || true
   cmp -s "$PAGE" "$copy" && return 1
   run check_posture_warns_only "$copy"
   [ "$status" -ne 0 ]

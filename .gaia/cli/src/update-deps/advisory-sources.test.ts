@@ -1,5 +1,5 @@
 import {describe, expect, test} from 'vitest';
-import type {GhOptions, GhResult} from '../setup-ci/util/gh.js';
+import type {GhOptions, GhResult} from '../util/run-process.js';
 import {
   fetchDependabotAlerts,
   ghFailureReason,

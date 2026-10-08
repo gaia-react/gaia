@@ -1,7 +1,7 @@
 /**
  * The only threshold definitions for "has a finding class materially risen",
  * shared by trigger evaluation (`harden-tally`) and decline re-surface
- * (`harden-ledger is-suppressed`). Fixed by design; changing a value here is
+ * (`checkDeclineSuppression`). Fixed by design; changing a value here is
  * an ask-first decision, not a tuning knob.
  *
  * `TALLY_SCHEMA_VERSION` is bumped whenever the tally's counting semantics
