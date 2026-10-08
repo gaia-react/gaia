@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-04-20
 created: 2026-04-20
-updated: 2026-10-05
+updated: 2026-10-08
 tags: [decision, ci, quality]
 ---
 
@@ -28,7 +28,7 @@ The contract lives at the repo root and the commands run per package. Steps 3 to
 7. **Dev smoke test**: `bash .gaia/scripts/dev-smoke.sh`: exit 0 means the route answered HTTP 200 and the server it started is stopped. It starts `pnpm -C frontend dev` on this tree's dev port, requests `/` (`--path` names another route), and stops only the server it started. Do not start or stop the dev server by hand for this step: a pattern kill (`pkill -f vite`, `kill $(lsof -ti:<port>)`) also stops other sessions' and other worktrees' servers. When the script refuses because the port is already in use, ask the user before stopping the holder; its header documents the exit codes.
 8. `pnpm build` (`pnpm -C frontend build`): confirms production build.
 9. **Fix all warnings before reporting**: never hand off with known warnings.
-10. **Stop and report**: wait for user approval, except inside the PR Merge Workflow's fix round ([[PR Merge Workflow#The fix round: fixer, verifier, gate]]).
+10. **Stop and report**: wait for user approval, except inside a workflow whose own instructions commit without stopping: the PR Merge Workflow's fix round ([[PR Merge Workflow#The fix round: fixer, verifier, gate]]), `/gaia-debt`, and a `/gaia-plan` orchestrator's phase commits.
 
 | Step          | Result |
 | ------------- | ------ |
@@ -57,11 +57,21 @@ Quick check:
 git diff --cached --name-only -z | tr '\0' '\n' | grep -E '\.(ts|tsx|js|jsx|mjs|cjs|css)$|^([^/]+/)?(package\.json|pnpm-lock\.yaml|tsconfig.*\.json|vite\.config\.|vitest\.config\.|playwright\.config\.|eslint\.config\.)|^(\.gaia/packages\.json|frontend/gaia\.package\.json)$'
 ```
 
+<!-- gaia:maintainer-only:start -->
+Steps 3 to 8 check only the frontend package, so in this repo a match under `.gaia/cli/`, `.gaia/tests/`, or `.gaia/scripts/` does not select them: those paths belong to no registered package, which is also why `.gaia/scripts/precommit-packages.sh` runs no package check for them. Pipe the Quick check's output through the frontend filter and run steps 3 and 5 to 8 only when a path survives; when none does, step 4 runs only its `.gaia/cli/**` checks, and only when a `.gaia/cli/**` path is staged.
+
+Frontend filter:
+
+```bash
+grep -vE '^\.gaia/(cli|tests|scripts)/'
+```
+<!-- gaia:maintainer-only:end -->
+
 ## Behavior when the gate runs
 
 - **Fix issues as you encounter them** rather than just reporting them.
 - All warnings/issues (typecheck errors, lint errors/warnings, test console warnings like missing i18n keys or HydrateFallback, runtime errors) must be resolved before the commit; never commit with known warnings.
-- After fixing, **STOP and report results to the user**; do not commit until the user reviews and approves. That step governs an ordinary commit. Inside the PR Merge Workflow's fix round the commit proceeds on a clean gate, because the branch checkpoint is where the human reviews ([[PR Merge Workflow#The fix round: fixer, verifier, gate]]).
+- After fixing, **STOP and report results to the user**; do not commit until the user reviews and approves. That step governs an ordinary commit. Inside a workflow step 10 names, the commit proceeds on a clean gate: that workflow's own checkpoint is where the human reviews.
 
 Localization: all user-facing strings must be localized; no hardcoded strings in JSX, no keys without values.
 

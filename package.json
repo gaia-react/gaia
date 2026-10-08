@@ -54,7 +54,8 @@
     "pw-ui": "pnpm -C frontend pw-ui",
     "chromatic": "pnpm -C frontend chromatic",
     "storybook": "pnpm -C frontend storybook",
-    "build-storybook": "pnpm -C frontend build-storybook"
+    "build-storybook": "pnpm -C frontend build-storybook",
+    "shadcn": "pnpm -C frontend shadcn"
   },
   "devDependencies": {
     "@commitlint/cli": "21.2.3",
