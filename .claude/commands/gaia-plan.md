@@ -1,6 +1,6 @@
 ---
 name: gaia-plan
-description: Plan a complex feature using GAIA's task-orchestration pattern, structures the work into fresh-context subagent phases for your approval. Does not implement.
+description: Plans a complex feature with GAIA's task-orchestration pattern, structuring the work into fresh-context subagent phases for approval. Does not implement. Use when the user asks to plan a feature, break work into phases, or turn a SPEC into an execution plan.
 argument-hint: [feature description]
 ---
 

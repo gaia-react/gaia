@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-20
-updated: 2026-10-05
+updated: 2026-10-08
 tags: [concept, claude, skills]
 ---
 
@@ -91,6 +91,17 @@ Heuristic when migrating:
 - **Rule → hook** when the guidance can be phrased as a deterministic block on a specific tool call (e.g. "no writes to `.env`" → `block-env-write.sh`).
 - **Rule → skill** when the guidance is a body of patterns triggered by intent rather than file path (e.g. ESLint fix recipes only matter when fixing lint, not on every edit) and benefits from references that load on demand.
 - **Keep as rule** when it must auto-apply whenever a file in scope is touched, regardless of user intent (e.g. `i18n.md` for `frontend/app/pages/**`, `accessibility.md`, `coding-guidelines.md`, `quality-gate.md`).
+
+## Skill listing
+
+Every session carries a listing of the skills and commands Claude may start on its own: each one's `name` and `description`, truncated per entry. The listing is always-loaded context, so every description pays its bytes in every session, and it is also the only text Claude matches a request against. The frontmatter that feeds it follows Anthropic's Agent Skills rules:
+
+- `name`: at most 64 characters of lowercase letters, digits, and hyphens, never containing `claude` or `anthropic`.
+- `description`: non-empty, at most 1,024 characters, no XML tags, written in the third person ("Files a tech-debt issue...", never "File a..." or "You can..."). A model-invocable skill states what it does and when to use it, with the phrases a user would say.
+- A command only a person starts sets `disable-model-invocation: true`. Its description leaves the listing and Claude cannot start it on its own; it runs when typed as `/name`, and its description needs only the third-person what. `grep -l 'disable-model-invocation: true' .claude/commands/*.md` lists them.
+- A `model:` pin follows the model table in [[Workflow Doctrine]].
+
+Vendored and installer-managed skills keep their upstream frontmatter. `.gaia/tests/lib/doc-skill-frontmatter.bats` checks the `name` and `description` limits over every GAIA-authored skill and command.
 
 ## Skill references convention
 

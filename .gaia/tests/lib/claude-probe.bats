@@ -30,6 +30,7 @@ setup() {
   STUB_LOG="$BATS_TEST_TMPDIR/stub-calls"
   mkdir -p "$BIN"
   export STUB_LOG
+  export CLAUDE_CONFIG_DIR="$BATS_TEST_TMPDIR/claude-config"
   PATH="$BIN:$PATH"
 }
 
@@ -37,6 +38,9 @@ setup() {
 # line tagged for the launch dir's settings file), then prints an init event,
 # an assistant message whose TEXT claims a rule loaded, and a result carrying
 # $STUB_COST as total_cost_usd. It never writes an InstructionsLoaded line.
+# When $STUB_LISTING_NAMES (comma list) is set it also writes a session
+# transcript, as Claude Code does, under $CLAUDE_CONFIG_DIR/projects/<dir>/
+# <session id>.jsonl, holding one skill_listing attachment with those names.
 write_claude_stub() {
   cat >"$BIN/claude" <<'STUB'
 #!/usr/bin/env bash
@@ -48,7 +52,14 @@ if [ -n "${GAIA_PROBE_LOG:-}" ]; then
   printf '{"event":"SessionStart","tag":"%s","source":"startup","claude_project_dir":"%s","pwd":"%s","toplevel":"%s"}\n' \
     "$tag" "$PWD" "$PWD" "$(git rev-parse --show-toplevel)" >>"$GAIA_PROBE_LOG"
 fi
-printf '{"type":"system","subtype":"init","session_id":"stub","skills":[],"agents":[],"mcp_servers":[]}\n'
+session_id="${STUB_SESSION_ID:-stub}"
+if [ -n "${STUB_LISTING_NAMES:-}" ]; then
+  mkdir -p "$CLAUDE_CONFIG_DIR/projects/-stub-project"
+  jq -nc --arg names "$STUB_LISTING_NAMES" \
+    '{type: "attachment", attachment: {type: "skill_listing", isInitial: true, names: ($names | split(","))}}' \
+    >"$CLAUDE_CONFIG_DIR/projects/-stub-project/$session_id.jsonl"
+fi
+printf '{"type":"system","subtype":"init","session_id":"%s","skills":[],"agents":[],"mcp_servers":[]}\n' "$session_id"
 printf '{"type":"assistant","message":{"content":[{"type":"text","text":"CLAUDE.md loaded. I have read CLAUDE.md and every rule."}]}}\n'
 printf '{"type":"result","subtype":"success","total_cost_usd":%s,"permission_denials":[]}\n' "${STUB_COST:-0.01}"
 STUB
@@ -73,6 +84,8 @@ write_evidence() {
   printf '%s\n' CLAUDE.md .claude/rules/always.md .claude/rules/scoped.md \
     .claude/skills/alpha/SKILL.md .claude/commands/tidy.md .claude/agents/helper.md \
     .claude/settings.json >"$snapshot/tree.txt"
+  mkdir -p "$snapshot/files/.claude/commands"
+  printf '# Tidy\n' >"$snapshot/files/.claude/commands/tidy.md"
   printf '# Always\n' >"$snapshot/files/.claude/rules/always.md"
   printf -- "---\npaths:\n  - 'app/**'\n---\n\n# Scoped\n" >"$snapshot/files/.claude/rules/scoped.md"
   cat >"$snapshot/files/.claude/settings.json" <<'SETTINGS'
@@ -350,6 +363,108 @@ SETTINGS
   after="$(git -C "$FIXTURE_TREE" status --porcelain --untracked-files=all; cat "$FIXTURE_TREE/.claude/settings.json")"
   [ "$before" = "$after" ]
   [ "$(git -C "$FIXTURE_TREE" worktree list | grep -c .)" -eq 1 ]
+}
+
+# --- skill listing from the session transcript -------------------------------
+
+# write_listing_evidence <dir> <names>: write_evidence's one repetition plus a
+# user-only command (hidden.md, disable-model-invocation: true) beside the
+# model-invocable tidy.md, and a transcript-1.jsonl whose skill_listing
+# attachment carries <names> (comma list).
+write_listing_evidence() {
+  local evidence="$1" names="$2" snapshot="$1/snapshot/root"
+  write_evidence "$evidence" 1
+  printf '%s\n' .claude/commands/hidden.md >>"$snapshot/tree.txt"
+  printf -- '---\ndescription: x\ndisable-model-invocation: true\n---\n\n# Hidden\n' >"$snapshot/files/.claude/commands/hidden.md"
+  jq -nc --arg names "$names" \
+    '{type: "attachment", attachment: {type: "skill_listing", isInitial: true, names: ($names | split(","))}}' \
+    >"$evidence/rep-1/root/session-start/transcript-1.jsonl"
+}
+
+@test "the model-invocation suffixes keep exactly the commands that do and do not set disable-model-invocation" {
+  write_listing_evidence "$BATS_TEST_TMPDIR/evidence" "tidy"
+  local snapshot="$BATS_TEST_TMPDIR/evidence/snapshot/root" subjects
+  subjects="$(node --input-type=module -e "
+    import {expandRow} from '$HARNESS/lib/table.mjs';
+    const subjects = (suffix) => expandRow({id: 'x', expand: '.claude/commands/*.md#' + suffix}, '$snapshot').map((entry) => entry.subject).join(',');
+    console.log(subjects('model-invocation-disabled') + '|' + subjects('model-invocable'));
+  ")"
+  [ "$subjects" = ".claude/commands/hidden.md|.claude/commands/tidy.md" ]
+}
+
+@test "a user-only command absent from the transcript listing and a model-invocable one present both match" {
+  write_listing_evidence "$BATS_TEST_TMPDIR/evidence" "alpha,tidy,compact"
+  run node "$HARNESS/compare.mjs" "$TABLE" "$BATS_TEST_TMPDIR/evidence" --only 'root-user-only-commands-not-listed'
+  [ "$status" -eq 0 ]
+  run node "$HARNESS/compare.mjs" "$TABLE" "$BATS_TEST_TMPDIR/evidence" --only 'root-model-invocable-commands-listed'
+  [ "$status" -eq 0 ]
+  grep -qF "SUMMARY floor_mismatches=0 other_mismatches=0" <<<"$output"
+}
+
+@test "a user-only command present in the transcript listing fails the not_listed row" {
+  write_listing_evidence "$BATS_TEST_TMPDIR/evidence" "alpha,tidy,hidden"
+  run node "$HARNESS/compare.mjs" "$TABLE" "$BATS_TEST_TMPDIR/evidence" --only 'root-user-only-commands-not-listed'
+  [ "$status" -eq 1 ]
+  grep -qxF "MISMATCH root-user-only-commands-not-listed@.claude/commands/hidden.md rep=1 expected=not_listed observed=listed" <<<"$output"
+}
+
+@test "a model-invocable command missing from the transcript listing fails the listed row" {
+  write_listing_evidence "$BATS_TEST_TMPDIR/evidence" "alpha"
+  run node "$HARNESS/compare.mjs" "$TABLE" "$BATS_TEST_TMPDIR/evidence" --only 'root-model-invocable-commands-listed'
+  [ "$status" -eq 1 ]
+  grep -qxF "MISMATCH root-model-invocable-commands-listed@.claude/commands/tidy.md rep=1 expected=listed observed=not_listed" <<<"$output"
+}
+
+@test "names from every skill_listing attachment in the turn count as listed" {
+  write_listing_evidence "$BATS_TEST_TMPDIR/evidence" "alpha"
+  jq -nc '{type: "attachment", attachment: {type: "skill_listing", isInitial: false, names: ["tidy"]}}' \
+    >>"$BATS_TEST_TMPDIR/evidence/rep-1/root/session-start/transcript-1.jsonl"
+  run node "$HARNESS/compare.mjs" "$TABLE" "$BATS_TEST_TMPDIR/evidence" --only 'root-model-invocable-commands-listed'
+  [ "$status" -eq 0 ]
+}
+
+@test "a missing transcript is no_transcript, never not_listed" {
+  write_listing_evidence "$BATS_TEST_TMPDIR/evidence" "alpha,tidy"
+  rm "$BATS_TEST_TMPDIR/evidence/rep-1/root/session-start/transcript-1.jsonl"
+  run node "$HARNESS/compare.mjs" "$TABLE" "$BATS_TEST_TMPDIR/evidence" --only 'root-user-only-commands-not-listed'
+  [ "$status" -eq 1 ]
+  grep -qxF "MISMATCH root-user-only-commands-not-listed@.claude/commands/hidden.md rep=1 expected=not_listed observed=no_transcript" <<<"$output"
+}
+
+@test "a transcript with no skill_listing attachment is no_skill_listing, never not_listed" {
+  write_listing_evidence "$BATS_TEST_TMPDIR/evidence" "alpha,tidy"
+  printf '%s\n' '{"type":"user","message":{"content":"hi"}}' >"$BATS_TEST_TMPDIR/evidence/rep-1/root/session-start/transcript-1.jsonl"
+  run node "$HARNESS/compare.mjs" "$TABLE" "$BATS_TEST_TMPDIR/evidence" --only 'root-user-only-commands-not-listed'
+  [ "$status" -eq 1 ]
+  grep -qxF "MISMATCH root-user-only-commands-not-listed@.claude/commands/hidden.md rep=1 expected=not_listed observed=no_skill_listing" <<<"$output"
+}
+
+@test "run-probe copies the session transcript found by the init session id into the scenario dir" {
+  write_claude_stub
+  local repo="$BATS_TEST_TMPDIR/table-repo" evidence="$BATS_TEST_TMPDIR/evidence"
+  table_repo "$repo"
+  STUB_LISTING_NAMES="alpha,tidy" STUB_SESSION_ID="sess-1" run bash "$HARNESS/run-probe.sh" --target "$FIXTURE_TREE" \
+    --evidence "$evidence" --max-usd 5 --reps 1 --table-repo "$repo" --launches root --only 'root-root-claude-md'
+  [ "$status" -eq 1 ]
+  jq -e '.attachment.names == ["alpha","tidy"]' "$evidence/rep-1/root/session-start/transcript-1.jsonl" >/dev/null
+}
+
+@test "run-probe leaves the transcript absent, without failing the run, when none or several match the session id" {
+  write_claude_stub
+  local repo="$BATS_TEST_TMPDIR/table-repo" evidence="$BATS_TEST_TMPDIR/evidence"
+  table_repo "$repo"
+  run bash "$HARNESS/run-probe.sh" --target "$FIXTURE_TREE" --evidence "$evidence" --max-usd 5 --reps 1 \
+    --table-repo "$repo" --launches root --only 'root-root-claude-md'
+  [ "$status" -eq 1 ]
+  [ ! -e "$evidence/rep-1/root/session-start/transcript-1.jsonl" ]
+  # A second project directory already holds the same session id: ambiguous,
+  # so nothing is copied.
+  mkdir -p "$CLAUDE_CONFIG_DIR/projects/-other"
+  printf '{}\n' >"$CLAUDE_CONFIG_DIR/projects/-other/sess-2.jsonl"
+  STUB_LISTING_NAMES="alpha" STUB_SESSION_ID="sess-2" run bash "$HARNESS/run-probe.sh" --target "$FIXTURE_TREE" \
+    --evidence "$BATS_TEST_TMPDIR/evidence-2" --max-usd 5 --reps 1 --table-repo "$repo" --launches root --only 'root-root-claude-md'
+  [ "$status" -eq 1 ]
+  [ ! -e "$BATS_TEST_TMPDIR/evidence-2/rep-1/root/session-start/transcript-1.jsonl" ]
 }
 
 # --- observation fixes from the spike run ------------------------------------

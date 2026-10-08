@@ -19,7 +19,10 @@ export const TAG_FILES = {
 
 export const scenarioSlug = (trigger) => trigger.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
-const readJsonl = (path) => {
+// A lenient read skips a malformed line instead of throwing: the session
+// transcript is written by Claude Code, not by the probe, so a truncated or
+// foreign line must not void the whole scenario.
+const readJsonl = (path, { lenient = false } = {}) => {
   if (!existsSync(path)) return null;
   return readFileSync(path, 'utf8').split('\n').map((line, index) => {
     if (line.trim() === '') return null;
@@ -28,6 +31,7 @@ const readJsonl = (path) => {
       if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new Error('not a JSON object');
       return value;
     } catch (error) {
+      if (lenient) return null;
       throw new EvidenceError(`malformed evidence line ${path}:${index + 1}: ${error.message}`);
     }
   }).filter(Boolean);
@@ -64,6 +68,7 @@ export const loadScenario = (directory) => {
     scenario,
     probe: readJsonl(join(directory, 'probe.jsonl')) ?? [],
     streams,
+    transcript: readJsonl(join(directory, 'transcript-1.jsonl'), { lenient: true }),
     trace2: readJsonl(join(directory, 'trace2.jsonl')) ?? [],
     filesAfter: readJson(join(directory, 'files-after.json')) ?? {},
   };
@@ -133,6 +138,14 @@ export const listedNames = (init, kind) => {
   if (kind === 'agent') return names(init.agents);
   if (kind === 'mcp') return names(init.mcp_servers);
   return [];
+};
+
+// Names the first turn's transcript listed: the union over every skill_listing
+// attachment. A later attachment may in principle remove a name; the union
+// cannot model that, so a name once listed stays listed.
+export const transcriptListedNames = (transcript) => {
+  const listings = (transcript ?? []).map((line) => line.attachment).filter((attachment) => attachment?.type === 'skill_listing');
+  return listings.length === 0 ? null : listings.flatMap((attachment) => attachment.names ?? []);
 };
 
 const loadedTags = (data) => new Set(data.probe.filter((line) => line.event === 'SessionStart').map((line) => line.tag));
@@ -276,6 +289,13 @@ export const observe = (row, expanded, data, snapshotDirectory, context = {}) =>
       return loadedInstructionPaths(data).has(subject) ? 'loaded' : 'not_loaded';
     case 'skill':
       return sessionCommandNames(data.streams[0]).some((listed) => nameMatches(listed, context.key)) ? 'available' : 'not_available';
+    case 'listing': {
+      const { transcript } = data;
+      if (!transcript) return 'no_transcript';
+      const listed = transcriptListedNames(transcript);
+      if (listed === null) return 'no_skill_listing';
+      return listed.some((name) => nameMatches(name, context.key)) ? 'listed' : 'not_listed';
+    }
     case 'agent': {
       const init = listingInit(data);
       if (!init) return 'no_listing';

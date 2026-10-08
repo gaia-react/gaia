@@ -1,6 +1,6 @@
 ---
 name: gaia-wiki
-description: GAIA wiki maintenance. Runs the full wiki maintenance chain (sync, consolidate, lint with fixes) in one command. Trigger on `/gaia-wiki` or natural-language asks like "sync the wiki", "run wiki maintenance", "consolidate the wiki", or "lint the wiki".
+description: Runs the full GAIA wiki maintenance chain (sync, consolidate, lint with fixes) in one command. Trigger on `/gaia-wiki` or natural-language asks like "sync the wiki", "run wiki maintenance", "consolidate the wiki", or "lint the wiki".
 ---
 
 Run the GAIA **wiki** maintenance workflow with these arguments: `$ARGUMENTS`

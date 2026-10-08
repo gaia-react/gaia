@@ -179,9 +179,9 @@ wiki_models_ok() {
     WIKI_MATCHES=$((WIKI_MATCHES + 1))
     [ "$line_number" -ge "$block_start_line" ] && [ "$line_number" -le "$block_end_line" ] || return 1
   done < <(grep -niE "$MODEL_RE" "$file_path" | cut -d: -f1)
-  [ $((block_end_line - block_start_line + 1 - 2)) -eq 3 ] || return 1
+  [ $((block_end_line - block_start_line + 1 - 2)) -eq 4 ] || return 1
   rows="$(sed -n "${block_start_line},${block_end_line}p" "$file_path" | awk -F'|' 'NR > 2 { gsub(/^ +| +$/, "", $2); print $2 }')"
-  [ "$rows" = "$(printf 'sweep\nscoped implementation\nsynthesis')" ] || return 1
+  [ "$rows" = "$(printf 'sweep\nscoped implementation\nsynthesis\nlookup, scaffold, mechanical')" ] || return 1
   return 0
 }
 
@@ -319,7 +319,7 @@ no_model_rows_ok() {
   local file_path="$1" row_prefix
   [ -f "$file_path" ] || return 1
   grep -qF 'Workflow Doctrine' "$file_path" || return 1
-  for row_prefix in '| sweep' '| scoped implementation' '| synthesis'; do
+  for row_prefix in '| sweep' '| scoped implementation' '| synthesis' '| lookup, scaffold, mechanical'; do
     grep -qF -- "$row_prefix" "$file_path" && return 1
   done
   return 0
@@ -463,20 +463,20 @@ pad_to() { # pad_to <src> <dst> <total bytes>: src plus filler so dst ends in on
 
 # -------------------------------------------------------- 7. model names
 
-@test "model names: none in the rule or execution.md; wiki mentions sit in the three-row table" {
+@test "model names: none in the rule or execution.md; wiki mentions sit in the four-row table" {
   no_model_names_ok "$RULE"
   no_model_names_ok "$DOCTRINE_PATH"
   wiki_models_ok "$WIKI"
   [ "$WIKI_MATCHES" -gt 0 ]
 }
 
-@test "model names red twins: Opus under Resume, Haiku in the rule, and a fourth table row each fail" {
+@test "model names red twins: Opus under Resume, Haiku in the rule, and a fifth table row each fail" {
   awk '{ print } /^## Resume$/ { print "Opus is mentioned here." }' "$WIKI" >"$TEMPORARY_DIRECTORY/wiki-opus.md"
   if cmp -s "$WIKI" "$TEMPORARY_DIRECTORY/wiki-opus.md"; then return 1; fi
   if wiki_models_ok "$TEMPORARY_DIRECTORY/wiki-opus.md"; then return 1; fi
   { cat "$RULE"; printf 'Haiku\n'; } >"$TEMPORARY_DIRECTORY/rule-haiku.md"
   if no_model_names_ok "$TEMPORARY_DIRECTORY/rule-haiku.md"; then return 1; fi
-  awk '{ print } /^\| synthesis/ { print "| extra | Sonnet | why | note |" }' "$WIKI" >"$TEMPORARY_DIRECTORY/wiki-row.md"
+  awk '{ print } /^\| lookup, scaffold, mechanical/ { print "| extra | Sonnet | why | note |" }' "$WIKI" >"$TEMPORARY_DIRECTORY/wiki-row.md"
   if cmp -s "$WIKI" "$TEMPORARY_DIRECTORY/wiki-row.md"; then return 1; fi
   if wiki_models_ok "$TEMPORARY_DIRECTORY/wiki-row.md"; then return 1; fi
 }
@@ -648,4 +648,88 @@ PRESENCE_PATHS=(
   if no_model_rows_ok "$TEMPORARY_DIRECTORY/debt-row.md"; then return 1; fi
   grep -v 'Workflow Doctrine' "$DEBTMD" >"$TEMPORARY_DIRECTORY/debt-nolink.md"
   if no_model_rows_ok "$TEMPORARY_DIRECTORY/debt-nolink.md"; then return 1; fi
+}
+
+# ------------------------------------------------------------ 15. pin sites
+
+# A pin site names a model for a skill, an agent, or one dispatch: frontmatter
+# `model:`, a dispatch `model: "<name>"` or `model`: `"<name>"`, a
+# "<Model> agent" or "<Model> subagent" line, or a model alone in a table cell.
+# A mention that is not a pin (a cost table header) can match too; the safe
+# direction is over-listing, never a silent miss.
+# shellcheck disable=SC2016 # the backticks are literal markdown
+PIN_RE='model[`"]*:[[:space:]]*[`"]*(haiku|opus|sonnet|fable)([^a-z]|$)|(haiku|opus|sonnet|fable)\**[[:space:]]+(sub-?)?agent|\|[[:space:]]*\**(haiku|opus|sonnet|fable)\**[[:space:]]*\|'
+
+# Prints every tracked file outside the doctrine page that pins a model.
+pin_site_files() {
+  git -C "$1" grep -l -i -E -e "$PIN_RE" -- .claude frontend/.claude wiki .gaia/cli/health \
+    ':!wiki/log.md' ':!wiki/hot.md' ':!wiki/meta' ':!wiki/concepts/Workflow Doctrine.md'
+}
+
+# Prints the backticked path tokens under the page's "### Pin sites" heading.
+pin_site_entries() {
+  # shellcheck disable=SC2016 # the backticks are literal markdown
+  awk '
+    $0 == "### Pin sites" { on = 1; next }
+    on && /^##/ { exit }
+    on { print }
+  ' "$1" | grep -oE '`[^`]*/[^`]*`' | tr -d '`'
+}
+
+PIN_UNCOVERED=""
+pin_sites_covered_ok() {
+  local root="$1" page="$2" file_path entry covered entries
+  entries="$(pin_site_entries "$page")"
+  [ -n "$entries" ] || return 1
+  PIN_UNCOVERED=""
+  while IFS= read -r file_path; do
+    [ -n "$file_path" ] || continue
+    covered=0
+    while IFS= read -r entry; do
+      # shellcheck disable=SC2254 # the entry is a glob on purpose
+      case "$file_path" in $entry) covered=1 ;; esac
+    done <<<"$entries"
+    [ "$covered" = 1 ] || PIN_UNCOVERED="$PIN_UNCOVERED $file_path"
+  done < <(pin_site_files "$root")
+  [ -z "$PIN_UNCOVERED" ] || return 1
+  return 0
+}
+
+pin_site_entries_live_ok() {
+  local root="$1" page="$2" entry
+  while IFS= read -r entry; do
+    [ -n "$(git -C "$root" ls-files -- "$entry")" ] || return 1
+  done < <(pin_site_entries "$page")
+  return 0
+}
+
+@test "pin sites: every file that pins a model matches an entry on the doctrine page" {
+  local derived frontmatter_pins file_path
+  derived="$(pin_site_files "$REPO_ROOT")"
+  [ -n "$derived" ]
+  # An independent source: every frontmatter pin must be in the derived set.
+  frontmatter_pins="$(git -C "$REPO_ROOT" grep -l -E '^model:' -- .claude frontend/.claude)"
+  [ -n "$frontmatter_pins" ]
+  while IFS= read -r file_path; do
+    grep -qxF -- "$file_path" <<<"$derived" || return 1
+  done <<<"$frontmatter_pins"
+  pin_sites_covered_ok "$REPO_ROOT" "$WIKI" || {
+    echo "uncovered:$PIN_UNCOVERED" >&2
+    return 1
+  }
+}
+
+@test "pin sites: every entry on the doctrine page names a tracked file" {
+  [ -n "$(pin_site_entries "$WIKI")" ]
+  pin_site_entries_live_ok "$REPO_ROOT" "$WIKI"
+}
+
+@test "pin sites red twins: a dropped entry and a stale entry each fail" {
+  # shellcheck disable=SC2016 # the backticks are literal markdown
+  sed 's|`wiki/concepts/PR Merge Workflow\.md`|the merge workflow page|' "$WIKI" >"$TEMPORARY_DIRECTORY/wiki-nopin.md"
+  if cmp -s "$WIKI" "$TEMPORARY_DIRECTORY/wiki-nopin.md"; then return 1; fi
+  if pin_sites_covered_ok "$REPO_ROOT" "$TEMPORARY_DIRECTORY/wiki-nopin.md"; then return 1; fi
+  awk '{ print } $0 == "### Pin sites" { print ""; print "- Gone: `.claude/skills/does-not-exist/SKILL.md`." }' "$WIKI" >"$TEMPORARY_DIRECTORY/wiki-stale.md"
+  if pin_site_entries_live_ok "$REPO_ROOT" "$TEMPORARY_DIRECTORY/wiki-stale.md"; then return 1; fi
+  true
 }

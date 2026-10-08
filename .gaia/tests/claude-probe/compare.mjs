@@ -26,7 +26,7 @@ import {
 } from './lib/observe.mjs';
 import {
   FLOOR_ITEMS, LAUNCHES, TableError, expandRow, floorMap, floorProblems, globToRegExp,
-  readSnapshotJson, readSnapshotTree, readTable, schemaProblems, subjectKey,
+  matchKind, readSnapshotJson, readSnapshotTree, readTable, schemaProblems, subjectKey,
 } from './lib/table.mjs';
 
 const USAGE = 'usage: compare.mjs <expectations.json> <evidence_dir> [--only <row-id-glob>] [--first-run-commit <sha>]\n'
@@ -219,7 +219,7 @@ const runCompare = (tablePath, evidenceDirectory, options) => {
   const coverage = new Map();
   for (const row of table.rows) {
     for (const item of expansions.get(row.id) ?? []) {
-      coverage.set(`${row.launch}\t${row.kind}\t${subjectKey(row.kind, item.subject)}`, true);
+      coverage.set(`${row.launch}\t${matchKind(row.kind)}\t${subjectKey(row.kind, item.subject)}`, true);
     }
   }
   const unlisted = new Set();

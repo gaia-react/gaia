@@ -55,6 +55,7 @@ Never from model text. A model saying a rule loaded is not evidence that it did.
 | `instructions_loaded` | `InstructionsLoaded` probe-hook lines (`file_path`, `load_reason`, `trigger_file_path`) | `claude_md`, `rule` |
 | `session_start_probe` | `SessionStart` probe-hook lines: `CLAUDE_PROJECT_DIR`, the hook's `pwd`, its git toplevel, and the tag of the settings file that registered it | `env`, `settings_source`, `hook` |
 | `stream_json_init` | the `system`/`init` event of `claude -p --output-format stream-json --verbose` (`skills`, `slash_commands`, `agents`, `mcp_servers`); for skills, also every later `system`/`commands_changed` event of the same turn | `skill`, `agent`, `mcp` |
+| `transcript_listing` | the `skill_listing` attachments of the session transcript Claude Code writes under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/`, copied into the scenario dir as `transcript-<turn>.jsonl` | `listing` |
 | `post_tool_use` | `PostToolUse` probe lines (ran), the stream's `result.permission_denials`, and the structured `tool_use` / `tool_result` blocks | `permission`, component `task` |
 | `git_log` | git's own records: `GIT_TRACE2_EVENT` hook-run events (`child_start`, `hook_name: pre-commit`) and whether a `git commit` process started; for the RED gate, also that hook's own deny reason (below) | commit `task` |
 | `manual` | not observable under `-p`; carries its reason in `source` and is never compared | |
@@ -65,6 +66,7 @@ A lazy-discovery row (`after_read:<path>`) is judged only once a `PostToolUse` l
 
 - `claude_md`: `loaded` on an `InstructionsLoaded` line for the file, **or** on a verified Read of exactly that file. A direct Read of a CLAUDE.md puts its content in context through the Read and emits no `InstructionsLoaded` for it; a Read of any other file under its directory does emit one, with `load_reason: nested_traversal` (spike run `20261003T020501Z-spike`). Rules stay `InstructionsLoaded`-only.
 - `skill`: the first turn's `init` listing plus every `commands_changed` event after it. The `init` event is a session-start snapshot and never shows a nested `.claude/skills` directory discovered mid-session; Claude Code emits `commands_changed` with the full command list whenever the set changes, and the Read of `frontend/CLAUDE.md` drew one adding exactly the frontend skills.
+- `listing`: the union of `names` across every `skill_listing` attachment in the first turn's transcript. The `init` event's `skills` array is not a reliable listing signal (it listed a `disable-model-invocation` skill and command and omitted a shown command), so a row that proves a command is or is not in the model's listing reads the transcript. `listed` / `not_listed` is judged only when the transcript exists and holds at least one `skill_listing` attachment; without one the row reports `no_transcript` or `no_skill_listing`, never `not_listed`.
 - `agent`, `mcp`: the `init` event of a second, `--resume` turn. That is also a session-start snapshot; no structural mid-session agent listing has been observed yet.
 
 Commit rows: the scenario issues four separate Bash calls, `git add` then `git commit` for each of the two scripted commits, because the RED gate runs at the commit's `PreToolUse` and reads the index: a combined `add && commit` call shows it nothing staged. `pre-commit` is `ran` when trace2 shows the commit process starting that hook. `red-gate` is the gate's own decision, never "some hook denied": `deny` when a deny reason opening with `TDD RED-verification:` reaches the commit's `tool_result`, or a `PreToolUse` `hook_response` carries one naming that commit's staged paths (recorded as `commit_paths` in `scenario.json`); `allow` when the commit process started; `blocked_before_git` when another hook or the permission layer stopped the call; `undetermined` when it was attempted with none of these; `not_reached` when it was never attempted.
@@ -77,7 +79,7 @@ Permission rows: an Edit row targets a path held absent for the scenario and ask
 
 `expand` turns one row into one row per match in the target, resolved at compare time from the evidence snapshot, so the same table serves the fixture and the final tree:
 
-- a glob in the plan's C3 dialect over the launch's file list, for example `.claude/skills/*/SKILL.md`; a `#unscoped` or `#scoped` suffix keeps only rules without or with `paths:` frontmatter;
+- a glob in the plan's C3 dialect over the launch's file list, for example `.claude/skills/*/SKILL.md`; a `#unscoped` or `#scoped` suffix keeps only rules without or with `paths:` frontmatter, and a `#model-invocable` or `#model-invocation-disabled` suffix keeps only the command or skill files whose frontmatter does not, or does, set `disable-model-invocation: true`;
 - `hooks:<settings path>`: one row per hook entry of that settings file, probe entries excluded.
 
 A row whose expansion finds nothing fails as `EMPTY`; a claim over an empty set is not a pass. Subjects are repo-relative paths, except skills and agents (matched by name, derived from the path), MCP servers (by server name), permissions (`<Tool> <path>`), env (`CLAUDE_PROJECT_DIR`, `pwd`, `git_toplevel`, values relative to the launch's repo root) and commit tasks (`commit-<a|b>:<pre-commit|red-gate>`, `commit-parity`).
@@ -111,11 +113,12 @@ The `*-glob-anchor-*` rows are the claude-mechanics Q2 experiment: their expecta
   table-check.txt      compare.mjs --check-table output for this run
   spent-usd            cumulative total_cost_usd, rewritten after every call
   compare.txt          the comparator's verdict
-  snapshot/<launch>/   tree.txt (the launch's file list) and files/ (settings, .mcp.json, every rule) as run
+  snapshot/<launch>/   tree.txt (the launch's file list) and files/ (settings, .mcp.json, every rule, command and skill file) as run
   rep-<n>/<launch>/<scenario>/
     scenario.json      launch, trigger, launch_root, launch_directory
     probe.jsonl        probe-hook lines
     stream-<turn>.jsonl, stderr-<turn>.log
+    transcript-<turn>.jsonl   the session transcript, copied when exactly one file matches the init session id; absent otherwise
     trace2.jsonl       commit scenario only
     files-after.json   component-write scenario only
 ```
@@ -126,6 +129,7 @@ A later table edit cites a run through its `cited-runs/` summary, never through 
 
 These are Claude Code behaviors the observation code relies on and no offline test can exercise. If the spike shows one wrong, fix the observation code (`lib/observe.mjs`, `run-probe.sh`), not the table:
 
+- the session transcript's `skill_listing` attachments (`names`) are the model's skill listing, a later attachment only adds names (the union is taken; removals are not modeled), and exactly one `projects/*/<session_id>.jsonl` exists per session id;
 - the stream-json `init` event carries `skills` (or skills inside `slash_commands`), `agents` and `mcp_servers`, and a mid-session change to the command set arrives as a `commands_changed` event carrying the full list (confirmed by the spike run);
 - a `PreToolUse` hook's deny reason reaches the denied call's `tool_result` (`PreToolUse:Bash hook error: <reason>`; confirmed for a single denying hook by the spike run) and the hook's JSON stdout is in the `hook_response` event under `--include-hook-events`;
 - a hook-denied tool call appears in `result.permission_denials`, or as an error `tool_result` naming the hook or the denial;

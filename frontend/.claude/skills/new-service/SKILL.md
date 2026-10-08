@@ -1,6 +1,6 @@
 ---
 name: new-service
-description: Scaffold a new API service with request functions, Zod schemas, URL constants, optional TanStack Query options, and optional MSW mock handlers. Use this skill whenever the user asks to "add a service", "create the projects API", "wire up CRUD for users", or anything implying a new service folder under `app/services/` (`app/services/gaia/{name}/` until the `gaia/` folder is renamed) with parsers/types/requests + matching `test/mocks/{name}/` collections.
+description: Scaffolds a new API service with request functions, Zod schemas, URL constants, optional TanStack Query options, and optional MSW mock handlers. Use this skill whenever the user asks to "add a service", "create the projects API", "wire up CRUD for users", or anything implying a new service folder under `app/services/` (`app/services/gaia/{name}/` until the `gaia/` folder is renamed) with parsers/types/requests + matching `test/mocks/{name}/` collections.
 model: haiku
 ---
 

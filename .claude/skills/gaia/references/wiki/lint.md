@@ -1,6 +1,6 @@
 # wiki-lint playbook
 
-Dispatched by the `/gaia-wiki` router (`references/wiki.md` → "Lint", stage 1). Runs in a Haiku subagent context. It detects and reports only; the parent fixes the findings afterwards (`references/wiki/lint-fix.md`).
+Dispatched by the `/gaia-wiki` router (`references/wiki.md` → "Lint", stage 1). Runs in a Haiku subagent context, the lookup, scaffold, mechanical row of the model table in `wiki/concepts/Workflow Doctrine.md`. It detects and reports only; the parent fixes the findings afterwards (`references/wiki/lint-fix.md`).
 
 ## Playbook
 

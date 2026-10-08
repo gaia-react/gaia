@@ -1,6 +1,7 @@
 ---
 name: gaia-init
-description: Initialize a new project from the GAIA React template, renames, strips GAIA branding, configures i18n, installs Claude skills/plugins.
+description: Initializes a new project from the GAIA React template. Renames, strips GAIA branding, configures i18n, and installs Claude skills and plugins.
+disable-model-invocation: true
 ---
 
 Initialize a new project from the GAIA React template. The template already ships clean (no example code, no docs site, no auth). This command renames, strips GAIA-specific branding, configures i18n, installs Claude skills/plugins, and hands you a ready-to-build project.

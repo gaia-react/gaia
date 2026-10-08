@@ -256,7 +256,8 @@ launch_directory() {
 }
 
 # Snapshot what the comparator expands rows against: the file list of each
-# launch's tree and the settings, MCP and rule files as they stood for the run.
+# launch's tree and the settings, MCP, rule, command and skill files as they
+# stood for the run (the model-invocation expand suffixes read frontmatter).
 snapshot_launch() {
   local launch="$1" root snapshot relative_path
   root="$(launch_root "$launch")"
@@ -265,7 +266,7 @@ snapshot_launch() {
   git -C "$root" ls-files -z --cached --others --exclude-standard | tr '\0' '\n' >"$snapshot/tree.txt"
   {
     printf '%s\n' .claude/settings.json .claude/settings.local.json frontend/.claude/settings.json frontend/.claude/settings.local.json .mcp.json
-    grep -E '(^|/)\.claude/rules/.+\.md$' "$snapshot/tree.txt" || true
+    grep -E '(^|/)\.claude/(rules/.+|commands/.+|skills/[^/]+/SKILL)\.md$' "$snapshot/tree.txt" || true
   } | while IFS= read -r relative_path; do
     [ -f "$root/$relative_path" ] || continue
     mkdir -p "$(dirname "$snapshot/files/$relative_path")"
@@ -275,6 +276,24 @@ snapshot_launch() {
 for launch in root frontend worktree; do
   case ",$LAUNCHES," in *,"$launch",*) snapshot_launch "$launch" ;; esac
 done
+
+# Claude Code writes the session transcript, the only reliable record of the
+# skill listing the model saw, under its config dir. Copy it beside the stream
+# when exactly one file carries the session id; with none or several the copy
+# is skipped and the observer reports the missing transcript. Never fails the
+# run.
+copy_transcript() {
+  local scenario_directory="$1" turn="$2" session_id candidate
+  local matches=()
+  session_id="$(jq -rs '[.[] | select(.type == "system" and .subtype == "init") | .session_id][0] // empty' "$scenario_directory/stream-$turn.jsonl" 2>/dev/null)" || return 0
+  [ -n "$session_id" ] || return 0
+  for candidate in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/projects/*/"$session_id".jsonl; do
+    [ -f "$candidate" ] && matches+=("$candidate")
+  done
+  [ "${#matches[@]}" -eq 1 ] || return 0
+  cp "${matches[0]}" "$scenario_directory/transcript-$turn.jsonl" 2>/dev/null || true
+  return 0
+}
 
 SPENT_USD=0
 stream_cost() {
@@ -302,6 +321,7 @@ run_claude() {
       "$CLAUDE_BIN" -p "$prompt" --output-format stream-json --verbose --include-hook-events \
       --model "$MODEL" --permission-mode acceptEdits --max-budget-usd "$remaining" "$@"
   ) >"$scenario_directory/stream-$turn.jsonl" 2>"$scenario_directory/stderr-$turn.log" </dev/null || true
+  copy_transcript "$scenario_directory" "$turn"
   if ! cost="$(stream_cost "$scenario_directory/stream-$turn.jsonl")" || [ -z "$cost" ] || [ "$cost" = null ]; then
     echo "ERROR: cannot read total_cost_usd from $scenario_directory/stream-$turn.jsonl; stopping before the comparator (cost cannot be capped blind)" >&2
     exit 3

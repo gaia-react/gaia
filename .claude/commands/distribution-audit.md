@@ -1,6 +1,7 @@
 ---
 name: distribution-audit
-description: Maintainer-only. Find every file that would newly ship to adopters, classify each one against the written distribution-boundary categories, default to withhold on no clean match, and ask the maintainer only where the taxonomy does not settle it. Drives the release CLI, which refuses to produce a manifest until every shipping file has an answer.
+description: Maintainer-only. Classifies every file that would newly ship to adopters against the written distribution-boundary categories, withholds by default when none matches cleanly, and asks the maintainer only where the taxonomy does not settle it, so the release CLI can produce a manifest.
+disable-model-invocation: true
 ---
 
 # /distribution-audit

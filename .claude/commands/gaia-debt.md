@@ -1,6 +1,6 @@
 ---
 name: gaia-debt
-description: Fixes the tech-debt backlog, a single issue or a recommended related batch, highest severity then oldest first, on a fresh isolated branch through the audit gate, closing the issue(s) on merge. With no argument it drains the top of the backlog; one issue number fixes that issue directly, and several issue numbers name the operator's own batch, budgeted. An optional trailing `[use] worktree|branch` picks the isolation mode. A named number that cannot be drained stops with a reason.
+description: Fixes the tech-debt backlog, a single issue or a recommended related batch, highest severity then oldest first, on a fresh isolated branch through the audit gate, closing the issue(s) on merge. With no argument it drains the top of the backlog; one issue number fixes that issue directly, and several issue numbers name the operator's own batch, budgeted. An optional trailing `[use] worktree|branch` picks the isolation mode. A named number that cannot be drained stops with a reason. Use when the user asks to drain, fix, or work the tech-debt backlog or a named tech-debt issue.
 argument-hint: [<issue-number>...] [[use] worktree|branch]
 ---
 

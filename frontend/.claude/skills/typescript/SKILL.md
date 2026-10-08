@@ -1,7 +1,6 @@
 ---
 name: typescript
-description: Patterns and conventions for all TypeScript code. Use this skill whenever writing or reviewing TypeScript, naming identifiers, typing exports, choosing between type and interface, using Zod schemas, defining a constant list, union type, or lookup map that other code shares, structuring function parameters, or enforcing code patterns like avoiding switch statements and enums.
-model: haiku
+description: Applies GAIA's patterns and conventions for all TypeScript code. Use this skill whenever writing or reviewing TypeScript, typing exports, choosing between type and interface, using Zod schemas, defining a constant list, union type, or lookup map that other code shares, structuring function parameters, or enforcing code patterns like avoiding switch statements and enums.
 ---
 
 # TypeScript

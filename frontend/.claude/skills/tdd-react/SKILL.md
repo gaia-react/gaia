@@ -1,6 +1,6 @@
 ---
 name: tdd-react
-description: React testing reference for the tdd skill. Test layers, the three Vitest projects, Storybook stories with play functions as component tests, vitest-browser-react hook tests, MSW, and Playwright patterns for the frontend package. Use when writing or reviewing tests under frontend/ as part of a red-green-refactor loop, choosing a test layer, mocking HTTP, or testing a component, hook, or service.
+description: Provides the React testing reference for the tdd skill. Covers test layers, the three Vitest projects, Storybook stories with play functions as component tests, vitest-browser-react hook tests, MSW, and Playwright patterns for the frontend package. Use when writing or reviewing tests under frontend/ as part of a red-green-refactor loop, choosing a test layer, mocking HTTP, or testing a component, hook, or service.
 ---
 
 # TDD for React (frontend package)
