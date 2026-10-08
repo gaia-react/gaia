@@ -341,6 +341,30 @@ run_hook_without_library() {
   hook_registered "$SETTINGS_ABSOLUTE_PATH" '.hooks.PreToolUse[] | select(.matcher == "Bash|Monitor")' block-sensitive-read.sh
 }
 
+# The Bash|Monitor matcher delivers Monitor payloads too, and a Monitor
+# command reads files exactly as a Bash command does.
+run_hook_monitor() {
+  local command_line="$1"
+  local json
+  json=$(jq -n --arg command "$command_line" '{tool_name: "Monitor", tool_input: {command: $command}}')
+  invoke_hook "$json" "$HOOK_ABSOLUTE_PATH"
+}
+
+@test "Monitor cat .env.local is denied" {
+  run_hook_monitor "cat .env.local"
+  assert_denied_by_json
+}
+
+@test "Monitor tail on a secret path is denied" {
+  run_hook_monitor "tail -f secrets/api.key"
+  assert_denied_by_json
+}
+
+@test "Monitor tail on an ordinary log is allowed" {
+  run_hook_monitor "tail -f app.log"
+  assert_allowed_by_json
+}
+
 @test "permissions.deny carries no Read() rule at all" {
   # Not merely "no Read(.env)": ANY Read() deny rule arms the bypass-immune
   # deniedPathInsideDirectory breaker, so the guarantee this hook is paid to

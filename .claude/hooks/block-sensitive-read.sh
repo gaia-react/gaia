@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# PreToolUse Read + Grep + Bash hook: the read-side guard for dotenv files and
+# PreToolUse Read + Grep + Bash + Monitor hook: the read-side guard for dotenv files and
 # for key, certificate, and credential paths, in one process. Two guards used to
 # do this, registered on the same three matchers, and every Read, Grep and Bash
 # call paid for both. The write-side counterpart is block-secrets-write.sh,
@@ -33,7 +33,7 @@
 #     directory named secrets;
 #   - the Grep tool's `path` and `glob`, which in content mode return file
 #     contents and so read a path exactly as Read does;
-#   - Bash readers against the same sets: cat, head, tail, sed, xxd, od,
+#   - Bash and Monitor readers against the same sets: cat, head, tail, sed, xxd, od,
 #     hexdump, strings, nl, less, more, diff, cut, tac, paste, awk, perl, and
 #     the grep family (grep, egrep, fgrep, rgrep, rg);
 #   - sourcing (source / .), and redirection from a dotenv path (< / $(<...));
@@ -355,7 +355,7 @@ case "$tool_name" in
     exit 0
     ;;
 
-  Bash)
+  Bash | Monitor)
     command_line="$GAIA_HOOK_COMMAND"
     [[ -n "$command_line" ]] || exit 0
 
