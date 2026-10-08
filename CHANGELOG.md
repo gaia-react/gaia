@@ -175,6 +175,7 @@ On GAIA 1.6.1? Choose Abort, then paste the prompt from https://gaiareact.com/mi
 
 ### Fixed
 
+- The dotenv and secret-path read guard now also judges `Monitor` commands. It was registered on `Monitor` but only checked `Bash`, so a command run through `Monitor` could read `.env.local` or a key file with no denial. The hook ships, so the fix reaches adopters on their next `/update-gaia` (#2583)
 - On a public or internal repository, the audit loop can no longer file a Critical or security-class finding from outside the branch as a public tech-debt issue: the dispositions check refuses that `file` disposition unless the repository is confirmed private, and the loop stops for a human to divert the finding instead. Before, only `code-audit-frontend` diverted such findings, so one raised by another member could reach a public issue with full detail (#2581)
 - Entering a worktree directly with `EnterWorktree`, outside a GAIA skill, now tells you the exact command to rename its `worktree-<name>` branch to the canonical name before the first push. Before, nothing prompted the rename, so the branch was pushed under the harness spelling, failed the head-branch conventions check, and needed a new PR (#2578)
 - The `/gaia-wiki` statusline nudge now clears as soon as a landed wiki chain reaches your main checkout, however it gets there. Before, pulling `main` by hand after a chain whose auto-merge was still queued left the old commit count showing for up to six hours (#2576)
