@@ -24,9 +24,11 @@
 # operand under one: committed fixtures are the suite's own inputs, edited
 # beside it, not the tracked tree it checks.
 # An ls-files call is not enumeration when it uses --error-unmatch (a
-# membership test) or when every operand is a literal path that is not a
-# tracked directory: it names those paths. A glob, a magic pathspec, a variable
-# or a tracked directory operand is enumeration.
+# membership test) or when every operand is a literal path below the root that
+# is not a tracked directory: it names those paths, so the change selector
+# picks the suite when one changes. A glob, a magic pathspec, a variable, a
+# tracked directory or a root-level operand still counts: the selector matches
+# a root-level file as `/<name>`, which a bare operand never contains.
 #
 # NOT claimed: enumeration delegated to a script the suite calls (a lint
 # script, a roster check) is outside this guard. Such a suite is marked by
@@ -113,7 +115,7 @@ find_enumeration() {
         token = tokens[t]
         gsub(/["\047]/, "", token)
         if (token == "" || token ~ /^-/) { continue }
-        if (token ~ /[$*?[]/ || token ~ /^:/ || token ~ /\/$/ || (token in is_directory)) { return 0 }
+        if (token ~ /[$*?[]/ || token ~ /^:/ || token ~ /\/$/ || token !~ /\// || (token in is_directory)) { return 0 }
         operand_count++
       }
       return operand_count > 0

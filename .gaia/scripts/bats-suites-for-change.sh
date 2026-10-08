@@ -29,9 +29,10 @@
 #     (`.gaia/cli/gaia` as `cli/gaia`). The bare name is in every suite that
 #     names a path through that directory (`.gaia/`), so it selects nearly all.
 #
-# The exceptions drop a suite that reaches such a file only by an unqualified
-# spelling (`cd "$REPO_ROOT" && cat package.json`). No tracked suite does
-# today; one that starts to is missed here and still runs in CI.
+# The exceptions drop a suite that reaches such a file only by a spelling the
+# match text is not part of (`cd "$REPO_ROOT" && cat package.json`,
+# `"$(cd "$SCRIPTS/../cli" && pwd)/gaia"`). Such a suite is missed here and
+# still runs in CI.
 #
 # Changed paths are read NUL-delimited. The hand-rolled spelling,
 # `for f in $(git diff --name-only ...)`, word-splits a path holding a space
