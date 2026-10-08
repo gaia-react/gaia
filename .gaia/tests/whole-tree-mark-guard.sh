@@ -19,7 +19,16 @@
 #   2. find <root>   or   find <root>/<dir>
 #   3. a glob loop: for <name> in <root>/<path>*...
 # A root that is a $BATS_TEST_TMPDIR-based or other fixture path is never a
-# real root, so a fixture repository is never flagged.
+# real root, so a fixture repository is never flagged. Neither is a root
+# assigned from a path with a `fixtures` segment, nor a find or glob-loop
+# operand under one: committed fixtures are the suite's own inputs, edited
+# beside it, not the tracked tree it checks.
+# An ls-files call is not enumeration when it uses --error-unmatch (a
+# membership test) or when every operand is a literal path below the root that
+# is not a tracked directory: it names those paths, so the change selector
+# picks the suite when one changes. A glob, a magic pathspec, a variable, a
+# tracked directory or a root-level operand still counts: the selector matches
+# a root-level file as `/<name>`, which a bare operand never contains.
 #
 # NOT claimed: enumeration delegated to a script the suite calls (a lint
 # script, a roster check) is outside this guard. Such a suite is marked by
@@ -90,12 +99,31 @@ fi
 # Prints "<idiom>\t<line>" for the first flagged line of the suite, nothing
 # when the suite names no recognized idiom.
 find_enumeration() {
-  awk '
+  awk -v directory_list="$directory_list" '
     function is_comment(text) { return text ~ /^[ \t]*#/ }
     function refers(text, name) {
       return text ~ ("\\$\\{?" name "([^A-Za-z0-9_]|$)")
     }
-    BEGIN { count = 0; pending = ""; pending_line = 0 }
+    function names_only(rest,   tail, token_count, tokens, t, token, operand_count) {
+      if (rest ~ /(^|[ \t])--error-unmatch([ \t]|$)/) { return 1 }
+      tail = rest
+      sub(/^.*(^|[ \t])ls-files([ \t]|$)/, "", tail)
+      if (match(tail, /[|)<>;&]/)) { tail = substr(tail, 1, RSTART - 1) }
+      operand_count = 0
+      token_count = split(tail, tokens, /[ \t]+/)
+      for (t = 1; t <= token_count; t++) {
+        token = tokens[t]
+        gsub(/["\047]/, "", token)
+        if (token == "" || token ~ /^-/) { continue }
+        if (token ~ /[$*?[]/ || token ~ /^:/ || token ~ /\/$/ || token !~ /\// || (token in is_directory)) { return 0 }
+        operand_count++
+      }
+      return operand_count > 0
+    }
+    BEGIN {
+      count = 0; pending = ""; pending_line = 0
+      while ((getline directory < directory_list) > 0) { is_directory[directory] = 1 }
+    }
     {
       raw = $0
       if (pending == "") {
@@ -137,6 +165,7 @@ find_enumeration() {
           name = assigned_name[a]
           if (name in is_root) { continue }
           value = assigned_value[a]
+          if (value ~ /\/fixtures([\/" \t]|$)/) { continue }
           join = 0
           if (index(value, "$BATS_TEST_DIRNAME") || index(value, "${BATS_TEST_DIRNAME") \
               || index(value, "$BATS_TEST_FILENAME") || index(value, "${BATS_TEST_FILENAME")) {
@@ -157,18 +186,21 @@ find_enumeration() {
           gitc = "git[ \t]+(.*[ \t])?-C[ \t]+\"?" "\\$\\{?" name "([^A-Za-z0-9_]|$)"
           if (match(text[i], gitc)) {
             rest = substr(text[i], RSTART + RLENGTH)
+            if (rest ~ /(^|[ \t])ls-files([ \t]|$)/ && names_only(rest)) { continue }
             if (rest ~ /(^|[ \t])(ls-files|grep)([ \t]|$)/) {
               printf "git -C <root> %s\t%d\n", (rest ~ /(^|[ \t])ls-files([ \t]|$)/ ? "ls-files" : "grep"), line[i]
               exit
             }
           }
           findpat = "(^|[^A-Za-z0-9_-])find[ \t]+\"?\\$\\{?" name "([^A-Za-z0-9_]|$)"
-          if (text[i] ~ findpat) {
+          fixture_find = "find[ \t]+\"?\\$\\{?" name "\\}?/([^ \t\"]*/)?fixtures([/\" \t]|$)"
+          if (text[i] ~ findpat && text[i] !~ fixture_find) {
             printf "find <root>\t%d\n", line[i]
             exit
           }
           forpat = "(^|[^A-Za-z0-9_])for[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]+in[ \t]+[^;]*\"?\\$\\{?" name "\\}?\"?[^ \t;]*\\*"
-          if (text[i] ~ forpat) {
+          fixture_loop = "in[ \t]+\"?\\$\\{?" name "\\}?\"?/([^ \t;\"]*/)?fixtures/"
+          if (text[i] ~ forpat && text[i] !~ fixture_loop) {
             printf "glob loop over <root>\t%d\n", line[i]
             exit
           }
@@ -181,6 +213,15 @@ find_enumeration() {
 marked() {
   grep -qE '^# bats file_tags=([^,]*,)*whole-tree(,|$)' "$1"
 }
+
+# Every directory holding a tracked file, so a literal ls-files operand naming
+# one still counts as enumeration. Empty when the root is not a repository.
+directory_list="$(mktemp)" || { echo "whole-tree-mark-guard: cannot create a temporary file" >&2; exit 2; }
+trap 'rm -f "$directory_list"' EXIT
+git -C "$root" ls-files -z 2>/dev/null \
+  | tr '\0' '\n' \
+  | awk -F/ '{ path = $1; for (i = 2; i <= NF; i++) { print path; path = path "/" $i } }' \
+  | sort -u >"$directory_list"
 
 flagged=0
 for suite_path in ${scan_paths[@]+"${scan_paths[@]}"}; do

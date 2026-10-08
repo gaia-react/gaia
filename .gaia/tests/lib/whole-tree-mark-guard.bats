@@ -157,6 +157,68 @@ SEEDS="dirname filename second-assignment"
   [ "$status" -eq 0 ]
 }
 
+@test "a root under a fixtures directory is not flagged" {
+  local suite="$FIXTURE_DIRECTORY/fixtures-root.bats"
+  {
+    printf '%s\n' '#!/usr/bin/env bats'
+    printf '%s\n' 'setup() {'
+    printf '%s\n' '  ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"'
+    printf '%s\n' '  CORPUS="$ROOT/.gaia/tests/fixtures/corpus"'
+    printf '%s\n' '  REPORTS="$BATS_TEST_DIRNAME/fixtures/reports"'
+    printf '%s\n' '}'
+    printf '%s\n' '@test "fixtures only" {'
+    printf '%s\n' '  for case_directory in "$CORPUS"/*/; do :; done'
+    printf '%s\n' '  for report in "$REPORTS"/*.json; do :; done'
+    printf '%s\n' '  run find "$ROOT/.gaia/tests/fixtures/binding" -type f'
+    printf '%s\n' '  for entry in "$ROOT"/tests/fixtures/*.json; do :; done'
+    printf '%s\n' '}'
+  } >"$suite"
+  run bash "$GUARD" --root "$FIXTURE_DIRECTORY" "$suite"
+  [ "$status" -eq 0 ] || { echo "$output" >&2; return 1; }
+}
+
+@test "a listing that names literal paths is not flagged" {
+  local suite="$FIXTURE_DIRECTORY/named-paths.bats"
+  {
+    printf '%s\n' '#!/usr/bin/env bats'
+    printf '%s\n' 'setup() {'
+    printf '%s\n' '  ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"'
+    printf '%s\n' '}'
+    printf '%s\n' '@test "named" {'
+    printf '%s\n' '  done < <(git -C "$ROOT" ls-files -z -- frontend/.dockerignore frontend/Dockerfile)'
+    printf '%s\n' '  run git -C "$ROOT" ls-files -s -z .githooks/pre-commit'
+    printf '%s\n' '  git -C "$ROOT" ls-files --error-unmatch -- "$path" >/dev/null 2>&1'
+    printf '%s\n' '}'
+  } >"$suite"
+  run bash "$GUARD" --root "$FIXTURE_DIRECTORY" "$suite"
+  [ "$status" -eq 0 ] || { echo "$output" >&2; return 1; }
+}
+
+@test "a listing of a tracked directory, a root-level path, a glob, a magic pathspec or a variable is still flagged" {
+  local repository="$BATS_TEST_TMPDIR/repository" suite operand
+  mkdir -p "$repository/.claude/agents"
+  printf 'agent\n' >"$repository/.claude/agents/a.md"
+  git -C "$repository" init -q
+  git -C "$repository" add -A
+  for operand in '-- .claude/agents' '-z -- .dockerignore Dockerfile' "-z '*.sh'" '-- "$directory"' '-z -- ":(glob)frontend/x"'; do
+    suite="$repository/listing.bats"
+    {
+      printf '%s\n' '#!/usr/bin/env bats'
+      printf '%s\n' 'setup() {'
+      printf '%s\n' '  ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"'
+      printf '%s\n' '}'
+      printf '%s\n' '@test "lists" {'
+      printf '  run git -C "$ROOT" ls-%s %s\n' files "$operand"
+      printf '%s\n' '}'
+    } >"$suite"
+    run bash "$GUARD" --root "$repository" "$suite"
+    if [ "$status" -ne 1 ]; then
+      echo "expected exit 1 for operand $operand, got $status: $output" >&2
+      return 1
+    fi
+  done
+}
+
 @test "a suite that only calls a script that lists tracked files is not flagged, and the guard states that limit" {
   local suite="$FIXTURE_DIRECTORY/delegated.bats"
   {
