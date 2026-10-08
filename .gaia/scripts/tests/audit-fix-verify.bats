@@ -380,6 +380,19 @@ enforcement_case() {
   [ "$status" -eq 0 ]
 }
 
+@test "a divert entry passes the shape check and needs no fixer result" {
+  write_dispositions '[
+    {"member":"m","finding_class":"c1","path":"a.txt","line":3,"disposition":"fix"},
+    {"member":"m","finding_class":"c2","path":"b.txt","line":5,"disposition":"divert","reason":"security class from outside the branch"}]'
+  take_baseline
+  take_digests
+  edit a.txt
+  printf '%s' '{"schema":1,"round":1,"attempt":1,"results":[{"member":"m","finding_class":"c1","path":"a.txt","line":3,"disposition":"fixed","reason":"r","changed_paths":["a.txt"]}],"changed_paths":["a.txt"],"reverted_paths":[]}' >"$RESULT_FILE"
+  do_check
+  [ "$status" -eq 0 ] || { echo "status $status: $output"; return 1; }
+  grep -qF -- 'fix|accept-residual|waive-out-of-scope|file|divert' "$REAL_SCRIPT"
+}
+
 @test "the run-folder header drops the stale writer label and names the new shapes" {
   if grep -Fq 'dispositions-<r>.json (main thread)' "$REAL_SCRIPT"; then
     echo "stale writer label still present"

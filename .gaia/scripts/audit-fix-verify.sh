@@ -59,7 +59,7 @@
 #      "enforcement_paths_allowed":["<path>"],
 #      "entries":[{"member","finding_class","path","line","severity","title",
 #        "failure_mode","suggested_fix",
-#        "disposition":"fix|accept-residual|waive-out-of-scope|file","reason",
+#        "disposition":"fix|accept-residual|waive-out-of-scope|file|divert","reason",
 #        "basis":"triage-threshold|cross-remit"}]}
 #     enforcement_paths_allowed lists an enforcement path only when an entry
 #     marked fix names that path. basis is required on waive-out-of-scope

@@ -20,6 +20,7 @@ setup() {
   ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   PAGE="${GAIA_LIGHT_ROUTING_PAGE:-$ROOT/wiki/concepts/PR Merge Workflow.md}"
   UNIT="${GAIA_LIGHT_ROUTING_UNIT:-$ROOT/.claude/agents/audit-loop-unit.md}"
+  DECISION="${GAIA_LIGHT_ROUTING_DECISION:-$ROOT/wiki/decisions/Code Audit Team.md}"
   # Assembled so this file never spells the forbidden flag contiguously.
   FORBIDDEN_FLAG="--review"" light"
 }
@@ -141,4 +142,47 @@ light_section() {
   local copy
   copy="$(scratch_without "$PAGE" '#### Light routing')"
   [ -z "$(light_section "$copy")" ]
+}
+
+@test "page names the refusal-anchored branch and the two refusals it adds" {
+  assert_pinned "$PAGE" '- **Refusal-anchored.**'
+  assert_pinned "$PAGE" '`refusal-anchored`'
+  assert_pinned "$PAGE" '`refusal-open-security`'
+  assert_pinned "$PAGE" '`full verdict-incomplete`'
+  assert_pinned "$PAGE" '`full checklist-unchanged`'
+}
+
+# maintainer_block <file>: the lines inside gaia:maintainer-only markers. The
+# marker names are assembled from halves so this file carries no marker line.
+maintainer_block() {
+  awk -v marker="gaia:""maintainer-only" '
+    index($0, "<!-- " marker ":start -->") { inside = 1; next }
+    index($0, "<!-- " marker ":end -->") { inside = 0; next }
+    inside' "$1"
+}
+
+@test "the decision page carries the kill rule and the tally command inside balanced maintainer-only markers" {
+  local starts ends needle
+  starts="$(grep -c -F -- "gaia:""maintainer-only:start" "$DECISION")"
+  ends="$(grep -c -F -- "gaia:""maintainer-only:end" "$DECISION")"
+  [ "$starts" -gt 0 ]
+  [ "$starts" -eq "$ends" ]
+  for needle in '10 percent' '30 most recent merged pull requests' 'bash .gaia/scripts/audit-light-telemetry.sh tally' 'summed across every opted-in member'; do
+    grep -qF -- "$needle" <<<"$(maintainer_block "$DECISION")" || { echo "not inside a maintainer-only block: $needle" >&2; return 1; }
+  done
+}
+
+@test "red twin: a decision page copy without its markers has no maintainer block, so the pin cannot pass" {
+  local copy="$BATS_TEST_TMPDIR/decision-unmarked.md"
+  grep -vF -- "gaia:""maintainer-only" "$DECISION" >"$copy"
+  [ -z "$(maintainer_block "$copy")" ]
+  grep -qF -- '10 percent' <<<"$(maintainer_block "$copy")" && return 1
+  true
+}
+
+@test "red twin: a decision page copy without the tally command fails the pin" {
+  local copy="$BATS_TEST_TMPDIR/decision-no-tally.md"
+  grep -vF -- 'bash .gaia/scripts/audit-light-telemetry.sh tally' "$DECISION" >"$copy"
+  grep -qF -- 'bash .gaia/scripts/audit-light-telemetry.sh tally' <<<"$(maintainer_block "$copy")" && return 1
+  true
 }

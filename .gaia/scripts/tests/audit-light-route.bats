@@ -52,13 +52,23 @@ telemetry_log() {
   printf '%s/.gaia/local/telemetry/audit-light-routing.jsonl' "$LSB_ROOT"
 }
 
-# set_roster_member_key <member> <key> <value>: add a light key right after the
-# member's name line, or replace the frontend cap line, then commit. Call it
-# before the anchor clearance: the roster is a global-rules path.
+# set_roster_member_key <member> <key> <value>: set a light key on one member,
+# replacing the line when the member already carries the key and otherwise
+# adding it right after the member's name line, then commit. Call it before the
+# anchor clearance: the roster is a global-rules path.
 set_roster_member_key() {
-  local roster="$LSB_ROOT/.gaia/audit-ci.yml"
-  if [ "$2" = "light_line_cap" ] && [ "$1" = "$FRONTEND" ]; then
-    awk -v value="$3" '/^    light_line_cap:/ { print "    light_line_cap: " value; next } { print }' "$roster" >"$roster.new"
+  local roster="$LSB_ROOT/.gaia/audit-ci.yml" present
+  present="$(awk -v member="$1" -v key="$2" '
+    $0 ~ ("^  - name: " member "$") { inside = 1; next }
+    /^  - name:/ { inside = 0 }
+    inside && $0 ~ ("^    " key ":") { found = 1 }
+    END { print found + 0 }' "$roster")"
+  if [ "$present" = "1" ]; then
+    awk -v member="$1" -v key="$2" -v line="    $2: $3" '
+      $0 ~ ("^  - name: " member "$") { inside = 1; print; next }
+      /^  - name:/ { inside = 0 }
+      inside && $0 ~ ("^    " key ":") { print line; next }
+      { print }' "$roster" >"$roster.new"
   else
     awk -v member="$1" -v line="    $2: $3" '{ print } $0 ~ ("^  - name: " member "$") { print line }' "$roster" >"$roster.new"
   fi
@@ -189,11 +199,11 @@ assert_keyed_decision_recorded() {
 
 # --- refusals -------------------------------------------------------------
 
-@test "a refusal newer than the full anchor routes full refusal-newer" {
+@test "a refusal newer than the full anchor, recorded at another version, routes full refusal-newer" {
   lsb_init
   lsb_full_clearance "$FRONTEND"
   lsb_commit frontend/app/notes.md "attempt"
-  lsb_marker_json "$FRONTEND" refused "" "$LSB_TREE" "$(version_literal)" >/dev/null
+  lsb_marker_json "$FRONTEND" refused "" "$LSB_TREE" "0.0.0-stale" >/dev/null
   lsb_commit_lines frontend/app/notes.md 5 fix
   lsb_route "$FRONTEND"
   expect_route full refusal-newer
@@ -216,6 +226,187 @@ assert_keyed_decision_recorded() {
   lsb_full_clearance "$FRONTEND"
   lsb_commit_lines frontend/app/notes.md 5 fix
   lsb_route "$FRONTEND"
+  expect_route light light-eligible
+}
+
+# --- refusal-anchored -----------------------------------------------------
+
+# refuse_notes <finding-json>...: five owned lines, then a refusal of the
+# frontend member carrying those findings, written by the real writers. Leaves
+# HEAD at the refused commit.
+refuse_notes() {
+  local findings="" finding
+  lsb_commit_lines frontend/app/notes.md 5 line
+  for finding in "$@"; do findings="${findings:+$findings,}$finding"; done
+  lsb_refuse_with_findings "$FRONTEND" "[$findings]"
+}
+
+@test "a refusal with open warning findings routes the small repair light refusal-anchored" {
+  lsb_init
+  refuse_notes "$(lsb_finding frontend/app/notes.md 2 warning false)" "$(lsb_finding frontend/app/notes.md 4 suggestion false)"
+  local refusal_sha="$LSB_HEAD" record input
+  lsb_commit_lines frontend/app/notes.md 5 fixed
+  lsb_route "$FRONTEND"
+  expect_route light refusal-anchored
+  record="$(route_record_for "$FRONTEND")"
+  input="$(input_file_for "$FRONTEND")"
+  [ "$(jq -r '[.route, .reason, .anchor_kind, .anchor_sha] | join(" ")' "$record")" = "light refusal-anchored refusal $refusal_sha" ]
+  [ "$(jq -c '[.checklist[] | [.key, .path, .line]]' "$record")" = '[["r1-1","frontend/app/notes.md",2],["r1-2","frontend/app/notes.md",4]]' ]
+  grep -qxF 'open_findings: 2' "$input"
+  [ "$(grep -c "^finding$(printf '\t')" "$input")" -eq 2 ]
+  grep -qF "$(printf 'finding\tr1-1\tfrontend/app/notes.md\t2\twarning\t')" "$input"
+}
+
+@test "twin: a refusal-anchored fixture without any refusal has no checklist and routes by the full anchor" {
+  lsb_init
+  lsb_full_clearance "$FRONTEND"
+  lsb_commit_lines frontend/app/notes.md 5 fixed
+  lsb_route "$FRONTEND"
+  expect_route light light-eligible
+  [ "$(jq -c '.checklist' "$(route_record_for "$FRONTEND")")" = "[]" ]
+  [ "$(jq -r '.anchor_kind' "$(route_record_for "$FRONTEND")")" = "full" ]
+  ! grep -q '^open_findings:' "$(input_file_for "$FRONTEND")"
+}
+
+@test "a refusal newer than an older full clearance anchors the delta, not the clearance" {
+  lsb_init
+  lsb_full_clearance "$FRONTEND"
+  refuse_notes "$(lsb_finding frontend/app/notes.md 3 warning false)"
+  local refusal_sha="$LSB_HEAD"
+  lsb_commit_lines frontend/app/notes.md 5 fixed
+  lsb_route "$FRONTEND"
+  expect_route light refusal-anchored
+  [ "$(jq -r '.anchor_sha' "$(route_record_for "$FRONTEND")")" = "$refusal_sha" ]
+}
+
+@test "an open finding of severity error routes full refusal-open-security" {
+  lsb_init
+  refuse_notes "$(lsb_finding frontend/app/notes.md 2 warning false)" "$(lsb_finding frontend/app/notes.md 4 error false)"
+  lsb_commit_lines frontend/app/notes.md 5 fixed
+  lsb_route "$FRONTEND"
+  expect_route full refusal-open-security
+}
+
+@test "an open finding with security true routes full refusal-open-security" {
+  lsb_init
+  refuse_notes "$(lsb_finding frontend/app/notes.md 2 warning false)" "$(lsb_finding frontend/app/notes.md 4 suggestion true)"
+  lsb_commit_lines frontend/app/notes.md 5 fixed
+  lsb_route "$FRONTEND"
+  expect_route full refusal-open-security
+}
+
+@test "an open finding with no security field routes full refusal-open-security" {
+  lsb_init
+  refuse_notes "$(lsb_finding frontend/app/notes.md 2 warning false)" "$(lsb_finding frontend/app/notes.md 4 warning omit)"
+  lsb_commit_lines frontend/app/notes.md 5 fixed
+  lsb_route "$FRONTEND"
+  expect_route full refusal-open-security
+}
+
+@test "a refusal whose findings cannot be read routes full refusal-open-security" {
+  lsb_init
+  lsb_commit_lines frontend/app/notes.md 5 line
+  lsb_marker_json "$FRONTEND" refused "" "$LSB_TREE" "$(version_literal)" "$(lsb_member_digest "$FRONTEND")" >/dev/null
+  lsb_commit_lines frontend/app/notes.md 5 fixed
+  lsb_route "$FRONTEND"
+  expect_route full refusal-open-security
+}
+
+@test "a refusal-anchored delta over the cap or on a hard-Full path still routes full" {
+  lsb_init
+  refuse_notes "$(lsb_finding frontend/app/notes.md 2 warning false)"
+  lsb_commit_lines frontend/app/notes.md 51 fixed
+  lsb_route "$FRONTEND"
+  expect_route full over-cap
+  lsb_commit_lines frontend/app/notes.md 5 fixed
+  lsb_commit frontend/package.json "{}"
+  lsb_route "$FRONTEND"
+  expect_route full hard-full
+}
+
+@test "a refusal at HEAD with nothing earlier to anchor on routes full no-full-clearance" {
+  lsb_init
+  refuse_notes "$(lsb_finding frontend/app/notes.md 2 warning false)"
+  lsb_route "$FRONTEND"
+  expect_route full no-full-clearance
+}
+
+@test "a refusal does not anchor a member that is not opted in" {
+  lsb_init
+  lsb_commit .github/workflows/sandbox.yml "name: sandbox"
+  lsb_marker_json "$WORKFLOWS_MEMBER" refused "" "$LSB_TREE" "$(version_literal)" "$(lsb_member_digest "$WORKFLOWS_MEMBER")" >/dev/null
+  lsb_commit .github/workflows/sandbox.yml "name: changed"
+  lsb_route "$WORKFLOWS_MEMBER"
+  expect_route full not-opted-in
+}
+
+# --- maintainer members on the live roster ----------------------------------
+
+# The merge-gate hook is also a global-rules path, so that rule answers before
+# the roster's hard-Full list is consulted; the hard-Full list is the floor for
+# every enforcement path that is not.
+@test "the live roster routes a merge-gate hook edit full for the shell member" {
+  lsb_init
+  lsb_full_clearance "$SHELL_MEMBER"
+  printf '# touched\n' >>"$LSB_ROOT/.claude/hooks/pr-merge-audit-check.sh"
+  lsb_git add -A && lsb_git commit -q -m gate
+  lsb_route "$SHELL_MEMBER"
+  expect_route full rules-reset-global
+}
+
+@test "the live roster routes an enforcement script edit full hard-full for the shell member" {
+  local path
+  for path in .gaia/scripts/audit-fix-verify.sh .gaia/scripts/audit-dispositions-check.sh; do
+    lsb_init
+    lsb_full_clearance "$SHELL_MEMBER"
+    printf '# touched\n' >>"$LSB_ROOT/$path"
+    lsb_git add -A && lsb_git commit -q -m enforcement
+    lsb_route "$SHELL_MEMBER"
+    expect_route full hard-full || { printf 'not hard-full: %s\n' "$path" >&2; return 1; }
+    [ "$(jq -r .hard_full_rule "$(route_record_for "$SHELL_MEMBER")")" = "$path" ] || return 1
+    rm -rf "$BATS_TEST_TMPDIR/lsb-repo" "$BATS_TEST_TMPDIR/lsb-origin.git"
+  done
+}
+
+@test "twin: the same enforcement script edit routes light once the roster glob is gone" {
+  lsb_init
+  grep -vF -- '- ".gaia/scripts/audit-fix-verify.sh"' "$LSB_ROOT/.gaia/audit-ci.yml" >"$LSB_ROOT/.gaia/audit-ci.yml.new"
+  cmp -s "$LSB_ROOT/.gaia/audit-ci.yml" "$LSB_ROOT/.gaia/audit-ci.yml.new" && return 1
+  mv "$LSB_ROOT/.gaia/audit-ci.yml.new" "$LSB_ROOT/.gaia/audit-ci.yml"
+  lsb_git add -A && lsb_git commit -q -m "drop the glob"
+  lsb_full_clearance "$SHELL_MEMBER"
+  printf '# touched\n' >>"$LSB_ROOT/.gaia/scripts/audit-fix-verify.sh"
+  lsb_git add -A && lsb_git commit -q -m enforcement
+  lsb_route "$SHELL_MEMBER"
+  expect_route light light-eligible
+}
+
+@test "the live roster caps the shell member at 30 changed lines" {
+  lsb_init
+  lsb_full_clearance "$SHELL_MEMBER"
+  lsb_commit_lines .gaia/scripts/sandbox-helper.sh 30 line
+  lsb_route "$SHELL_MEMBER"
+  expect_route light light-eligible
+  [ "$(jq -r .cap "$(route_record_for "$SHELL_MEMBER")")" = "30" ]
+  lsb_commit_lines .gaia/scripts/sandbox-helper.sh 31 line
+  lsb_route "$SHELL_MEMBER"
+  expect_route full over-cap
+}
+
+@test "the live roster routes the framework Node under .gaia/scripts full hard-full for the node member" {
+  lsb_init
+  lsb_full_clearance "code-audit-maintainer-node"
+  lsb_commit .gaia/scripts/probe.mjs "export const probe = 1;"
+  lsb_route "code-audit-maintainer-node"
+  expect_route full hard-full
+  [ "$(jq -r .hard_full_rule "$(route_record_for "code-audit-maintainer-node")")" = ".gaia/scripts/**/*.mjs" ]
+}
+
+@test "twin: the live roster routes a small CLI source edit light for the node member" {
+  lsb_init
+  lsb_full_clearance "code-audit-maintainer-node"
+  lsb_commit .gaia/cli/src/probe.ts "export const probe = 1;"
+  lsb_route "code-audit-maintainer-node"
   expect_route light light-eligible
 }
 
@@ -524,19 +715,26 @@ assert_keyed_decision_recorded() {
 
 @test "a member the roster does not opt in routes full not-opted-in" {
   lsb_init
-  lsb_full_clearance "$SHELL_MEMBER"
-  lsb_commit .gaia/scripts/sandbox-helper.sh "# helper"
-  lsb_route "$SHELL_MEMBER"
+  lsb_full_clearance "$WORKFLOWS_MEMBER"
+  lsb_commit .github/workflows/sandbox.yml "name: sandbox"
+  lsb_route "$WORKFLOWS_MEMBER"
   expect_route full not-opted-in
 }
 
-@test "twin: the same member opted in routes its small owned delta light" {
+@test "twin: a member the live roster opts in routes its small owned delta light" {
   lsb_init
-  set_roster_member_key "$SHELL_MEMBER" light_review true
   lsb_full_clearance "$SHELL_MEMBER"
   lsb_commit .gaia/scripts/sandbox-helper.sh "# helper"
   lsb_route "$SHELL_MEMBER"
   expect_route light light-eligible
+}
+
+@test "the roster setter replaces a key the member already carries instead of duplicating it" {
+  lsb_init
+  set_roster_member_key "$SHELL_MEMBER" light_line_cap 7
+  set_roster_member_key "$SHELL_MEMBER" light_review false
+  [ "$(awk '/^  - name: code-audit-maintainer-shell$/ { inside = 1; next } /^  - name:/ { inside = 0 } inside && /^    light_line_cap:/ { print }' "$LSB_ROOT/.gaia/audit-ci.yml")" = "    light_line_cap: 7" ]
+  [ "$(awk '/^  - name: code-audit-maintainer-shell$/ { inside = 1; next } /^  - name:/ { inside = 0 } inside && /^    light_review:/ { print }' "$LSB_ROOT/.gaia/audit-ci.yml")" = "    light_review: false" ]
 }
 
 # --- degraded and usage ---------------------------------------------------
@@ -590,7 +788,7 @@ b.md"
   expect_route full no-full-clearance
 }
 
-@test "an Actions base ref past the anchor narrows the walk: full no-full-clearance where main routes light" {
+@test "the Actions environment changes nothing: a base ref past the anchor still routes light" {
   lsb_init
   lsb_full_clearance "$FRONTEND"
   lsb_commit frontend/app/stacked.md "stacked base"
@@ -599,8 +797,19 @@ b.md"
   lsb_commit frontend/app/notes.md "one line"
   lsb_route "$FRONTEND"
   expect_route light light-eligible
-  GITHUB_ACTIONS=true GITHUB_BASE_REF=stacked run bash "$LSB_ROOT/.gaia/scripts/audit-light-route.sh" --root "$LSB_ROOT" --member "$FRONTEND"
-  expect_route full no-full-clearance
+  local plain_output="$output"
+  CI=true GITHUB_ACTIONS=true GITHUB_BASE_REF=stacked run bash "$LSB_ROOT/.gaia/scripts/audit-light-route.sh" --root "$LSB_ROOT" --member "$FRONTEND"
+  expect_route light light-eligible
+  [ "$output" = "$plain_output" ]
+  CI=true GITHUB_ACTIONS=true GITHUB_BASE_REF=main run bash "$LSB_ROOT/.gaia/scripts/audit-light-route.sh" --root "$LSB_ROOT" --member "$FRONTEND" --check
+  [ "$output" = "$plain_output" ]
+}
+
+@test "the router, its library and the marker script name no CI environment variable" {
+  run grep -nE 'GITHUB_ACTIONS|GITHUB_BASE_REF|\bCI\b' \
+    "$REPO_ROOT/.gaia/scripts/audit-light-route.sh" "$REPO_ROOT/.claude/hooks/lib/audit-light-route-lib.sh" \
+    "$REPO_ROOT/.gaia/scripts/audit-light-mark.sh"
+  [ "$status" -eq 1 ]
 }
 
 @test "a dirty tracked tree routes full dirty-tree" {
@@ -790,9 +999,9 @@ b.md"
 
 @test "every keyed decision persists a record and one telemetry event" {
   lsb_init --maintainer
-  lsb_full_clearance "$SHELL_MEMBER"
-  lsb_commit .gaia/scripts/sandbox-helper.sh "# helper"
-  assert_keyed_decision_recorded "$LSB_ROOT/.gaia/scripts/audit-light-route.sh" "$SHELL_MEMBER" not-opted-in
+  lsb_full_clearance "$WORKFLOWS_MEMBER"
+  lsb_commit .github/workflows/sandbox.yml "name: sandbox"
+  assert_keyed_decision_recorded "$LSB_ROOT/.gaia/scripts/audit-light-route.sh" "$WORKFLOWS_MEMBER" not-opted-in
   printf 'uncommitted\n' >>"$LSB_ROOT/frontend/app/seed.md"
   assert_keyed_decision_recorded "$LSB_ROOT/.gaia/scripts/audit-light-route.sh" "$FRONTEND" dirty-tree
 }
@@ -819,9 +1028,9 @@ b.md"
     "$LSB_ROOT/.gaia/scripts/audit-light-route.sh" >"$mutant"
   grep -qF '_light_route_finish full not-opted-in' "$mutant" && return 1
   grep -qF '_light_route_finish full dirty-tree' "$mutant" && return 1
-  lsb_full_clearance "$SHELL_MEMBER"
-  lsb_commit .gaia/scripts/sandbox-helper.sh "# helper"
-  run assert_keyed_decision_recorded "$mutant" "$SHELL_MEMBER" not-opted-in
+  lsb_full_clearance "$WORKFLOWS_MEMBER"
+  lsb_commit .github/workflows/sandbox.yml "name: sandbox"
+  run assert_keyed_decision_recorded "$mutant" "$WORKFLOWS_MEMBER" not-opted-in
   [ "$status" -ne 0 ]
   printf 'uncommitted\n' >>"$LSB_ROOT/frontend/app/seed.md"
   run assert_keyed_decision_recorded "$mutant" "$FRONTEND" dirty-tree

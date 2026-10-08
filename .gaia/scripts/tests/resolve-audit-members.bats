@@ -74,7 +74,6 @@ auditors:
       - "*.config.cjs"
       - "*.config.js"
     audience: adopter
-    push_fixes: true
     default: true
   # gaia:maintainer-only:start
   - name: code-audit-maintainer-shell
@@ -86,12 +85,10 @@ auditors:
       - ".github/**/*.sh"
       - ".github/**/*.bats"
     audience: maintainer
-    push_fixes: false
   - name: code-audit-maintainer-node
     globs:
       - ".gaia/cli/src/**"
     audience: maintainer
-    push_fixes: false
   # gaia:maintainer-only:end
 YAML
 }
@@ -107,7 +104,6 @@ auditors:
       - "test/**"
       - ".storybook/**"
     audience: adopter
-    push_fixes: true
     default: true
 YAML
 }
@@ -323,7 +319,7 @@ code-audit-maintainer-shell"
 
 @test "missing auditors key exits 2 with a named reason and empty stdout" {
   # A config with other knobs but no `auditors:` block.
-  printf 'gate_label: null\npush_fixes: true\n' > "$SANDBOX/.gaia/audit-ci.yml"
+  printf 'gate_label: null\nunrelated_knob: true\n' > "$SANDBOX/.gaia/audit-ci.yml"
   stage app/x.tsx
   commit "feat"
   ( cd "$SANDBOX" && "$SCRIPT" ) >"$BATS_TEST_TMPDIR/out" 2>"$BATS_TEST_TMPDIR/err" && exit_status=0 || exit_status=$?
@@ -423,19 +419,61 @@ auditors:
     globs:
       - "app/**"
     audience: adopter
-    push_fixes: true
     default: true
   - name: code-audit-example
     globs:
       - "examples/**"
     audience: adopter
-    push_fixes: true
 YAML
   stage examples/widget.ts
   commit "feat"
   run run_resolver
   [ "$status" -eq 0 ]
   [ "$output" = "code-audit-example" ]
+}
+
+# A roster an adopter wrote before the key was retired may still carry
+# `push_fixes:` on a member. The resolver reads nothing from it: the set it
+# returns is the one the same roster without the key returns.
+@test "a roster still carrying the retired push_fixes key resolves the same member set" {
+  stage app/x.tsx examples/widget.ts
+  commit "feat"
+  cat > "$SANDBOX/.gaia/audit-ci.yml" <<'YAML'
+auditors:
+  - name: code-audit-frontend
+    globs:
+      - "app/**"
+    audience: adopter
+    default: true
+  - name: code-audit-example
+    globs:
+      - "examples/**"
+    audience: adopter
+YAML
+  run run_resolver
+  [ "$status" -eq 0 ]
+  local without_key="$output"
+  cat > "$SANDBOX/.gaia/audit-ci.yml" <<'YAML'
+auditors:
+  - name: code-audit-frontend
+    globs:
+      - "app/**"
+    audience: adopter
+    push_fixes: true
+    default: true
+  - name: code-audit-example
+    globs:
+      - "examples/**"
+    audience: adopter
+    push_fixes: false
+YAML
+  grep -qF 'push_fixes: true' "$SANDBOX/.gaia/audit-ci.yml"
+  run run_resolver
+  [ "$status" -eq 0 ]
+  # Both members are dispatched, so equality is not two empty answers.
+  grep -qF 'code-audit-example' <<<"$output"
+  grep -qF 'code-audit-frontend' <<<"$output"
+  [ "$output" = "$without_key" ]
 }
 
 # 16. --base <ref> override
@@ -692,7 +730,6 @@ auditors:
     globs:
       - "app/**"
     audience: adopter
-    push_fixes: true
     default: true
 YAML
   printf 'x\n' > "$repo/app/a.ts"
@@ -801,7 +838,6 @@ auditors:
       - "app/**"
       - "test/**"
     audience: adopter
-    push_fixes: true
     default: true
 YAML
   stage frontend/app/routes/x.tsx

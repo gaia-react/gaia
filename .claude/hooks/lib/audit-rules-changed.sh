@@ -78,6 +78,16 @@ AUDIT_GLOBAL_RULES_PATHS="$(cat <<'EOF'
 .claude/hooks/lib/audit-light-route-lib.sh
 .gaia/scripts/audit-light-mark.sh
 .claude/agents/audit-light-reviewer.md
+# gaia:maintainer-only:start
+# The shared member protocol is the report format, gate handshake and sidecar
+# contract of every member, read at the start of every review. It is not the
+# own definition of any one member, so the member tier (which matches only
+# .claude/agents/<member>.md) never reaches it; a change to it moves what every
+# standing clearance was judged under, so it resets the anchor of every member.
+# No apostrophe may appear in this literal: bash 3.2 mis-parses one inside a
+# command substitution that wraps a heredoc.
+.claude/hooks/lib/audit-member-protocol.md
+# gaia:maintainer-only:end
 # The two rules under .claude/rules/ that govern the gate rather than the
 # code. quality-gate.md decides the deterministic checks a clearance
 # stands on, and pr-merge.md decides the marker handshake: where the gate

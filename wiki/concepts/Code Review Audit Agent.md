@@ -96,7 +96,7 @@ The ledger reads gate a clearance write, and the ledger write after it does not.
 
 ### Local-flow-only
 
-The ledger is read, written, and cleaned up only on local runs; the agent, the writer, and the resolver skip it entirely when `GITHUB_ACTIONS` is `true`, because a fresh ephemeral job keeps no `.gaia/local/audit/`. Cross-round state there rides what survives a fresh checkout: the cleared/incremental base rides the `GAIA-Audit` commit trailer and commit status read by `.github/audit/resolve-audit-base.sh`, and out-of-scope debt rides `tech-debt` issues.
+The ledger is read, written, and cleaned up on local runs, under `.gaia/local/audit/`. Cross-round state also rides what survives a fresh checkout: the cleared/incremental base rides the `GAIA-Audit` commit trailer and commit status read by `.github/audit/resolve-audit-base.sh`, and out-of-scope debt rides `tech-debt` issues.
 
 The terse Task return is the contract the local re-run orchestrator reads; it does not collapse the PR-comment findings block. The Task return and that block are separate channels, so making the return terse leaves the comment surface untouched. See [[PR Merge Workflow]] for the fix → re-spawn loop that consumes the ledger.
 

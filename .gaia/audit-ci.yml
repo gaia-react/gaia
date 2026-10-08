@@ -66,12 +66,11 @@ auditors:
       # bookkeeping, the licence and the root prose are deliberately NOT here;
       # they are declared in `unowned:` instead.
       #
-      # REVIEWED here, REPAIRED nowhere. This member is the roster's only
-      # `push_fixes: true` one, so granting it a path that decides what the
-      # gates check would let it rewrite the gate in the same self-heal commit
-      # as its repair. Every one is therefore also in the self-heal refusal set
-      # (`.claude/hooks/lib/audit-selfheal-paths.sh`), matching every sibling
-      # root config this member owns; the grant buys review, not write access.
+      # REVIEWED here, REPAIRED only by the verifier-checked fixer. A path that
+      # decides what the gates check is granted to this member so a change to it
+      # is read, and the grant buys review, not write access: members only
+      # report, and the fixer's repair is checked by the verifier before it
+      # lands.
       - ".npmrc"
       - ".prettierignore"
       - ".nvmrc"
@@ -85,7 +84,7 @@ auditors:
       # token set from, so it decides what the token rules accept.
       - "frontend/components.json"
       # The package descriptor: it names the globs every gate reads (unit
-      # tests, strict candidates, self-heal refusals), so a change to it
+      # tests, strict candidates), so a change to it
       # changes what the gates check.
       - "frontend/gaia.package.json"
       # The package's own harness: its rules, skills and generated settings
@@ -144,7 +143,6 @@ auditors:
       - "frontend/app/**/tests/**"
       - "frontend/app/**/*.stories.tsx"
     audience: adopter
-    push_fixes: true
     default: true
   - name: code-audit-github-workflows
     globs:
@@ -153,7 +151,6 @@ auditors:
       - ".github/actions/**/*.yml"
       - ".github/actions/**/*.yaml"
     audience: adopter
-    push_fixes: false
   # gaia:maintainer-only:start
   - name: code-audit-maintainer-shell
     globs:
@@ -237,8 +234,26 @@ auditors:
       # The execution doctrine a hook injects into branch and worktree
       # sessions: instruction prose like the rules, never auto-loaded.
       - ".claude/doctrine/**"
+    light_review: true
+    # 30, below the frontend's 50: a changed line of gate shell decides whether
+    # a merge is allowed, so the budget a cheap reviewer may vouch for is
+    # smaller than for app source.
+    light_line_cap: 30
+    # The merge gate, the clearance and disposition writers, the fix verifier
+    # and the light router itself: a one-line edit to any of them changes what
+    # the gate trusts, so none routes to a cheap reviewer whatever its size.
+    light_hard_full:
+      - ".claude/hooks/pr-merge-audit-check.sh"
+      - ".claude/hooks/post-audit-status.sh"
+      - ".claude/hooks/audit-loop-bound.sh"
+      - ".gaia/scripts/audit-write-clearance.sh"
+      - ".gaia/scripts/audit-dispositions-check.sh"
+      - ".gaia/scripts/audit-fix-verify.sh"
+      - ".gaia/scripts/audit-light-route.sh"
+      - ".gaia/scripts/audit-light-mark.sh"
+      - ".claude/hooks/lib/audit-light-route-lib.sh"
+      - ".claude/hooks/lib/audit-member-protocol.md"
     audience: maintainer
-    push_fixes: false
   - name: code-audit-maintainer-node
     globs:
       - ".gaia/cli/src/**/*.ts"
@@ -283,8 +298,26 @@ auditors:
       # The same Node under the test tree (the claude-probe harness and its
       # fixtures), for the same reason: `.gaia/**/*.sh` never reaches `.mjs`.
       - ".gaia/tests/**/*.mjs"
+    light_review: true
+    # 30, below the frontend's 50: the CLI's TypeScript decides what the gates
+    # and the release run, so the budget a cheap reviewer may vouch for is
+    # smaller than for app source.
+    light_line_cap: 30
+    # Dependency and build configuration, and the Node the gates call: a
+    # manifest, lockfile, workspace policy or compiler setting is never a small
+    # change whatever its line count.
+    light_hard_full:
+      - ".gaia/cli/package.json"
+      - ".gaia/cli/pnpm-lock.yaml"
+      - ".gaia/cli/pnpm-workspace.yaml"
+      - ".gaia/cli/tsconfig*.json"
+      - ".gaia/cli/*.config.ts"
+      - ".gaia/cli/*.config.mts"
+      - ".gaia/cli/*.config.mjs"
+      - ".gaia/cli/*.config.cjs"
+      - ".gaia/cli/*.config.js"
+      - ".gaia/scripts/**/*.mjs"
     audience: maintainer
-    push_fixes: false
   # gaia:maintainer-only:end
 
 # Paths that are MEANT to dispatch no auditor. The roster above answers "who
@@ -345,9 +378,9 @@ unowned:
   # `.gaia/**/*.bats`), and a whole-subtree entry would reach it and fail as
   # overbroad.
   #
-  # GAIA's own instruction prose -- skills, commands, instructions, the
-  # agent lenses under a subdirectory, health lenses, the spec workflow's runbooks,
-  # rules and templates, and the two forensics prompts -- has no reviewing
+  # GAIA's own instruction prose -- skills, commands, the worthiness
+  # evaluator, the taxonomy page, the spec workflow's runbooks, rules and
+  # templates, and the two forensics prompts -- has no reviewing
   # member, so it is declared here by name and the coverage invariant holds.
   #
   # The distinction to apply when adding an entry: not "is this Markdown" but
@@ -355,10 +388,8 @@ unowned:
   # and belongs here regardless; one it reads as INSTRUCTIONS belongs to a
   # member when one exists, and is declared unowned by name when none does.
   - ".claude/skills/**/*.md"
-  - ".claude/agents/*/**"
   - ".claude/agents/worthiness-evaluator.md"
   - ".claude/commands/**/*.md"
-  - ".claude/instructions/**/*.md"
   - ".gaia/cli/health/**/*.md"
   - ".github/forensics/prompt.md"
   - ".github/forensics/apply-fix-prompt.md"
@@ -374,7 +405,6 @@ unowned:
   - ".gitattributes"
   - ".gaia/cli/test-fixtures/**/*.json"
   - ".gaia/cli/test-fixtures/**/*.md"
-  - ".gaia/cli/test-fixtures/**/*.ts"
   # Scoped to `tests/` rather than the whole subtree: `.gaia/scripts/**/*.json`
   # also reaches `.gaia/scripts/token-rates.json`, the shipped rate table the
   # cost tooling reads, and exempting it would not merely leave it ownerless but
@@ -382,9 +412,7 @@ unowned:
   - ".gaia/scripts/tests/**/*.json"
   - ".gaia/scripts/**/*.jsonl"
   - ".gaia/scripts/**/*.txt"
-  - ".gaia/scripts/**/*.yml"
   - ".gaia/scripts/**/*.md"
-  - ".gaia/scripts/**/.gitkeep"
   - ".gaia/templates/**"
   - ".gaia/tests/**/*.md"
   - ".gaia/tests/**/*.ts"

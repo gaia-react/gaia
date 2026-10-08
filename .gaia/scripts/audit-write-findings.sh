@@ -100,6 +100,14 @@
 #                  or non-boolean value as true, so the writer invents none.
 #   cross_remit    OPTIONAL boolean. true for a defect in a file outside the
 #                  reporting member's remit. A present non-boolean is rejected.
+#   triage         OPTIONAL boolean. true marks a finding the member judges
+#                  below a triage threshold. A present non-boolean is
+#                  rejected. Honored only for a member on the dispositions
+#                  check's triage allowlist, on a security:false, non-error
+#                  finding on a path the roster gives that member; the
+#                  dispositions check owns that bound.
+#   triage_reason  string, REQUIRED and non-empty when triage is true; when
+#                  present otherwise it must still be a string.
 #
 # Written shape (schema 1; the shape post-findings-block.sh merges)
 #   {"schema":1,"member":"<name>","findings":[ {<finding>}, ... ]}
@@ -130,10 +138,9 @@
 #   Exit 2 on a usage error, unreadable/unparseable input, or a finding missing
 #   a required field (message on stderr, offending index named).
 #
-# Deliberately NOT CI-gated. Every member's own remit skips the sidecar in CI;
-# that gate lives in the prose that decides whether to call this at all. A
-# GITHUB_ACTIONS/CI check here would make the writer's own test suite decline
-# on CI and pass locally, which is the wrong place to put an environment rule.
+# No environment arm. The writer reads no environment variable to decide
+# whether to write: it behaves the same on every host, and whether to call it
+# at all is the caller's decision.
 #
 # Bash 3.2 compatible (macOS default). Never `cd`s. jq required (fails closed,
 # matching every other audit artifact writer in this directory).
@@ -356,6 +363,13 @@ if ! violation="$(printf '%s' "$raw" | jq -r '
         then "security, when present, must be a boolean"
       elif ($finding | has("cross_remit")) and (($finding.cross_remit | type) != "boolean")
         then "cross_remit, when present, must be a boolean"
+      elif ($finding | has("triage")) and (($finding.triage | type) != "boolean")
+        then "triage, when present, must be a boolean"
+      elif ($finding.triage == true)
+           and ((($finding.triage_reason | type) != "string") or ($finding.triage_reason | gsub("^\\s+|\\s+$"; "") | length) == 0)
+        then "triage_reason must be a non-empty string when triage is true"
+      elif ($finding | has("triage_reason")) and (($finding.triage_reason | type) != "string")
+        then "triage_reason, when present, must be a string"
       else empty
       end;
   first(to_entries[] | select((.value | [reason] | length) > 0) | "\(.key)\t\(.value | reason)") // empty

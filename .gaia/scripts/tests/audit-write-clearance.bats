@@ -29,10 +29,6 @@ setup() {
   [ -x "$WRITER" ] || skip "audit-write-clearance.sh not executable"
   [ -f "$DIGEST_LIBRARY" ] || skip "audit-digest.sh not present"
   command -v jq >/dev/null 2>&1 || skip "jq not available"
-  # The open-finding accounting is skipped when GITHUB_ACTIONS is true, so a
-  # runner's value would leave every accounting arm below unexercised in CI.
-  # The CI arms set it per invocation.
-  unset GITHUB_ACTIONS
 
   ROOT="$BATS_TEST_TMPDIR/root"
   mkdir -p "$ROOT/.gaia"
@@ -1412,19 +1408,20 @@ snapshot_ledger() {
   [ "$(jq '.remaining | length' "$LEDGER")" = "1" ]
 }
 
-@test "accounting: only GITHUB_ACTIONS=true skips the check; CI alone does not" {
+@test "accounting: the check runs whatever the CI variables say" {
   accounting_fixture
   write_findings_sidecar "$member" '[]' "$(resolution_json "$FIRST_ID")"
 
-  run env -u GITHUB_ACTIONS CI=true bash "$WRITER" --root "$ROOT" --member "$member" \
+  run env -u GITHUB_ACTIONS -u CI bash "$WRITER" --root "$ROOT" --member "$member" \
     --provenance earned --scope-digest "$B_DIGEST"
   [ "$status" -eq 3 ]
   [ -f "$AUDIT_DIRECTORY/${B_DIGEST}.${member}.ok" ] && return 1
 
-  run env GITHUB_ACTIONS=true bash "$WRITER" --root "$ROOT" --member "$member" \
+  run env CI=true GITHUB_ACTIONS=true bash "$WRITER" --root "$ROOT" --member "$member" \
     --provenance earned --scope-digest "$B_DIGEST"
-  [ "$status" -eq 0 ]
-  [ -f "$AUDIT_DIRECTORY/${B_DIGEST}.${member}.ok" ]
+  [ "$status" -eq 3 ]
+  [ -f "$AUDIT_DIRECTORY/${B_DIGEST}.${member}.ok" ] && return 1
+  true
 }
 
 @test "accounting: a --base that differs from the derived key base still keys everything to the derived one" {
@@ -1526,8 +1523,8 @@ snapshot_ledger() {
 # behind an already-posted success has to retract it, and the one moment a
 # refusal is guaranteed to be recorded is the moment the writer writes it.
 # These arms pin that the writer makes the call, that it makes it ONLY on a
-# refusal, that CI is left to its own terminal status, and that the call can
-# never disturb the write that already landed.
+# refusal, whatever the environment, and that the call can never disturb the
+# write that already landed.
 
 # Install a post-audit-status.sh stub under ROOT that records its argv.
 install_status_hook_stub() {
@@ -1566,26 +1563,21 @@ EOF
   [ ! -s "$STATUS_CALLS" ] || return 1
 }
 
-@test "a refusal write in CI leaves the status to the workflow's own terminal post" {
+@test "a refusal write invokes the status hook with the CI variables exported" {
   install_status_hook_stub
+  digest="$(member_digest "$ROOT" code-audit-frontend)"
 
-  # -u CI is load-bearing: Actions sets CI=true on every step, so the guard's
-  # CI term alone would satisfy the skip on a runner and this arm could never
-  # fail there, whatever the GITHUB_ACTIONS term did. Each arm isolates the one
-  # variable it is about.
-  run env -u CI GITHUB_ACTIONS=true bash "$WRITER" \
+  run env CI=true GITHUB_ACTIONS=true bash "$WRITER" \
     --root "$ROOT" --member code-audit-frontend --provenance refused
   [ "$status" -eq 0 ]
-  [ ! -s "$STATUS_CALLS" ] || return 1
-  # The skip says so. A local shell exporting CI for unrelated reasons takes
-  # this arm too, and a silent skip there reproduces the incident with no
-  # diagnostic at all.
-  grep -qF -- "compensating GAIA-Audit failure status skipped" <<<"$output" || return 1
+  grep -qF -- "${digest}.refused" "$STATUS_CALLS" || return 1
+  grep -qF -- "compensating GAIA-Audit failure status skipped" <<<"$output" && return 1
 
+  : > "$STATUS_CALLS"
   run env -u GITHUB_ACTIONS CI=true bash "$WRITER" \
     --root "$ROOT" --member code-audit-frontend --provenance refused
   [ "$status" -eq 0 ]
-  [ ! -s "$STATUS_CALLS" ] || return 1
+  grep -qF -- "${digest}.refused" "$STATUS_CALLS" || return 1
 }
 
 @test "a failing status hook never fails the refusal write, and never reaches stdout" {

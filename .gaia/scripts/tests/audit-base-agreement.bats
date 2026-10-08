@@ -1123,9 +1123,8 @@ make_stacked_repo() {
 
   repo="$(make_stacked_repo elig-stacked)"
 
-  # GITHUB_BASE_REF is set by the pull_request event under Actions.
-  export GITHUB_ACTIONS=true
-  export GITHUB_BASE_REF=release
+  # The pull request's own record names the branch it merges into.
+  install_pr_view_mock release
 
   eligibility_changed="$(evaluate_eligibility code-audit-frontend "$repo" ELIG_CHANGED)" || {
     echo "the default member's resolver command failed to resolve an eligibility set" >&2
@@ -1174,8 +1173,7 @@ make_stacked_repo() {
   # the same rule the merge gate's own derivation applies: a bare local branch
   # of the same name could sit on this pull request's commits and narrow the
   # answer to nothing.
-  export GITHUB_ACTIONS=true
-  export GITHUB_BASE_REF=no-such-branch
+  install_pr_view_mock no-such-branch
 
   expected="$(git -C "$repo" diff --name-only -z "$(git -C "$repo" merge-base HEAD origin/main)...HEAD" | tr '\0' '\n')"
   eligibility_changed="$(evaluate_eligibility code-audit-frontend "$repo" ELIG_CHANGED)" || {
@@ -1194,9 +1192,9 @@ make_stacked_repo() {
 }
 
 # install_pr_view_mock <base-ref>: a `gh` on PATH whose `pr view` answers with
-# <base-ref> and whose every other subcommand is a silent success. The write
-# side reaches the pull-request record only when Actions has supplied nothing,
-# which is why the two ambient variables are cleared alongside it.
+# <base-ref> and whose every other subcommand is a silent success. The two
+# ambient variables are cleared alongside it so no environment value can stand
+# in for the record.
 install_pr_view_mock() {
   local bin="$BATS_TEST_TMPDIR/gh-bin"
   mkdir -p "$bin"
@@ -1216,7 +1214,7 @@ EOF
   unset GITHUB_ACTIONS GITHUB_BASE_REF
 }
 
-@test "the write side takes the base from the pull request's own record when Actions declares none" {
+@test "the write side takes the base from the pull request's own record" {
   local repo eligibility_changed
 
   repo="$(make_stacked_repo elig-record)"
@@ -1252,12 +1250,8 @@ EOF
 @test "the write side resolves correctly under a shadowing local branch named origin/main that sits AHEAD of the remote-tracking ref (DP-002, ahead)" {
   local repo eligibility_changed
 
-  # The non-Actions arm here is the one this test exercises. Under Actions
-  # the job exports GITHUB_BASE_REF for the whole run, the write side's
-  # derivation resolves its base from that instead of from origin/<default>,
-  # and the shadowing branch this test exists to exercise is never consulted.
-  # That is a real environment difference, not a flake: the same test passes
-  # locally and fails on CI without this.
+  # Cleared so no ambient value can stand in for the default-branch rung this
+  # test exercises.
   unset GITHUB_ACTIONS GITHUB_BASE_REF
 
   repo="$(make_repo dp002-divergence)"
@@ -1288,9 +1282,9 @@ EOF
 @test "the write side resolves correctly under a shadowing local branch named origin/main that sits BEHIND the remote-tracking ref (DP-002, behind)" {
   local repo eligibility_changed
 
-  # The non-Actions, no-record arm is the only one that consults the
-  # default-branch rung, so clear both ambient variables and stand in a `gh`
-  # whose `pr view` answers nothing: the audit-before-`gh pr create` shape.
+  # The no-record arm is the only one that consults the default-branch rung, so
+  # clear both ambient variables and stand in a `gh` whose `pr view` answers
+  # nothing: the audit-before-`gh pr create` shape.
   unset GITHUB_ACTIONS GITHUB_BASE_REF
   install_pr_view_mock ""
 

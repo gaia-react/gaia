@@ -137,6 +137,29 @@ lsb_full_clearance() {
     --provenance earned --scope-digest "$digest" >/dev/null
 }
 
+# lsb_finding <path> <line> <severity> <security>: one findings-sidecar entry.
+# <security> is true, false, or `omit` to leave the field out.
+lsb_finding() {
+  jq -n -c --arg path "$1" --argjson line "$2" --arg severity "$3" --arg security "$4" '
+    {finding_class: "holistic/unclassified", severity: $severity, path: $path, line: $line,
+     title: "defect at \($path)", failure_mode: "input and state produce the wrong outcome",
+     verified_by: "ran the fixture", suggested_fix: "repair the line"}
+    + (if $security == "omit" then {} else {security: ($security == "true")} end)'
+}
+
+# lsb_refuse_with_findings <member> <findings-json-array>: a refusal for HEAD
+# written by the sandbox's real writers: the findings sidecar, then the refusal
+# marker with its carry-forward ledger. Prints nothing.
+lsb_refuse_with_findings() {
+  local member="$1" digest base
+  digest="$(lsb_member_digest "$member")" || return 1
+  base="$(lsb_git merge-base origin/main HEAD)" || return 1
+  printf '%s' "$2" | bash "$LSB_ROOT/.gaia/scripts/audit-write-findings.sh" --root "$LSB_ROOT" --member "$member" \
+    --base "$base" --findings - >/dev/null || return 1
+  bash "$LSB_ROOT/.gaia/scripts/audit-write-clearance.sh" --root "$LSB_ROOT" --member "$member" \
+    --provenance refused --scope-digest "$digest" --base "$base" >/dev/null
+}
+
 # lsb_marker_json <member> <provenance> <review-or-empty> <tree> <version> [digest]:
 # hand-write a writer-shaped body into the marker store and print its path. For
 # the legacy (empty review), stale-version and refusal fixtures only. The
@@ -192,6 +215,7 @@ _lsb_reply() {
   jq -c --arg verdict "$verdict" '
     {schema: 1, member: .member, digest: .digest, tree: .tree, verdict: $verdict,
      reason: (if $verdict == "clear" then "delta reviewed, nothing found" else "needs the full member" end),
+     resolved: [(.checklist // [])[].key],
      files: [.files[] | {path: .path, verdict: $verdict, note: "reviewed"}]}' "$record"
 }
 

@@ -97,9 +97,8 @@ setup() {
   mkdir -p "$SANDBOX/.gaia/scripts"
   cp "$REPO_ROOT/.gaia/scripts/audit-key-lib.sh" "$SANDBOX/.gaia/scripts/audit-key-lib.sh"
 
-  # Local and CI runs exercise one path: the refusal link reads the ledger only
-  # outside GitHub Actions, and the fallback ref reads GITHUB_BASE_REF only
-  # inside it. A test that needs either sets it itself.
+  # The resolver takes one path whatever the environment; the tests that prove
+  # that export these variables themselves.
   unset GITHUB_ACTIONS CI GITHUB_BASE_REF
 
   # The trailer/status digest field (C3 field 2) is never compared by this
@@ -426,53 +425,53 @@ set_origin_reference() {
   git -C "$SANDBOX" update-ref "refs/remotes/origin/$1" "$(git -C "$SANDBOX" rev-parse "$2")"
 }
 
-@test "the pull request's own base ref wins over the repository default" {
-  add_commit a
-  add_commit b
-  set_origin_reference main main
-  set_origin_reference release main
-  export GITHUB_ACTIONS=true GITHUB_BASE_REF=release
-  run --separate-stderr run_in_sandbox
-  [ "$status" -eq 0 ]
-  [ "$output" = "origin/release" ]
-}
-
 @test "no base ref declared → the repository default" {
   add_commit a
   add_commit b
   set_origin_reference main main
-  export GITHUB_ACTIONS=true
-  unset GITHUB_BASE_REF
   run --separate-stderr run_in_sandbox
   [ "$status" -eq 0 ]
   [ "$output" = "origin/main" ]
 }
 
-@test "a base ref naming no remote branch → the repository default" {
-  add_commit a
-  add_commit b
-  set_origin_reference main main
-  export GITHUB_ACTIONS=true GITHUB_BASE_REF=deleted-branch
-  run --separate-stderr run_in_sandbox
-  [ "$status" -eq 0 ]
-  [ "$output" = "origin/main" ]
-}
-
-# The base ref is read only where the event sets it. Outside Actions the
-# variable belongs to whoever invoked the script, and this resolver decides how
-# much of the tree a member reviews: a value resolving at or near HEAD would
-# empty the reviewed delta and let a member earn a clearance having read
-# nothing.
-@test "a base ref declared outside Actions is ignored" {
+# This resolver decides how much of the tree a member reviews: a base taken from
+# the environment that resolved at or near HEAD would empty the reviewed delta
+# and let a member earn a clearance having read nothing, so a declared base ref
+# is ignored whether or not the event variables claim to be Actions.
+@test "a declared base ref is ignored, with or without GITHUB_ACTIONS" {
   add_commit a
   add_commit b
   set_origin_reference main main
   set_origin_reference release main
-  unset GITHUB_ACTIONS
   export GITHUB_BASE_REF=release
+  unset GITHUB_ACTIONS
   run --separate-stderr run_in_sandbox
   [ "$status" -eq 0 ]
   [ "$output" = "origin/main" ]
+  export GITHUB_ACTIONS=true
+  run --separate-stderr run_in_sandbox
+  [ "$status" -eq 0 ]
+  [ "$output" = "origin/main" ]
+}
+
+@test "stdout is identical with the CI variables exported and without them, in both forms" {
+  local plain with_ci
+  add_commit a
+  add_commit b
+  set_origin_reference main main
+  set_origin_reference release main
+  run --separate-stderr run_in_sandbox
+  [ "$output" = "origin/main" ]
+  plain="$output"
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  plain="$plain|$output"
+  export CI=true GITHUB_ACTIONS=true GITHUB_BASE_REF=release
+  run --separate-stderr run_in_sandbox
+  with_ci="$output"
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  with_ci="$with_ci|$output"
+  [ -n "$plain" ]
+  [ "$plain" = "$with_ci" ]
 }
 
 @test "trailer on parent with matching version → parent SHA" {
@@ -1335,12 +1334,12 @@ assert_refusal_fallback() {
   assert_refusal_fallback "no review-coverage proof"
 }
 
-@test "refusal link: the ledger is never read under GitHub Actions" {
+@test "refusal link: the ledger is read with GITHUB_ACTIONS and CI exported" {
   require_jq
   build_linked_refusal
-  export GITHUB_ACTIONS=true
+  export GITHUB_ACTIONS=true CI=true
   run --separate-stderr run_member "$DEFAULT_MEMBER"
-  assert_refusal_fallback "never read under GitHub Actions"
+  assert_refusal_anchor
 }
 
 @test "refusal link: CI=true outside GitHub Actions still reads the ledger" {

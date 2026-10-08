@@ -47,18 +47,14 @@
 #   agent definitions are the only call sites that can name a member.
 #
 #   Reads .gaia/VERSION, HEAD's ancestry, commit trailers, the local audit
-#   store's clearance and refusal records and (--member form, outside GitHub
-#   Actions) its re-run ledger, and (when GH_TOKEN + gh are available) the
+#   store's clearance and refusal records and (--member form) its re-run
+#   ledger, and (when GH_TOKEN + gh are available) the
 #   GitHub Commit Status API.
 #
 # Output (stdout), argument-less form
 #   Exactly ONE line, suitable for a `base...HEAD` diff:
 #     <40-hex-sha>: resolved incremental base (an audited PR ancestor)
-#     origin/<base-ref>: fallback: review the full PR diff, scoped to the
-#       branch the PR merges into (GITHUB_BASE_REF, read under Actions only,
-#       which sets it on every pull_request event)
-#     origin/main: the same fallback outside Actions, or when no base ref is
-#       declared
+#     origin/main: the fallback: review the full PR diff
 #     (or main when neither remote-tracking ref resolves)
 #
 # Output (stdout), --member form
@@ -238,8 +234,7 @@
 #               this refusal's digest, its tree, and the current version; and
 #               it holds at least one open entry for this member.
 #   The ledger is read only through `jq --arg`, for presence and the
-#   provenance fields, and never under GitHub Actions (GITHUB_ACTIONS=true,
-#   and that variable alone), where the store is never present. Without jq or
+#   provenance fields. Without jq or
 #   the key library the link fails rather than degrading. Every reset below
 #   applies to a refusal anchor exactly as to a clearance anchor.
 #
@@ -372,34 +367,12 @@ fi
 # -----------------------------------------------------------------------------
 
 resolve_main_reference() {
-  # The declared base ref comes first because it names the branch THIS pull
-  # request merges into, which the repository default does not whenever the
-  # pull request is stacked on another branch. Preferring the default there
-  # hands every consumer the base branch's entire divergence as if this pull
-  # request had introduced it, and a finding raised against that history is
-  # indistinguishable, in a member's output, from one against the pull
-  # request's own code.
-  #
-  # Read only under Actions, which is what makes the value trustworthy: there
-  # the event sets it, not whoever invoked the script. This resolver SCOPES a
-  # review, so a value resolving at or near HEAD empties the reviewed delta and
-  # a member then earns a clearance marker having read nothing, a false green
-  # no downstream check can catch because the gate trusts the marker rather
-  # than the scope. A check that can only WIDEN on a bad input may take the
-  # environment; one that decides how much gets read may not. The merge gate's
-  # bypasses reach the opposite conclusion from the same principle and read the
-  # pull request record instead, so neither posture transfers to the other.
-  #
-  # No `gh` fallback for the local case either: this resolver runs from hooks
-  # and agent bootstraps where gh may be absent or unauthenticated, and a base
-  # that resolves only sometimes is worse than one that is always the
-  # repository default, which is what a local run keeps.
-  if [ "${GITHUB_ACTIONS:-}" = "true" ] \
-    && [ -n "${GITHUB_BASE_REF:-}" ] \
-    && git -C "$repo_root" rev-parse --verify --quiet "origin/${GITHUB_BASE_REF}" >/dev/null 2>&1; then
-    printf 'origin/%s' "$GITHUB_BASE_REF"
-    return 0
-  fi
+  # No declared-base-ref arm and no `gh` fallback: this resolver SCOPES a
+  # review, so a base that resolves only sometimes, or one taken from the
+  # environment, could land at or near HEAD, empty the reviewed delta, and let
+  # a member earn a clearance marker having read nothing. It runs from hooks
+  # and agent bootstraps where gh may be absent, and a base that is always the
+  # repository default is the one every run can reproduce.
   if git -C "$repo_root" rev-parse --verify --quiet origin/main >/dev/null 2>&1; then
     printf 'origin/main'
     return 0
@@ -891,10 +864,6 @@ refusal_link_holds() {
   local key_base ledger_key ledger_path current_branch provenance_line
   local provenance_digest provenance_tree provenance_version digest_matched="false"
 
-  if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
-    link_failure_cause="the re-run ledger is never read under GitHub Actions"
-    return 1
-  fi
   if ! jq -n 'true' >/dev/null 2>&1; then
     link_failure_cause="jq is unavailable, so the re-run ledger cannot be read"
     return 1

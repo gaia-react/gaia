@@ -104,6 +104,18 @@ const rosterWithCap = (cap: number): string =>
     '',
   ].join('\n');
 
+const memberWith = (extra: string[]): string =>
+  [
+    'auditors:',
+    '  - name: code-audit-frontend',
+    '    globs:',
+    '      - "app/**"',
+    '    audience: adopter',
+    ...extra,
+    '    default: true',
+    '',
+  ].join('\n');
+
 describe('update merge-audit-ci', () => {
   let sandbox: Sandbox;
   let stdio: ReturnType<typeof captureStdio>;
@@ -496,6 +508,34 @@ describe('update merge-audit-ci', () => {
     expect(report.applied).toEqual([]);
     expect(report.conflicts).toEqual([]);
     expect(report.suggestions).toEqual([]);
+  });
+
+  test('a key upstream dropped from a member is carried out by applying the whole mapping, so it does not survive', () => {
+    // A roster written before the key was retired carries it in both the
+    // baseline and the adopter's file; the new upstream mapping omits it.
+    sandbox.write('baseline', memberWith(['    push_fixes: true']));
+    sandbox.write('latest', memberWith([]));
+    sandbox.write('current', memberWith(['    push_fixes: true']));
+
+    const exit = run(argv(sandbox));
+    expect(exit).toBe(0);
+
+    const report = parseJson(stdio.outputs);
+    expect(report.conflicts).toEqual([]);
+    expect(report.suggestions).toEqual([]);
+    expect(report.applied).toHaveLength(1);
+
+    const [item] = report.applied;
+    // The adopter's mapping still carries the key, so the item is the proof
+    // that the apply step has something to remove; the latest mapping is what
+    // the apply step writes as a unit, and it has no such key.
+    expect(item?.adopter).toHaveProperty('push_fixes', true);
+    expect(item?.latest).not.toHaveProperty('push_fixes');
+    expect(item?.latest).toEqual({
+      audience: 'adopter',
+      default: true,
+      globs: ['app/**'],
+    });
   });
 
   test('missing file exits non-zero with a structured error', () => {
