@@ -21,12 +21,13 @@ setup() {
   build_repo
 }
 
-# cost_row <kind> <sid> <ts> <spec_id|null> <plan_id|null>: one cost.jsonl row.
-cost_row() {
+# close_row <sid> <ts> <ref> <workflow>: one close binding row, appended to
+# usage.jsonl as `usage.sh record` writes it.
+close_row() {
   mkdir -p "$TELEMETRY_DIRECTORY"
-  jq -nc --arg kind "$1" --arg session_id "$2" --arg timestamp "$3" --arg spec_id "$4" --arg plan_id "$5" \
-    '{schema_version:1,kind:$kind,session_id:$session_id,ts:$timestamp,spec_id:(if $spec_id == "null" then null else $spec_id end),
-      plan_id:(if $plan_id == "null" then null else $plan_id end),git_branch:"main"}' >>"$TELEMETRY_DIRECTORY/cost.jsonl"
+  jq -nc --arg session_id "$1" --arg timestamp "$2" --arg reference "$3" --arg workflow "$4" \
+    '{schema_version:1,kind:"binding",type:"close",session_id:$session_id,ts:$timestamp,ref:$reference,workflow:$workflow,source:"record-command"}' \
+    >>"$TELEMETRY_DIRECTORY/usage.jsonl"
 }
 
 # ---------- UAT-023 (full path) ----------
@@ -58,7 +59,7 @@ cost_row() {
   transcript_path="$(transcript_path_for_session s-sp)"
   write_assistant_message "$transcript_path" s-sp "$REPO" main q1 2026-10-01T10:00:01.000Z 2 2 "$(skill_tool gaia-spec)"
   write_assistant_message "$transcript_path" s-sp "$REPO" main q2 2026-10-01T10:00:05.000Z 3 3
-  cost_row spec s-sp 2026-10-01T10:00:10Z SPEC-095 null
+  close_row s-sp 2026-10-01T10:00:10Z spec:SPEC-095 gaia-spec
   flush_session s-p
   flush_session s-sp
   run run_usage initiative research:topic-a-2026-10-01
@@ -165,21 +166,21 @@ parity() {
   grep -Eq '^  attributed:   tokens 0  est\. ' <<<"$output"
 }
 
-@test "UAT-006: a /gaia-spec Skill line at T0 stays unattributed until the spec row lands, then [T0,T1] resolves to the spec with the split at the row's timestamp and the usage ledger bytes unchanged" {
+@test "UAT-006: a /gaia-spec Skill line at T0 stays unattributed until the close row lands, then [T0,T1) resolves to the spec, later spend splits off at the close, and a readout leaves the usage ledger bytes unchanged" {
   local transcript_path before after
   transcript_path="$(transcript_path_for_session s06)"
   write_assistant_message "$transcript_path" s06 "$REPO" main g1 2026-10-01T10:00:01.000Z 1 1 "$(skill_tool gaia-spec)"
   flush_session s06
   write_assistant_message "$transcript_path" s06 "$REPO" main g2 2026-10-01T10:00:05.000Z 2 2
   flush_session s06
-  write_assistant_message "$transcript_path" s06 "$REPO" main g3 2026-10-01T10:00:10.000Z 3 3
+  write_assistant_message "$transcript_path" s06 "$REPO" main g3 2026-10-01T10:00:09.000Z 3 3
   flush_session s06
   run run_usage reconcile
   grep -Eq '^  unattributed: tokens 6,672  est\. ' <<<"$output"
   grep -Eq '^  attributed:   tokens 0  est\. ' <<<"$output"
-  before="$(cksum <"$TELEMETRY_DIRECTORY/usage.jsonl")"
 
-  cost_row spec s06 2026-10-01T10:00:10Z SPEC-096 null
+  close_row s06 2026-10-01T10:00:10Z spec:SPEC-096 gaia-spec
+  before="$(cksum <"$TELEMETRY_DIRECTORY/usage.jsonl")"
   run run_usage reconcile
   grep -Eq '^  attributed:   tokens 6,672  est\. ' <<<"$output"
   grep -Eq '^  unattributed: tokens 0  est\. ' <<<"$output"
@@ -213,7 +214,7 @@ parity() {
   flush_session s18
   write_assistant_message "$transcript_path" s18 "$REPO" main r6 2026-10-01T11:02:30.000Z 6 6
   flush_session s18
-  cost_row plan s18 2026-10-01T11:03:00Z null PLAN-022
+  close_row s18 2026-10-01T11:03:00Z plan:PLAN-022 gaia-plan
   write_assistant_message "$transcript_path" s18 "$REPO" main r7 2026-10-01T11:04:00.000Z 7 7
   flush_session s18
   run run_usage initiative research:x
@@ -240,4 +241,43 @@ parity() {
   run run_usage reconcile
   lacks "unflushed:"
   grep -Eq '^  all segments: tokens 3,336  est\. ' <<<"$output"
+}
+
+# ---------- interleaved runs paired on close rows ----------
+
+@test "interleaved runs: two gaia-spec runs and a gaia-plan run in one session each pair with their own start, and a close from another session claims nothing" {
+  local transcript_path other_transcript_path
+  transcript_path="$(transcript_path_for_session s-mix)"
+  other_transcript_path="$(transcript_path_for_session s-other)"
+  write_assistant_message "$transcript_path" s-mix "$REPO" main m1 2026-10-01T10:00:01.000Z 1 1 "$(skill_tool gaia-spec)"
+  flush_session s-mix
+  write_assistant_message "$transcript_path" s-mix "$REPO" main m2 2026-10-01T10:00:05.000Z 2 2
+  flush_session s-mix
+  close_row s-mix 2026-10-01T10:00:10Z spec:SPEC-201 gaia-spec
+  write_assistant_message "$transcript_path" s-mix "$REPO" main m3 2026-10-01T10:00:20.000Z 3 3 "$(skill_tool gaia-plan)"
+  flush_session s-mix
+  write_assistant_message "$transcript_path" s-mix "$REPO" main m4 2026-10-01T10:00:25.000Z 4 4 "$(skill_tool gaia-spec)"
+  flush_session s-mix
+  write_assistant_message "$transcript_path" s-mix "$REPO" main m5 2026-10-01T10:00:30.000Z 5 5
+  flush_session s-mix
+  write_assistant_message "$other_transcript_path" s-other "$REPO" main o1 2026-10-01T10:00:30.000Z 8 8
+  flush_session s-other
+  # A close for the second spec from a session that never started a run.
+  close_row s-other 2026-10-01T10:00:35Z spec:SPEC-202 gaia-spec
+  close_row s-mix 2026-10-01T10:00:40Z spec:SPEC-202 gaia-spec
+  write_assistant_message "$transcript_path" s-mix "$REPO" main m6 2026-10-01T10:00:45.000Z 7 7
+  flush_session s-mix
+  close_row s-mix 2026-10-01T10:00:50Z plan:PLAN-030 gaia-plan
+  # m1+m2 = 1112+2224; m4+m5 = 4448+5560 (the plan run is open beneath them and
+  # the later spec start wins); m3+m6 = 3336+7784; the other session's 8896
+  # has no start, so its close pairs with nothing.
+  run run_usage initiative spec:SPEC-201
+  grep -Eq '^  spec:SPEC-201  tokens 3,336  est\. ' <<<"$output"
+  run run_usage initiative spec:SPEC-202
+  grep -Eq '^  spec:SPEC-202  tokens 10,008  est\. ' <<<"$output"
+  run run_usage initiative plan:PLAN-030
+  grep -Eq '^  plan:PLAN-030  tokens 11,120  est\. ' <<<"$output"
+  run run_usage reconcile
+  grep -Eq '^  attributed:   tokens 24,464  est\. ' <<<"$output"
+  grep -Eq '^  unattributed: tokens 8,896  est\. ' <<<"$output"
 }

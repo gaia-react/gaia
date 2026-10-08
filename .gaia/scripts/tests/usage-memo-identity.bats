@@ -80,7 +80,7 @@ warm_new() {
   clean_trace "$tag"
 }
 
-# append_row <usage|links|cost> <json>: one row onto the test's own store copy.
+# append_row <usage|links> <json>: one row onto the test's own store copy.
 append_row() {
   local store_file="$UM_TELEMETRY_DIRECTORY/$1.jsonl"
   if [ -s "$store_file" ] && [ -n "$(tail -c 1 "$store_file")" ]; then printf '\n' >>"$store_file"; fi
@@ -96,16 +96,14 @@ initiative_block() {
   awk -v heading_prefix="[initiative $2 " 'index($0, heading_prefix) == 1 { printing = 1; print; next } /^\[/ { printing = 0 } printing' "$1"
 }
 
-# new_branch_rows <suffix>: appends a segment, a cost row and a merge row for a
-# branch no store names, derived from anchors.new_branch (suffix "" is the
-# anchor itself); sets NB_KEY. Its parent is the anchor's root.
+# new_branch_rows <suffix>: appends a segment and a merge row for a branch no
+# store names, derived from anchors.new_branch (suffix "" is the anchor
+# itself); sets NB_KEY. Its parent is the root its name implies.
 new_branch_rows() {
-  local raw key
-  raw="$(jq -r '.anchors.new_branch.raw' "$PROBES")$1"
+  local key
   key="$(jq -r '.anchors.new_branch.key' "$PROBES")$1"
   NB_KEY="$key"
   append_row usage '{"schema_version":1,"kind":"segment","key":"'"$key"'","session_id":"snb'"$1"'","inherit":false,"first_ts":"2026-09-29T10:00:00Z","last_ts":"2026-09-29T10:00:00Z","messages":2,"by_model":{"claude-opus-5-5":{"fresh_input":50000,"cache_write_5m":5000,"cache_write_1h":0,"cache_read":100000,"output":5000}}}'
-  append_row cost '{"schema_version":1,"kind":"execute","spec_id":null,"plan_id":null,"plan_slug":null,"session_id":"snb'"$1"'","total":1000,"seq":0,"final":true,"git_branch":"'"$raw"'","ts":"2026-09-29T10:30:00Z","session_cwd":"/work/repo"}'
   append_row links '{"schema_version":1,"kind":"merge","pr":2999,"key":"'"$key"'","merged_at":"2026-09-29T11:00:00Z","source":"gh-pr-merge","ts":"2026-09-29T11:00:00Z","session_id":null}'
 }
 
@@ -125,10 +123,10 @@ snapshot() {
   } | LC_ALL=C sort >"$1"
 }
 
-# stores_sha <out>: sha256 of the three stores.
+# stores_sha <out>: sha256 of the two stores.
 stores_sha() {
   local store_name
-  for store_name in usage links cost; do printf '%s %s\n' "$store_name" "$(_umemo_sha256 "$UM_TELEMETRY_DIRECTORY/$store_name.jsonl")"; done >"$1"
+  for store_name in usage links; do printf '%s %s\n' "$store_name" "$(_umemo_sha256 "$UM_TELEMETRY_DIRECTORY/$store_name.jsonl")"; done >"$1"
 }
 
 # memo_inode: the inode of the memo file.
@@ -218,7 +216,7 @@ memo_inode_flips() {
   mkdir -p "$bare/.gaia/local/telemetry"
   git -C "$bare" init -q -b main
   git -C "$bare" -c user.email=t@example.com -c user.name=T -c commit.gpgsign=false commit -q --allow-empty -m init
-  cp "$UM_TELEMETRY_DIRECTORY"/usage.jsonl "$UM_TELEMETRY_DIRECTORY"/links.jsonl "$UM_TELEMETRY_DIRECTORY"/cost.jsonl "$bare/.gaia/local/telemetry/"
+  cp "$UM_TELEMETRY_DIRECTORY"/usage.jsonl "$UM_TELEMETRY_DIRECTORY"/links.jsonl "$bare/.gaia/local/telemetry/"
   UM_MAIN="$bare" UM_TELEMETRY_DIRECTORY="$bare/.gaia/local/telemetry" capture bare new pr 2302
   [ -s "$CAPTURE_DIRECTORY/bare.out" ]
   run assert_priced "$CAPTURE_DIRECTORY/bare.out"
@@ -266,11 +264,9 @@ memo_inode_flips() {
 
 @test "AUDIT-9: the cursor-prefilter adversarial rows reach the figures" {
   local i probe_count seen=0 pr
-  # The three rows the cursor prefilter could drop: a segment on a branch whose
-  # name spells the cursor marker, a cost row whose session_cwd carries the
-  # marker text, and a real cursor row in a different key order.
+  # The rows the cursor prefilter could drop: a segment on a branch whose name
+  # spells the cursor marker, and a real cursor row in a different key order.
   grep -qF '"key":"branch:fix/cursor-drift"' "$UM_TELEMETRY_DIRECTORY/usage.jsonl"
-  grep -qF 'session_cwd":"/work/{\"schema_version\":1,\"kind\":\"cursor\"' "$UM_TELEMETRY_DIRECTORY/cost.jsonl"
   grep -qF '{"kind":"cursor","schema_version":1,' "$UM_TELEMETRY_DIRECTORY/usage.jsonl"
   probe_count="$(umemo_probe_count "$PROBES")"
   for ((i = 0; i < probe_count; i++)); do
@@ -343,15 +339,13 @@ memo_inode_flips() {
 }
 
 @test "UAT-007: a branch no store or memo has seen is derived on first sight" {
-  local raw key parent body
-  raw="$(jq -r '.anchors.new_branch.raw' "$PROBES")"
+  local key parent body
   key="$(jq -r '.anchors.new_branch.key' "$PROBES")"
   parent="$(jq -r '.anchors.new_branch.parent' "$PROBES")"
   cold_new nb-pre pr --key "$key"
   warm_new nb-pre pr --key "$key"
   [ -z "$(initiative_block "$CAPTURE_DIRECTORY/nb-pre.out" "$parent")" ]
   body="$(sed -n 2p "$MEMO")"
-  [ "$(jq -r --arg raw "$raw" '.bmap | has($raw)' <<<"$body")" = false ]
   [ "$(jq -r --arg key "$key" '.derive | has($key)' <<<"$body")" = false ]
   new_branch_rows ""
   [ "$NB_KEY" = "$key" ]
@@ -365,29 +359,27 @@ memo_inode_flips() {
   warm_new nb-again pr --key "$key"
   same_capture nb-old nb-again
   body="$(sed -n 2p "$MEMO")"
-  [ "$(jq -r --arg raw "$raw" --arg key "$key" '.bmap[$raw].key == $key' <<<"$body")" = true ]
   [ "$(jq -r --arg key "$key" --arg parent "$parent" '.derive[$key] | index($parent) != null' <<<"$body")" = true ]
 }
 
-@test "UAT-019: a closing cost row appended under a warm memo moves an open-start interval" {
-  local session_id key pr raw spec
+# The pinned baseline cannot read a close row, so this case compares the
+# working tree's warm readout with its own cold one rather than with the
+# baseline.
+@test "a close row appended under a warm memo moves an open-start interval, warm as cold" {
+  local session_id key pr spec
   session_id="$(jq -r '.anchors.open_start.session_id' "$PROBES")"
   key="$(jq -r '.anchors.open_start.key' "$PROBES")"
   pr="$(jq -r '.anchors.open_start.pr' "$PROBES")"
-  raw="$(probe_field "$pr" raw)"
   spec="SPEC-$(sed -E 's|^branch:plan/spec-([0-9]+).*|\1|' <<<"$key")"
   [ "$spec" = SPEC-506 ]
-  cold_new cl-pre pr "$pr"
-  warm_new cl-pre pr "$pr"
-  assert_priced "$CAPTURE_DIRECTORY/cl-pre.out"
-  append_row cost '{"schema_version":1,"kind":"spec","spec_id":"'"$spec"'","plan_id":null,"plan_slug":null,"session_id":"'"$session_id"'","total":1000,"seq":0,"final":true,"git_branch":"'"$raw"'","ts":"2026-09-27T10:00:00Z","session_cwd":"/work/repo"}'
-  warm_new cl-post pr "$pr"
-  assert_priced "$CAPTURE_DIRECTORY/cl-post.out"
+  cold_new cl-pre initiative "spec:$spec"
+  warm_new cl-pre initiative "spec:$spec"
+  append_row usage '{"schema_version":1,"kind":"binding","type":"close","session_id":"'"$session_id"'","ts":"2026-09-27T10:00:00Z","ref":"spec:'"$spec"'","workflow":"gaia-spec","source":"record-command"}'
+  warm_new cl-post initiative "spec:$spec"
+  grep -qF "  spec:$spec  tokens " "$CAPTURE_DIRECTORY/cl-post.out"
   cmp -s "$CAPTURE_DIRECTORY/cl-pre.out" "$CAPTURE_DIRECTORY/cl-post.out" && return 1
-  capture cl-old old pr "$pr"
-  cold_new cl-cold pr "$pr"
-  same_capture cl-old cl-post
-  same_capture cl-old cl-cold
+  cold_new cl-cold initiative "spec:$spec"
+  same_capture cl-post cl-cold
 }
 
 @test "UAT-005: a readout writes nothing but the memo, and each update replaces it" {

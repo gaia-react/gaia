@@ -348,9 +348,9 @@ append_in_fresh_process() {
 @test "append: any other target basename returns 2 and writes nothing" {
   local telemetry_directory="$TEMPORARY_DIRECTORY/tel3" rows="$TEMPORARY_DIRECTORY/rows3.jsonl"
   printf '{"n":1}\n' >"$rows"
-  run append_in_fresh_process "$telemetry_directory" cost.jsonl "$rows"
+  run append_in_fresh_process "$telemetry_directory" other.jsonl "$rows"
   [ "$status" -eq 2 ]
-  [ ! -e "$telemetry_directory/cost.jsonl" ]
+  [ ! -e "$telemetry_directory/other.jsonl" ]
   run append_in_fresh_process "$telemetry_directory" ../usage.jsonl "$rows"
   [ "$status" -eq 2 ]
   [ ! -e "$telemetry_directory" ] || [ -z "$(ls -A "$telemetry_directory")" ]

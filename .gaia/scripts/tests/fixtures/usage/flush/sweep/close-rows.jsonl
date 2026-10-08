@@ -1,0 +1,2 @@
+{"schema_version":1,"kind":"binding","type":"close","session_id":"s-sw2","ts":"2026-10-01T01:00:02.000Z","ref":"command:gaia-audit-20261001T010002Z-0a0a","workflow":"gaia-audit","source":"record-command"}
+{"schema_version":1,"kind":"binding","type":"close","session_id":"s-other","ts":"2026-10-01T05:00:00.000Z","ref":"command:gaia-wiki-20261001T050000Z-0b0b","workflow":"gaia-wiki","source":"record-command"}

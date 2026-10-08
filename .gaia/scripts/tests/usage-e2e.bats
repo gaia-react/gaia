@@ -8,11 +8,6 @@
 # Run under bash 5 (.claude/rules/bats-assertions.md):
 #   .gaia/scripts/bats5.sh .gaia/scripts/tests/usage-e2e.bats
 #
-# The "cost.jsonl files unchanged" half of SPEC success criterion 7 is a
-# merge-base diff, which a shallow CI checkout cannot run, so it is a Phase 4
-# gate step rather than a case here. The token-tally, token-rollup, and
-# cost-lock suites are run beside this one as that criterion's other half.
-#
 # mock-hook-input.sh is not used: it has no SessionStart event and hardcodes
 # /tmp/transcript.jsonl. Hook payloads are built with jq and point their
 # transcript_path into the fixture projects root.

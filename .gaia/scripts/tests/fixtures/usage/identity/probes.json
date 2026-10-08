@@ -60,7 +60,7 @@
       "raw": "plan/spec-503-interval",
       "category": "interval",
       "expect": {
-        "interval": true
+        "interval": false
       }
     },
     {
@@ -168,7 +168,7 @@
       "raw": "plan/plan-007-planint",
       "category": "interval",
       "expect": {
-        "interval": true
+        "interval": false
       }
     },
     {

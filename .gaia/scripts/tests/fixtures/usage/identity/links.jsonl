@@ -39,3 +39,5 @@
 {"schema_version":1,"kind":"merge","pr":2410,"key":"branch:plan/spec-506-open-start","merged_at":"2026-09-28T00:00:00Z","source":"gh-pr-merge","ts":"2026-09-28T00:00:00Z","session_id":null}
 {"schema_version":1,"kind":"merge","pr":2412,"key":"branch:fix/2330-first-try","merged_at":"2026-09-28T20:00:00Z","source":"gh-pr-merge","ts":"2026-09-28T20:00:00Z","session_id":null}
 {"schema_version":1,"kind":"edge","child":"issue:2340","parent":"research:cycle-demo","source":"link-command","ts":"2026-09-28T21:00:00Z","session_id":null,"sidechain":false}
+{"schema_version":1,"kind":"edge","child":"branch:fix/cwd-spelling","parent":"spec:SPEC-504","source":"link-command","ts":"2026-09-19T10:30:00Z","session_id":null,"sidechain":false}
+{"schema_version":1,"kind":"edge","child":"pr:2402","parent":"command:gaia-debt-20260922T100000Z-a1b2","source":"link-command","ts":"2026-09-22T11:00:00Z","session_id":null,"sidechain":false}

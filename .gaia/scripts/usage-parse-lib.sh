@@ -13,7 +13,7 @@
 #
 # GAIA_USAGE_SEGMENT_JQ applies the high-water filter, the trailing-group
 # holdback, dedup, keying, and the split-point grouping. Split points are the
-# session's declare and close bindings, its cost-store rows, and the file's own
+# session's declare and close bindings in usage.jsonl, and the file's own
 # start and research events. Every segment row carries $agent_type, and $agent_id
 # when it is non-empty (a sidecar's). It prints the held
 # line number (or null), then the cursor row's JSON before and after its
@@ -99,8 +99,7 @@ $extraction[0] as $extracted
    | sort_by(.line_number) | map(. + usage_key(.branch; (.session_id // $file_session_id); $default; $branch_map))) as $deduped_usage
 | ([$splitsraw | split("\n")[] | select(length > 0) | (try fromjson catch null) | objects
     | select(.session_id == $file_session_id)
-    | select((.kind == "binding" and (.type == "declare" or .type == "close"))
-        or (.kind != "binding" and .kind != "segment" and .kind != "cursor"))
+    | select(.kind == "binding" and (.type == "declare" or .type == "close"))
     | .ts | strings] + [$committed_events[].ts]) | unique as $split_timestamps
 | (reduce $deduped_usage[] as $entry ([];
     if length == 0 then [[$entry]]

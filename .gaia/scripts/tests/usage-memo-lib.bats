@@ -19,7 +19,6 @@ setup() {
   mkdir -p "$TELEMETRY_DIRECTORY"
   USAGE_STORE="$TELEMETRY_DIRECTORY/usage.jsonl"
   LINKS_STORE="$TELEMETRY_DIRECTORY/links.jsonl"
-  COST_STORE="$TELEMETRY_DIRECTORY/cost.jsonl"
   MEMO="$TELEMETRY_DIRECTORY/usage-branch-memo.json"
   TRACE="$TEMPORARY_DIRECTORY/trace"
   : >"$TRACE"
@@ -45,12 +44,8 @@ segment_row() {
 link_row() {
   printf '{"schema_version":1,"kind":"edge","child":"%s","parent":"%s","source":"link-command","ts":"2026-09-30T12:00:00Z","session_id":"s1"}\n' "$1" "$2"
 }
-cost_row() {
-  printf '{"schema_version":1,"kind":"plan","spec_id":"%s","plan_id":null,"session_id":"s1","by_model":{},"git_branch":"%s"}\n' "$1" "$2"
-}
-
-# base_stores: raws in worktree spelling, a hashed key, a name with no parents,
-# the default branch, the empty raw, and a link-only key.
+# base_stores: a key with parents, a name with no parents, a link-only key, and
+# a key named only as the child of an explicit edge.
 base_stores() {
   {
     segment_row session:s1 m-one
@@ -60,16 +55,11 @@ base_stores() {
   {
     link_row pr:5 branch:fix/12-foo
     link_row pr:6 branch:feat/3-link
+    link_row branch:plan/spec-024-x spec:SPEC-024
   } >"$LINKS_STORE"
-  {
-    cost_row SPEC-024 worktree-plan+spec-024-x
-    cost_row SPEC-025 "has space"
-    cost_row SPEC-026 main
-    cost_row SPEC-027 ""
-  } >"$COST_STORE"
 }
 
-warm_all() { gaia_usage_memo_warm "$USAGE_STORE" "$LINKS_STORE" "$COST_STORE"; }
+warm_all() { gaia_usage_memo_warm "$USAGE_STORE" "$LINKS_STORE"; }
 
 # init_memo: stamp, a cold load of the (absent) memo, then a warm-up.
 init_memo() {
@@ -247,7 +237,7 @@ load_reason() {
 }
 
 @test "load: each cold reason is produced by a memo crafted for it, and a valid memo loads warm" {
-  local body='{"bmap":{},"derive":{},"models":[],"stores":{}}' first_model
+  local body='{"derive":{},"models":[],"stores":{}}' first_model
   gaia_usage_memo_stamp
   rm -f "$MEMO"
   [ "$(load_reason)" = "path=cold reason=missing" ]
@@ -263,16 +253,16 @@ load_reason() {
   [ "$(load_reason)" = "path=cold reason=stamp" ]
   write_memo "$(printf '{"schema_version":1,"stamp":"%s","sum":"0000000000000000"}' "$_gaia_usage_memo_stamp")" "$body"
   [ "$(load_reason)" = "path=cold reason=sum" ]
-  body='{"bmap":{},"derive":{},"models":5,"stores":{}}'
+  body='{"derive":{},"models":5,"stores":{}}'
   write_memo "$(valid_header "$body")" "$body"
   [ "$(load_reason)" = "path=cold reason=shape" ]
-  body='{"bmap":{"x":{"norm":"x"}},"derive":{},"models":[],"stores":{}}'
+  body='{"derive":{"k":"p"},"models":[],"stores":{}}'
   write_memo "$(valid_header "$body")" "$body"
   [ "$(load_reason)" = "path=cold reason=shape" ]
-  body='{"bmap":{},"derive":{},"models":[],"stores":{"u":{"path":"p","off":-1,"hn":0,"head":"h"}}}'
+  body='{"derive":{},"models":[],"stores":{"u":{"path":"p","off":-1,"hn":0,"head":"h"}}}'
   write_memo "$(valid_header "$body")" "$body"
   [ "$(load_reason)" = "path=cold reason=shape" ]
-  body='{"bmap":{"a":{"norm":"a","key":null}},"derive":{"k":["p"]},"models":["m"],"stores":{"u":{"path":"p","off":0,"hn":0,"head":"h"}}}'
+  body='{"derive":{"k":["p"]},"models":["m"],"stores":{"u":{"path":"p","off":0,"hn":0,"head":"h"}}}'
   write_memo "$(valid_header "$body")" "$body"
   do_load
   [ "$(last_trace)" = "path=warm" ]
@@ -291,40 +281,52 @@ load_reason() {
   do_load
   [ "$(last_trace)" = "path=cold reason=sum" ]
   [ "$GAIA_USAGE_MEMO_STATE" = cold ]
-  [ "$GAIA_USAGE_MEMO" = '{"bmap":{},"derive":{},"models":[],"stores":{}}' ]
+  [ "$GAIA_USAGE_MEMO" = '{"derive":{},"models":[],"stores":{}}' ]
+}
+
+@test "load: a memo stamped under the previous layout seed loads cold on the stamp and is rebuilt" {
+  local old_stamp body
+  base_stores
+  scratch_libraries "$TEMPORARY_DIRECTORY/libs-seed"
+  subst_file "$TEMPORARY_DIRECTORY/libs-seed/usage-memo-lib.sh" '"usage-branch-memo/2"' '"usage-branch-memo/1"'
+  old_stamp="$(in_libraries "$BASH" "$TEMPORARY_DIRECTORY/libs-seed" 'gaia_usage_memo_stamp; printf "%s" "$_gaia_usage_memo_stamp"')"
+  [ -n "$old_stamp" ]
+  gaia_usage_memo_stamp
+  [ "$old_stamp" != "$_gaia_usage_memo_stamp" ]
+  body='{"derive":{"branch:fix/12-foo":["issue:999"]},"models":["m-one","m-two"],"stores":{}}'
+  write_memo "$(printf '{"schema_version":1,"stamp":"%s","sum":"%s"}' "$old_stamp" "$(_gaia_usage_hash16 "$body")")" "$body"
+  [ "$(load_reason)" = "path=cold reason=stamp" ]
+  warm_all
+  [ "$(memo_get '.derive["branch:fix/12-foo"] | join(",")')" = "issue:12" ]
 }
 
 # ---------- 6. warm-up tail ----------
 
 wrap_derivations() {
-  eval "orig_branch_map$(declare -f gaia_usage_branch_map | sed '1s/^gaia_usage_branch_map//')"
   eval "orig_derive_map$(declare -f gaia_usage_derive_map | sed '1s/^gaia_usage_derive_map//')"
-  gaia_usage_branch_map() { printf '%s\n' "$@" >>"$TEMPORARY_DIRECTORY/bmap.args"; orig_branch_map "$@"; }
   gaia_usage_derive_map() { printf '%s\n' "$@" >>"$TEMPORARY_DIRECTORY/derive.args"; orig_derive_map "$@"; }
-  : >"$TEMPORARY_DIRECTORY/bmap.args"
   : >"$TEMPORARY_DIRECTORY/derive.args"
 }
 
-@test "warm-up tail: appended rows derive exactly the new raw, key, and model, and the offset advances" {
+@test "warm-up tail: appended rows derive exactly the new keys and model, and the offsets advance" {
   base_stores
   init_memo
-  [ "$(memo_get '.bmap | keys | join(",")')" = ",has space,main,worktree-plan+spec-024-x" ]
+  [ "$(memo_get '.derive | keys | join(",")')" = "branch:chore/update-deps,branch:feat/3-link,branch:fix/12-foo,branch:plan/spec-024-x" ]
   [ "$(memo_get '.models | join(",")')" = "m-one,m-two" ]
   gaia_usage_memo_save "$MEMO"
   gaia_usage_memo_load "$MEMO"
   wrap_derivations
   segment_row branch:topic/77-new m-three >>"$USAGE_STORE"
-  cost_row SPEC-090 worktree-plan+spec-090-q >>"$COST_STORE"
+  link_row pr:9 branch:plan/spec-090-q >>"$LINKS_STORE"
   : >"$TRACE"
   warm_all
-  [ "$(cat "$TEMPORARY_DIRECTORY/bmap.args")" = "worktree-plan+spec-090-q" ]
   [ "$(cat "$TEMPORARY_DIRECTORY/derive.args")" = $'branch:plan/spec-090-q\nbranch:topic/77-new' ]
   [ "$(memo_get '.derive["branch:topic/77-new"] | length')" = 0 ]
   [ "$(memo_get '.derive["branch:plan/spec-090-q"] | join(",")')" = "spec:SPEC-090" ]
   [ "$(memo_get '.models | join(",")')" = "m-one,m-three,m-two" ]
   [ "$(memo_get '.stores.u.off')" = "$(file_size "$USAGE_STORE")" ]
-  [ "$(memo_get '.stores.c.off')" = "$(file_size "$COST_STORE")" ]
   [ "$(memo_get '.stores.l.off')" = "$(file_size "$LINKS_STORE")" ]
+  [ "$(memo_get '.stores | keys | join(",")')" = "l,u" ]
   [ "$GAIA_USAGE_MEMO_DIRTY" = 1 ]
   grep -qF 'scan=full' "$TRACE" && return 1
   true
@@ -360,7 +362,7 @@ wrap_derivations() {
   init_memo
   cp "$USAGE_STORE" "$TEMPORARY_DIRECTORY/usage-moved.jsonl"
   : >"$TRACE"
-  gaia_usage_memo_warm "$TEMPORARY_DIRECTORY/usage-moved.jsonl" "$LINKS_STORE" "$COST_STORE"
+  gaia_usage_memo_warm "$TEMPORARY_DIRECTORY/usage-moved.jsonl" "$LINKS_STORE"
   [ "$(cat "$TRACE")" = "scan=full store=u reason=path" ]
 }
 
@@ -480,26 +482,26 @@ inode_of() { ls -i "$1" | awk '{print $1}'; }
 # cover <memo-json> <keys-json>: the gap, the restricted-keys edges, and the
 # full-keys edges, computed over the fixture stores.
 cover() {
-  jq -nc --rawfile usage_store "$USAGE_STORE" --rawfile links_store "$LINKS_STORE" --rawfile cost_store "$COST_STORE" --argjson memo "$1" --argjson keys "$2" --arg default_branch main \
+  jq -nc --rawfile usage_store "$USAGE_STORE" --rawfile links_store "$LINKS_STORE" --argjson memo "$1" --argjson keys "$2" --arg default_branch main \
     "$GAIA_USAGE_JQ_DEFS$GAIA_USAGE_RESOLVE_JQ$GAIA_USAGE_MEMO_JQ"'
-    usage_rows($usage_store) as $usage_records | usage_rows($links_store) as $links | usage_rows($cost_store) as $cost
-    | usage_present($usage_records; $links; $cost) as $present
+    usage_rows($usage_store) as $usage_records | usage_rows($links_store) as $links
+    | usage_present($usage_records; $links) as $present
     | usage_memo_gap($present; $memo) as $gap
     | usage_memo_keys($present; $memo; $default_branch) as $memo_keys
-    | {present: $present, gap: $gap, restricted_edges: usage_edges($links; $cost; $memo_keys), full_edges: usage_edges($links; $cost; $keys), memo_keys: $memo_keys}'
+    | {present: $present, gap: $gap, restricted_edges: usage_edges($links; $memo_keys), full_edges: usage_edges($links; $keys), memo_keys: $memo_keys}'
 }
 
 @test "coverage jq: the restricted keys give today's edges, and a covering memo has no gap" {
   base_stores
   init_memo
   local keys cover_output
-  keys="$(gaia_usage_keys_json "$TEMPORARY_DIRECTORY/nogit" "$USAGE_STORE" "$LINKS_STORE" "$COST_STORE")"
+  keys="$(gaia_usage_keys_json "$TEMPORARY_DIRECTORY/nogit" "$USAGE_STORE" "$LINKS_STORE")"
   cover_output="$(cover "$GAIA_USAGE_MEMO" "$keys")"
   [ "$(jq -c '.gap' <<<"$cover_output")" = null ]
   [ "$(jq '.restricted_edges | length' <<<"$cover_output")" -ge 4 ]
   [ "$(jq '.restricted_edges == .full_edges' <<<"$cover_output")" = true ]
-  [ "$(jq -c '.present.raws' <<<"$cover_output")" = '["","has space","main","worktree-plan+spec-024-x"]' ]
-  [ "$(jq -c --argjson store_keys "$keys" '.present.models == $store_keys.models and .present.raws == ($store_keys.bmap | keys)' <<<"$cover_output")" = true ]
+  [ "$(jq -c '.present.bkeys' <<<"$cover_output")" = '["branch:chore/update-deps","branch:feat/3-link","branch:fix/12-foo","branch:plan/spec-024-x"]' ]
+  [ "$(jq -c --argjson store_keys "$keys" '.present.models == $store_keys.models and ($store_keys | keys) == ["default","derive","models"]' <<<"$cover_output")" = true ]
   [ "$(jq -c '.memo_keys.models' <<<"$cover_output")" = '["m-one","m-two"]' ]
   # Every non-empty memo derive entry the stores name is in the restricted keys.
   [ "$(jq -c '.memo_keys.derive | keys' <<<"$cover_output")" = '["branch:feat/3-link","branch:fix/12-foo","branch:plan/spec-024-x"]' ]
@@ -509,31 +511,27 @@ cover() {
   base_stores
   init_memo
   local keys memo cover_output
-  keys="$(gaia_usage_keys_json "$TEMPORARY_DIRECTORY/nogit" "$USAGE_STORE" "$LINKS_STORE" "$COST_STORE")"
-  memo="$(jq -c 'del(.bmap["worktree-plan+spec-024-x"])' <<<"$GAIA_USAGE_MEMO")"
-  cover_output="$(cover "$memo" "$keys")"
-  [ "$(jq -c '.gap' <<<"$cover_output")" = '{"raws":["worktree-plan+spec-024-x"],"bkeys":[],"models":[],"models_extra":[]}' ]
+  keys="$(gaia_usage_keys_json "$TEMPORARY_DIRECTORY/nogit" "$USAGE_STORE" "$LINKS_STORE")"
   memo="$(jq -c 'del(.derive["branch:plan/spec-024-x"])' <<<"$GAIA_USAGE_MEMO")"
   cover_output="$(cover "$memo" "$keys")"
-  [ "$(jq -c '.gap' <<<"$cover_output")" = '{"raws":[],"bkeys":["branch:plan/spec-024-x"],"models":[],"models_extra":[]}' ]
+  [ "$(jq -c '.gap' <<<"$cover_output")" = '{"bkeys":["branch:plan/spec-024-x"],"models":[],"models_extra":[]}' ]
   memo="$(jq -c 'del(.derive["branch:feat/3-link"]) | .models = ["m-one"]' <<<"$GAIA_USAGE_MEMO")"
   cover_output="$(cover "$memo" "$keys")"
-  [ "$(jq -c '.gap' <<<"$cover_output")" = '{"raws":[],"bkeys":["branch:feat/3-link"],"models":["m-two"],"models_extra":[]}' ]
+  [ "$(jq -c '.gap' <<<"$cover_output")" = '{"bkeys":["branch:feat/3-link"],"models":["m-two"],"models_extra":[]}' ]
   memo="$(jq -c '.models += ["ghost-model"]' <<<"$GAIA_USAGE_MEMO")"
   cover_output="$(cover "$memo" "$keys")"
-  [ "$(jq -c '.gap' <<<"$cover_output")" = '{"raws":[],"bkeys":[],"models":[],"models_extra":["ghost-model"]}' ]
+  [ "$(jq -c '.gap' <<<"$cover_output")" = '{"bkeys":[],"models":[],"models_extra":["ghost-model"]}' ]
   GAIA_USAGE_MEMO="$memo"
   gaia_usage_memo_merge_gap "$(jq -c '.gap' <<<"$cover_output")"
   [ "$(memo_get '.models | join(",")')" = "m-one,m-two" ]
   [ "$GAIA_USAGE_MEMO_DIRTY" = 1 ]
 }
 
-@test "merge gap: derives the gap's raws and keys, and records the key a new raw implies" {
+@test "merge gap: derives the gap's keys and records its models" {
   base_stores
   init_memo
   GAIA_USAGE_MEMO_DIRTY=0
-  gaia_usage_memo_merge_gap '{"raws":["worktree-plan+spec-055-gap"],"bkeys":["branch:fix/4-gapkey"],"models":["m-gap"],"models_extra":[]}'
-  [ "$(memo_get '.bmap["worktree-plan+spec-055-gap"].key')" = "branch:plan/spec-055-gap" ]
+  gaia_usage_memo_merge_gap '{"bkeys":["branch:plan/spec-055-gap","branch:fix/4-gapkey"],"models":["m-gap"],"models_extra":[]}'
   [ "$(memo_get '.derive["branch:plan/spec-055-gap"] | join(",")')" = "spec:SPEC-055" ]
   [ "$(memo_get '.derive["branch:fix/4-gapkey"] | join(",")')" = "issue:4" ]
   [ "$(memo_get '.models | index("m-gap") != null')" = true ]
@@ -557,44 +555,7 @@ cover() {
   [ "$(last_trace)" = "write=ok" ]
 }
 
-# ---------- 12. escape-blind cost grep ----------
-
-# escaped_absent <memo body>: true when neither spelling of the escaped raw is
-# a bmap entry.
-escaped_absent() {
-  [ "$(jq 'has("plan/spec-030-esc") or has("plan\\/spec-030-esc")' <<<"$(jq -c .bmap <<<"$1")")" = false ]
-}
-
-escaped_stores() {
-  {
-    printf '{"schema_version":1,"kind":"plan","spec_id":"SPEC-030","git_branch":"plan\\/spec-030-esc"}\n'
-    cost_row SPEC-031 worktree-plan+spec-031-ok
-  } >"$COST_STORE"
-  : >"$USAGE_STORE"
-  : >"$LINKS_STORE"
-}
-
-@test "escape-blind grep: an escaped git_branch is left to the coverage check, a plain one is picked up" {
-  escaped_stores
-  grep -qF 'plan\/spec-030-esc' "$COST_STORE"
-  init_memo
-  [ "$(memo_get '.bmap | has("worktree-plan+spec-031-ok")')" = true ]
-  escaped_absent "$GAIA_USAGE_MEMO"
-}
-
-@test "escape-blind grep guard red: a decoding cost grep puts the escaped raw into bmap, and the absence check fails on it" {
-  escaped_stores
-  scratch_libraries "$TEMPORARY_DIRECTORY/libs-e"
-  subst_file "$TEMPORARY_DIRECTORY/libs-e/usage-memo-lib.sh" "grep -oE '\"git_branch\":\"[^\"\\\\]*\"'" "grep -oE '\"git_branch\":\"([^\"\\\\]|\\\\.)*\"'"
-  subst_file "$TEMPORARY_DIRECTORY/libs-e/usage-memo-lib.sh" "r: [inputs]}'" "r: [inputs | (\"\\\"\" + . + \"\\\"\" | fromjson)]}'"
-  local body
-  body="$(in_libraries "$BASH" "$TEMPORARY_DIRECTORY/libs-e" 'gaia_usage_memo_stamp; gaia_usage_memo_load "$1/m.json"; gaia_usage_memo_warm "$2" "$3" "$4"; printf "%s" "$GAIA_USAGE_MEMO"' "$TELEMETRY_DIRECTORY" "$USAGE_STORE" "$LINKS_STORE" "$COST_STORE" 2>/dev/null)" || true
-  [ -n "$body" ]
-  if escaped_absent "$body"; then return 1; fi
-  [ "$(jq 'has("plan/spec-030-esc")' <<<"$(jq -c .bmap <<<"$body")")" = true ]
-}
-
-# ---------- 13. dirty flag and stamp reuse ----------
+# ---------- 12. dirty flag and stamp reuse ----------
 
 @test "dirty flag: cold load 1, warm load 0, unchanged warm-up 0, appended warm-up 1, save 0" {
   base_stores
@@ -627,12 +588,12 @@ escaped_stores() {
   gaia_usage_memo_load "$MEMO"
   [ "$(last_trace)" = "path=warm" ]
   [ "$(wc -l <"$TEMPORARY_DIRECTORY/hash.log" | tr -d ' ')" = 1 ]
-  grep -qF 'usage-branch-memo/1' "$TEMPORARY_DIRECTORY/hash.log" && return 1
+  grep -qF 'usage-branch-memo/' "$TEMPORARY_DIRECTORY/hash.log" && return 1
   unset _gaia_usage_memo_stamp_exit_status
   [ "$(load_reason)" = "path=cold reason=stamp-unavailable" ]
 }
 
-# ---------- 14. seam ----------
+# ---------- 13. seam ----------
 
 @test "seam: runs the script when enabled, ignores its status, and does nothing when either gate is empty" {
   printf '#!/bin/sh\ntouch "%s/marker"\nexit 1\n' "$TEMPORARY_DIRECTORY" >"$TEMPORARY_DIRECTORY/seam.sh"
@@ -650,7 +611,7 @@ escaped_stores() {
   [ -e "$TEMPORARY_DIRECTORY/marker" ]
 }
 
-# ---------- 15. silence ----------
+# ---------- 14. silence ----------
 
 @test "silent stderr: every function stays quiet against broken inputs" {
   local error_file="$TEMPORARY_DIRECTORY/err" bad="$TEMPORARY_DIRECTORY/dir-as-store"
@@ -668,18 +629,18 @@ escaped_stores() {
   [ ! -s "$error_file" ]
   chmod 600 "$MEMO"
   # A store path that is a directory, and one that does not exist.
-  gaia_usage_memo_warm "$bad" "$TELEMETRY_DIRECTORY/absent-l" "$bad" 2>"$error_file"
+  gaia_usage_memo_warm "$bad" "$TELEMETRY_DIRECTORY/absent-l" 2>"$error_file"
   [ ! -s "$error_file" ]
   chmod 000 "$USAGE_STORE"
-  gaia_usage_memo_warm "$USAGE_STORE" "$LINKS_STORE" "$COST_STORE" 2>"$error_file"
+  gaia_usage_memo_warm "$USAGE_STORE" "$LINKS_STORE" 2>"$error_file"
   [ ! -s "$error_file" ]
   chmod 600 "$USAGE_STORE"
   gaia_usage_memo_merge_gap 'not json' 2>"$error_file"
   [ ! -s "$error_file" ]
   GAIA_USAGE_MEMO='garbage'
-  gaia_usage_memo_warm "$USAGE_STORE" "$LINKS_STORE" "$COST_STORE" 2>"$error_file"
+  gaia_usage_memo_warm "$USAGE_STORE" "$LINKS_STORE" 2>"$error_file"
   [ ! -s "$error_file" ]
-  gaia_usage_memo_merge_gap '{"raws":["x"],"bkeys":[],"models":[],"models_extra":[]}' 2>"$error_file"
+  gaia_usage_memo_merge_gap '{"bkeys":["x"],"models":[],"models_extra":[]}' 2>"$error_file"
   [ ! -s "$error_file" ]
   gaia_usage_memo_save "$TEMPORARY_DIRECTORY/no-such-dir/memo.json" 2>"$error_file"
   [ ! -s "$error_file" ]

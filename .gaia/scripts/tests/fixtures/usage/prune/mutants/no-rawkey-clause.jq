@@ -1,9 +1,7 @@
 
-def usage_pr_scope($usage_records; $cost; $reference_set):
-  (reduce ((($usage_records[] | select(.kind == "binding" and (.type == "research" or .type == "declare")
-                and (.ref | type) == "string" and $reference_set[.ref] == true)),
-            ($cost[] | select(usage_row_key(.) as $row_key | $row_key != null and $reference_set[$row_key] == true)))
+def usage_pr_scope($usage_records; $reference_set):
+  (reduce ((($usage_records[] | select(.kind == "binding" and (.type == "research" or .type == "declare" or .type == "close")
+                and (.ref | type) == "string" and $reference_set[.ref] == true)))
            | .session_id | tojson) as $session ({}; .[$session] = true)) as $session_set
   | {segs: [$usage_records[] | select(.kind == "segment" and $session_set[.session_id | tojson] == true)],
-     bindings: [$usage_records[] | select(.kind == "binding" and $session_set[.session_id | tojson] == true)],
-     cost: [$cost[] | select($session_set[.session_id | tojson] == true)]};
+     bindings: [$usage_records[] | select(.kind == "binding" and $session_set[.session_id | tojson] == true)]};

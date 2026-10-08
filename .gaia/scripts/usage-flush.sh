@@ -6,7 +6,7 @@
 #
 #   usage-flush.sh --session <sid> [--transcript <path>] [--finished-main] [--all-sidecars-finished]
 #   usage-flush.sh --sweep [--self-session <sid>]
-#   common: [--projects-root <dir>] [--main-root <dir>] [--telemetry-dir <dir>] [--ledger <cost.jsonl>]
+#   common: [--projects-root <dir>] [--main-root <dir>] [--telemetry-dir <dir>]
 #
 # Contract with the hooks that call it: exits 0 and prints nothing on stdout,
 # diagnostics on stderr. The one exception is a missing or unparseable library
@@ -57,13 +57,13 @@ gaia_usage_in_ci && exit 0
 . "$UF_SCRIPT_DIRECTORY/usage-parse-lib.sh" 2>/dev/null || { _uf_log "cannot load $UF_SCRIPT_DIRECTORY/usage-parse-lib.sh"; exit 1; }
 
 UF_SESSION="" UF_TRANSCRIPT="" UF_FINISHED_MAIN=false UF_ALL_SIDECARS_FINISHED=0 UF_SWEEP=0 UF_SELF=""
-UF_PROJECTS="" UF_MAIN="" UF_TELEMETRY_DIRECTORY="" UF_COST="" UF_TELEMETRY_DIRECTORY_GIVEN=0
+UF_PROJECTS="" UF_MAIN="" UF_TELEMETRY_DIRECTORY=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --finished-main) UF_FINISHED_MAIN=true; shift; continue ;;
     --all-sidecars-finished) UF_ALL_SIDECARS_FINISHED=1; shift; continue ;;
     --sweep) UF_SWEEP=1; shift; continue ;;
-    --session | --transcript | --self-session | --projects-root | --main-root | --telemetry-dir | --ledger)
+    --session | --transcript | --self-session | --projects-root | --main-root | --telemetry-dir)
       [ $# -ge 2 ] || { _uf_log "missing value for ${1//[^A-Za-z0-9._=\/-]/?}"; exit 0; } ;;
     *) _uf_log "unknown argument: ${1//[^A-Za-z0-9._=\/-]/?}"; exit 0 ;;
   esac
@@ -73,8 +73,7 @@ while [ $# -gt 0 ]; do
     --self-session) UF_SELF="$2" ;;
     --projects-root) UF_PROJECTS="$2" ;;
     --main-root) UF_MAIN="$2" ;;
-    --telemetry-dir) UF_TELEMETRY_DIRECTORY="$2"; UF_TELEMETRY_DIRECTORY_GIVEN=1 ;;
-    --ledger) UF_COST="$2" ;;
+    --telemetry-dir) UF_TELEMETRY_DIRECTORY="$2" ;;
   esac
   shift 2
 done
@@ -102,13 +101,6 @@ _gaia_usage_load with_ledger_lock spec/with-ledger-lock.sh || {
 
 [ -n "$UF_TELEMETRY_DIRECTORY" ] || UF_TELEMETRY_DIRECTORY="$(gaia_usage_telemetry_directory "$UF_MAIN")"
 UF_TELEMETRY_DIRECTORY="${UF_TELEMETRY_DIRECTORY%/}"
-if [ -z "$UF_COST" ]; then
-  if [ "$UF_TELEMETRY_DIRECTORY_GIVEN" = 1 ]; then
-    UF_COST="$UF_TELEMETRY_DIRECTORY/cost.jsonl"
-  elif _gaia_usage_load gaia_resolve_ledger_path ledger-path-lib.sh; then
-    UF_COST="$(gaia_resolve_ledger_path "" "$UF_MAIN")" || UF_COST=""
-  fi
-fi
 [ -n "$UF_PROJECTS" ] || UF_PROJECTS="$(gaia_usage_projects_root "$UF_TRANSCRIPT")"
 UF_PROJECTS="${UF_PROJECTS%/}"
 UF_LEDGER="$UF_TELEMETRY_DIRECTORY/usage.jsonl"
@@ -347,11 +339,10 @@ _uf_prepare() {
   if [ "${#raw_branches[@]}" -gt 0 ]; then branch_map="$(gaia_usage_branch_map "${raw_branches[@]}" 2>/dev/null)" || branch_map='{}'; fi
   [ -n "$branch_map" ] || branch_map='{}'
   grep -F -- "$session_id" "$UF_LEDGER" >"$UF_WORK/session_rows" 2>/dev/null
-  { grep -F -- "$session_id" "$UF_COST"; cat "$UF_WORK/session_rows"; } >"$UF_WORK/splits" 2>/dev/null
   grep -F '"type":"close"' "$UF_WORK/session_rows" 2>/dev/null | sort >"$UF_WORK/closes"
   _uf_agent_fields "$transcript_file" "$role"
   jq -nr --slurpfile extraction "$UF_WORK/ext" --argjson branch_map "$branch_map" --arg default "$UF_DEFAULT" --arg file_session_id "$session_id" \
-    --argjson high_water_mark "$UF_HIGH_WATER_MARK" --argjson finished "$finished" --rawfile splitsraw "$UF_WORK/splits" \
+    --argjson high_water_mark "$UF_HIGH_WATER_MARK" --argjson finished "$finished" --rawfile splitsraw "$UF_WORK/session_rows" \
     --arg path "$transcript_file" --arg role "$role" --arg agent_type "$UF_AGENT_TYPE" --arg agent_id "$UF_AGENT_ID" --argjson size "$size" --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     "$GAIA_USAGE_SEGMENT_JQ" >"$UF_WORK/p2" 2>/dev/null || return 1
   { IFS= read -r hold; IFS= read -r cursor_row_prefix; IFS= read -r cursor_row_suffix; } <"$UF_WORK/p2"
