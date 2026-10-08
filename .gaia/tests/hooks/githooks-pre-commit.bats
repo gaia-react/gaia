@@ -71,7 +71,6 @@ write_descriptor() {
     "tddUnitTests": ["app/**/*.test.ts"],
     "tddStrictCandidates": ["app/utils/**"],
     "emergentTests": ["app/components/**/*.test.ts"],
-    "selfHealRefuse": ["CLAUDE.md"],
     "preCommitSource": $pre_commit_source,
     "doctorConfigs": ["doctor.config.*", "react-doctor.config.*"],
     "dependencyManifests": ["package.json"]

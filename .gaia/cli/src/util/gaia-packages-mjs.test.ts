@@ -23,9 +23,11 @@ import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {
   corpusDisagreements,
+  LEFTOVER_KEY_CASE,
   listCorpusCases,
   materializeCase,
   readExpected,
+  retiredGlobsKey,
 } from './gaia-packages-corpus-fixture.js';
 import type {CorpusReader} from './gaia-packages-corpus-fixture.js';
 import {resolveRepoRootFromImportMeta} from './repo-root-fixture.js';
@@ -104,6 +106,17 @@ describe('corpus conformance (Node reader)', () => {
         asCorpusReader()
       )
     ).toEqual(['tddUnitTests: want NO match for [frontend/app/x.test.ts]']);
+  });
+});
+
+describe('a retired globs key (Node reader)', () => {
+  test('a descriptor still carrying it loads and the key is absent from the output', () => {
+    const retiredKey = retiredGlobsKey();
+    const result = reader.loadPackages(rootFor(LEFTOVER_KEY_CASE));
+
+    expect(retiredKey).not.toBe('');
+    expect(result.ok).toBe(true);
+    expect(JSON.stringify(result)).not.toContain(retiredKey);
   });
 });
 

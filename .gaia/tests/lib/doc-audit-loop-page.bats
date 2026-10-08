@@ -144,7 +144,7 @@ hand_edit_sentences() {
   section_text="$(section "$CHECKPOINT")" || return 1
   sentences <<<"$section_text" | grep -qF -- 'No fixer is dispatched for it, so the round has no `fixer-<r>-audit.json`: the members re-audit the current tree to earn their markers, and the remaining entries are recorded under the heading `## Accepted residuals (recorded, not fixed)` in the PR body' || return 1
   sentences <<<"$section_text" | grep -qF -- 'A closing round never re-arms the loop: if it does not clear, the next new-tree dispatch is denied and the human decides again.' || return 1
-  sentences <<<"$section_text" | grep -qF -- 'No member repairs anything in it either: `code-audit-frontend` reads the same `closing` field and applies no self-heal'
+  sentences <<<"$section_text" | grep -qF -- 'No member repairs anything in it either: members edit no tracked file, and `code-audit-frontend` reads the same `closing` field'
 }
 
 @test "UAT-015: a gate log exists only for an attempt whose verifier passed" {
@@ -233,7 +233,7 @@ anchors_resolve() {
 @test "the unit section maps every stop_reason and every deny class the agent classifies" {
   local section_text reason
   section_text="$(section "$UNIT")" || return 1
-  for reason in clean window-end checkpoint-deny dispositions-check-failed needs-human failure; do
+  for reason in clean window-end checkpoint-deny dispositions-check-failed needs-human member-wave-dirty failure; do
     grep -qF -- "\`$reason\`" <<<"$section_text" || { echo "stop_reason missing: $reason" >&2; return 1; }
   done
   grep -qF -- 'PreToolUse:Agent hook error: BLOCKED: ...' <<<"$section_text" || return 1
@@ -269,7 +269,71 @@ anchors_resolve() {
     grep -qF -- "$heading" <<<"$section_text" || { echo "heading missing: $heading" >&2; return 1; }
   done
   sentences <<<"$section_text" | grep -qF -- 'The main thread rewrites those sections after a veto' || return 1
-  grep -qF -- 'audit-dispositions-check.sh pr-sections' <<<"$section_text"
+  grep -qF -- 'audit-dispositions-check.sh pr-sections --root <RESOLVED_ROOT> --run-folder <RUN_FOLDER>' <<<"$section_text"
+}
+
+@test "UAT-007: the unit section maps member-wave-dirty to its own main-thread action and a dirty closing wave to the same stop" {
+  local section_text
+  section_text="$(section "$UNIT")" || return 1
+  grep -qF -- '| `member-wave-dirty` | Asks the human what to do, naming the wave'"'"'s members and the dirty paths from `stop_detail`' <<<"$section_text" || return 1
+  sentences <<<"$section_text" | grep -qF -- 'a dirty tree after the closing wave stops the unit the same way.' || return 1
+}
+
+@test "UAT-038: the unit file carries the filing fields and no finding detail, and the main thread surfaces the count then merges" {
+  local section_text
+  section_text="$(section "$UNIT")" || return 1
+  grep -qF -- '`diverted_count`, `diverted_records` (the local record paths), `filing_outcomes` (the outcome files) and `filing_pending`' <<<"$section_text" || return 1
+  sentences <<<"$section_text" | grep -qF -- 'The file carries counts and paths only and no finding detail' || return 1
+  grep -qF -- 'which surfaces a non-zero `diverted_count` first' <<<"$section_text" || return 1
+  sentences <<<"$section_text" | grep -qF -- 'Before posting the status the main thread surfaces a non-zero `diverted_count` to the human ([[#Posting the status last]]) and then merges without stopping.' || return 1
+}
+
+@test "UAT-007: the fix round's baseline refuses a dirty member wave with exit 4 and stops the unit" {
+  local section_text
+  section_text="$(section "$FIXROUND")" || return 1
+  sentences <<<"$section_text" | grep -qF -- 'It refuses with exit 4 when the member wave left the tree dirty, a modified tracked file or an untracked, non-ignored one: it prints `member-wave-dirty` and one `dirty <path>` line per path, writes no baseline, and the unit stops `member-wave-dirty` and commits nothing.' || return 1
+  sentences <<<"$section_text" | grep -qF -- 'git-ignored paths never trip it.' || return 1
+}
+
+@test "UAT-005 and UAT-040: the fix round files through the filing script, runs the retry pass and reconciles with check-outcomes" {
+  local section_text
+  section_text="$(section "$FIXROUND")" || return 1
+  grep -qF -- 'bash .gaia/scripts/file-tech-debt.sh file --finding <that file> --outcome-file <RUN_FOLDER>/filing-outcomes-<r>.jsonl --disposition <file|divert>' <<<"$section_text" || return 1
+  sentences <<<"$section_text" | grep -qF -- 'Then run the retry pass: the same command, `--finding <f>` for each file in `<RUN_FOLDER>/filing-retry/` that an earlier `transient` outcome left, into the same outcome file.' || return 1
+  grep -qF -- 'audit-dispositions-check.sh check-outcomes --root <RESOLVED_ROOT> --run-folder <RUN_FOLDER> --round <r>' <<<"$section_text" || return 1
+  sentences <<<"$section_text" | grep -qF -- 'An `absent` backend and a `transient` failure pass: neither blocks the merge' || return 1
+  grep -qF -- 'gh issue create' <<<"$section_text" && return 1
+  true
+}
+
+@test "UAT-007: the fix round stages only the fixer and autofix delta" {
+  local section_text
+  section_text="$(section "$FIXROUND")" || return 1
+  grep -qF -- "stage exactly the delta: the paths the fixer declared, and any path an earlier gate attempt's autofix changed." <<<"$section_text" || return 1
+  grep -qF -- "jq -r '(.dirty | keys[]), .untracked[]' <RUN_FOLDER>/baseline-<r>.json" <<<"$section_text" && return 1
+  true
+}
+
+@test "UAT-002 and UAT-003: When rounds stop disposes every finding whoever authored it, names divert, and states the honest limit" {
+  local section_text
+  section_text="$(section "$WHENSTOP")" || return 1
+  grep -qF -- '**Every finding is disposed, whoever authored it.**' <<<"$section_text" || return 1
+  sentences <<<"$section_text" | grep -qF -- '`divert` is the disposition for a security-class finding the branch did not author' || return 1
+  sentences <<<"$section_text" | grep -qF -- 'A finding that is security-class and branch-authored is `fix`, never `divert`.' || return 1
+  grep -qF -- 'honors the mark only for those two members' <<<"$section_text" || return 1
+  grep -qF -- '**The honest limit.** The checks bound a mistaken disposition, not a forged input.' <<<"$section_text" || return 1
+  grep -qF -- '.claude/hooks/block-audit-loop-write.sh` guards the loop state and the protected folder, not those sidecars' <<<"$section_text" || return 1
+}
+
+@test "UAT-002 and UAT-003: Cross-remit disposes an out-of-scope security-class finding by divert and a non-security one by waive or file" {
+  local section_text
+  section_text="$(section "$CROSSREMIT")" || return 1
+  grep -qF -- 'is disposed `divert`: `.gaia/scripts/file-tech-debt.sh file --disposition divert` runs no write verb' <<<"$section_text" || return 1
+  grep -qF -- '(`divert-not-allowed`)' <<<"$section_text" || return 1
+  grep -qF -- 'is disposed `file` and filed as a tech-debt issue through `.gaia/scripts/file-tech-debt.sh`' <<<"$section_text" || return 1
+  grep -qF -- 'Three walls stand on that second question' <<<"$section_text" || return 1
+  grep -qF -- 'through `/gaia-debt` and the `file-tech-debt` skill' <<<"$section_text" && return 1
+  true
 }
 
 @test "the unit section never lets the unit merge, and a missing unit file stops for the human" {

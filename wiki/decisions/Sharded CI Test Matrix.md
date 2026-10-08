@@ -29,21 +29,9 @@ The sharder also reports each shard's **exchange group**: the set of legs a file
 
 The group is the right granularity for anything that must survive a reshuffle. The workflow's `python3-yaml` and `zsh` install step is the case that needs it: naming a needing suite's leg literally makes the step's list a function of the byte size of every suite in that suite's group, with no relationship to the packages. The step lists the needing legs rounded up to whole groups instead, which moves only when a suite's dependency really changes. `audit-ci-shards.bats` W10 recomputes that rounded set from the suites and compares it, as exact equality rather than a superset rule, so a gratuitously listed leg still reds.
 
-## The constraint any further restructuring hits first
+## The job caps
 
-The `needs:` chain sits at **exactly its ceiling with zero headroom**, and this is the first thing to check before proposing any new CI structure here.
-
-- The self-heal poller window is 25 minutes (see [[Dispatched-Check Rollup via Polling]]).
-- `audit-ci-shards.bats` W5 charges `POLLER_MARGIN_MIN=5` **per hop**, so the ceiling is `25 - 5 x hops`. At two hops that is 15 minutes.
-- The caps are 13 (shards) + 2 (aggregator) = 15. Exactly the ceiling.
-
-Consequences, each load-bearing:
-
-- **A third hop is unavailable.** Any design that inserts a job between or before these two drops the ceiling to 10 minutes while raising the chain total, and reds that suite immediately.
-- **Neither cap can rise** without the other falling by the same amount.
-- **An expression-valued `timeout-minutes` reads as uncapped** and reds, so caps stay integer literals.
-
-The zero headroom is deliberate: it fails loudly and locally rather than silently, and the heaviest leg gets a 13-minute budget on a box it no longer shares.
+Every job declares an integer-literal `timeout-minutes` cap, and `audit-ci-shards.bats` W5 checks it: an expression-valued cap reads as uncapped and reds, so caps stay integer literals. A matrix takes one cap for every leg, so the shard cap is sized to the heaviest leg, `concurrency`, and the lighter shards inherit it. The aggregator carries its own small cap. The workflow's own comments hold the sizing reasoning for each number.
 
 ## Measuring this workflow
 
@@ -60,7 +48,7 @@ A useful reconciliation is the sum of per-shard TAP plans against the pre-existi
 
 ## Where the time goes
 
-Measured per leg on a clean CI run: the aggregator takes about 3 seconds, and fixed per-leg overhead (runner provisioning, checkout, install) is on the order of 10 seconds. The install step spans roughly 10 to 20 seconds; the sandbox leg, which runs no apt, finishes it first. The concurrency leg runs 66 to 69 seconds against its 13-minute cap, so the cap constraint above binds the declared numbers rather than any real runtime.
+Measured per leg on a clean CI run: the aggregator takes about 3 seconds, and fixed per-leg overhead (runner provisioning, checkout, install) is on the order of 10 seconds. The install step spans roughly 10 to 20 seconds; the sandbox leg, which runs no apt, finishes it first. The concurrency leg runs 66 to 69 seconds against its 13-minute cap, so the declared cap, not any real runtime, is what sizes the leg.
 
 A hand run is a different measurement, because it forks every shard onto one box. Timed one file at a time the whole suite is roughly 1280 seconds of work over 200 files against a heaviest shard near 160, but forked together on an eight-performance-core machine it finishes in about 200 seconds of wall clock, each shard reporting 20 to 30 percent longer than it costs alone. Splitting a group lowers the heaviest shard without lowering the total, so past roughly the core count it promises wall clock the box cannot deliver. The two axes part company there: CI gives every leg its own runner and realizes a rebalance in full, and a hand run realizes the part of it that fits in the cores it has.
 
@@ -74,13 +62,13 @@ Two properties of the correlation above are what let that happen, and neither is
 
 Splitting one of them along a seam it already has does not move that cost, which is the finding that matters here. A split divides the text, and the whole-tree runs stay with whichever half keeps them: the two halves come out around 287 and 15 seconds on a hand run rather than at any even division, and the larger half by bytes is the cheaper one by minutes. What a split does change is how many files the partition has to place, and placing them is where the failure was. Weighed by bytes these suites are unremarkable, so which bucket each takes is decided by the packing of everything around it, and a tree change anywhere in the group can put two of them on one leg. Co-located they exceed the per-shard cap, the job is cancelled with no failing assertion, and the aggregator reds on a cancelled dependency rather than on anything that ran.
 
-So the sharder anchors them instead: each named outlier takes a bucket of its own before the byte walk fills the rest, which makes the collision unreachable rather than merely unlikely. Measured one file at a time over the whole scripts directory, the group moves from 535 / 257 / 592 seconds to 519 / 529 / 336, and the arrangement that matters is the one it removes: the same walk was free to produce an 830-second shard, and did. The cap is not the lever and never was. `.github/workflows/audit-ci-tests.yml` records that the per-shard cap plus the aggregator's is exactly what the self-heal poller window allows at two hops, so raising either reds the suite that checks the chain. A fourth scripts shard is a separate question from that ceiling, which bounds a chain's wall clock rather than the matrix's width; it is not needed while the outliers are held apart, and it would not have prevented the collision, since a wider byte walk still places them by weight. The lever that remains, if the group grows back into the cap, is a suite's own runtime: the heavier anchor spends most of its total re-driving whole-tree gates one assertion at a time.
+So the sharder anchors them instead: each named outlier takes a bucket of its own before the byte walk fills the rest, which makes the collision unreachable rather than merely unlikely. Measured one file at a time over the whole scripts directory, the group moves from 535 / 257 / 592 seconds to 519 / 529 / 336, and the arrangement that matters is the one it removes: the same walk was free to produce an 830-second shard, and did. The cap is not the lever and never was. A fourth scripts shard is not needed while the outliers are held apart, and it would not have prevented the collision, since a wider byte walk still places them by weight. The lever that remains, if the group grows back into the cap, is a suite's own runtime: the heavier anchor spends most of its total re-driving whole-tree gates one assertion at a time.
 
 The hooks group stops at three shards even though a fourth would lower its own heaviest shard, because the gain does not survive either axis. On CI, splitting hooks further only exposes the next constraint underneath it, worth a few seconds unless the `lib` directory is split as well, and the pair costs three more legs. On a hand run it is worth less than that, for the reason the paragraph below gives.
 
 ## Levers not taken, and why
 
-- **A setup job that fetches shared state once.** Adds a third hop; see the ceiling above.
+- **A setup job that fetches shared state once.** Adds a serial hop ahead of every shard, lengthening the critical path.
 - **A checked-in shard manifest.** Fails silently: a new suite runs in no shard, every check greens, the pass count quietly drops.
 - **A checked-in table of per-file runtimes.** A better weight than file size, and the same silent-stale hazard as the manifest above wearing different clothes: a newly added suite weighs nothing, the shard holding it is under-counted, and nothing says so. Size is read from the tree at discovery time, so it is never stale and never absent. The anchor list the sharder does carry is not this table in miniature: it holds no runtimes and changes no file's weight, an unlisted file weighs its bytes rather than nothing, and a listed file discovery cannot find is an error instead of a quiet no-op.
 - **A hand-maintained per-shard package list.** Also a silent-green hazard, because the suites that need `python3-yaml` fail rather than skip when it is absent while the ones needing `zsh` skip quietly. The step's list is derived from the suites instead, rounded up to whole exchange groups and pinned by W10; W9 pins the sandbox leg's reduced set.
@@ -97,6 +85,5 @@ Total machine time rises with fan-out even as wall-clock falls. The thing being 
 
 ## Related
 
-- [[Dispatched-Check Rollup via Polling]] for the poller window this workflow's caps are derived from.
 - [[Code Audit Team]] for the merge gate that runs alongside it.
 - [[Quality Gate]] for the local gate, which has nothing to check on a YAML/bash/bats change.

@@ -114,6 +114,7 @@ line_starting() {
     grep -qF -- "| \`$hook\` |" "$HOOKS_WIKI" || { echo "missing table row: $hook" >&2; return 1; }
   done
   grep -qE -- 'block-fourth[-]audit-round' "$HOOKS_WIKI" && return 1
+  grep -qF -- 'audit-stamp-trailer' "$HOOKS_WIKI" && return 1
   true
 }
 

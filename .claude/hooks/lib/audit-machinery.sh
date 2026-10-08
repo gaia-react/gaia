@@ -39,7 +39,6 @@ AUDIT_MACHINERY_PATHS="$(cat <<'EOF'
 .gaia/scripts/resolve-audit-members.sh
 .claude/hooks/pr-merge-audit-check.sh
 .claude/hooks/post-audit-status.sh
-.claude/hooks/audit-stamp-trailer.sh
 .claude/hooks/lib/**
 .gaia/scripts/audit-noop-detect.sh
 # The light-review router, the light-marker script and the reviewer definition

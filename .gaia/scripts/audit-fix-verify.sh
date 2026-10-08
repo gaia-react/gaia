@@ -6,8 +6,8 @@
 # fresh fixer sub-agent edits the tree, and this script judges the fixer's
 # delta from that baseline. The main thread never trusts the fixer's own
 # account of what it did: it commits and runs the Quality Gate only on a pass.
-# A member's self-heal edits sit in the baseline, so only the fixer's delta is
-# judged.
+# Members only report, so the baseline refuses a tree the member wave left
+# dirty and only the fixer's delta is ever judged.
 #
 # The verifier judges the fixer from a pinned copy of itself. The baseline
 # subcommand copies this script and the libraries it sources into
@@ -32,8 +32,12 @@
 #
 # Exit codes: 0 pass, 1 findings (each printed to stderr on its own line as
 # `kind: detail`), 2 usage or missing jq, 3 baseline refusal (index differs
-# from HEAD; no output file is written). `check` writes its verifier file on
-# every outcome, failures included.
+# from HEAD; no output file is written), 4 baseline refusal because the member
+# wave left the tree dirty (a modified tracked file or an untracked, non-ignored
+# file; stdout is `member-wave-dirty` then one `dirty <path>` line per path, no
+# output file is written, and the caller stops without committing). Git-ignored
+# paths never trip it. `check` writes its verifier file on every outcome,
+# failures included.
 #
 # Attempt rule: k starts at 1 for the fixer's first write in a round and
 # increases by 1 on every SendMessage continuation (verifier retry or gate
@@ -77,9 +81,11 @@
 #     {"version":1,"unit":u,"start_round":s,"through_round":t,"k":K,
 #      "rounds":[{"round":r,"opened":true|false,...}],
 #      "marker_state":{"<member>":"cleared|pending|declined"},
-#      "stop_reason":"clean|window-end|checkpoint-deny|dispositions-check-failed|needs-human|failure",
+#      "stop_reason":"clean|window-end|checkpoint-deny|dispositions-check-failed|needs-human|member-wave-dirty|failure",
 #      "stop_detail":"...","dispositions_files":["<path>"],
-#      "waiver_table":"<markdown, informational>","residual_path":"..."}
+#      "waiver_table":"<markdown, informational>","residual_path":"...",
+#      "diverted_count":<int>,"diverted_records":["<path>"],
+#      "filing_outcomes":["<path>"],"filing_pending":<int>}
 #     A unit that opened no round writes one element
 #     {"round":<start>,"opened":false,"reason":"<stop_reason>"}.
 #
@@ -385,6 +391,20 @@ command_baseline() {
   if ! snapshot_state "$TEMPORARY_DIRECTORY/cur"; then
     printf 'audit-fix-verify: baseline refused: cannot read repo state (or a path contains a newline) in %s\n' "$ROOT" >&2
     exit 3
+  fi
+  # Members run in parallel on one tree and only report, so no edit is
+  # attributable to one of them: any dirt after the wave stops the unit.
+  {
+    jq -r 'keys[]' "$TEMPORARY_DIRECTORY/cur/dirty.json"
+    cat "$TEMPORARY_DIRECTORY/cur/untracked.txt"
+  } | LC_ALL=C sort -u >"$TEMPORARY_DIRECTORY/wave-dirty.txt"
+  if [ -s "$TEMPORARY_DIRECTORY/wave-dirty.txt" ]; then
+    printf 'member-wave-dirty\n'
+    while IFS= read -r file_name; do
+      printf 'dirty %s\n' "$file_name"
+    done <"$TEMPORARY_DIRECTORY/wave-dirty.txt"
+    printf 'audit-fix-verify: baseline refused: the member wave left the tree dirty in %s\n' "$ROOT" >&2
+    exit 4
   fi
   pin_directory="$(dirname "$OUTPUT_FILE")/verifier-bin-$ROUND"
   rm -rf "$pin_directory"

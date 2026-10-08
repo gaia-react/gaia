@@ -8,7 +8,7 @@
 # policy the header states.
 #
 # The second is that the idiom exists exactly once. The literal this produces
-# is the first field of the GAIA-Audit trailer and of the GAIA-Audit commit
+# is the first field of the GAIA-Audit commit
 # status, and readers compare it for equality to decide whether a clearance
 # still applies, so a second copy is not redundancy but a second answer to one
 # equality: repair one copy and its producer stamps a literal an unrepaired

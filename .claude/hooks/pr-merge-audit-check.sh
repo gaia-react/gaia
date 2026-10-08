@@ -7,12 +7,12 @@
 #
 # Zero-match (the whole diff is out of audit scope) or the resolver script
 # being absent both fall through to the LEGACY single-signal gate: the marker/
-# trailer/status/bypass logic below, unchanged, evaluated for
+# marker/status/bypass logic below, unchanged, evaluated for
 # code-audit-frontend alone. A non-empty dispatched set instead runs the
 # member-aware gate further down: code-audit-frontend by the same signals,
 # each SPECIALIZED member <m> by its own marker
 # .gaia/local/audit/<digest>.<m>.ok (the sole clearance signal for maintainer
-# members, which are local/advisory-only with no CI/trailer equivalent).
+# members, which are local-only with no commit-status equivalent).
 #
 # Markers are keyed to each member's own CONTENT DIGEST (a sha256 over exactly
 # the files that member owns plus the shared gate machinery, folding in the
@@ -22,21 +22,15 @@
 # no member's digest, so every existing marker keeps validating with zero
 # re-dispatch; a change to a file a member owns rotates only that member's
 # digest; a change to any gate-machinery file rotates every member's digest.
-# code-audit-frontend's GAIA-Audit trailer stamp lands as an empty commit,
-# which advances HEAD while leaving every blob byte-identical, so it rotates
-# no digest either.
+# A commit carrying no content change advances HEAD while leaving every blob
+# byte-identical, so it rotates no digest either.
 #
 # code-audit-frontend / legacy-gate signals:
 #
 #   1. Local marker file at .gaia/local/audit/<frontend-digest>.ok, written by
 #      the audit agent at the end of a clean local review.
 #
-#   2. GAIA-Audit trailer on HEAD's commit message, when the trailer's
-#      version and frontend-digest fields both match a recomputed frontend
-#      digest. Written by a local audit run via
-#      .claude/hooks/audit-stamp-trailer.sh.
-#
-#   3. GAIA-Audit GitHub commit status on HEAD with state: success, description
+#   2. GAIA-Audit GitHub commit status on HEAD with state: success, description
 #      "<version> <frontend-digest> <tree>", when both version and digest
 #      match (the tree field is data only, never compared). post-audit-status.sh
 #      posts it off a member marker, which is what lets a clearance earned on
@@ -45,14 +39,14 @@
 #      matches. Queried via `gh api` using GH_TOKEN or the ambient gh auth
 #      session.
 #
-#   4. chore(deps) PR bypass: PR title matches `^chore\(deps(-dev)?\):` and the
+#   3. chore(deps) PR bypass: PR title matches `^chore\(deps(-dev)?\):` and the
 #      PR's recorded file list is confined to a dependency manifest. The
 #      /update-deps wrapper runs the full quality gate locally before
 #      pushing, so the audit signal is implicit for this PR class, but only
 #      for the manifest bump itself; a dep-bump PR carrying a migration edit
 #      or a rebuilt bundle runs the normal gate.
 #
-#   5. Out-of-scope bypass (legacy gate only, a non-empty dispatched set means
+#   4. Out-of-scope bypass (legacy gate only, a non-empty dispatched set means
 #      an in-scope file exists so this never applies there): every file the PR
 #      changes lives on a surface outside audit scope, wiki, instruction files
 #      (.claude), .gaia metadata, prose docs, and root-level
@@ -63,22 +57,22 @@
 #      prior digest never matches such a change either; this bypass and that
 #      digest fold close the same band from two directions.
 #
-# Signals 1-4 prove an audit ran against this content (or that none is
-# needed); signal 5 proves there is nothing in audit scope to review at all. A
+# Signals 1-3 prove an audit ran against this content (or that none is
+# needed); signal 4 proves there is nothing in audit scope to review at all. A
 # refusal artifact (.gaia/local/audit/<digest>[.<member>].refused) for a
 # member's current digest is checked BEFORE any earned signal and is
 # absolute: it denies regardless of a same-digest earned marker, for both
 # code-audit-frontend and every specialized member.
 #
-# BYPASS STAMP. A pull request allowed through signal 4 or 5 has no member
+# BYPASS STAMP. A pull request allowed through signal 3 or 4 has no member
 # marker, so nothing else posts the GAIA-Audit status that branch protection
 # waits on. On those allows, and only those, this gate posts it itself
 # (.claude/hooks/lib/audit-bypass-stamp.sh) with the description
 # `skipped: out of scope` or `skipped: chore(deps) manifest-only`, immediately
-# before the allow. Signal 5 is evaluated on every legacy-gate run, ahead of
+# before the allow. Signal 4 is evaluated on every legacy-gate run, ahead of
 # the other signals, so a wiki-only pull request a still-valid marker would
 # clear first gets its stamp too; a head that already carries a cleared
-# GAIA-Audit status (signal 3) is left alone. Never on a deny, never for a pull
+# GAIA-Audit status (signal 2) is left alone. Never on a deny, never for a pull
 # request this gate did not itself classify as a bypass, and never when local
 # HEAD is not the pull request's recorded head, since the status would then
 # attest content nobody classified.
@@ -347,9 +341,8 @@ tree=$(git rev-parse "HEAD^{tree}" 2>/dev/null || true)
 #              being merged is this tree's HEAD, not main's. Every writer
 #              agrees -- the agent definitions pass
 #              `--root "$(git rev-parse --show-toplevel)"` to
-#              audit-write-clearance.sh, and resolve-audit-members.sh and
-#              audit-stamp-trailer.sh derive the same way -- so digesting
-#              main's HEAD here would compare a marker against content
+#              audit-write-clearance.sh, and resolve-audit-members.sh derives the same
+#              way -- so digesting main's HEAD here would compare a marker against content
 #              nobody is merging. From a linked worktree the two trees
 #              differ, no marker could ever match, and the gate's own remedy
 #              text ("re-spawn the agents") would rewrite the same
@@ -468,49 +461,15 @@ marker_state() {
 # Each check is a self-contained function so frontend_cleared() below can
 # reuse it from both the legacy gate and the member-aware gate.
 
-# The shared trailer regex (POSIX ERE): version, 64-hex frontend digest,
-# 40-hex tree, in that order after the colon. $1=version, $2=digest, $3=tree.
-GAIA_AUDIT_TRAILER_REGEX='^GAIA-Audit:[[:space:]]+([^[:space:]]+)[[:space:]]+([0-9a-f]{64})[[:space:]]+([0-9a-f]{40})[[:space:]]*$'
-
 # _gate_current_version -> the trimmed .gaia/VERSION literal on stdout, or
-# empty. Shared by check_trailer and check_github_status: both compare a
-# stamped version field against the same literal.
+# empty. Read by check_github_status to compare a stamped version field.
 _gate_current_version() {
   # Rooted at the acting tree, the way every sibling caller of this reader
   # already passes it. A bare literal reads empty from any working directory
-  # below the repository root, and both consumers then report a version
-  # mismatch against a trailer that is correct, which sends the operator to
+  # below the repository root, and the status check then reports a version
+  # mismatch against a status that is correct, which sends the operator to
   # re-audit content nothing is wrong with.
   gaia_read_version "$tree_root/.gaia/VERSION"
-}
-
-# Trailer fallback: accept a GAIA-Audit trailer on HEAD when its version and
-# frontend-digest fields both match. The trailer format (per
-# audit-stamp-trailer.sh) is "GAIA-Audit: <version> <frontend-digest> <tree>",
-# parsed via the shared regex above; the tree field is data only and is
-# never compared. Sets $trailer_status for the deny reason regardless of
-# outcome.
-check_trailer() {
-  trailer_line=$(git log -1 --format='%B' HEAD 2>/dev/null \
-    | git interpret-trailers --parse 2>/dev/null \
-    | grep -E '^GAIA-Audit:' \
-    | head -1)
-  trailer_status="missing"
-  if [ -n "$trailer_line" ]; then
-    if [[ "$trailer_line" =~ $GAIA_AUDIT_TRAILER_REGEX ]]; then
-      trailer_version="${BASH_REMATCH[1]}"
-      trailer_digest="${BASH_REMATCH[2]}"
-      current_version="$(_gate_current_version)"
-      if [ -n "$current_version" ] && [ "$trailer_version" = "$current_version" ] \
-         && [ -n "$frontend_digest" ] && [ "$trailer_digest" = "$frontend_digest" ]; then
-        return 0
-      fi
-      trailer_status="present but version/digest mismatch (audit was for different content)"
-    else
-      trailer_status="present but does not match the GAIA-Audit trailer format (version, 64-hex frontend digest, 40-hex tree)"
-    fi
-  fi
-  return 1
 }
 
 # GitHub commit status fallback: post-audit-status.sh stamps a GAIA-Audit
@@ -845,7 +804,7 @@ gate_command_names_the_record_pr() {
 # issues off a CLEARANCE signal, as opposed to off the pull-request record.
 #
 # A clearance proves a property of THIS CHECKOUT's content: a member's own
-# content-digest marker, a GAIA-Audit trailer on HEAD, a GAIA-Audit commit
+# content-digest marker, a GAIA-Audit commit
 # status on HEAD's sha. Not one of them reads the pull-request reference the
 # gated command carries, so on a branch whose dispatched members have all
 # cleared, `gh pr merge <other-number>` used to be permitted and merged a pull
@@ -967,8 +926,8 @@ flag, is always readable and targets this checkout's own pull request."
   Merge names:      ${named}
   This checkout is on: ${record:-<no pull-request record>}
 
-Every clearance signal, a member's content-digest marker, the GAIA-Audit commit
-trailer, and the GAIA-Audit commit status, proves that a member read THIS
+Every clearance signal, a member's content-digest marker and the GAIA-Audit
+commit status, proves that a member read THIS
 CHECKOUT's content. None of them says anything about another pull request, so
 merging one on their strength would merge a pull request nothing here audited.
 
@@ -1121,8 +1080,8 @@ check_out_of_scope_pr() {
 }
 
 # code-audit-frontend clearance: a live refusal for the current digest is
-# checked first and is absolute; otherwise any one of the four member
-# signals above (marker, trailer, CI status, chore(deps)). Reused by both the
+# checked first and is absolute; otherwise any one of the three member
+# signals above (marker, GitHub status, chore(deps)). Reused by both the
 # legacy gate and the member-aware gate below. Records which signal cleared in
 # $frontend_cleared_by, because only the chore(deps) arm earns a bypass stamp.
 frontend_cleared_by=""
@@ -1131,10 +1090,6 @@ frontend_cleared() {
   [ "$frontend_refused" -eq 1 ] && return 1
   if clearance_member_cleared "$root" "$frontend_digest" code-audit-frontend; then
     frontend_cleared_by=marker
-    return 0
-  fi
-  if check_trailer; then
-    frontend_cleared_by=trailer
     return 0
   fi
   if github_status_cleared; then
@@ -1274,7 +1229,6 @@ if [ -z "$members" ]; then
 ${refusal_note}
 None of the accepted signals is present:
   - Local marker:    ${marker} $(marker_state "$marker")
-  - Commit trailer:  ${trailer_status:-missing}
   - GitHub status:   absent or version/digest mismatch
   - chore(deps) PR:  PR title does not match \`chore(deps):\`/\`chore(deps-dev):\`, or the PR changes a path other than a dependency manifest
   - Out-of-scope:    PR changes at least one in-scope path (frontend/app/, frontend/test/, configs,
@@ -1359,7 +1313,6 @@ while IFS= read -r roster_member; do
     elif [ "$roster_member" = "code-audit-frontend" ]; then
       report="${report}  - code-audit-frontend: PENDING
       Local marker:    ${marker} $(marker_state "$marker")
-      Commit trailer:  ${trailer_status:-missing}
       GitHub status:   absent or version/digest mismatch
       chore(deps) PR:  PR title does not match \`chore(deps):\`/\`chore(deps-dev):\`, or the PR changes a path other than a dependency manifest
 "
@@ -1385,8 +1338,7 @@ To unblock: spawn each PENDING member's agent on HEAD so it writes its marker
 specialized member writes ${root}/.gaia/local/audit/<its-own-digest>.<member>.ok, NOT
 the frontend digest), then retry gh pr merge. Markers are keyed to each
 member's own content digest (the files it owns plus the shared gate
-machinery), so an out-of-glob change never invalidates one, and a GAIA-Audit
-trailer stamp (an empty commit) never invalidates any either.
+machinery), so an out-of-glob change never invalidates one.
 
 A REFUSED member is not a PENDING one: its refusal outranks any earned marker
 for the same content, and an ordinary re-spawn does not clear it (a plain

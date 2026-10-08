@@ -4,17 +4,14 @@
 .claude/hooks/lib/gaia-packages.sh	.playwright/	Built-in default package descriptor: paths are package-relative by contract and join the registry path at use.
 .claude/hooks/lib/gaia-packages.sh	test/**	Built-in default package descriptor: paths are package-relative by contract and join the registry path at use.
 .claude/hooks/lib/gaia-packages.sh	.storybook/	Built-in default package descriptor: paths are package-relative by contract and join the registry path at use.
-.claude/hooks/lib/gaia-packages.sh	Dockerfile	Built-in default package descriptor: paths are package-relative by contract and join the registry path at use.
 .gaia/cli/src/util/packages.ts	app/	Built-in default package descriptor: paths are package-relative by contract and join the registry path at use.
 .gaia/cli/src/util/packages.ts	.playwright/	Built-in default package descriptor: paths are package-relative by contract and join the registry path at use.
 .gaia/cli/src/util/packages.ts	test/**	Built-in default package descriptor: paths are package-relative by contract and join the registry path at use.
 .gaia/cli/src/util/packages.ts	.storybook/	Built-in default package descriptor: paths are package-relative by contract and join the registry path at use.
-.gaia/cli/src/util/packages.ts	Dockerfile	Built-in default package descriptor: paths are package-relative by contract and join the registry path at use.
 .gaia/scripts/lib/gaia-packages.mjs	app/	Built-in default package descriptor: paths are package-relative by contract and join the registry path at use.
 .gaia/scripts/lib/gaia-packages.mjs	.playwright/	Built-in default package descriptor: paths are package-relative by contract and join the registry path at use.
 .gaia/scripts/lib/gaia-packages.mjs	test/**	Built-in default package descriptor: paths are package-relative by contract and join the registry path at use.
 .gaia/scripts/lib/gaia-packages.mjs	.storybook/	Built-in default package descriptor: paths are package-relative by contract and join the registry path at use.
-.gaia/scripts/lib/gaia-packages.mjs	Dockerfile	Built-in default package descriptor: paths are package-relative by contract and join the registry path at use.
 .gaia/cli/src/release/runtime-deps.ts	'.claude/agents/code-audit-frontend/	Withheld-token list: names the retired root homes of the moved frontend-only units so a stray root copy never ships.
 .gaia/cli/src/release/runtime-deps.ts	'.claude/instructions/	Withheld-token list: names the retired root homes of the moved frontend-only units so a stray root copy never ships.
 .gaia/cli/src/release/runtime-deps.ts	'.claude/rules/	Withheld-token list: names the retired root homes of the moved frontend-only units so a stray root copy never ships.

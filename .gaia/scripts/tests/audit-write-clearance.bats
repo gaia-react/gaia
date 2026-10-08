@@ -117,6 +117,21 @@ member_digest() {
   [ -z "$leftover" ]
 }
 
+@test "writing a clearance, earned or refused, creates and amends no commit" {
+  digest="$(member_digest "$ROOT" code-audit-frontend)"
+  head_before="$(git -C "$ROOT" rev-parse HEAD)"
+  count_before="$(git -C "$ROOT" rev-list --count HEAD)"
+
+  bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned --scope-digest "$digest" >/dev/null
+  [ "$(git -C "$ROOT" rev-parse HEAD)" = "$head_before" ]
+  [ "$(git -C "$ROOT" rev-list --count HEAD)" = "$count_before" ]
+
+  bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance refused --scope-digest "$digest" >/dev/null
+  [ "$(git -C "$ROOT" rev-parse HEAD)" = "$head_before" ]
+  [ "$(git -C "$ROOT" rev-list --count HEAD)" = "$count_before" ]
+  [ "$(git -C "$ROOT" rev-parse "HEAD^{tree}")" = "$TREE" ]
+}
+
 @test "earned body records the schema-4 fields, digest as validity key, no carried leftovers" {
   digest="$(member_digest "$ROOT" code-audit-frontend)"
   bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned --scope-digest "$digest" >/dev/null

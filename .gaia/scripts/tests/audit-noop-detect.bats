@@ -861,12 +861,12 @@ _noop_resolve_marker() {
 # classifies real on its own.
 
 @test "audit-team-member: a fresh own sidecar plus a terse return is REAL with no marker" {
-  # A self-healed pass or a DIRTY= withhold writes the sidecar but no marker
-  # and no .refused; the return text classifies real on its own.
-  root="$BATS_TEST_TMPDIR/self-heal-terse"
+  # A DIRTY= withhold writes the sidecar but no marker and no .refused; the
+  # return text classifies real on its own.
+  root="$BATS_TEST_TMPDIR/withhold-terse"
   _noop_resolve_repo "$root"
   digest="$(_noop_digest)"
-  stamp="$BATS_TEST_TMPDIR/self-heal-terse.stamp"
+  stamp="$BATS_TEST_TMPDIR/withhold-terse.stamp"
   : > "$stamp"
   sleep 1
   _noop_resolve_sidecar_at "$root" 3333333333333333333333333333333333333333 \
@@ -880,10 +880,10 @@ _noop_resolve_marker() {
 }
 
 @test "audit-team-member: a fresh own sidecar plus a finding block is REAL with no marker" {
-  root="$BATS_TEST_TMPDIR/self-heal-block"
+  root="$BATS_TEST_TMPDIR/withhold-block"
   _noop_resolve_repo "$root"
   digest="$(_noop_digest)"
-  stamp="$BATS_TEST_TMPDIR/self-heal-block.stamp"
+  stamp="$BATS_TEST_TMPDIR/withhold-block.stamp"
   : > "$stamp"
   sleep 1
   _noop_resolve_sidecar_at "$root" 4444444444444444444444444444444444444444 \

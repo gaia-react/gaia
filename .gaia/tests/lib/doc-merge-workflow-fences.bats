@@ -95,12 +95,13 @@ spawn-roster|resolve-audit-members.sh|exec|runs verbatim against this checkout
 noop-classify|audit-noop-detect.sh --shape audit-team-member|exec|runs against a fixture root, marker and sidecar
 wave-stamp|WAVE_STAMP="$(mktemp)"|exec|runs verbatim, and the claim under test is where mktemp puts the file
 loop-round-index|audit-loop-eval.sh current-round|exec|runs against a fixture branch whose seeded history records two rounds
-fix-baseline|audit-fix-verify.sh baseline --root|exec|runs against a fixture checkout carrying a self-heal edit, writing into a fixture run folder
+fix-baseline|audit-fix-verify.sh baseline --root|exec|runs against a clean fixture checkout, and against a dirty one it must refuse, writing into a fixture run folder
 fixer-classify|audit-noop-detect.sh --shape agent-report-file|exec|runs against fixture fixer results, one complete and one short
 fix-verify|audit-fix-verify.sh check --root|static|needs a live round's dispositions, baseline, fixer result and the digests recorded for them
 fix-stage-delta|.changed_paths[], .reverted_paths[]|exec|runs against a fixture checkout and run folder, and the claim under test is which paths it stages
 gate-paths|gate_snapshot() {|exec|runs against a fixture checkout with a stand-in autofix substituted for the gate placeholder
 fix-round-check|audit-fix-verify.sh round-check|exec|runs against a fixture run folder with and without a passing verifier output
+filing-reconcile|audit-dispositions-check.sh check-outcomes|static|needs a live round's dispositions file and the outcome file the filing script wrote against a live issue backend
 record-publish|audit-loop-record.sh --pr <N> --values-json -|static|rewrites a live PR's body
 checkpoint-brief|audit-loop-eval.sh brief --root|static|needs a branch history with recorded rounds and a pending checkpoint
 resume-drift|audit-fix-verify.sh drift --root|exec|runs against a fixture checkout before and after a stand-in fixer edit
@@ -893,9 +894,8 @@ fix_fixture() {
   [ "$output" = "2" ]
 }
 
-@test "fence fix-baseline: the baseline holds the self-heal edit and both digests print" {
+@test "fence fix-baseline: a clean tree records an empty dirty set and both digests print" {
   fix_fixture
-  printf 'self-heal\n' >>"${FIX_ROOT}/a.txt"
   printf '{"schema":1,"round":1,"entries":[]}\n' >"${FIX_RUN_FOLDER}/dispositions-1.json"
   script="$(materialize 'audit-fix-verify.sh baseline --root')"
   sub_literal "$script" '<RESOLVED_ROOT>' "$FIX_ROOT"
@@ -903,13 +903,30 @@ fix_fixture() {
   sub_literal "$script" '<r>' 1
   run bash -c "cd '$REPO_ROOT' && bash '$script'"
   [ "$status" -eq 0 ]
-  jq -e '.dirty | has("a.txt")' "${FIX_RUN_FOLDER}/baseline-1.json" >/dev/null
+  jq -e '.dirty == {}' "${FIX_RUN_FOLDER}/baseline-1.json" >/dev/null
   # The pinned verifier the later fences run sits beside the baseline.
   [ -f "${FIX_RUN_FOLDER}/verifier-bin-1/audit-fix-verify.sh" ]
   jq -e '.verifier_digest | test("^[0-9a-f]{64}$")' "${FIX_RUN_FOLDER}/baseline-1.json" >/dev/null
   [ "$(grep -cE '^[0-9a-f]{64} ' <<<"$output")" -eq 2 ]
   grep -qF -- 'dispositions-1.json' <<<"$output"
   grep -qF -- 'baseline-1.json' <<<"$output"
+}
+
+@test "fence fix-baseline: a tree the member wave left dirty is refused with exit 4 and member-wave-dirty" {
+  fix_fixture
+  printf 'member edit\n' >>"${FIX_ROOT}/a.txt"
+  printf 'member file\n' >"${FIX_ROOT}/fresh.txt"
+  printf '{"schema":1,"round":1,"entries":[]}\n' >"${FIX_RUN_FOLDER}/dispositions-1.json"
+  script="$(materialize 'audit-fix-verify.sh baseline --root')"
+  sub_literal "$script" '<RESOLVED_ROOT>' "$FIX_ROOT"
+  sub_literal "$script" '<RUN_FOLDER>' "$FIX_RUN_FOLDER"
+  sub_literal "$script" '<r>' 1
+  run bash -c "cd '$REPO_ROOT' && bash '$script'"
+  [ "$status" -eq 4 ]
+  grep -qx 'member-wave-dirty' <<<"$output"
+  grep -qx 'dirty a.txt' <<<"$output"
+  grep -qx 'dirty fresh.txt' <<<"$output"
+  [ ! -e "${FIX_RUN_FOLDER}/baseline-1.json" ]
 }
 
 @test "fence fix-verify: check, round-check and drift run the pinned copy and no fence runs the working-tree verifier except baseline" {
@@ -944,9 +961,8 @@ fix_fixture() {
   [ "$status" -eq 1 ]
 }
 
-@test "fence fix-stage-delta: it stages the self-heal, fixer and autofix paths and nothing else" {
+@test "fence fix-stage-delta: it stages the fixer and autofix paths and nothing else" {
   fix_fixture
-  printf 'self-heal\n' >>"${FIX_ROOT}/a.txt"
   bash "${REPO_ROOT}/.gaia/scripts/audit-fix-verify.sh" baseline --root "$FIX_ROOT" --round 1 \
     --out "${FIX_RUN_FOLDER}/baseline-1.json"
   printf 'fixer\n' >>"${FIX_ROOT}/b.txt"
@@ -962,7 +978,7 @@ fix_fixture() {
   run bash "$script"
   [ "$status" -eq 0 ]
   staged="$(git -C "$FIX_ROOT" diff --cached --name-only -z | tr '\0' ' ')"
-  [ "$staged" = "a.txt b.txt e.txt " ]
+  [ "$staged" = "b.txt e.txt " ]
 }
 
 @test "fence gate-paths: it records the paths the gate changed and no path it left alone" {

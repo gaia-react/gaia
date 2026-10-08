@@ -28,11 +28,10 @@
 #   OUTSIDE  a non-repository temp directory. This is the bats process's OWN
 #            cwd for every test in this file (set once in setup()).
 #
-# Seven stages, one per #1055 instance (README.md FC-5/FC-6, task doc table):
+# Stages, one per #1055 instance (README.md FC-5/FC-6, task doc table):
 #   1  resolve-audit-members.sh    --root flag
 #   3  audit-member-digest.sh      --root flag
 #   4  audit-write-clearance.sh    --root flag, subdirectory rejection
-#   5  audit-stamp-trailer.sh      no root argument, caller anchors via cd
 #   6  post-audit-status.sh        no root argument, caller anchors via cd
 #   7  pr-merge-audit-check.sh     no root argument, caller anchors via cd,
 #                                  FC-4's two independent roots
@@ -47,16 +46,16 @@
 # fixture's OWN copy under $MAIN, never to the real checked-out files this
 # session is running under.
 #
-# Stages 5 and 6 take no root argument at all (Phase 2 was explicitly
+# Stage 6 takes no root argument at all (Phase 2 was explicitly
 # forbidden from adding one, that is option A, ruled out in #1053), so there
-# is no line inside them to mutate. Their non-vacuity control is an
+# is no line inside it to mutate. Their non-vacuity control is an
 # INVOCATION control instead: the same hook, anchored on MAIN instead of WORKTREE,
 # must name MAIN, and the same hook with no anchor at all, from OUTSIDE, must
 # decline out loud and write nothing.
 #
 # See README.md FC-4, FC-5, FC-6 for the frozen contracts this suite asserts
 # against, and the task doc's "what 'from OUTSIDE' means" section for why
-# stages 5-7 are anchored via `( cd "$root" && ... )` rather than run with a
+# stages 6-7 are anchored via `( cd "$root" && ... )` rather than run with a
 # bare non-repository cwd.
 
 # Prints the Code Audit Team roster, one member name per line, read out of the
@@ -199,7 +198,7 @@ setup() {
     cp "$REPO_ROOT/.gaia/scripts/$script_name" "$MAIN/.gaia/scripts/$script_name"
     chmod +x "$MAIN/.gaia/scripts/$script_name"
   done
-  for script_name in pr-merge-audit-check.sh post-audit-status.sh audit-stamp-trailer.sh; do
+  for script_name in pr-merge-audit-check.sh post-audit-status.sh; do
     cp "$REPO_ROOT/.claude/hooks/$script_name" "$MAIN/.claude/hooks/$script_name"
     chmod +x "$MAIN/.claude/hooks/$script_name"
   done
@@ -248,7 +247,6 @@ setup() {
   SCRIPT_RESOLVE_MEMBERS="$MAIN/.gaia/scripts/resolve-audit-members.sh"
   SCRIPT_MEMBER_DIGEST="$MAIN/.gaia/scripts/audit-member-digest.sh"
   SCRIPT_WRITE_CLEARANCE="$MAIN/.gaia/scripts/audit-write-clearance.sh"
-  HOOK_STAMP="$MAIN/.claude/hooks/audit-stamp-trailer.sh"
   HOOK_POST="$MAIN/.claude/hooks/post-audit-status.sh"
   HOOK_MERGE="$MAIN/.claude/hooks/pr-merge-audit-check.sh"
   AGENT_MD="$MAIN/.claude/agents/code-audit-frontend.md"
@@ -310,8 +308,7 @@ physical_path() {
 }
 
 # digest_of <root> <member> [<ref>]: the real content digest, sourced fresh
-# from this fixture's own copy of the digest engine (mirrors
-# audit-stamp-trailer.bats's digest_of), so every assertion below compares
+# from this fixture's own copy of the digest engine, so every assertion below compares
 # against the SAME computation the hooks themselves perform, never a
 # hand-derived value.
 digest_of() {
@@ -404,17 +401,6 @@ provision_all_members() {
   for member_name in "${ALL_MEMBERS[@]}"; do
     write_marker_at "$root" "$root" "$member_name" >/dev/null
   done
-}
-
-# trailer_digest_on <root>: the GAIA-Audit trailer's digest field (position 2)
-# on <root>'s current HEAD, empty when no trailer is present.
-trailer_digest_on() {
-  local root="$1" trailer
-  trailer=$(git -C "$root" log -1 --format='%B' HEAD 2>/dev/null \
-    | git -C "$root" interpret-trailers --parse 2>/dev/null \
-    | grep '^GAIA-Audit:' || true)
-  [ -n "$trailer" ] || return 0
-  awk '{print $3}' <<<"$trailer"
 }
 
 # install_gh_stub: a `gh` on a fresh PATH-only directory that logs every
@@ -739,88 +725,9 @@ run_audit_root_block() {
 }
 
 # -----------------------------------------------------------------------------
-# Stage 5: audit-stamp-trailer.sh (anchor: caller cd, no root argument at
-# all). Instance 3. Non-vacuity is an INVOCATION control (no line to mutate;
-# option C put the anchoring in the caller, not in this hook).
-# -----------------------------------------------------------------------------
-
-@test "stage 5 (anchor: caller cd) anchored on WORKTREE, from OUTSIDE: stamps or declines WORKTREE's own HEAD; MAIN's HEAD and branch are untouched" {
-  local before_worktree_tree before_main_sha before_main_branch worktree_frontend_digest after_main_sha after_main_branch worktree_trailer_digest
-  provision_all_members "$WORKTREE"
-  before_worktree_tree=$(git -C "$WORKTREE" rev-parse "HEAD^{tree}")
-  before_main_sha=$(git -C "$MAIN" rev-parse HEAD)
-  before_main_branch=$(git -C "$MAIN" branch --show-current)
-  worktree_frontend_digest="$(digest_of "$WORKTREE" code-audit-frontend)"
-
-  run bash -c '( cd "$1" && AUDIT_TREE_SHA="$2" AUDIT_SELF_HEALED=false bash "$3" )' \
-    _ "$WORKTREE" "$before_worktree_tree" "$HOOK_STAMP"
-  [ "$status" -eq 0 ]
-  case "$output" in
-    "stamp: amended"*|"stamp: empty commit"*|"stamp: status only"*|"stamp: declined:"*) ;;
-    *) echo "unexpected stamp output: $output" >&2; return 1 ;;
-  esac
-
-  after_main_sha=$(git -C "$MAIN" rev-parse HEAD)
-  after_main_branch=$(git -C "$MAIN" branch --show-current)
-  [ "$after_main_sha" = "$before_main_sha" ]
-  [ "$after_main_branch" = "$before_main_branch" ]
-
-  # When it stamped (the member-aware gate cleared), the trailer names WORKTREE's
-  # own frontend digest, never MAIN's.
-  worktree_trailer_digest="$(trailer_digest_on "$WORKTREE")"
-  if [ -n "$worktree_trailer_digest" ]; then
-    [ "$worktree_trailer_digest" = "$worktree_frontend_digest" ]
-  fi
-}
-
-@test "stage 5 control A (invocation: anchored on MAIN instead of WORKTREE): the WORKTREE-shaped assertion goes red, naming MAIN instead" {
-  local before_worktree_sha before_main_tree main_frontend_digest worktree_frontend_digest main_trailer_digest after_worktree_sha worktree_trailer_digest_after
-  provision_all_members "$MAIN"
-  provision_all_members "$WORKTREE"
-  before_worktree_sha=$(git -C "$WORKTREE" rev-parse HEAD)
-  before_main_tree=$(git -C "$MAIN" rev-parse "HEAD^{tree}")
-  main_frontend_digest="$(digest_of "$MAIN" code-audit-frontend)"
-  worktree_frontend_digest="$(digest_of "$WORKTREE" code-audit-frontend)"
-
-  run bash -c '( cd "$1" && AUDIT_TREE_SHA="$2" AUDIT_SELF_HEALED=false bash "$3" )' \
-    _ "$MAIN" "$before_main_tree" "$HOOK_STAMP"
-  [ "$status" -eq 0 ]
-
-  # Positive: anchored on MAIN, it names MAIN.
-  main_trailer_digest="$(trailer_digest_on "$MAIN")"
-  if [ -n "$main_trailer_digest" ]; then
-    [ "$main_trailer_digest" = "$main_frontend_digest" ]
-  fi
-
-  # WORKTREE never moved.
-  after_worktree_sha=$(git -C "$WORKTREE" rev-parse HEAD)
-  [ "$after_worktree_sha" = "$before_worktree_sha" ]
-
-  # The main test's own assertion ("WORKTREE's trailer names WORKTREE's digest"),
-  # re-applied here, is now FALSE: nothing ran against WORKTREE in this control.
-  worktree_trailer_digest_after="$(trailer_digest_on "$WORKTREE")"
-  if [ "$worktree_trailer_digest_after" = "$worktree_frontend_digest" ] && [ -n "$worktree_trailer_digest_after" ]; then
-    echo "stage 5 control A: WORKTREE's trailer unexpectedly reflects WORKTREE's own digest; anchoring on MAIN had no effect" >&2
-    return 1
-  fi
-}
-
-@test "stage 5 control B (invocation: no anchor at all, from OUTSIDE): declines 'not in a git repo', writes nothing to MAIN or WORKTREE" {
-  local before_worktree_sha before_main_sha
-  before_worktree_sha=$(git -C "$WORKTREE" rev-parse HEAD)
-  before_main_sha=$(git -C "$MAIN" rev-parse HEAD)
-
-  run bash "$HOOK_STAMP"
-  [ "$status" -eq 0 ]
-  [ "$output" = "stamp: declined: not in a git repo" ]
-
-  [ "$(git -C "$WORKTREE" rev-parse HEAD)" = "$before_worktree_sha" ]
-  [ "$(git -C "$MAIN" rev-parse HEAD)" = "$before_main_sha" ]
-}
-
-# -----------------------------------------------------------------------------
 # Stage 6: post-audit-status.sh (anchor: caller cd, no root argument at all).
-# Instance 4. Non-vacuity is an INVOCATION control, same reason as stage 5.
+# Instance 4. Non-vacuity is an INVOCATION control: there is no line to mutate;
+# option C put the anchoring in the caller, not in this hook.
 # -----------------------------------------------------------------------------
 
 @test "stage 6 (anchor: caller cd) anchored on WORKTREE, from OUTSIDE: every gh invocation ran with WORKTREE as its working directory" {

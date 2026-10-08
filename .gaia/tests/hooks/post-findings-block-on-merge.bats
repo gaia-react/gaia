@@ -232,7 +232,9 @@ write_sidecar() {
   # Not a `${3:-...}` default: the literal carries double quotes, which end the
   # assignment's own quoting mid-expansion.
   [ -n "$findings" ] || findings='[{"finding_class":"holistic/swallowed-error","severity":"warning","area_tags":["app/services"]}]'
-  printf '{"schema":1,"member":"%s","findings":%s}\n' "$member" "$findings" \
+  jq -nc --arg member "$member" --argjson findings "$findings" \
+    '{schema: 1, member: $member,
+      findings: ($findings | map(if has("security") then . else . + {security: false} end))}' \
     > "$REPO/.gaia/local/audit/${base}.feature.${member}.findings.json"
 }
 
@@ -254,14 +256,14 @@ write_sidecar() {
 
 
 @test "a multi-round PR's block carries every round's findings, not just the last" {
-  # The end-to-end shape of gaia-react/gaia#1573: the gate stamps a trailer at
-  # the end of every cleared round, so each round's sidecar lands under a new
+  # The end-to-end shape of gaia-react/gaia#1573: every cleared round's commit
+  # carries a `GAIA-Audit` status, so each round's sidecar lands under a new
   # base half, and the last round is clean by construction because a clean
   # round is what let the merge happen. A block keyed to one base carried that
   # empty final round and nothing else.
   write_sidecar
   write_sidecar eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee code-audit-maintainer-shell \
-    '[{"finding_class":"holistic/secret-exposure","severity":"error","area_tags":[".gaia/scripts"]}]'
+    '[{"finding_class":"holistic/secret-exposure","severity":"warning","area_tags":[".gaia/scripts"]}]'
   # The final, cleared round: present, empty, and the only one a base resolved
   # at merge time could ever have selected.
   write_sidecar "$(git -C "$REPO" rev-parse HEAD)" code-audit-frontend '[]'

@@ -81,9 +81,15 @@ assert_pinned() {
 @test "agent names every stop_reason value" {
   local reason
   for reason in clean window-end checkpoint-deny dispositions-check-failed \
-    needs-human failure; do
+    needs-human member-wave-dirty failure; do
     assert_pinned "\`$reason\`"
   done
+}
+
+@test "UAT-007: the baseline's dirty refusal maps to member-wave-dirty, naming the wave's members and paths, with no commit" {
+  assert_pinned 'The baseline refuses a tree the member wave left dirty (exit 4; stdout is `member-wave-dirty` then one `dirty <path>` line per path).'
+  assert_pinned 'Stop `member-wave-dirty` with a `stop_detail` that names the members dispatched in the wave and the dirty paths, commit nothing, and edit nothing'
+  assert_pinned 'the stop is attributed to the wave, not to one member.'
 }
 
 @test "agent maps each deny prefix to its stop_reason" {
@@ -115,9 +121,40 @@ assert_pinned() {
   closing="$(awk '/^## Closing round$/ {inside_closing_section=1; next} /^## / {inside_closing_section=0} inside_closing_section' "$AGENT")"
   [ -n "$closing" ]
   local needle
-  for needle in 'audit-dispositions-check.sh pr-sections' 'file every `file` disposition through the `file-tech-debt` skill' 'A dirty tree after the closing wave stops the unit `needs-human`'; do
+  for needle in 'audit-dispositions-check.sh pr-sections --root <root> --run-folder <run>' 'through `.gaia/scripts/file-tech-debt.sh`' 'run `check-outcomes`' 'A dirty tree after the closing wave stops the unit `member-wave-dirty`'; do
     grep -qF -- "$needle" <<<"$closing" || { echo "not under Closing round: $needle" >&2; return 1; }
   done
+  # The retired stop and the retired self-repair clause are gone.
+  grep -qF -- 'stops the unit `needs-human`, naming the paths' <<<"$closing" && return 1
+  grep -qiF -- 'self-heal' "$AGENT" && return 1
+  true
+}
+
+@test "UAT-007: the closing round maps a dirty tree after its wave to member-wave-dirty, and the pin fails without it" {
+  assert_pinned 'A dirty tree after the closing wave stops the unit `member-wave-dirty`, naming the wave'"'"'s members and the dirty paths'
+}
+
+@test "UAT-040: the unit files only through the filing script and never runs gh issue" {
+  assert_pinned '.gaia/scripts/file-tech-debt.sh file'
+  grep -qF -- 'gh issue create' "$AGENT" && return 1
+  assert_pinned 'Never run `gh issue` yourself and never file by any other route.'
+  true
+}
+
+@test "UAT-005: every round re-files each retry file through the filing script and records filing_pending" {
+  assert_pinned '- Retry pass: run the same command with `--finding <f>` and `--disposition file` once for every file in `<run>/filing-retry/` that an earlier `transient` outcome left, into the same outcome file.'
+  assert_pinned 'into `filing_pending`'
+  assert_pinned 'An `absent` or `transient` outcome never stops the unit and never blocks the merge.'
+}
+
+@test "every pr-sections call the unit makes passes --root" {
+  local line
+  while IFS= read -r line; do
+    case "$line" in
+      *'pr-sections'*) grep -qF -- 'pr-sections --root' <<<"$line" || { echo "no --root: $line" >&2; return 1; } ;;
+    esac
+  done <"$AGENT"
+  assert_pinned 'pr-sections --root <root> --run-folder <run>'
 }
 
 @test "agent names the window check, the ENFORCEMENT_PATHS rule and the stop" {

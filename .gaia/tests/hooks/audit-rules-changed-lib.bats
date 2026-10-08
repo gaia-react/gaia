@@ -34,7 +34,7 @@ setup() {
 }
 
 @test "a merely-shared machinery path is not matched by audit_path_is_global_rule" {
-  run audit_path_is_global_rule ".claude/hooks/lib/audit-selfheal-paths.sh"
+  run audit_path_is_global_rule ".claude/hooks/lib/cross-repo-refusal.sh"
   [ "$status" -ne 0 ]
 
   run audit_path_is_global_rule ".github/audit/resolve-check-base.sh"
@@ -97,7 +97,7 @@ setup() {
 
 @test "audit_rules_reset_for returns 1 on a delta of only merely-shared machinery" {
   run audit_rules_reset_for "code-audit-frontend" <<'EOF'
-.claude/hooks/lib/audit-selfheal-paths.sh
+.claude/hooks/lib/cross-repo-refusal.sh
 .gaia/scripts/audit-write-findings.sh
 EOF
   [ "$status" -ne 0 ]

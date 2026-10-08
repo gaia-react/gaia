@@ -1,0 +1,17 @@
+{
+  "load": 0,
+  "source": "registry",
+  "list": [["frontend", "frontend"]],
+  "globs": {
+    "tddUnitTests": {
+      "match": ["frontend/app/x.test.ts"],
+      "noMatch": ["app/x.test.ts"]
+    }
+  },
+  "forPath": {
+    "frontend/app/x.ts": "frontend"
+  },
+  "dir": {
+    "frontend": "frontend"
+  }
+}

@@ -21,7 +21,7 @@
 # name, so co-dispatched members never pick the same file. A name derived from
 # the audit key alone closes neither case, because the key is a base sha plus a
 # branch slug over a shared base every co-dispatched member resolves alike, and
-# that base advances only when a clean round stamps its trailer, so the
+# that base advances only when a clean round posts its status, so the
 # re-dispatch after a withheld round recomputes the key it just used. Writing
 # the file fresh with `printf` immediately before the writer is what keeps an
 # earlier round's file from republishing.

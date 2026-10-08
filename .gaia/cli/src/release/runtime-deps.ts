@@ -141,10 +141,8 @@ const PATH_PREFIXES = ['.gaia/', '.claude/', '.github/'] as const;
  *     compared against a changed-path list, never sourced or executed, and it
  *     is per-machine and gitignored, so it can never have a manifest entry.
  *   - The retired root-layout move list in `.gaia/scripts/precommit-packages.sh`
- *     (`is_retired_source`) and the self-heal refusal ERE in
- *     `.claude/hooks/lib/audit-selfheal-paths.sh` (`.gaia/packages.json`
- *     anchored). Both name locations that no longer exist at the root after the
- *     frontend move, as case patterns or regex text compared against staged
+ *     (`is_retired_source`). It names locations that no longer exist at the
+ *     root after the frontend move, as case patterns compared against staged
  *     paths, never sourced or executed, so a missing target is the intended
  *     state. Each retired location is listed as its own token because the
  *     allowlist matches exactly.

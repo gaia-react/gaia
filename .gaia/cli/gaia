@@ -18153,7 +18153,6 @@ var GLOB_KEYS = [
   "tddUnitTests",
   "tddStrictCandidates",
   "emergentTests",
-  "selfHealRefuse",
   "preCommitSource",
   "doctorConfigs",
   "dependencyManifests"
@@ -18172,7 +18171,6 @@ var descriptorSchema = (expectedName) => external_exports.object({
     doctorConfigs: globList,
     emergentTests: globList,
     preCommitSource: globList,
-    selfHealRefuse: globList,
     tddStrictCandidates: globList,
     tddUnitTests: globList
   }),
@@ -18203,29 +18201,6 @@ var BUILTIN_DESCRIPTOR = {
       "app/**/*.stories.tsx"
     ],
     preCommitSource: ["app/**", "test/**", ".storybook/**", ".playwright/**"],
-    selfHealRefuse: [
-      ".claude/**",
-      "CLAUDE.md",
-      "gaia.package.json",
-      "test/**",
-      ".playwright/**",
-      ".storybook/**",
-      "app/**/tests/**",
-      "app/**/*.test.ts",
-      "app/**/*.test.tsx",
-      "app/**/*.stories.tsx",
-      "package.json",
-      "tsconfig*.json",
-      "*.config.ts",
-      "*.config.mts",
-      "*.config.mjs",
-      "*.config.cjs",
-      "*.config.js",
-      "Dockerfile",
-      "Dockerfile.dockerignore",
-      "components.json",
-      ".*"
-    ],
     tddStrictCandidates: [
       "app/utils/**",
       "app/services/**",

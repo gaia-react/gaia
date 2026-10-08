@@ -6,8 +6,8 @@
 # workflow's tag-equality gate calls it as well, because "what version does this
 # file declare" has one answer regardless of what the caller compares it to.
 #
-# The literal this produces is the first field of the GAIA-Audit trailer and of
-# the GAIA-Audit commit-status description, and every reader compares it for
+# The literal this produces is the first field of the GAIA-Audit commit-status
+# description, and every reader compares it for
 # EQUALITY to decide whether a standing clearance still applies. Producers and
 # readers live in three trees (.github/audit, .gaia/scripts, .claude/hooks), so
 # the normalization has to be one function rather than one idiom: correct a

@@ -114,8 +114,8 @@
 #                         covered: clean and advisory-dirty (earned marker plus
 #                         sidecar), blocking-dirty full report and terse
 #                         ledger-pointer (return alone, or a refusal), a
-#                         self-healed pass and a DIRTY= withhold (return alone,
-#                         no marker, no refusal), and a declined sidecar write
+#                         DIRTY= withhold (return alone, no marker, no
+#                         refusal), and a declined sidecar write
 #                         (earned marker plus return). A bare harness-reminder
 #                         / output-style echo carries no report token and, on
 #                         its own, classifies NO-OP.
