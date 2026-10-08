@@ -7,6 +7,10 @@
 # only whether the command is a `git commit` (bash_git_commit) and which of
 # run-probe.sh's scripted commits it is (the probe-commit-<x> marker in the
 # commit message, probe_commit_marker), which is all the commit rows need.
+# It also records the probe-if-<marker> a hook-if scenario command carries
+# (probe_if_marker): this line is the proof that call reached PreToolUse,
+# independent of any gated handler, so a hook_if row can tell a gate that
+# stood down from a call that never happened.
 #
 # Argument 1 is the registering settings file's tag. Stands down when
 # GAIA_PROBE_LOG is unset. Emits no decision: exit 0 with empty stdout leaves
@@ -33,6 +37,9 @@ line="$(printf '%s' "$payload" | jq -c --arg tag "$probe_tag" '{
     else null end),
   probe_commit_marker: (if .tool_name == "Bash"
     then ([(.tool_input.command // "") | capture("probe-commit-(?<marker>[a-z])")][0].marker // null)
+    else null end),
+  probe_if_marker: (if .tool_name == "Bash"
+    then ([(.tool_input.command // "") | capture("probe-if-(?<marker>m[0-9][0-9][a-z]?)")][0].marker // null)
     else null end),
   permission_mode: (.permission_mode // null)
 }' 2>/dev/null)" || line=""

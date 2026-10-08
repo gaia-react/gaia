@@ -86,7 +86,7 @@ regenerate() {
   for rule in 'Edit(frontend/.env)' 'Edit(frontend/.claude/settings.json)'; do
     jq -e --arg r "$rule" '.permissions.deny | index($r) != null' "$ROOT_SETTINGS"
   done
-  # A .env.* deny also blocks the tracked, editable .env.example; block-env-write.sh covers it.
+  # A .env.* deny also blocks the tracked, editable .env.example; block-secrets-write.sh covers it.
   jq -e '.permissions.deny | index("Edit(frontend/.env.*)") == null' "$ROOT_SETTINGS"
 }
 
@@ -198,6 +198,90 @@ regenerate() {
   [ "$status" -eq 1 ]
   grep -qF -- "PreToolUse hook command" <<<"$output"
   grep -qF -- 'additionalDirectories entry ".."' <<<"$output"
+}
+
+# set_handler_if <settings file> <hook index> <if rule>: set one PreToolUse handler's if.
+set_handler_if() {
+  jq --argjson i "$2" --arg r "$3" '.hooks.PreToolUse[0].hooks[$i]["if"] = $r' "$1" >"$TREE/changed.json"
+  mv "$TREE/changed.json" "$1"
+}
+
+@test "the presence assertion fails on a generated handler that dropped the root's if" {
+  build_tree
+  printf '#!/bin/sh\nexit 0\n' >"$TREE/.gaia/cli/gaia"
+  set_handler_if "$TREE/.claude/settings.json" 0 'Bash(git *)'
+  run_drift
+  [ "$status" -eq 1 ]
+  grep -qF -- "frontend/.claude/settings.json is missing" <<<"$output"
+  grep -qF -- "$(jq -c '.hooks.PreToolUse[0].hooks[0].command' "$TREE/.claude/settings.json")" <<<"$output"
+  grep -qF -- '"Bash(git *)"' <<<"$output"
+}
+
+@test "the presence assertion fails on a generated handler whose if was rewritten" {
+  build_tree
+  printf '#!/bin/sh\nexit 0\n' >"$TREE/.gaia/cli/gaia"
+  set_handler_if "$TREE/.claude/settings.json" 0 'Bash(git *)'
+  set_handler_if "$TREE/frontend/.claude/settings.json" 0 'Bash(gh *)'
+  run_drift
+  [ "$status" -eq 1 ]
+  grep -qF -- "frontend/.claude/settings.json is missing" <<<"$output"
+  grep -qF -- "$(jq -c '.hooks.PreToolUse[0].hooks[0].command' "$TREE/.claude/settings.json")" <<<"$output"
+  grep -qF -- '"Bash(git *)"' <<<"$output"
+}
+
+@test "the presence assertion fails when one of two same-command handlers is missing from the generated file" {
+  build_tree
+  printf '#!/bin/sh\nexit 0\n' >"$TREE/.gaia/cli/gaia"
+  # The generated file carries the handler with the first rule only; the root
+  # also carries a copy of it with a second rule.
+  set_handler_if "$TREE/.claude/settings.json" 0 'Bash(git *)'
+  set_handler_if "$TREE/frontend/.claude/settings.json" 0 'Bash(git *)'
+  jq '.hooks.PreToolUse[0].hooks += [.hooks.PreToolUse[0].hooks[0] | .["if"] = "Bash(gh pr merge *)"]' \
+    "$TREE/.claude/settings.json" >"$TREE/changed.json"
+  mv "$TREE/changed.json" "$TREE/.claude/settings.json"
+  run_drift
+  [ "$status" -eq 1 ]
+  grep -qF -- "frontend/.claude/settings.json is missing" <<<"$output"
+  grep -qF -- "$(jq -c '.hooks.PreToolUse[0].hooks[0].command' "$TREE/.claude/settings.json")" <<<"$output"
+  grep -qF -- '"Bash(gh pr merge *)"' <<<"$output"
+  grep -qF -- '"Bash(git *)"' <<<"$output" && return 1
+  true
+}
+
+@test "the presence assertion passes when root and generated agree on command and if" {
+  build_tree
+  printf '#!/bin/sh\nexit 0\n' >"$TREE/.gaia/cli/gaia"
+  set_handler_if "$TREE/.claude/settings.json" 0 'Bash(git *)'
+  set_handler_if "$TREE/frontend/.claude/settings.json" 0 'Bash(git *)'
+  run_drift
+  [ "$status" -eq 0 ]
+  grep -qF -- "check-settings-drift: clean" <<<"$output"
+}
+
+# deny_guards_with_if <settings file>: prints "<event> <script>" for every deny guard
+# handler that carries an if. The filter is best-effort and the guards' verb arming
+# is fail-closed, so none may carry one.
+deny_guards_with_if() {
+  jq -r '.hooks | to_entries[] | .key as $event | .value[] | .hooks[]
+    | select(.["if"]) | (.command | capture("hooks/(?<name>[^\"]+)").name) as $name
+    | select($name | test("^(block-.*|pr-merge-audit-check|worthiness-presence-check|red-verify-commit-check)\\.sh$"))
+    | "\($event) \($name)"' "$1"
+}
+
+@test "no deny guard handler in the root or generated settings carries an if" {
+  [ "$(jq '[.hooks.PreToolUse[].hooks[] | select(.command | test("hooks/block-"))] | length' "$ROOT_SETTINGS")" -gt 0 ]
+  [ -z "$(deny_guards_with_if "$ROOT_SETTINGS")" ]
+  [ -z "$(deny_guards_with_if "$GENERATED")" ]
+}
+
+@test "the deny-guard if check reports a deny guard handler given an if" {
+  build_tree
+  jq '(.hooks.PreToolUse[].hooks[] | select(.command | test("hooks/block-no-verify.sh"))) |= . + {"if": "Bash(git *)"}' \
+    "$TREE/.claude/settings.json" >"$TREE/changed.json"
+  mv "$TREE/changed.json" "$TREE/.claude/settings.json"
+  run deny_guards_with_if "$TREE/.claude/settings.json"
+  [ "$status" -eq 0 ]
+  [ "$output" = "PreToolUse block-no-verify.sh" ]
 }
 
 @test "a missing generated file fails the drift check" {

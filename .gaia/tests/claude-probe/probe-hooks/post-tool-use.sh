@@ -7,6 +7,11 @@
 # A Read line here is also what verifies a lazy-discovery scenario's Read
 # before run-probe.sh issues the listing turn.
 #
+# For a Bash call it records the probe-if-<marker> a hook-if scenario command
+# carries (probe_if_marker). A PostToolUse hook_if row is judged only on this
+# line: a call denied at PreToolUse, or one that failed and fired
+# PostToolUseFailure, has a PreToolUse line and none here.
+#
 # Logs no tool input beyond the path and no tool output. Argument 1 is the
 # registering settings file's tag. Stands down when GAIA_PROBE_LOG is unset.
 set -u
@@ -31,6 +36,9 @@ line="$(printf '%s' "$payload" | jq -c --arg tag "$probe_tag" '{
     else null end),
   probe_commit_marker: (if .tool_name == "Bash"
     then ([(.tool_input.command // "") | capture("probe-commit-(?<marker>[a-z])")][0].marker // null)
+    else null end),
+  probe_if_marker: (if .tool_name == "Bash"
+    then ([(.tool_input.command // "") | capture("probe-if-(?<marker>m[0-9][0-9][a-z]?)")][0].marker // null)
     else null end)
 }' 2>/dev/null)" || line=""
 

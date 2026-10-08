@@ -146,7 +146,18 @@ if ! type gaia_require_jq >/dev/null 2>&1; then
 fi
 gaia_require_jq 'the audit loop state guard' "$payload" tool_input 'audit-loop' 'local/protected' 'cache/shared/context'
 
-tool_name=$(jq -r '.tool_name // empty' <<<"$payload")
+set +e
+# shellcheck source=lib/hook-payload.sh
+[ -n "$_jq_library_directory" ] && [ -f "$_jq_library_directory/hook-payload.sh" ] && . "$_jq_library_directory/hook-payload.sh" 2>/dev/null
+set -e
+if ! type gaia_hook_payload_read >/dev/null 2>&1; then
+  printf 'BLOCKED: block-audit-loop-write.sh cannot load lib/hook-payload.sh, so this call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
+  exit 2
+fi
+# An empty or unreadable payload names nothing to guard, and the hook stands
+# down with status 0, as the per-field reads did for an empty payload.
+gaia_hook_payload_read "$payload" || exit 0
+tool_name="$GAIA_HOOK_TOOL_NAME"
 
 DENY_STATE_MESSAGE="BLOCKED: block-audit-loop-write.sh: the audit loop state (<main>/.gaia/local/protected/audit-loop/) is written only by the audit loop hooks. Claude never writes, edits, moves or deletes it. A human answers a checkpoint through the pinned AskUserQuestion, or by typing a whole prompt that is exactly the audit-grant <n> or audit-accept line (see wiki/concepts/PR Merge Workflow.md, #### The branch checkpoint). A corrupt state file is repaired by a human from a terminal outside Claude Code."
 DENY_CONTEXT_MESSAGE="BLOCKED: block-audit-loop-write.sh: the context readings (<main>/.gaia/local/cache/shared/context/) are written by the statusline on each render, and the audit checkpoint trusts them. Claude never writes, edits, moves or deletes them. A human answers a checkpoint through the pinned AskUserQuestion, or by typing a whole prompt that is exactly the audit-grant <n> or audit-accept line (see wiki/concepts/PR Merge Workflow.md, #### The branch checkpoint)."
@@ -526,7 +537,7 @@ runs_recorder() {
 
 case "$tool_name" in
   Edit | Write | MultiEdit)
-    file_path=$(jq -r '.tool_input.file_path // empty' <<<"$payload")
+    file_path="$GAIA_HOOK_FILE_PATH"
     [[ -n "$file_path" ]] || exit 0
 
     # Literal spelling first: it needs no resolution and survives a symlink
@@ -534,7 +545,7 @@ case "$tool_name" in
     class=$(guarded_class "$file_path")
     [ -z "$class" ] || deny "$class"
 
-    cwd=$(jq -r '.cwd // empty' <<<"$payload")
+    cwd="$GAIA_HOOK_CWD"
     [[ -n "$cwd" ]] || cwd=$(pwd -P)
     resolved=$(physical_path "$file_path" "$cwd")
 
@@ -561,7 +572,7 @@ case "$tool_name" in
     ;;
 
   Bash | Monitor)
-    command_line=$(jq -r '.tool_input.command // empty' <<<"$payload")
+    command_line="$GAIA_HOOK_COMMAND"
     [[ -n "$command_line" ]] || exit 0
 
     runs_recorder "$command_line" && deny recorder

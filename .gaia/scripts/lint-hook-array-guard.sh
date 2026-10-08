@@ -32,7 +32,7 @@
 #   [ "${#arr[@]}" -eq 0 ] || some_command "${arr[@]}"     # count-guard
 #   some_command ${arr[@]+"${arr[@]}"}                     # offset-guard
 #
-# Reference fix: .claude/hooks/block-env-read.sh (the guarded process_segment).
+# Reference fix: .claude/hooks/block-sensitive-read.sh (the guarded process_segment).
 
 set -euo pipefail
 

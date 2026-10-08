@@ -790,3 +790,41 @@ reason_of_output() {
   [ "$status" -eq 0 ]
   refute_denied
 }
+
+# --- the one-jq payload reader ---
+
+@test "lib/hook-payload.sh absent: a commit the intact hook denies is allowed silently" {
+  stage_file "frontend/app/utils/x/index.test.ts" "$PASSING_TEST"
+  run_commit_hook
+  [ "$status" -eq 0 ]
+  denied
+  local scratch_home="$BATS_TEST_TMPDIR/no-payload-lib" entry
+  mkdir -p "$scratch_home/.claude/hooks/lib" "$scratch_home/.gaia"
+  cp "$HOME_ROOT/.claude/hooks/red-verify-commit-check.sh" "$scratch_home/.claude/hooks/"
+  for entry in "$HOME_ROOT"/.claude/hooks/lib/*; do
+    [ "$(basename "$entry")" = hook-payload.sh ] && continue
+    ln -sfn "$entry" "$scratch_home/.claude/hooks/lib/$(basename "$entry")"
+  done
+  ln -sfn "$HOME_ROOT/.gaia/scripts" "$scratch_home/.gaia/scripts"
+  HOOK_ABSOLUTE_PATH="$scratch_home/.claude/hooks/red-verify-commit-check.sh"
+  run_commit_hook
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "a non-arming Bash payload spawns exactly one jq process" {
+  local shim_directory spawn_log real_jq payload spawn_count
+  shim_directory="$BATS_TEST_TMPDIR/jq-shim"
+  spawn_log="$BATS_TEST_TMPDIR/jq-spawns"
+  real_jq=$(command -v jq)
+  mkdir -p "$shim_directory"
+  printf '#!/bin/sh\nprintf x >>"%s"\nexec "%s" "$@"\n' "$spawn_log" "$real_jq" >"$shim_directory/jq"
+  chmod +x "$shim_directory/jq"
+  : >"$spawn_log"
+  payload=$(jq -nc '{tool_name: "Bash", tool_input: {command: "ls -la"}}')
+  run env PATH="$shim_directory:$PATH" bash -c 'cd "$1" && printf %s "$2" | bash "$3"' _ "$REPO" "$payload" "$HOOK_ABSOLUTE_PATH"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  spawn_count=$(wc -c <"$spawn_log" | tr -d ' ')
+  [ "$spawn_count" -eq 1 ]
+}

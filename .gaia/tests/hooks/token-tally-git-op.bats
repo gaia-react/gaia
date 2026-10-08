@@ -32,6 +32,7 @@ setup() {
   VERB_ARMING_SOURCE="$REPO_ROOT/.claude/hooks/lib/verb-arming.sh"
   VERB_ARMING_WALK_SOURCE="$REPO_ROOT/.claude/hooks/lib/verb-arming-walk.sh"
   REPO_SCOPE_SOURCE="$REPO_ROOT/.claude/hooks/lib/repo-scope.sh"
+  HOOK_PAYLOAD_SOURCE="$REPO_ROOT/.claude/hooks/lib/hook-payload.sh"
   ANCHOR="$REPO_ROOT/.gaia/scripts/tests/fixtures/token-tally/projects"
   SESSION="fixturesession0001"
 
@@ -67,6 +68,7 @@ build_repo() {
   cp "$VERB_ARMING_SOURCE" "$REPO/.claude/hooks/lib/verb-arming.sh"
   cp "$VERB_ARMING_WALK_SOURCE" "$REPO/.claude/hooks/lib/verb-arming-walk.sh"
   cp "$REPO_SCOPE_SOURCE" "$REPO/.claude/hooks/lib/repo-scope.sh"
+  cp "$HOOK_PAYLOAD_SOURCE" "$REPO/.claude/hooks/lib/hook-payload.sh"
 }
 
 write_running() {
@@ -624,4 +626,23 @@ stage_with_plan() {
   [ "$status" -eq 0 ]
   [ -z "$output" ]
   [ "$(jq -r '.kind' "$REPO/.gaia/local/telemetry/cost.jsonl")" = "execute" ]
+}
+
+@test "hook-payload.sh missing: exit 0 with empty stdout, no execute row" {
+  build_repo
+  rm -f "$REPO/.claude/hooks/lib/hook-payload.sh"
+  STAGED_HOOK="$REPO/.claude/hooks/token-tally-git-op.sh"
+  cp "$HOOK_ABSOLUTE_PATH" "$STAGED_HOOK"
+  cd "$REPO"
+  branch="$(git branch --show-current)"
+  plan_directory="$REPO/.gaia/local/plans/my-plan"
+  write_readme_with_spec "$plan_directory" "/abs/root/.gaia/local/specs/SPEC-013/SPEC.md"
+  write_running "$plan_directory" "$branch" "2026-07-01T00:00:00Z"
+
+  local input
+  input=$("$HELPERS/mock-hook-input.sh" pre-tool-use "$SESSION" Bash "git commit -m x")
+  run env GAIA_TALLY_PROJECTS_ROOT="$ANCHOR" bash "$STAGED_HOOK" <<<"$input"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ ! -f "$REPO/.gaia/local/telemetry/cost.jsonl" ]
 }
