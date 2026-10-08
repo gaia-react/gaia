@@ -6,6 +6,8 @@ description: Promote a consolidated SPEC or plan summary into the GAIA wiki, pre
 
 The orchestrator runs this step after consolidation, once the audit has cleared and the human confirmed ready to merge, on the open PR's branch. It takes a `SPEC-NNN` id for the spec arm (`.gaia/local/specs/SPEC-NNN/SUMMARY.md`) or a `PLAN-NNN` id for the plan arm (`.gaia/local/plans/PLAN-NNN/SUMMARY.md`), both resolved through the main checkout. It reads the consolidated `SUMMARY.md`, writes pages into `wiki/` in the working tree, and returns the page list and one Choice token for the orchestrator to record and commit.
 
+Contents: Step 1 - Resolve the source; Step 2 - Read promotion gate; Step 3 - Resolve the open PR; Step 4 - Route to wiki destinations; Step 5 - Render and write pages; Step 5b - Page body rendering; Step 6 - Return the page list; Step 7 - Report.
+
 ## Step 1 - Resolve the source
 
 The orchestrator passes the `SPEC-NNN` or `PLAN-NNN` id as the invocation argument. Resolve the source path by id shape, anchored at the main checkout (`main_root="$(bash .gaia/scripts/main-root-lib.sh)"`), because the gitignored `.gaia/local/` tree lives there and not in an isolation worktree:
@@ -204,7 +206,7 @@ Render the body in the following sections, in order, immediately after the closi
      - SSH: `git@github.com:<owner>/<repo>.git` → strip the `git@github.com:` prefix and the `.git` suffix.
      - HTTPS: `https://github.com/<owner>/<repo>.git` → strip the `https://github.com/` prefix and the `.git` suffix.
 
-     If both methods fail (no `gh`, no `origin` remote), substitute the literal `<owner>/<repo>` placeholder and emit a warning `wiki-promote: could not resolve repo slug; PR URL placeholder left in references.`. The wiki-sync handoff will surface this for manual fix.
+     If both methods fail (no `gh`, no `origin` remote), substitute the literal `<owner>/<repo>` placeholder and emit a warning `wiki-promote: could not resolve repo slug; PR URL placeholder left in references.`. Nothing downstream fixes the placeholder: Step 6 returns the warning with the page list so the orchestrator reports it to the human in its wiki-promotion record, and the human corrects the URL by hand.
 
    - `NNN` and `<pr_url>`, the open PR's `pr_number` and `pr_url` from Step 3.
    - `<ISO 8601 UTC>`, same value as `promoted_at` in the page frontmatter.
@@ -237,7 +239,7 @@ After all pages have been written and the body is rendered, update `wiki/index.m
 
 If `--preview` mode (from Step 2) is active, render the proposed index diff to stdout and do NOT write.
 
-The wiki-sync handoff (Step 6) will pick up the modified `wiki/index.md` along with the promoted pages, no separate staging is needed.
+The orchestrator stages the modified `wiki/index.md` together with the returned pages (Step 6); no separate staging is needed here.
 
 Match the existing wiki voice: declarative, no preamble, concrete examples where useful. End the file with a single trailing newline.
 

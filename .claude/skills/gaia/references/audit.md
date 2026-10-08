@@ -383,7 +383,7 @@ An adversarial verification round that hardens Stage 1's classifications against
 
 It runs only when Stage 1 reported ≥1 action; a 0-action report has nothing to verify and skips both the round and the decision gate (the existing 0-action auto-apply path is unchanged). The round dispatches the skill's own parallel `general-purpose` Agent fan-out (the same primitive Stage 1 and Stage 2 use), so it is available in every context including headless and `--apply` runs.
 
-**Deliberate divergences from the canonical adversarial pattern (`.claude/skills/gaia/references/spec.md` step 7, `plan.md` step 4.6). Do not "fix" these back to the spec shape:**
+**Deliberate divergences from the canonical adversarial pattern (`.claude/skills/gaia/references/spec/audit.md`, `.claude/skills/gaia/references/plan/decomposition-audit.md`). Do not "fix" these back to the spec shape:**
 
 - **Asymmetric disposition, biased toward DROPPING flagged deletes.** Wrongly keeping an entry is trivial clutter; wrongly executing a memory delete is permanent. So when a lens flags a `delete` / `shrink` as mis-classified, the safe disposition is to DROP or correct that action, not to keep it. There is deliberately NO spec-style refuter that defaults to "refuted" and pushes surviving findings back toward executing the action: the spec round refutes findings to keep the SPEC as-authored, here the conservative default is the opposite.
 - **Refutation is CF-only and deep-tier.** Only judgment-heavy CONFLICT (CF) findings get a second-adjudication pass. CL and ES findings are checkable and binary (the cited fact resolves or it does not; the load-bearing content survives or it does not), so they route to disposition directly with no refuter, like the plan audit.
@@ -459,14 +459,14 @@ This is NOT the spec round's "default to refuted" refuter; it is a second opinio
 - A CONFLICT-driven `replace` / `delete` action **survives** only if the CF lens AND its re-adjudicator agree the conflict is genuine AND agree on the same authoritative source.
 - On any disagreement (the re-adjudicator finds the conflict spurious, or picks a different authoritative source), **drop or downgrade** the action: do not execute a `replace` / `delete` that could clobber a legitimately-distinct local statement when two adjudicators cannot agree it is wrong.
 
-This default (disagreement → drop the action) is the deliberate INVERSION of spec.md 7b's "disagreement → keep the finding refuted → SPEC unchanged", driven by the irreversibility asymmetry: there, keeping the SPEC as-authored is safe; here, the safe direction is to not execute the destructive edit.
+This default (disagreement → drop the action) is the deliberate INVERSION of `spec/audit.md` 7b's "disagreement → keep the finding refuted → SPEC unchanged", driven by the irreversibility asymmetry: there, keeping the SPEC as-authored is safe; here, the safe direction is to not execute the destructive edit.
 
-### Disposition routing and the stamp (mirror plan.md 4.6b)
+### Disposition routing and the stamp (mirror `plan/decomposition-audit.md` 4.6b)
 
 Route each surviving finding by scope:
 
 - **Localized finding** (one mis-classified action): drop or correct that action block directly in the report file. The main conversation edits the report; it lives under `.gaia/local/audit/`, which the main conversation may write. "Drop" removes the action block; "correct" fixes the cited target or `reason` when the lens supplies a correct one. Because the disposition is asymmetric, a `delete` / `shrink` a lens cannot confirm is DROPPED, not kept (the spec round keeps unrefuted findings to preserve the artifact; here the conservative default is to not execute the unconfirmed destructive edit).
-- **Structural finding** (a whole Stage-1 lens is miscalibrated, e.g. every STALE classification used the same flawed grep and they are all rename-not-removal): re-spawn the Stage 1 (Research) subagent (mirror plan.md 4.6b's re-spawn-the-planner) with the surviving findings appended as a correction directive. The re-spawn reuses the existing Stage 1 subagent definition, goes through the same report path, and overwrites the flawed report. Bound this to ONE re-spawn: after re-spawning, re-run the round once against the regenerated report, then proceed (do not loop indefinitely).
+- **Structural finding** (a whole Stage-1 lens is miscalibrated, e.g. every STALE classification used the same flawed grep and they are all rename-not-removal): re-spawn the Stage 1 (Research) subagent (mirror `plan/decomposition-audit.md` 4.6b's re-spawn-the-planner) with the surviving findings appended as a correction directive. The re-spawn reuses the existing Stage 1 subagent definition, goes through the same report path, and overwrites the flawed report. Bound this to ONE re-spawn: after re-spawning, re-run the round once against the regenerated report, then proceed (do not loop indefinitely).
 
 **The stamp.** After the round completes (findings dispositioned, report edited), stamp the report frontmatter `audit_hardened: true`. This is the idempotency and inheritance signal:
 

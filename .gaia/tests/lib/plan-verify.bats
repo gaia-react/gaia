@@ -283,3 +283,52 @@ verify_spec_less() {
   echo "$output" | grep -qF 'WARN:' && return 1
   true
 }
+
+# The planner substitutes the absolute values for these tokens in every file it
+# writes; a surviving token sends a cold orchestrator to a literal brace path.
+@test "an unsubstituted placeholder in any generated plan file fails naming the file and token" {
+  local token file
+  for file in ORCHESTRATOR.md KICKOFF.md README.md task-one.md; do
+    for token in '{PLAN_DIR}' '{SPEC_PATH}' '{AUDIT_PATH}'; do
+      rm -rf "$PLAN"
+      mkdir -p "$PLAN"
+      spec_less_fixture
+      printf 'Read %s/README.md first.\n' "$token" >>"$PLAN/$file"
+      verify_spec_less
+      [ "$status" -eq 1 ] || { echo "$file with $token exited $status" >&2; return 1; }
+      echo "$output" | grep -F -- "$file" | grep -qF -- "$token" || { echo "no line names $file and $token: $output" >&2; return 1; }
+    done
+  done
+}
+
+@test "a placeholder in the spec-derived arm fails the same way" {
+  spec_fixture
+  printf 'bash uat-write.sh {SPEC_PATH}\n' >>"$PLAN/ORCHESTRATOR.md"
+  verify_spec
+  [ "$status" -eq 1 ]
+  echo "$output" | grep -F 'ORCHESTRATOR.md' | grep -qF '{SPEC_PATH}'
+}
+
+@test "every surviving placeholder is reported, one line each" {
+  spec_less_fixture
+  printf '{PLAN_DIR}\n{AUDIT_PATH}\n' >>"$PLAN/KICKOFF.md"
+  verify_spec_less
+  [ "$status" -eq 1 ]
+  [ "$(echo "$output" | grep -c 'unsubstituted')" -eq 2 ]
+}
+
+@test "the same plan with the token substituted passes" {
+  spec_less_fixture
+  printf 'Read %s/README.md first.\n' "$PLAN" >>"$PLAN/ORCHESTRATOR.md"
+  verify_spec_less
+  [ "$status" -eq 0 ]
+}
+
+@test "a placeholder in a file the planner does not generate is not scanned" {
+  spec_less_fixture
+  mkdir -p "$PLAN/audit"
+  printf '{PLAN_DIR}\n' >"$PLAN/PROGRESS.md"
+  printf '{PLAN_DIR}\n' >"$PLAN/audit/DP.json"
+  verify_spec_less
+  [ "$status" -eq 0 ]
+}

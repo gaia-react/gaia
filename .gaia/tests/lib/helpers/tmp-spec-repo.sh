@@ -107,7 +107,7 @@ printf '{\n  "version": 1,\n  "specs": []\n}\n' > .gaia/local/specs/ledger.json
 
 # Copy (not symlink) so the scripts' ${BASH_SOURCE[0]}-relative source of
 # with-ledger-lock.sh resolves to this tmp lib dir.
-for library_name in spec-allocator.sh plan-allocator.sh ledger-update.sh with-ledger-lock.sh \
+for library_name in spec-allocator.sh plan-allocator.sh ledger-update.sh ledger-lib.sh with-ledger-lock.sh \
          spec-renumber.sh spec-reconcile.sh \
          spec-archive-merged.sh spec-archive-abandoned.sh title-normalize.sh; do
   cp "${real_library_directory}/${library_name}" ".gaia/scripts/spec/${library_name}"

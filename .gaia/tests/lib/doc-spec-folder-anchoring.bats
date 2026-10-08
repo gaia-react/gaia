@@ -11,7 +11,7 @@
 # from a worktree therefore does not reach main -- it forks a second specs
 # tree inside the worktree. Three sites write the SPEC folder and must each
 # resolve main first: spec.md step 3's folder creation (the mkdir fence),
-# and spec.md's 7d (AUDIT.md write) and 7c (where the AUDIT.md path the
+# and spec/audit.md's 7d (AUDIT.md write) and 7c (where the AUDIT.md path the
 # applier's report lands at is built).
 #
 # THE READ SIDE IS THE SAME CLASS. Once the writes land in main, a read that
@@ -19,7 +19,7 @@
 # no SPECs at all. Three read sites build the path themselves rather than
 # handing it to a library: the pre-flight sweep's cold-consolidation candidate
 # scan in spec/lifecycle.md (the ledger scan plus the per-candidate folder),
-# spec.md step 2's resume-point recency comparison
+# step 2's resume-point recency comparison in spec/resume.md
 # (the canonical `SPEC.md` half of it; the draft cache is per-tree and stays in
 # the acting worktree), and step 9.2's read of the `dollars` field from the
 # SPEC folder's `cost.json` sidecar -- whose write, one block above it, is
@@ -71,6 +71,8 @@ setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   SPEC_MD="$REPO_ROOT/.claude/skills/gaia/references/spec.md"
   LIFECYCLE_MD="$REPO_ROOT/.claude/skills/gaia/references/spec/lifecycle.md"
+  AUDIT_MD="$REPO_ROOT/.claude/skills/gaia/references/spec/audit.md"
+  RESUME_MD="$REPO_ROOT/.claude/skills/gaia/references/spec/resume.md"
 
   MAIN="$BATS_TEST_TMPDIR/main"
   WORKTREE="$BATS_TEST_TMPDIR/worktree"
@@ -125,6 +127,15 @@ range_between() {
   [ -n "$start_line" ] || { printf 'start anchor not found in %s: %s\n' "$file" "$start_pattern" >&2; return 1; }
   [ -n "$end_line" ] || { printf 'end anchor not found in %s: %s\n' "$file" "$end_pattern" >&2; return 1; }
   sed -n "${start_line},$((end_line - 1))p" "$file"
+}
+
+# Text from a fixed-string anchor to the end of the file, for a section that
+# closes its file: no heading follows it to serve as an end anchor.
+range_to_end() {
+  local file="$1" start_pattern="$2" start_line
+  start_line="$(_anchor_line "$file" "$start_pattern")"
+  [ -n "$start_line" ] || { printf 'start anchor not found in %s: %s\n' "$file" "$start_pattern" >&2; return 1; }
+  sed -n "${start_line},\$p" "$file"
 }
 
 @test "S1: spec.md step 3's folder-creation fence executes into main, not the worktree" {
@@ -196,7 +207,7 @@ range_between() {
   # that consumes ${SPEC_DIR}/${AUDIT_MD} first needs it; 7d writes the report
   # and resolves no path of its own. Anchor on the step that does the
   # resolving, not the step that does the writing.
-  block="$(range_between "$SPEC_MD" '#### 7c. Disposition routing + apply' '#### 7d. Persist AUDIT.md')"
+  block="$(range_between "$AUDIT_MD" '## 7c. Disposition routing + apply' '## 7d. Persist AUDIT.md')"
 
   # The range can carry more than one ```bash fence: the audit-window breadcrumb writer
   # sources `.gaia/scripts/audit-window-lib.sh` and calls its writer, neither
@@ -304,7 +315,7 @@ seed_decoy() {
 }
 
 @test "R2: the resume-point comparison resolves the canonical SPEC path into main" {
-  block="$(range_between "$SPEC_MD" 'Before prompting, gather context' 'Before presenting the resume choice')"
+  block="$(range_between "$RESUME_MD" 'Before prompting, gather context' 'Before presenting the resume choice')"
   fence="$(bash_fence_of "$block")"
 
   if ! printf '%s\n' "$fence" | grep -qF 'SPEC_PATH'; then
@@ -348,7 +359,7 @@ seed_decoy() {
 
 @test "negative space: no bare relative .gaia/local/specs/ read survives at the three converted read sites" {
   sweep_range="$(range_between "$LIFECYCLE_MD" '**2. Cold consolidation.**' '**3. Reap past retention.**')"
-  resume_range="$(range_between "$SPEC_MD" 'Before prompting, gather context' 'Before presenting the resume choice')"
+  resume_range="$(range_between "$RESUME_MD" 'Before prompting, gather context' 'Before presenting the resume choice')"
   session_helper_range="$(range_between "$SPEC_MD" 'The helper reads `CLAUDE_CODE_SESSION_ID`' '**Auto-mode:** the tally fires identically')"
 
   # Ranges are scoped to the executable instructions only. Display prose that
@@ -379,8 +390,11 @@ seed_decoy() {
   # 7d writes the report at the path it was handed and must never grow a path
   # construct of its own, relative or otherwise. Do not read persist_range passing as
   # evidence the write site is covered -- routing_range and S2 are what cover it.
-  persist_range="$(range_between "$SPEC_MD" '#### 7d. Persist AUDIT.md' '### 8. Gate 2')"
-  routing_range="$(range_between "$SPEC_MD" '#### 7c. Disposition routing + apply' '#### 7d. Persist AUDIT.md')"
+  # persist_range runs from 7d to the end of spec/audit.md, which closes with
+  # the audit-window breadcrumb and the return to gate 2: the same text the
+  # range covered when it ended at step 8's heading.
+  persist_range="$(range_to_end "$AUDIT_MD" '## 7d. Persist AUDIT.md')"
+  routing_range="$(range_between "$AUDIT_MD" '## 7c. Disposition routing + apply' '## 7d. Persist AUDIT.md')"
 
   # Scoped tightly to the write sites (not repo-wide): design section 2e
   # notes that display prose elsewhere (spec.md:840, :916, :920, step 3's

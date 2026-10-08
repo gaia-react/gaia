@@ -11,7 +11,7 @@
 #
 # Ledger rows are {id, allocated_at, source, subject, status}. status is
 # written "ready" inline here at row creation; every later transition
-# goes through the guarded plan-ledger-update.sh chokepoint. Numbers are
+# goes through the guarded ledger-update.sh chokepoint. Numbers are
 # never reused.
 #
 # Concurrency: the read-union-allocate-write critical section runs under the

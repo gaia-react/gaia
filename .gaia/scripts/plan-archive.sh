@@ -8,7 +8,7 @@
 #   - Spec-less PLAN-NNN plan at .gaia/local/plans/PLAN-<digits>/ (a
 #     plans-ledger-tracked plan, not a legacy free-form slug): this
 #     best-effort advances that plan's plans-ledger row to status "merged"
-#     with a merged_at timestamp, through plan-ledger-update.sh, before the
+#     with a merged_at timestamp, through ledger-update.sh, before the
 #     disposition decision, which is gated on every cost phase section under
 #     it being value-represented in cost.jsonl (cost-represented.sh); a
 #     folder that fails the gate, or carries no consolidated SUMMARY.md yet,
@@ -172,7 +172,7 @@ fi
 if [ "$kind" = "plans" ] && [ "$attribute_field" = "plan_id" ]; then
   now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   patch="$(jq -nc --arg timestamp "$now" '{status: "merged", merged_at: $timestamp}')"
-  bash "$root/.gaia/scripts/spec/plan-ledger-update.sh" "$root" "$slug" "$patch" \
+  bash "$root/.gaia/scripts/spec/ledger-update.sh" "$root" "$slug" "$patch" \
     >/dev/null 2>&1 || true
 fi
 

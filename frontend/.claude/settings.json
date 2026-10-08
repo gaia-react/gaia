@@ -1,6 +1,7 @@
 {
   "permissions": {
     "allow": [
+      "Bash(bash .gaia/scripts/audit-noop-detect.sh:*)",
       "Bash(bash .gaia/scripts/branch-name-lib.sh:*)",
       "Bash(bash .gaia/scripts/check-debt-issue-metadata.sh:*)",
       "Bash(bash .gaia/scripts/debt-dedup.sh:*)",

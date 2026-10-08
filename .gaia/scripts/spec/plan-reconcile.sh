@@ -97,7 +97,7 @@ if [ "$#" -eq 1 ]; then
     patch="$(jq -nc --arg timestamp "$merged_at" --argjson number "$matched_pr_number" \
       '{status: "merged", merged_at: $timestamp, pr_number: $number}' 2>/dev/null || true)"
     [ -n "$patch" ] || continue
-    if bash "${_library_directory}/plan-ledger-update.sh" "$repo_root" "$candidate_id" "$patch" >/dev/null 2>&1; then
+    if bash "${_library_directory}/ledger-update.sh" "$repo_root" "$candidate_id" "$patch" >/dev/null 2>&1; then
       printf 'reconciled %s -> merged (PR #%s, %s)\n' "$candidate_id" "$matched_pr_number" "$merged_at"
     fi
   done <<SCAN_CANDIDATES
@@ -135,7 +135,7 @@ if [ -n "$confirmed_pr_number" ]; then
 else
   patch="$(jq -nc --arg timestamp "$now" '{status: "merged", merged_at: $timestamp}')"
 fi
-if bash "${_library_directory}/plan-ledger-update.sh" "$repo_root" "$plan_id" "$patch" >/dev/null 2>&1; then
+if bash "${_library_directory}/ledger-update.sh" "$repo_root" "$plan_id" "$patch" >/dev/null 2>&1; then
   printf 'reconciled %s -> merged\n' "$plan_id"
 else
   echo "plan-reconcile: could not advance $plan_id (missing ledger/row or lock timeout); left as-is" >&2
