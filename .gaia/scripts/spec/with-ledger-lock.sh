@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # with-ledger-lock.sh: Single shared mutex helper for .gaia/local/specs/ledger.json
 # read-modify-write critical sections. Sourced (not executed) by sibling lib
-# scripts (spec-allocator.sh, ledger-update.sh) so the locking logic is defined
+# scripts (spec-allocator.sh, plan-allocator.sh, ledger-update.sh) so the locking logic is defined
 # exactly once and cannot drift between two copies.
 #
 # Public function:

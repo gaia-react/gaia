@@ -27,6 +27,8 @@
 #
 # Assertion style: .claude/rules/bats-assertions.md.
 
+bats_require_minimum_version 1.5.0
+
 setup() {
   HELPERS="$BATS_TEST_DIRNAME/helpers"
   ARCHIVE=".gaia/scripts/spec/spec-archive-merged.sh"
@@ -463,4 +465,19 @@ _clear_merged_at() {
 
   [ ! -e "$REPO/$SPECS/SPEC-001" ]
   [ ! -e "$REPO/.gaia/local/cache/spec-session-SPEC-001.lock" ]
+}
+
+@test "28: without ledger-lib.sh the sweep reaps nothing and says so; with it the same folder is reaped" {
+  REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-merged-folder SPEC-001)"
+
+  mv "$REPO/.gaia/scripts/spec/ledger-lib.sh" "$REPO/ledger-lib.sh.aside"
+  run --separate-stderr _archive "$REPO"
+  [ "$status" -eq 0 ]
+  grep -qF "ledger-lib.sh is unusable; nothing swept" <<<"$stderr"
+  [ -d "$REPO/$SPECS/SPEC-001" ]
+
+  mv "$REPO/ledger-lib.sh.aside" "$REPO/.gaia/scripts/spec/ledger-lib.sh"
+  run _archive "$REPO"
+  [ "$status" -eq 0 ]
+  [ ! -e "$REPO/$SPECS/SPEC-001" ]
 }

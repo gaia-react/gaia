@@ -12,9 +12,6 @@ tags: [concept, claude, skill, orchestration]
 `/gaia-spec [description]` is GAIA's script-driven Socratic discovery workflow; no spec-kit runtime is involved. It produces an immutable SPEC artifact at `.gaia/local/specs/SPEC-NNN/SPEC.md` and stops, printing a handoff prompt the human pastes into a fresh [[GAIA Plan]] session. The skill body lives at `.claude/skills/gaia/references/spec.md` (dispatched by the `/gaia-spec` command, which reads this reference).
 
 The workflow runs on GAIA's own scripts in `.gaia/scripts/spec/`, Claude-read prose in `.claude/skills/gaia/references/spec/`, and script-consumed templates in `.gaia/templates/spec/`, called directly by the skill.
-<!-- gaia:maintainer-only:start -->
-The superseded record of the earlier extension-plus-preset design is [[spec-kit Extension Strategy]].
-<!-- gaia:maintainer-only:end -->
 
 ## Hard constraints
 
@@ -62,7 +59,7 @@ The ledger lives at `.gaia/local/specs/ledger.json`, a local, gitignored per-mac
 
 No other value is valid. `.gaia/scripts/spec/ledger-update.sh` is the single chokepoint for ledger writes; it accepts only these four canonical values and rejects anything else (exit 6), so a stray label cannot reach the ledger through a tool path. This ledger `status` is a distinct axis from the SPEC-artifact frontmatter's own `status` field (`in-progress | reopened | closed`, validated by `.gaia/scripts/spec/lint.sh`), which tracks whether the artifact itself is being drafted, has been reopened for amendment, or is closed, and from the `{PLAN_DIR}/RUNNING` execution sentinel, which tracks whether a plan is actively running. All three answer different questions and are never conflated.
 
-A ledger that predates the chokepoint can still hold an off-vocabulary status (an older value from before the vocabulary unified, or a hand-edited alias like `shipped`). `spec-reconcile.sh` renames known aliases (`shipped → merged`) to canonical through the guarded chokepoint on every `/gaia-spec`, logging any still-unrecognized status rather than guessing its lifecycle position. A status the alias rename does not cover is fixed by running the one-time migration directly, `.gaia/scripts/ledger-status-migrate.sh`, idempotent so a repeat run is a no-op.
+A hand-edited ledger can still hold an off-vocabulary status. `spec-reconcile.sh` renames the one known alias (`shipped` to `merged`) through the guarded chokepoint on every `/gaia-spec`, and logs any other off-vocabulary status without guessing its lifecycle position. Such a row is repaired by hand through `.gaia/scripts/spec/ledger-update.sh`, which rejects a non-canonical value (exit 6).
 
 ## When a SPEC folder is deleted
 
@@ -97,9 +94,5 @@ script instead. A folder's routine reap is not data loss.
 
 ## Pairs with
 
-<!-- gaia:maintainer-only:start -->
-- [[spec-kit Extension Strategy]]: superseded record of the earlier extension-plus-preset design.
-- [[spec-kit]]: superseded; GAIA no longer installs spec-kit.
-<!-- gaia:maintainer-only:end -->
 - [[GAIA Plan]]: the downstream handoff target.
 - [[Task Orchestration]]: what `/gaia-plan` produces.

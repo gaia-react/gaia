@@ -2,6 +2,8 @@
 
 The procedures a generated `ORCHESTRATOR.md` and both pre-flights point at. `.claude/skills/gaia/references/plan.md` step 4 owns the order of the orchestrator's steps and the verbatim blocks a planner copies; this page owns what each step does. Every command runs from the directory each section names, with the placeholders the orchestrator holds: `<SPEC_PATH>` (the absolute, main-anchored `SPEC.md`), `<PLAN_DIR>` (the absolute, main-anchored plan folder), `<RESOLVED_ROOT>` (the working copy the isolation reference resolved) and `<N>` (the PR number).
 
+Contents: Owning-phase UAT gate; Phase N, <title> (HALTED); Pre-audit UAT checks; Consolidation; Wiki promotion; Post-merge close; Pre-flight sweep.
+
 ## Owning-phase UAT gate
 
 **When it runs.** For a spec-derived plan, after `pnpm typecheck && pnpm lint` pass for a phase whose number appears in an `e2e` row of the UAT routing table in `<PLAN_DIR>/README.md`, and before that phase commits. A phase that owns no `e2e` row skips it.
@@ -85,7 +87,7 @@ Reason: summary-verify.sh failed: <its first stderr line>
 
 Runs after `gh pr merge`, in this order. Each step runs only after the one before it.
 
-1. **Confirm the merge.** `gh pr view <N> --json state` must report `.state == "MERGED"`. Otherwise stop and surface it: nothing below runs before `MERGED` is confirmed.
+1. **Confirm the merge.** Run `bash .gaia/scripts/pr-wait-merge.sh --pr <N>`. Only exit 0 with stdout `MERGED` proceeds. On any other exit (`CONFLICTING`, `CHECK_FAILED`, `TIMEOUT`, `CLOSED`, or exit 2, a refusal and never a verdict) stop and surface the verdict: nothing below runs before `MERGED` is confirmed.
 2. **Resolve the main checkout.** In worktree mode the cwd is the worktree, whose ledgers are not shared, so never pass `$PWD`:
 
    ```bash

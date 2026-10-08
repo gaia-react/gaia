@@ -9,12 +9,12 @@
 # retired "completed".
 #
 # Does NOT use helpers/tmp-spec-repo.sh: that shared harness seeds only the
-# specs ledger and does not copy plan-ledger-update.sh. Mirrors the self-copy
-# sandbox pattern from plan-ledger-update.bats instead: copy the script under
-# test plus its runtime deps (plan-ledger-update.sh, with-ledger-lock.sh,
+# specs ledger. Mirrors the self-copy
+# sandbox pattern from ledger-update-plan-rows.bats instead: copy the script under
+# test plus its runtime deps (ledger-update.sh, ledger-lib.sh, with-ledger-lock.sh,
 # ledger-path-lib.sh, main-root-lib.sh) into a sibling lib dir so the
 # ${BASH_SOURCE[0]}-relative source resolves, `git init` the sandbox so
-# plan-ledger-update.sh's main-checkout resolver (gaia_resolve_plans_directory) has
+# ledger-update.sh's main-checkout resolver (gaia_resolve_plans_directory) has
 # a real repository to resolve against, and seed the plans ledger explicitly.
 
 bats_require_minimum_version 1.5.0
@@ -34,11 +34,11 @@ setup() {
   git -C "$SANDBOX" init --quiet --initial-branch=main
 
   mkdir -p "$SANDBOX/.gaia/scripts/spec"
-  for library_file in plan-reconcile.sh plan-ledger-update.sh with-ledger-lock.sh; do
+  for library_file in plan-reconcile.sh ledger-update.sh ledger-lib.sh with-ledger-lock.sh; do
     cp "$SOURCE_LIBRARY_DIRECTORY/$library_file" "$SANDBOX/.gaia/scripts/spec/$library_file"
   done
   chmod +x "$SANDBOX/.gaia/scripts/spec/plan-reconcile.sh" \
-    "$SANDBOX/.gaia/scripts/spec/plan-ledger-update.sh"
+    "$SANDBOX/.gaia/scripts/spec/ledger-update.sh"
 
   mkdir -p "$SANDBOX/.gaia/scripts"
   cp "$SOURCE_SCRIPTS_DIRECTORY/ledger-path-lib.sh" "$SANDBOX/.gaia/scripts/ledger-path-lib.sh"
@@ -168,7 +168,10 @@ _gh_stub_that_fails() {
 
 @test "6b: the two-argument form matches the pre-change script: same stdout, stderr and exit, no pr_number, no network" {
   _gh_stub_that_fails
-  git -C "$REPO_ROOT" show HEAD:.gaia/scripts/spec/plan-reconcile.sh > "$SANDBOX/.gaia/scripts/spec/plan-reconcile-before.sh"
+  # The committed script still names the retired two-script chokepoint; point
+  # that call at the merged one so only the third-argument behavior differs.
+  git -C "$REPO_ROOT" show HEAD:.gaia/scripts/spec/plan-reconcile.sh \
+    | sed 's#/plan-\(ledger-update\.sh\)#/\1#g' > "$SANDBOX/.gaia/scripts/spec/plan-reconcile-before.sh"
   for id in PLAN-005 PLAN-x cache-thing PLAN-999; do
     run --separate-stderr bash "$SANDBOX/.gaia/scripts/spec/plan-reconcile-before.sh" "$SANDBOX" "$id"
     before_status="$status" before_output="$output" before_stderr="$stderr"

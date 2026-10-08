@@ -17,6 +17,8 @@
 #
 # Assertion style: .claude/rules/bats-assertions.md.
 
+bats_require_minimum_version 1.5.0
+
 setup() {
   THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"
@@ -33,6 +35,7 @@ setup() {
 
   cp "$ARCHIVE_SOURCE" "$SANDBOX/.gaia/scripts/spec/plan-archive-merged.sh"
   chmod +x "$SANDBOX/.gaia/scripts/spec/plan-archive-merged.sh"
+  cp "$SOURCE_LIBRARY_DIRECTORY/ledger-lib.sh" "$SANDBOX/.gaia/scripts/spec/ledger-lib.sh"
   # Representation gate deps, copied so the gate resolves against this
   # sandbox's own cost ledger instead of the real repo's.
   cp "$REPO_ROOT/.gaia/scripts/cost-represented.sh" "$SANDBOX/.gaia/scripts/cost-represented.sh"
@@ -582,4 +585,21 @@ _seed_cost_row() {
   refute_contains "Deleted"
   assert_contains "consolidation never ran; kept PLAN-001"
   [ -f "$PLANS/PLAN-001/PLAN.md" ]
+}
+
+@test "30: without ledger-lib.sh the sweep reaps nothing and says so; with it the same folder is reaped" {
+  _seed_merged_plan PLAN-001
+  _set_merged_at PLAN-001 "$(_days_ago 45)"
+  export GAIA_SPEC_RETENTION_DAYS=30
+
+  mv "$SANDBOX/.gaia/scripts/spec/ledger-lib.sh" "$SANDBOX/ledger-lib.sh.aside"
+  run --separate-stderr _archive "$SANDBOX"
+  [ "$status" -eq 0 ]
+  grep -qF "ledger-lib.sh is unusable; nothing swept" <<<"$stderr"
+  [ -f "$PLANS/PLAN-001/SUMMARY.md" ]
+
+  mv "$SANDBOX/ledger-lib.sh.aside" "$SANDBOX/.gaia/scripts/spec/ledger-lib.sh"
+  run _archive "$SANDBOX"
+  [ "$status" -eq 0 ]
+  [ ! -e "$PLANS/PLAN-001" ]
 }
