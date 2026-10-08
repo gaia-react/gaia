@@ -256,7 +256,7 @@ SETTINGS
   local settings_file
   for settings_file in .claude/settings.json .claude/settings.local.json frontend/.claude/settings.json frontend/.claude/settings.local.json; do
     [ "$(jq '[.hooks.SessionStart[].hooks[] | select(.command | contains("claude-probe/probe-hooks/"))] | length' "$FIXTURE_TREE/$settings_file")" -eq 1 ]
-    [ "$(jq '[.hooks.PreToolUse[].hooks[] | select(.command | contains("claude-probe/probe-hooks/"))] | length' "$FIXTURE_TREE/$settings_file")" -eq 1 ]
+    [ "$(jq '[.hooks.PreToolUse[].hooks[] | select(.command | contains("claude-probe/probe-hooks/")) | select(.command | contains("if-gate.sh") | not)] | length' "$FIXTURE_TREE/$settings_file")" -eq 1 ]
   done
 }
 
@@ -580,4 +580,221 @@ STUB
   [ "$(git -C "$FIXTURE_TREE" rev-parse HEAD)" = "$head_before" ]
   [ "$(git -C "$FIXTURE_TREE" status --porcelain --untracked-files=all)" = "$status_before" ]
   [ -z "$(git -C "$FIXTURE_TREE" branch --list probe/run)" ]
+}
+
+# --- hook `if` rows ----------------------------------------------------------
+
+# write_hook_if_evidence <dir>: one repetition of the root after_task:hook-if
+# scenario holding only the session's own lines. The root settings snapshot is
+# what inject-probe-fixtures.sh writes, so the gated handlers the observer
+# looks for are the injector's real ones. Tests append the always-on and
+# IfGate lines they need with hook_if_line and if_gate_line.
+write_hook_if_evidence() {
+  local evidence="$1" root="/probe/target" tree="$BATS_TEST_TMPDIR/inject-tree"
+  local scenario="$evidence/rep-1/root/after-task-hook-if"
+  mkdir -p "$evidence/snapshot/root/files/.claude" "$scenario" "$tree/.claude"
+  printf '{"permissions": {"deny": ["Edit(.env)"]}}\n' >"$tree/.claude/settings.json"
+  bash "$HARNESS/inject-probe-fixtures.sh" "$tree"
+  cp "$tree/.claude/settings.json" "$evidence/snapshot/root/files/.claude/settings.json"
+  printf '%s\n' CLAUDE.md >"$evidence/snapshot/root/tree.txt"
+  jq -n '{reps: 1, expectations_commit: "0000000", table_sha256: null}' >"$evidence/meta.json"
+  jq -n --arg root "$root" '{launch: "root", trigger: "after_task:hook-if", launch_root: $root, launch_directory: $root}' >"$scenario/scenario.json"
+  printf '{"event":"SessionStart","tag":"root-settings","source":"startup","claude_project_dir":"%s","pwd":"%s","toplevel":"%s"}\n' "$root" "$root" "$root" >"$scenario/probe.jsonl"
+  {
+    printf '{"type":"system","subtype":"init","session_id":"s1","skills":[],"agents":[],"mcp_servers":[]}\n'
+    printf '{"type":"result","subtype":"success","total_cost_usd":0.01,"permission_denials":[]}\n'
+  } >"$scenario/stream-1.jsonl"
+  HOOK_IF_PROBE="$scenario/probe.jsonl"
+}
+
+# hook_if_line <PreToolUse|PostToolUse> <marker>: the always-on probe hook's line.
+hook_if_line() {
+  printf '{"event":"%s","tag":"root-settings","tool_name":"Bash","tool_use_id":"t-%s","file_path":null,"bash_git_commit":false,"probe_commit_marker":null,"probe_if_marker":"%s"}\n' "$1" "$2" "$2" >>"$HOOK_IF_PROBE"
+}
+
+# if_gate_line <PreToolUse|PostToolUse> <rule slug> <marker>: a gated handler's line.
+if_gate_line() {
+  printf '{"event":"IfGate","tag":"root-settings","hook_event":"%s","rule_slug":"%s","tool_use_id":"t-%s","probe_if_marker":"%s"}\n' "$1" "$2" "$3" "$3" >>"$HOOK_IF_PROBE"
+}
+
+@test "hook if: a skip row whose gate fired is a mismatch, and passes with no gate line" {
+  local evidence="$BATS_TEST_TMPDIR/evidence"
+  write_hook_if_evidence "$evidence"
+  hook_if_line PreToolUse m01
+  run node "$HARNESS/compare.mjs" "$TABLE" "$evidence" --only 'root-if-m01-pre-gh-pr-merge'
+  [ "$status" -eq 0 ]
+  grep -qF MISMATCH <<<"$output" && return 1
+  if_gate_line PreToolUse gh-pr-merge m01
+  run node "$HARNESS/compare.mjs" "$TABLE" "$evidence" --only 'root-if-m01-pre-gh-pr-merge'
+  [ "$status" -eq 1 ]
+  grep -qxF "MISMATCH root-if-m01-pre-gh-pr-merge rep=1 expected=skip observed=spawn" <<<"$output"
+}
+
+@test "hook if: a spawn row whose gate line is absent is a mismatch, and passes with it" {
+  local evidence="$BATS_TEST_TMPDIR/evidence"
+  write_hook_if_evidence "$evidence"
+  hook_if_line PreToolUse m05
+  run node "$HARNESS/compare.mjs" "$TABLE" "$evidence" --only 'root-if-m05-pre-gh-pr-merge'
+  [ "$status" -eq 1 ]
+  grep -qxF "MISMATCH root-if-m05-pre-gh-pr-merge rep=1 expected=spawn observed=skip" <<<"$output"
+  # A gate line for another rule or another marker is not this row's spawn.
+  if_gate_line PreToolUse gh m05
+  if_gate_line PreToolUse gh-pr-merge m04
+  run node "$HARNESS/compare.mjs" "$TABLE" "$evidence" --only 'root-if-m05-pre-gh-pr-merge'
+  [ "$status" -eq 1 ]
+  if_gate_line PreToolUse gh-pr-merge m05
+  run node "$HARNESS/compare.mjs" "$TABLE" "$evidence" --only 'root-if-m05-pre-gh-pr-merge'
+  [ "$status" -eq 0 ]
+  grep -qF MISMATCH <<<"$output" && return 1
+  true
+}
+
+@test "hook if: a call with no always-on PreToolUse line is not_attempted and never passes" {
+  local evidence="$BATS_TEST_TMPDIR/evidence"
+  write_hook_if_evidence "$evidence"
+  # A gate line alone does not prove the attempt: only the always-on hook does.
+  if_gate_line PreToolUse gh-pr-merge m05
+  hook_if_line PreToolUse m04
+  run node "$HARNESS/compare.mjs" "$TABLE" "$evidence" --only 'root-if-m05-pre-*'
+  [ "$status" -eq 1 ]
+  grep -qxF "MISMATCH root-if-m05-pre-gh-pr-merge rep=1 expected=spawn observed=not_attempted" <<<"$output"
+  grep -qxF "MISMATCH root-if-m05-pre-gh-pr-create rep=1 expected=skip observed=not_attempted" <<<"$output"
+  hook_if_line PreToolUse m05
+  if_gate_line PreToolUse gh m05
+  run node "$HARNESS/compare.mjs" "$TABLE" "$evidence" --only 'root-if-m05-pre-*'
+  [ "$status" -eq 0 ]
+  grep -qF MISMATCH <<<"$output" && return 1
+  true
+}
+
+@test "hook if: a PostToolUse row with only a PreToolUse line is not_attempted, never skip" {
+  local evidence="$BATS_TEST_TMPDIR/evidence"
+  write_hook_if_evidence "$evidence"
+  # The call reached PreToolUse and stopped (denied, or PostToolUseFailure).
+  hook_if_line PreToolUse m01
+  run node "$HARNESS/compare.mjs" "$TABLE" "$evidence" --only 'root-if-m01-post-gh-pr-merge'
+  [ "$status" -eq 1 ]
+  grep -qxF "MISMATCH root-if-m01-post-gh-pr-merge rep=1 expected=skip observed=not_attempted" <<<"$output"
+  hook_if_line PostToolUse m01
+  run node "$HARNESS/compare.mjs" "$TABLE" "$evidence" --only 'root-if-m01-post-gh-pr-merge'
+  [ "$status" -eq 0 ]
+  grep -qF MISMATCH <<<"$output" && return 1
+  true
+}
+
+@test "hook if: a skip row whose gated handler is not in the snapshot settings is not_registered" {
+  local evidence="$BATS_TEST_TMPDIR/evidence" settings
+  write_hook_if_evidence "$evidence"
+  hook_if_line PreToolUse m01
+  settings="$evidence/snapshot/root/files/.claude/settings.json"
+  jq '.hooks.PreToolUse |= map(.hooks |= map(select((.if // "") != "Bash(gh pr merge *)")))' "$settings" >"$BATS_TEST_TMPDIR/settings.json"
+  mv "$BATS_TEST_TMPDIR/settings.json" "$settings"
+  run node "$HARNESS/compare.mjs" "$TABLE" "$evidence" --only 'root-if-m01-pre-gh-pr-merge'
+  [ "$status" -eq 1 ]
+  grep -qxF "MISMATCH root-if-m01-pre-gh-pr-merge rep=1 expected=skip observed=not_registered" <<<"$output"
+}
+
+@test "hook if: the dedup row reports how many same-command handlers spawned" {
+  local evidence="$BATS_TEST_TMPDIR/evidence"
+  write_hook_if_evidence "$evidence"
+  hook_if_line PreToolUse m12
+  hook_if_line PostToolUse m12
+  if_gate_line PostToolUse dedup m12
+  if_gate_line PostToolUse dedup m12
+  run node "$HARNESS/compare.mjs" "$TABLE" "$evidence" --only 'root-if-m12-post-dedup'
+  [ "$status" -eq 0 ]
+  grep -qxF "NOTE root-if-m12-post-dedup rep=1 spawn_count=2" <<<"$output"
+}
+
+@test "hook if: --plan selects exactly one root after_task:hook-if scenario for the rows" {
+  run node "$HARNESS/compare.mjs" --plan "$TABLE" --only 'root-if-*'
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(printf 'root\tafter_task:hook-if\tafter-task-hook-if\t0')" ]
+}
+
+@test "hook if: re-injecting leaves exactly one copy of each gated handler, its if intact, for every row's rule" {
+  local tree="$BATS_TEST_TMPDIR/tree" settings event rule slug pair_count=0 expected_total
+  mkdir -p "$tree/.claude"
+  printf '{}\n' >"$tree/.claude/settings.json"
+  bash "$HARNESS/inject-probe-fixtures.sh" "$tree"
+  bash "$HARNESS/inject-probe-fixtures.sh" "$tree"
+  settings="$tree/.claude/settings.json"
+  # The (event, rule) pairs the table's rows need, derived from the table.
+  while IFS="$(printf '\t')" read -r event rule slug; do
+    pair_count=$((pair_count + 1))
+    [ "$(jq --arg event "$event" --arg rule "$rule" --arg tail "if-gate.sh' root-settings $event $slug" \
+      '[.hooks[$event][] | select(.matcher == "Bash") | .hooks[] | select(.if == $rule and (.command | endswith($tail)))] | length' "$settings")" -eq 1 ] \
+      || { echo "not exactly one $event handler for $rule ($slug)" >&2; return 1; }
+  done < <(jq -r '[.rows[] | select(.kind == "hook_if") | (.subject | split("|")) | select(.[1] != "dedup")
+    | [.[0], .[1], (.[1] | ltrimstr("Bash(") | rtrimstr(")") | rtrimstr(" *") | gsub(" "; "-"))]] | unique[] | @tsv' "$TABLE")
+  [ "$pair_count" -gt 0 ]
+  # The two dedup handlers share one command and differ only in their rule.
+  [ "$(jq -c --arg tail "if-gate.sh' root-settings PostToolUse dedup" '[.hooks.PostToolUse[] | .hooks[] | select(.command | endswith($tail)) | .if] | sort' "$settings")" = '["Bash(gh pr view *)","Bash(git *)"]' ]
+  expected_total=$((pair_count + 2))
+  [ "$(jq '[.hooks[][] | .hooks[] | select(.command | contains("if-gate.sh"))] | length' "$settings")" -eq "$expected_total" ]
+}
+
+@test "hook if: every PostToolUse row's command ends in || true and none is a merge or a checkout" {
+  local commands marker post_count=0 command
+  commands="$(bash "$HARNESS/run-probe.sh" --print-hook-if-commands /probe/target)"
+  [ -n "$commands" ]
+  # Every row's marker has exactly one command, and it carries the marker last.
+  for marker in $(jq -r '[.rows[] | select(.kind == "hook_if") | (.subject | split("|")[2])] | unique[]' "$TABLE"); do
+    command="$(awk -F '\t' -v marker="$marker" '$1 == marker { print $2 }' <<<"$commands")"
+    [ "$(grep -c . <<<"$command")" -eq 1 ] || { echo "marker $marker has no single command" >&2; return 1; }
+    case "$command" in
+      *"; : probe-if-$marker") ;;
+      *) echo "command for $marker does not end in its marker: $command" >&2; return 1 ;;
+    esac
+  done
+  for marker in $(jq -r '[.rows[] | select(.kind == "hook_if" and (.subject | startswith("PostToolUse|"))) | (.subject | split("|")[2])] | unique[]' "$TABLE"); do
+    post_count=$((post_count + 1))
+    command="$(awk -F '\t' -v marker="$marker" '$1 == marker { print $2 }' <<<"$commands")"
+    case "$command" in
+      *" || true; : probe-if-$marker") ;;
+      *) echo "PostToolUse command for $marker does not end in || true: $command" >&2; return 1 ;;
+    esac
+    case "$command" in
+      *"gh pr merge"* | *"gh pr checkout"*) echo "PostToolUse row on a command the fixture denies: $command" >&2; return 1 ;;
+    esac
+  done
+  [ "$post_count" -gt 0 ]
+}
+
+@test "hook if: the probe hooks log the marker, never the command, and the gate stands down without a log" {
+  local log="$BATS_TEST_TMPDIR/probe.jsonl" payload
+  payload="$(jq -nc '{tool_name: "Bash", tool_use_id: "t9", tool_input: {command: "gh pr merge 999 --repo x/y --body SECRETVALUE || true; : probe-if-m05"}}')"
+  GAIA_PROBE_LOG="$log" bash "$HARNESS/probe-hooks/pre-tool-use.sh" root-settings <<<"$payload"
+  GAIA_PROBE_LOG="$log" bash "$HARNESS/probe-hooks/post-tool-use.sh" root-settings <<<"$payload"
+  GAIA_PROBE_LOG="$log" bash "$HARNESS/probe-hooks/if-gate.sh" root-settings PreToolUse gh-pr-merge <<<"$payload"
+  [ "$(jq -s -c '[.[] | {event, probe_if_marker}]' "$log")" = '[{"event":"PreToolUse","probe_if_marker":"m05"},{"event":"PostToolUse","probe_if_marker":"m05"},{"event":"IfGate","probe_if_marker":"m05"}]' ]
+  [ "$(jq -s -c '.[2] | {hook_event, rule_slug, tag, tool_use_id}' "$log")" = '{"hook_event":"PreToolUse","rule_slug":"gh-pr-merge","tag":"root-settings","tool_use_id":"t9"}' ]
+  grep -qF SECRETVALUE "$log" && return 1
+  rm -f "$log"
+  env -u GAIA_PROBE_LOG bash "$HARNESS/probe-hooks/if-gate.sh" root-settings PreToolUse gh-pr-merge <<<"$payload"
+  [ ! -e "$log" ]
+}
+
+@test "hook if: the dead .carried deny's rows, floor item and fixture target are gone" {
+  jq -e '[.rows[] | select((.subject | contains("x.carried")) or (.id | contains("carried")))] | length == 0' "$TABLE" >/dev/null
+  node "$HARNESS/compare.mjs" --floor-map "$TABLE" | grep -qF carried && return 1
+  bash "$HARNESS/inject-probe-fixtures.sh" --list-paths | grep -qF x.carried && return 1
+  [ ! -e "$FIXTURE_TREE/.gaia/local/audit/x.carried" ]
+}
+
+@test "hook if: run-probe sends the numbered commands with exact allow rules and judges the rows" {
+  write_claude_stub
+  local repo="$BATS_TEST_TMPDIR/table-repo" evidence="$BATS_TEST_TMPDIR/evidence"
+  table_repo "$repo"
+  run bash "$HARNESS/run-probe.sh" --target "$FIXTURE_TREE" --evidence "$evidence" --max-usd 5 --reps 1 \
+    --table-repo "$repo" --launches root --only 'root-if-*'
+  [ "$status" -eq 1 ]
+  [ "$(grep -c 'automated hook probe' "$STUB_LOG")" -eq 1 ]
+  grep -qF "probe-if-m01" "$STUB_LOG"
+  grep -qF -- "--allowedTools" "$STUB_LOG"
+  grep -qF "Bash(gh pr view 999999999 --repo gaia-probe/nonexistent)" "$STUB_LOG"
+  # The stub ran no command, so every row is unattempted: nothing passes.
+  grep -qxF "MISMATCH root-if-m01-pre-gh-pr-merge rep=1 expected=skip observed=not_attempted" "$evidence/compare.txt"
+  grep -qE 'observed=(skip|spawn)$' "$evidence/compare.txt" && return 1
+  true
 }

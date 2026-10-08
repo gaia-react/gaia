@@ -200,6 +200,64 @@ regenerate() {
   grep -qF -- 'additionalDirectories entry ".."' <<<"$output"
 }
 
+# set_handler_if <settings file> <hook index> <if rule>: set one PreToolUse handler's if.
+set_handler_if() {
+  jq --argjson i "$2" --arg r "$3" '.hooks.PreToolUse[0].hooks[$i]["if"] = $r' "$1" >"$TREE/changed.json"
+  mv "$TREE/changed.json" "$1"
+}
+
+@test "the presence assertion fails on a generated handler that dropped the root's if" {
+  build_tree
+  printf '#!/bin/sh\nexit 0\n' >"$TREE/.gaia/cli/gaia"
+  set_handler_if "$TREE/.claude/settings.json" 0 'Bash(git *)'
+  run_drift
+  [ "$status" -eq 1 ]
+  grep -qF -- "frontend/.claude/settings.json is missing" <<<"$output"
+  grep -qF -- "$(jq -c '.hooks.PreToolUse[0].hooks[0].command' "$TREE/.claude/settings.json")" <<<"$output"
+  grep -qF -- '"Bash(git *)"' <<<"$output"
+}
+
+@test "the presence assertion fails on a generated handler whose if was rewritten" {
+  build_tree
+  printf '#!/bin/sh\nexit 0\n' >"$TREE/.gaia/cli/gaia"
+  set_handler_if "$TREE/.claude/settings.json" 0 'Bash(git *)'
+  set_handler_if "$TREE/frontend/.claude/settings.json" 0 'Bash(gh *)'
+  run_drift
+  [ "$status" -eq 1 ]
+  grep -qF -- "frontend/.claude/settings.json is missing" <<<"$output"
+  grep -qF -- "$(jq -c '.hooks.PreToolUse[0].hooks[0].command' "$TREE/.claude/settings.json")" <<<"$output"
+  grep -qF -- '"Bash(git *)"' <<<"$output"
+}
+
+@test "the presence assertion fails when one of two same-command handlers is missing from the generated file" {
+  build_tree
+  printf '#!/bin/sh\nexit 0\n' >"$TREE/.gaia/cli/gaia"
+  # The generated file carries the handler with the first rule only; the root
+  # also carries a copy of it with a second rule.
+  set_handler_if "$TREE/.claude/settings.json" 0 'Bash(git *)'
+  set_handler_if "$TREE/frontend/.claude/settings.json" 0 'Bash(git *)'
+  jq '.hooks.PreToolUse[0].hooks += [.hooks.PreToolUse[0].hooks[0] | .["if"] = "Bash(gh pr merge *)"]' \
+    "$TREE/.claude/settings.json" >"$TREE/changed.json"
+  mv "$TREE/changed.json" "$TREE/.claude/settings.json"
+  run_drift
+  [ "$status" -eq 1 ]
+  grep -qF -- "frontend/.claude/settings.json is missing" <<<"$output"
+  grep -qF -- "$(jq -c '.hooks.PreToolUse[0].hooks[0].command' "$TREE/.claude/settings.json")" <<<"$output"
+  grep -qF -- '"Bash(gh pr merge *)"' <<<"$output"
+  grep -qF -- '"Bash(git *)"' <<<"$output" && return 1
+  true
+}
+
+@test "the presence assertion passes when root and generated agree on command and if" {
+  build_tree
+  printf '#!/bin/sh\nexit 0\n' >"$TREE/.gaia/cli/gaia"
+  set_handler_if "$TREE/.claude/settings.json" 0 'Bash(git *)'
+  set_handler_if "$TREE/frontend/.claude/settings.json" 0 'Bash(git *)'
+  run_drift
+  [ "$status" -eq 0 ]
+  grep -qF -- "check-settings-drift: clean" <<<"$output"
+}
+
 @test "a missing generated file fails the drift check" {
   build_tree
   rm "$TREE/frontend/.claude/settings.json"

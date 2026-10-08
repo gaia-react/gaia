@@ -9,10 +9,11 @@
 #   1. `gaia packages sync-settings --check`: the generated file equals what the
 #      generator would write now (catches an overlay or root edit not synced).
 #   2. A presence assertion with jq, independent of the generator: every root
-#      PreToolUse hook command appears verbatim, every root permissions.deny and
+#      PreToolUse handler appears as the same (command, if) pair, every root permissions.deny and
 #      sandbox.filesystem.denyRead entry appears in its re-anchored form, and
 #      additionalDirectories reaches the repo root. This is what catches a
-#      generator that drops an entry while still agreeing with itself.
+#      generator that drops an entry while still agreeing with itself. The
+#      handler comparison covers PreToolUse only, where every guard lives.
 #
 # Exit 0 clean, 1 drift or a missing entry (the file and entry are named),
 # 2 when the check cannot run (no jq, no CLI bundle, unreadable registry).
@@ -103,18 +104,23 @@ while IFS="$(printf '\t')" read -r package_name package_path; do
     esac
   done
 
-  # Every root PreToolUse hook command, verbatim. Commands travel as JSON
-  # strings so a command carrying a quote or a newline compares exactly.
-  while IFS= read -r command_json; do
-    [ -n "$command_json" ] || continue
-    if ! jq -e --argjson c "$command_json" \
-      '[.hooks.PreToolUse[]?.hooks[]?.command] | index($c) != null' \
+  # Every root PreToolUse handler as a (command, if) pair, verbatim; an absent
+  # `if` is its own value (null), so a generated handler that gained or lost a
+  # gate is a miss. Pairs travel as JSON so a command carrying a quote or a
+  # newline compares exactly. `.["if"]` because bare `.if` is a syntax error in
+  # older jq.
+  while IFS= read -r handler_json; do
+    [ -n "$handler_json" ] || continue
+    if ! jq -e --argjson h "$handler_json" \
+      '[.hooks.PreToolUse[]?.hooks[]? | [.command, .["if"]]] | any(.[]; . == $h)' \
       "$generated" >/dev/null; then
-      report_missing "$generated_relative" "the PreToolUse hook command $command_json"
+      command_json="$(printf '%s' "$handler_json" | jq -c '.[0]')"
+      if_json="$(printf '%s' "$handler_json" | jq -c '.[1]')"
+      report_missing "$generated_relative" "the PreToolUse hook command $command_json with if $if_json"
     fi
-  done <<HOOK_COMMANDS
-$(jq -c '.hooks.PreToolUse[]?.hooks[]?.command' "$root_settings")
-HOOK_COMMANDS
+  done <<HOOK_HANDLERS
+$(jq -c '.hooks.PreToolUse[]?.hooks[]? | [.command, .["if"]]' "$root_settings")
+HOOK_HANDLERS
 
   # Every root deny rule and denyRead entry, in its re-anchored form.
   while IFS= read -r rule_json; do

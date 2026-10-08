@@ -23,6 +23,8 @@
 #     files are created when absent (they are untracked by design) and carry
 #     enableAllProjectMcpServers so the MCP rows are not gated on an approval
 #     prompt -p cannot show.
+#   - the hook_if rows' gated handlers (probe-hooks/if-gate.sh behind an `if`
+#     rule), in the root settings.json only.
 #   - a temporary root .mcp.json registering fixtures/mcp-probe-server.mjs.
 #   - the claude-mechanics Q2 glob-anchor experiment rules (gaia-probe-a..d),
 #     an unscoped frontend rule (gaia-probe-u) whose lazy load is the
@@ -64,7 +66,6 @@ permission_targets() {
     frontend/.env \
     pnpm-lock.yaml \
     .gaia/local/audit/x.ok \
-    .gaia/local/audit/x.carried \
     .gaia/local/audit/x.refused
 }
 
@@ -108,6 +109,38 @@ probe_hook_groups() {
     }'
 }
 
+# The rules under test for the hook_if rows: event<TAB>rule<TAB>slug. The
+# slug is the rule with `Bash(`, `)` and a trailing ` *` dropped and spaces
+# turned to dashes, which is how lib/observe.mjs maps a row's rule back to
+# the IfGate lines; the bats suite checks every row's (event, rule) is here.
+if_gate_rules() {
+  local event rule
+  for event in PreToolUse PostToolUse; do
+    for rule in 'Bash(gh pr merge *)' 'Bash(gh pr create *)' 'Bash(gh *)' 'Bash(git *)' 'Bash(gh pr checkout *)' 'Bash(gh pr view *)'; do
+      printf '%s\t%s\t%s\n' "$event" "$rule" "$(printf '%s' "$rule" | sed -e 's/^Bash(//' -e 's/)$//' -e 's/ \*$//' -e 's/ /-/g')"
+    done
+  done
+}
+
+# One Bash group per event holding a handler per rule, each behind its own
+# `if`, plus, on PostToolUse only, the two dedup handlers: one command string
+# behind two rules a single allowed call matches (`git ... && gh pr view ...`),
+# so the log shows whether the runtime spawns that command once or twice. The
+# dedup pair mirrors the hook whose gating needs the answer, which registers
+# one PostToolUse command under two rules.
+if_gate_groups() {
+  local tag="$1"
+  local gate="bash '$HARNESS_DIRECTORY/probe-hooks/if-gate.sh' $tag"
+  if_gate_rules | jq -R -s --arg gate "$gate" '
+    split("\n") | map(select(. != "") | split("\t") | {event: .[0], rule: .[1], slug: .[2]})
+    | group_by(.event)
+    | map({key: .[0].event, value: [{matcher: "Bash", hooks: map({type: "command", if: .rule, command: "\($gate) \(.event) \(.slug)"})}]})
+    | from_entries
+    | .PostToolUse[0].hooks += [
+        {type: "command", if: "Bash(git *)", command: "\($gate) PostToolUse dedup"},
+        {type: "command", if: "Bash(gh pr view *)", command: "\($gate) PostToolUse dedup"}]'
+}
+
 inject_settings() {
   local tag="$1" relative_path="$2" create_when_absent="$3"
   local settings_path="$TREE_ROOT/$relative_path"
@@ -118,6 +151,10 @@ inject_settings() {
   fi
   local groups updated
   groups="$(probe_hook_groups "$tag")"
+  if [ "$tag" = root-settings ]; then
+    groups="$(jq -n --argjson base "$groups" --argjson gated "$(if_gate_groups "$tag")" \
+      '$base | reduce ($gated | to_entries[]) as $entry (.; .[$entry.key] += $entry.value)')"
+  fi
   updated="$(jq --argjson groups "$groups" --arg marker "$PROBE_HOOK_MARKER" --arg local_file "$create_when_absent" '
     .hooks = ((.hooks // {})
       | with_entries(.value |= (map(.hooks |= map(select((.command // "") | contains($marker) | not)))
