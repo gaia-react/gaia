@@ -216,7 +216,8 @@ marked() {
 # one still counts as enumeration. Empty when the root is not a repository.
 directory_list="$(mktemp)" || { echo "whole-tree-mark-guard: cannot create a temporary file" >&2; exit 2; }
 trap 'rm -f "$directory_list"' EXIT
-git -C "$root" ls-files 2>/dev/null \
+git -C "$root" ls-files -z 2>/dev/null \
+  | tr '\0' '\n' \
   | awk -F/ '{ path = $1; for (i = 2; i <= NF; i++) { print path; path = path "/" $i } }' \
   | sort -u >"$directory_list"
 
