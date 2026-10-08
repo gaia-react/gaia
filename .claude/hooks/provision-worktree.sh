@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Provision the linked worktree a session is working in: re-link the shared
 # state the registry declares, give the tree its port slot and port file,
-# install the dependencies its own lockfiles commit, and regenerate the typed
+# install the dependencies its lockfile commits, and regenerate the typed
 # routes the worktree's own branch needs.
 #
 # Provisioning is a property a worktree must HOLD, not an event that happened
@@ -428,11 +428,6 @@ install_workspace() {
 }
 
 install_workspace "$tree"
-# .gaia/cli declares its own pnpm workspace root, so the install above never
-# populates its node_modules, and anything resolving a CLI dependency from
-# there fails in a fresh worktree while passing in the main checkout. Where
-# that directory carries no lockfile of its own the call is a no-op.
-install_workspace "$tree/.gaia/cli"
 
 # ---------- regenerate the typed routes ----------
 # `.react-router/types` is gitignored, so it exists only where it was generated
