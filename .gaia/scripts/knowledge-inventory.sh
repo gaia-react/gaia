@@ -139,17 +139,17 @@ memory_class() {
 classify_paths() {
   [ "${#arguments[@]}" -gt 0 ] || fail_usage "usage: knowledge-inventory.sh classify [--root <project-root>] <path>..."
   local given class delegated=() classified="" index=0 line
-  for given in "${arguments[@]}"; do
+  for given in ${arguments[@]+"${arguments[@]}"}; do
     [ -n "$(memory_class "$given")" ] || delegated+=("$given")
   done
   if [ "${#delegated[@]}" -gt 0 ]; then
-    classified="$(bash "${KNOWLEDGE_OWNERSHIP_CLASSIFIER:-$(dirname "$0")/fitness-ownership.sh}" --root "$root" -- "${delegated[@]}")" || exit "$?"
+    classified="$(bash "${KNOWLEDGE_OWNERSHIP_CLASSIFIER:-$(dirname "$0")/fitness-ownership.sh}" --root "$root" -- ${delegated[@]+"${delegated[@]}"})" || exit "$?"
   fi
   local classified_lines=()
   while IFS= read -r line; do
     [ -n "$line" ] && classified_lines+=("$line")
   done <<<"$classified"
-  for given in "${arguments[@]}"; do
+  for given in ${arguments[@]+"${arguments[@]}"}; do
     class="$(memory_class "$given")"
     if [ -n "$class" ]; then
       case "$given" in
@@ -197,7 +197,7 @@ verify_report() {
   done
 
   if [ "${#refusals[@]}" -gt 0 ]; then
-    printf 'refuse: %s\n' "${refusals[@]}"
+    printf 'refuse: %s\n' ${refusals[@]+"${refusals[@]}"}
     exit 1
   fi
   printf 'verified: %s\n' "$recomputed"
