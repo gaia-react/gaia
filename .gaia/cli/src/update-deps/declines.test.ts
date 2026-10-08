@@ -315,4 +315,27 @@ describe('count helpers', () => {
       react: '19.0.0',
     });
   });
+
+  test.each([
+    ['app entry first', ['2.1.0', '2.3.0']],
+    ['member entry first', ['2.3.0', '2.1.0']],
+  ])(
+    'a name outstanding in two workspaces records the higher latest (%s)',
+    (_label, latests) => {
+      const shared: CountablePayload = {
+        wave_a: latests.map((latest) => ({
+          current: '2.0.0',
+          group: 'singleton:zod',
+          latest,
+          name: 'zod',
+        })),
+        wave_b: [],
+      };
+
+      expect(collectOutstandingGroups(shared).get('singleton:zod')).toEqual({
+        zod: '2.3.0',
+      });
+      expect(totalCount(shared)).toBe(1);
+    }
+  );
 });

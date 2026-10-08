@@ -39,6 +39,7 @@ import {
 import type {SnoozedGroup} from './declines.js';
 import {resolveGroup, resolveGroupMembers} from './groups.js';
 import {compareSegments, parseSegments, stripRange} from './version.js';
+import {readCliWorkspaceMember} from './workspace-member.js';
 
 export {resolveGroup} from './groups.js';
 
@@ -110,6 +111,8 @@ export type WaveAEntry = {
   latest: string;
   name: string;
   wanted: string;
+  /** Present only on entries discovered in the CLI workspace member. */
+  workspace?: string;
 };
 
 // ---------- pnpm runner indirection ----------
@@ -127,6 +130,8 @@ export type WaveBPackage = {
   latest: string;
   name: string;
   wanted: string;
+  /** Present only on entries discovered in the CLI workspace member. */
+  workspace?: string;
 };
 
 const defaultPnpmRunner: PnpmRunner = (args, options) => {
@@ -1067,8 +1072,11 @@ type RoutedGroup = {
  */
 const routeGroupIntoWaves = (
   group: string,
-  members: readonly Adjusted[]
+  members: readonly Adjusted[],
+  workspace: string | undefined
 ): RoutedGroup => {
+  // Spread, never `workspace: undefined`: the app's entries keep no such key.
+  const workspaceField = workspace === undefined ? {} : {workspace};
   const hasMajor = members.some((member) => member.kind === 'major');
 
   if (!hasMajor) {
@@ -1086,6 +1094,7 @@ const routeGroupIntoWaves = (
           latest: member.latest,
           name: member.name,
           wanted: member.wanted,
+          ...workspaceField,
         });
       }
     }
@@ -1107,6 +1116,7 @@ const routeGroupIntoWaves = (
         latest: member.latest,
         name: member.name,
         wanted: member.wanted,
+        ...workspaceField,
       })),
     },
   };
@@ -1165,6 +1175,76 @@ const mergeManifests = (
   ),
 });
 
+type WorkspaceWaves = {
+  skipped: SkippedEntry[];
+  waveA: WaveAEntry[];
+  waveB: WaveBGroup[];
+};
+
+/**
+ * Adjusts one workspace's outdated entries, groups them, expands companion
+ * siblings from that workspace's manifest and routes the groups into the
+ * waves. `workspace` tags every resulting entry; undefined leaves them bare.
+ */
+const buildWorkspaceWaves = (args: {
+  entries: readonly OutdatedEntry[];
+  expandContext: ExpandSiblingContext;
+  workspace: string | undefined;
+}): WorkspaceWaves => {
+  const {entries, expandContext, workspace} = args;
+  const {cooldown, getVersions, holds, pkg} = expandContext;
+  const adjustContext: AdjustEntryContext = {cooldown, getVersions, holds, pkg};
+  const adjusted: Adjusted[] = [];
+  const skipped: SkippedEntry[] = [];
+
+  for (const entry of entries) {
+    const outcome = adjustOutdatedEntry(entry, adjustContext);
+
+    if (outcome.kind === 'adjusted') adjusted.push(outcome.value);
+    else if (outcome.kind === 'skipped') skipped.push(outcome.value);
+  }
+
+  // Bucket by group. A group lands in Wave B if any member is major;
+  // otherwise every member becomes a Wave A row (singletons stay
+  // singletons, but companion groups stay grouped; we expose them as
+  // separate Wave A rows since Wave A is batched into one install anyway).
+  const byGroup = new Map<string, Adjusted[]>();
+
+  for (const entry of adjusted) {
+    const list = byGroup.get(entry.group);
+
+    if (list === undefined) byGroup.set(entry.group, [entry]);
+    else list.push(entry);
+  }
+
+  // Companion-group sibling expansion (Phase 2 SKILL contract).
+  // For every non-singleton group with at least one outdated trigger member,
+  // scan package.json for ALL members of that group and pull in any that
+  // were not flagged by `pnpm outdated`. Fetch their `latest` via
+  // `pnpm view <name> version`. Failures → `skipped` with
+  // `reason: "registry-unresolved"`.
+  const allPackageNames = Object.keys({
+    ...pkg.dependencies,
+    ...pkg.devDependencies,
+    ...pkg.optionalDependencies,
+    ...pkg.peerDependencies,
+  });
+
+  skipped.push(...expandGroupSiblings(byGroup, allPackageNames, expandContext));
+
+  const waveA: WaveAEntry[] = [];
+  const waveB: WaveBGroup[] = [];
+
+  for (const [group, members] of byGroup) {
+    const routed = routeGroupIntoWaves(group, members, workspace);
+
+    waveA.push(...routed.waveAEntries);
+    if (routed.waveBGroup !== null) waveB.push(routed.waveBGroup);
+  }
+
+  return {skipped, waveA, waveB};
+};
+
 export const computeUpdates = (options: ComputeOptions): UpdatesPayload => {
   const pnpmRunner = options.pnpmRunner ?? defaultPnpmRunner;
   // App dependencies, their installed versions, and `pnpm outdated` live in
@@ -1210,62 +1290,45 @@ export const computeUpdates = (options: ComputeOptions): UpdatesPayload => {
     pnpmRunner,
   };
 
-  const getVersions = createVersionFetcher(packageDir, pnpmRunner);
   const holds = readUpdateDepsHolds(rootPackage);
-  const adjustContext: AdjustEntryContext = {cooldown, getVersions, holds, pkg};
-  const adjusted: Adjusted[] = [];
-  const skipped: SkippedEntry[] = [];
-
-  for (const entry of raw) {
-    const outcome = adjustOutdatedEntry(entry, adjustContext);
-
-    if (outcome.kind === 'adjusted') adjusted.push(outcome.value);
-    else if (outcome.kind === 'skipped') skipped.push(outcome.value);
-  }
-
-  // Bucket by group. A group lands in Wave B if any member is major;
-  // otherwise every member becomes a Wave A row (singletons stay
-  // singletons, but companion groups stay grouped; we expose them as
-  // separate Wave A rows since Wave A is batched into one install anyway).
-  const byGroup = new Map<string, Adjusted[]>();
-
-  for (const entry of adjusted) {
-    const list = byGroup.get(entry.group);
-
-    if (list === undefined) byGroup.set(entry.group, [entry]);
-    else list.push(entry);
-  }
-
-  // Companion-group sibling expansion (Phase 2 SKILL contract).
-  // For every non-singleton group with at least one outdated trigger member,
-  // scan package.json for ALL members of that group and pull in any that
-  // were not flagged by `pnpm outdated`. Fetch their `latest` via
-  // `pnpm view <name> version`. Failures → `skipped` with
-  // `reason: "registry-unresolved"`.
-  const allPackageNames = Object.keys({
-    ...pkg.dependencies,
-    ...pkg.devDependencies,
-    ...pkg.optionalDependencies,
-    ...pkg.peerDependencies,
+  const appWaves = buildWorkspaceWaves({
+    entries: raw,
+    expandContext: {
+      cooldown,
+      getVersions: createVersionFetcher(packageDir, pnpmRunner),
+      holds,
+      pkg,
+      pnpmRunner,
+    },
+    workspace: undefined,
   });
-  const expandContext: ExpandSiblingContext = {
-    cooldown,
-    getVersions,
-    holds,
-    pkg,
-    pnpmRunner,
-  };
+  const skipped: SkippedEntry[] = [...appWaves.skipped];
+  const waveA: WaveAEntry[] = [...appWaves.waveA];
+  const waveB: WaveBGroup[] = [...appWaves.waveB];
 
-  skipped.push(...expandGroupSiblings(byGroup, allPackageNames, expandContext));
+  // `pnpm outdated` never reports the CLI workspace member from the app, so it
+  // gets its own pass, absent on an adopter tree. It stays a separate pipeline
+  // because a companion group is built from one manifest and applied with one
+  // `pnpm add`: a group must never mix members of two workspaces.
+  const cliMember = readCliWorkspaceMember(repoRoot);
 
-  const waveA: WaveAEntry[] = [];
-  const waveB: WaveBGroup[] = [];
+  if (cliMember !== null) {
+    const memberDirectory = path.join(repoRoot, cliMember);
+    const memberWaves = buildWorkspaceWaves({
+      entries: discoverOutdated(memberDirectory, pnpmRunner),
+      expandContext: {
+        cooldown: {...cooldown, cwd: memberDirectory},
+        getVersions: createVersionFetcher(memberDirectory, pnpmRunner),
+        holds,
+        pkg: readPackageJson(memberDirectory),
+        pnpmRunner,
+      },
+      workspace: cliMember,
+    });
 
-  for (const [group, members] of byGroup) {
-    const routed = routeGroupIntoWaves(group, members);
-
-    waveA.push(...routed.waveAEntries);
-    if (routed.waveBGroup !== null) waveB.push(routed.waveBGroup);
+    skipped.push(...memberWaves.skipped);
+    waveA.push(...memberWaves.waveA);
+    waveB.push(...memberWaves.waveB);
   }
 
   // Stable, alphabetical ordering for both waves.
