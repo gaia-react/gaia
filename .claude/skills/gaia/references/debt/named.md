@@ -2,6 +2,8 @@
 
 The named-number procedures of `/gaia-debt`. `debt.md` routes here on every `numbers` result of its `## Argument parsing`, after its backlog read; every step after the pick returns to `debt.md`.
 
+Contents: Validate named numbers; Fix a specific issue (direct-number path); Fix a named set (two or more numbers).
+
 ## Validate named numbers
 
 Runs for every `numbers` result of `## Argument parsing` in `debt.md`, one number or several, after the backlog read in `debt.md` and before anything else the named flow does. Validation of every named number precedes the security pre-filter, the spec pre-filter, the branch-name dry-run, and the score in `## Fix a named set (two or more numbers)` below, and precedes the cluster offer in `## Fix a specific issue (direct-number path)` below. So a run naming a closed number alongside a spec-class or security-class member prints only the validation reasons.
