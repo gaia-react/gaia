@@ -46,12 +46,13 @@
 # `doc-debt-query.bats` in this directory: grep for frozen literals,
 # ground-truthed against the source text.
 #
-# The two maintainer members carry no handshake of their own: each definition points
-# at the shared protocol file `.claude/hooks/lib/audit-member-protocol.md`,
-# which holds their writer call. So the positive checks below walk SPECS, the
-# files that prescribe the call (every definition without that pointer, plus the
-# protocol file), and every absence check walks ALL, SPECS plus the pointing
-# definitions, so prose drifting back into a member is still caught.
+# No member carries a handshake of its own: each definition points at the
+# shared protocol file `.claude/hooks/lib/audit-member-protocol.md`, which
+# holds the one writer call. So the positive checks below walk SPECS, the
+# files that prescribe the call (the protocol file, plus any definition that
+# lost its pointer and so fails them), and every absence check walks ALL,
+# SPECS plus the pointing definitions, so prose drifting back into a member is
+# still caught.
 #
 # The roster comes from the `code-audit-*.md` glob rather than a hardcoded
 # list, so a sixth member joins the guard by existing. The **first `@test`**
@@ -101,13 +102,15 @@ setup() {
   done
 }
 
-@test "the maintainer members point at the protocol file, which prescribes the write" {
+@test "every member points at the protocol file, which prescribes the write" {
   # The floor for the SPECS/DELEGATES split: a member that loses its pointer
   # moves to SPECS and fails every positive check there, and a missing
   # protocol file leaves the delegates with no write at all.
   [ -s "$ROOT/$PROTOCOL_RELATIVE_PATH" ] || { echo "$PROTOCOL_RELATIVE_PATH is missing or empty" >&2; return 1; }
-  [ "${#DELEGATES[@]}" -ge 2 ]
+  [ "${#DELEGATES[@]}" -ge 4 ]
   for member in \
+    code-audit-frontend \
+    code-audit-github-workflows \
     code-audit-maintainer-node \
     code-audit-maintainer-shell; do
     grep -qF -- "$PROTOCOL_RELATIVE_PATH" "$ROOT/.claude/agents/${member}.md" || {

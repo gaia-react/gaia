@@ -208,8 +208,8 @@ setup() {
            cross-repo-refusal.sh audit-bypass-stamp.sh; do
     cp "$REPO_ROOT/.claude/hooks/lib/$script_name" "$MAIN/.claude/hooks/lib/$script_name"
   done
-  # The maintainer members' shared handshake, which stage 8b reads through
-  # their definitions' pointer.
+  # Every member's shared handshake, which stage 8b reads through each
+  # definition's pointer.
   cp "$REPO_ROOT/.claude/hooks/lib/audit-member-protocol.md" "$MAIN/.claude/hooks/lib/audit-member-protocol.md"
   # Read the roster out of .gaia/audit-ci.yml rather than restating it. The
   # tests these members drive are named "every definition", and a hand-copied
@@ -1044,10 +1044,10 @@ run_audit_root_block() {
       return 1
     }
     # And the anchored form must actually be present, so a definition that
-    # simply lost its handshake cannot pass this by having no call sites. The
-    # two maintainer members carry their handshake in the shared protocol file
-    # their definition points at, so for them the protocol file is where the
-    # anchored call must live, and it gets the same unanchored scan.
+    # simply lost its handshake cannot pass this by having no call sites. A
+    # member carries its handshake in the shared protocol file its definition
+    # points at, so for it the protocol file is where the anchored call must
+    # live, and it gets the same unanchored scan.
     local carrier="$file"
     if grep -qF '.claude/hooks/lib/audit-member-protocol.md' "$file"; then
       carrier="$MAIN/.claude/hooks/lib/audit-member-protocol.md"
@@ -1068,8 +1068,10 @@ run_audit_root_block() {
 
 @test "stage 8b non-vacuity (source mutation): unanchoring one writer invocation turns the assertion red; byte-identical restore verified" {
   local file backup before after went_red=0
-  file="$MAIN/.claude/agents/code-audit-frontend.md"
-  backup="$BATS_TEST_TMPDIR/frontend-writer-anchor.bak"
+  # Every member's writer invocations live in the shared protocol file its
+  # definition points at, so that file is where an unanchored call can appear.
+  file="$MAIN/.claude/hooks/lib/audit-member-protocol.md"
+  backup="$BATS_TEST_TMPDIR/protocol-writer-anchor.bak"
   before="$(git -C "$MAIN" hash-object "$file")"
   cp "$file" "$backup"
 

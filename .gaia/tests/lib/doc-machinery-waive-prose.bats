@@ -1,14 +1,13 @@
 #!/usr/bin/env bats
 # SPEC-064: doc-grep coverage for the widened machinery-path waive rule,
-# stated in three places that no type-checker and no runtime assertion ever
+# stated in two places that no type-checker and no runtime assertion ever
 # reads: the orchestrator's disposition rule in
 # `wiki/concepts/PR Merge Workflow.md`'s `#### Cross-remit findings` section
-# (the rule's owner), the default Code Audit Team member's own member-side
-# restatement in `.claude/agents/code-audit-frontend.md`'s `### B-mw.
-# Machinery-path waive (file side)` section, and
-# `wiki/concepts/Audit Disposition and Debt Fix.md`'s `### Out-of-scope
-# waive` section. The Code Audit Team members carry no copy of the rule, only
-# a pointer to its owner. A prose requirement survives exactly as long as the
+# (the rule's owner), and `wiki/concepts/Audit Disposition and Debt Fix.md`'s
+# `### Out-of-scope waive` section. The Code Audit Team members carry no copy
+# of the rule: a member reports every finding and the orchestrator disposes
+# it, so `.claude/agents/code-audit-frontend.md` appears below only in
+# absence checks that keep retired phrasing from drifting back. A prose requirement survives exactly as long as the
 # next person editing those files remembers it, which is not a mechanism;
 # this suite is the mechanism, the same pattern `doc-debt-query.bats`
 # in this directory uses: grep for the frozen literals, ground-truthed
@@ -19,7 +18,7 @@
 # Groups 8-12 pin a later amendment: two disqualifiers narrow the waive's
 # eligible path union and never widen it, "the change authored the
 # inconsistency" and "a pointer written into shipped content owes a tracked
-# destination", stated identically at all three surfaces above. Neither
+# destination", stated identically at both surfaces above. Neither
 # disqualifier is gate-checked (arm (a) of that amendment), so these groups
 # are the only mechanism holding the wording steady across surfaces.
 #
@@ -37,23 +36,15 @@
 # guards: a terminator matching nothing after the start runs to EOF and
 # swallows the rest of the file). The
 # cross-remit section starts at `#### ` (H4) and its own doc names the
-# terminator `^#{3,4} `; the B-mw section starts at `### ` (H3) and its doc
-# names `^#{2,3} `. Both are used verbatim below, never a bare `^## `.
-#
-# B-mw start anchor stops at "Machinery-path waive", short of the trailing
-# "(file side)": macOS's /usr/bin/awk strips a backslash out of a `-v`
-# assignment's value before the regex engine ever sees it (`-v s='\(x\)'`
-# arrives as the literal string `(x)`, unescaped grouping metacharacters,
-# not a literal paren pair), so an anchor built with `\(...\)` silently
-# fails to match on this platform. The heading is unique without the
-# parenthesized suffix, so the anchor omits it rather than fighting the
-# escaping.
+# terminator `^#{3,4} `; the Out-of-scope waive section starts at `### ` (H3)
+# and takes `^#{2,3} `. Both are used verbatim below, never a bare `^## `.
 #
 # Add-then-pin vs sweep-then-pin: `wiki/concepts/PR Merge Workflow.md`
 # carried no machinery-disposition prose at all before this SPEC, so Group 1
 # below pins prose that was newly ADDED to that page, not swept from an
-# older machinery-only phrasing (unlike `code-audit-frontend.md`, which
-# Group 2 sweeps). There is deliberately no Group-2-style absence check on
+# older machinery-only phrasing (unlike `code-audit-frontend.md`, whose
+# retired phrasing Group 2 keeps absent). There is deliberately no
+# Group-2-style absence check on
 # the wiki page: nothing to sweep there is not an oversight.
 #
 # Honest limits: Group 3 (the pull-request-body record) and Group 5
@@ -149,26 +140,6 @@ setup() {
   printf '%s\n' "$section" | grep -qF -- "rather than opening it" || return 1
 }
 
-@test "Group 1: section B-mw names both eligibility terms, gate-machinery and PR-changed-file" {
-  local section
-  section="$(extract_section_or_fail "$FRONTEND" '^### B-mw\. Machinery-path waive' '^#{2,3} ')" || return 1
-  printf '%s\n' "$section" | grep -qF -- "gate-machinery path" || return 1
-  printf '%s\n' "$section" | grep -qF -- "already changes" || return 1
-}
-
-@test "Group 1: section B-mw names the machinery-classifier identifier" {
-  local section
-  section="$(extract_section_or_fail "$FRONTEND" '^### B-mw\. Machinery-path waive' '^#{2,3} ')" || return 1
-  printf '%s\n' "$section" | grep -qE -- 'audit_path_is_machinery|AUDIT_MACHINERY_PATHS' || return 1
-}
-
-@test "Group 1: section B-mw states an empty eligibility set disengages rather than opens the waive" {
-  local section
-  section="$(extract_section_or_fail "$FRONTEND" '^### B-mw\. Machinery-path waive' '^#{2,3} ')" || return 1
-  printf '%s\n' "$section" | grep -qF -- "disengages" || return 1
-  printf '%s\n' "$section" | grep -qF -- "rather than opening it" || return 1
-}
-
 # --- Group 2: no machinery-only phrasing survives ----------------------------
 # wiki/concepts/PR Merge Workflow.md carries no absence checks here: it had
 # no machinery-disposition prose to sweep before this SPEC (see header).
@@ -220,15 +191,6 @@ setup() {
   printf '%s\n' "$section" | grep -qF -- "dedup key" || return 1
 }
 
-@test "Group 3: section B-mw carries the pull-request-body heading and all three record fields" {
-  local section
-  section="$(extract_section_or_fail "$FRONTEND" '^### B-mw\. Machinery-path waive' '^#{2,3} ')" || return 1
-  printf '%s\n' "$section" | grep -qF -- '`## Out-of-scope machinery findings (recorded, not filed)`' || return 1
-  printf '%s\n' "$section" | grep -qF -- "file:line" || return 1
-  printf '%s\n' "$section" | grep -qF -- "failure mode" || return 1
-  printf '%s\n' "$section" | grep -qF -- "dedup key" || return 1
-}
-
 # --- Group 4: the waive files nothing ----------------------------------------
 # Presence checks on the three negative statements, not absence-of-token:
 # the cross-remit section legitimately names the file-tech-debt skill in its
@@ -240,14 +202,6 @@ setup() {
   printf '%s\n' "$section" | grep -qF -- "no tech-debt issue" || return 1
   printf '%s\n' "$section" | grep -qF -- "no issue number" || return 1
   printf '%s\n' "$section" | grep -qF -- ".gaia/local/debt/refresh-requested" || return 1
-}
-
-@test "Group 4: section B-mw states the waive files nothing" {
-  local section
-  section="$(extract_section_or_fail "$FRONTEND" '^### B-mw\. Machinery-path waive' '^#{2,3} ')" || return 1
-  printf '%s\n' "$section" | grep -qF -- "do **not** file a \`tech-debt\` issue" || return 1
-  printf '%s\n' "$section" | grep -qF -- "\`issue_number\` unset" || return 1
-  printf '%s\n' "$section" | grep -qF -- "do **not** touch the debt-count sentinel" || return 1
 }
 
 # --- Group 5: cross-member coverage is stated --------------------------------
@@ -269,56 +223,46 @@ setup() {
   printf '%s\n' "$section" | grep -qF -- ".claude/hooks/" || return 1
 }
 
-# --- Group 8: both disqualifiers are stated at all three prose surfaces -----
+# --- Group 8: both disqualifiers are stated at both prose surfaces -----
 # Each disqualifier's opening clause is asserted separately from its bound:
 # a later editor trimming the bound off would still pass a test that only
 # checks the opening, which is exactly the drift this group exists to catch.
 
-@test "Group 8: the authors-the-inconsistency term opens at all three prose surfaces" {
+@test "Group 8: the authors-the-inconsistency term opens at both prose surfaces" {
   local section
   section="$(extract_section_or_fail "$WIKI" '^#### Cross-remit findings' '^#{3,4} ')" || return 1
-  printf '%s\n' "$section" | grep -qF -- "authors the inconsistency" || return 1
-  section="$(extract_section_or_fail "$FRONTEND" '^### B-mw\. Machinery-path waive' '^#{2,3} ')" || return 1
   printf '%s\n' "$section" | grep -qF -- "authors the inconsistency" || return 1
   section="$(extract_section_or_fail "$DISPOSITION" '^### Out-of-scope waive' '^#{2,3} ')" || return 1
   printf '%s\n' "$section" | grep -qF -- "authors the inconsistency" || return 1
 }
 
-@test "Group 8: the authors-the-inconsistency term's bound (latent at the fork point) is stated at all three prose surfaces" {
+@test "Group 8: the authors-the-inconsistency term's bound (latent at the fork point) is stated at both prose surfaces" {
   local section
   section="$(extract_section_or_fail "$WIKI" '^#### Cross-remit findings' '^#{3,4} ')" || return 1
-  printf '%s\n' "$section" | grep -qF -- "latent at the fork point" || return 1
-  section="$(extract_section_or_fail "$FRONTEND" '^### B-mw\. Machinery-path waive' '^#{2,3} ')" || return 1
   printf '%s\n' "$section" | grep -qF -- "latent at the fork point" || return 1
   section="$(extract_section_or_fail "$DISPOSITION" '^### Out-of-scope waive' '^#{2,3} ')" || return 1
   printf '%s\n' "$section" | grep -qF -- "latent at the fork point" || return 1
 }
 
-@test "Group 8: the pointer-owes-a-destination term opens at all three prose surfaces" {
+@test "Group 8: the pointer-owes-a-destination term opens at both prose surfaces" {
   local section
   section="$(extract_section_or_fail "$WIKI" '^#### Cross-remit findings' '^#{3,4} ')" || return 1
-  printf '%s\n' "$section" | grep -qF -- "owes a tracked destination" || return 1
-  section="$(extract_section_or_fail "$FRONTEND" '^### B-mw\. Machinery-path waive' '^#{2,3} ')" || return 1
   printf '%s\n' "$section" | grep -qF -- "owes a tracked destination" || return 1
   section="$(extract_section_or_fail "$DISPOSITION" '^### Out-of-scope waive' '^#{2,3} ')" || return 1
   printf '%s\n' "$section" | grep -qF -- "owes a tracked destination" || return 1
 }
 
-@test "Group 8: the pointer-owes-a-destination term's obligation direction (runs from the pointer to the filing) is stated at all three prose surfaces" {
+@test "Group 8: the pointer-owes-a-destination term's obligation direction (runs from the pointer to the filing) is stated at both prose surfaces" {
   local section
   section="$(extract_section_or_fail "$WIKI" '^#### Cross-remit findings' '^#{3,4} ')" || return 1
-  printf '%s\n' "$section" | grep -qF -- "runs from the pointer to the filing" || return 1
-  section="$(extract_section_or_fail "$FRONTEND" '^### B-mw\. Machinery-path waive' '^#{2,3} ')" || return 1
   printf '%s\n' "$section" | grep -qF -- "runs from the pointer to the filing" || return 1
   section="$(extract_section_or_fail "$DISPOSITION" '^### Out-of-scope waive' '^#{2,3} ')" || return 1
   printf '%s\n' "$section" | grep -qF -- "runs from the pointer to the filing" || return 1
 }
 
-@test "Group 8: the disqualifier lead-in is stated at all three prose surfaces" {
+@test "Group 8: the disqualifier lead-in is stated at both prose surfaces" {
   local section
   section="$(extract_section_or_fail "$WIKI" '^#### Cross-remit findings' '^#{3,4} ')" || return 1
-  printf '%s\n' "$section" | grep -qF -- "Two disqualifiers narrow what may be waived" || return 1
-  section="$(extract_section_or_fail "$FRONTEND" '^### B-mw\. Machinery-path waive' '^#{2,3} ')" || return 1
   printf '%s\n' "$section" | grep -qF -- "Two disqualifiers narrow what may be waived" || return 1
   section="$(extract_section_or_fail "$DISPOSITION" '^### Out-of-scope waive' '^#{2,3} ')" || return 1
   printf '%s\n' "$section" | grep -qF -- "Two disqualifiers narrow what may be waived" || return 1
@@ -333,20 +277,16 @@ setup() {
 # two identity assertions below close that gap by pinning the lead-in and then
 # both term paragraphs whole rather than by fragment, after whitespace
 # normalization.
-@test "Group 8: the disqualifier lead-in is identical across all three prose surfaces" {
+@test "Group 8: the disqualifier lead-in is identical across both prose surfaces" {
   # The lead-in carries the claim that the two terms only ever narrow the
   # eligible set. A rewrite on one surface saying they widen it, or dropping
   # the "must clear both" half, contradicts the rule while leaving the
   # fragment assertion above green, because that fragment stops at "waived".
-  # FRONTEND states the same paragraph behind a `**Disqualifiers.**` label
-  # (task doc F3), which is a heading for the pair rather than part of the
-  # claim, so it is stripped before comparing rather than treated as drift.
   local lead first current_paragraph document_file
   lead='Two disqualifiers narrow what may be waived'
   first=""
-  for document_file in "$WIKI" "$FRONTEND" "$DISPOSITION"; do
+  for document_file in "$WIKI" "$DISPOSITION"; do
     current_paragraph="$(extract_paragraph_from_lead "$document_file" "$lead" | normalize_whitespace)"
-    current_paragraph="${current_paragraph#\*\*Disqualifiers.\*\* }"
     [ -n "$current_paragraph" ] || {
       echo "no lead-in paragraph found in $document_file" >&2
       return 1
@@ -362,13 +302,13 @@ setup() {
   done
 }
 
-@test "Group 8: both disqualifier paragraphs are identical across all three prose surfaces" {
+@test "Group 8: both disqualifier paragraphs are identical across both prose surfaces" {
   local lead first current_paragraph document_file
   for lead in \
     '**The change authored the inconsistency.**' \
     '**A pointer written into shipped content owes a tracked destination.**'; do
     first=""
-    for document_file in "$WIKI" "$FRONTEND" "$DISPOSITION"; do
+    for document_file in "$WIKI" "$DISPOSITION"; do
       current_paragraph="$(extract_paragraph_from_lead "$document_file" "$lead" | normalize_whitespace)"
       [ -n "$current_paragraph" ] || {
         echo "no paragraph led by '$lead' found in $document_file" >&2
@@ -388,14 +328,12 @@ setup() {
 
 # --- Group 9: the heading treatment is frozen (Contract 4) ------------------
 # Group 3 above already pins the bare backtick-wrapped literal at the WIKI
-# and FRONTEND surfaces; these assertions pin the full sequence including
-# its leading article, which Group 3 does not cover, at all three surfaces.
+# surface; these assertions pin the full sequence including its leading
+# article, which Group 3 does not cover, at both prose surfaces.
 
-@test "Group 9: the full frozen heading sequence, with its article, is present at all three prose surfaces" {
+@test "Group 9: the full frozen heading sequence, with its article, is present at both prose surfaces" {
   local section
   section="$(extract_section_or_fail "$WIKI" '^#### Cross-remit findings' '^#{3,4} ')" || return 1
-  printf '%s\n' "$section" | grep -qF -- 'under the heading `## Out-of-scope machinery findings (recorded, not filed)`' || return 1
-  section="$(extract_section_or_fail "$FRONTEND" '^### B-mw\. Machinery-path waive' '^#{2,3} ')" || return 1
   printf '%s\n' "$section" | grep -qF -- 'under the heading `## Out-of-scope machinery findings (recorded, not filed)`' || return 1
   section="$(extract_section_or_fail "$DISPOSITION" '^### Out-of-scope waive' '^#{2,3} ')" || return 1
   printf '%s\n' "$section" | grep -qF -- 'under the heading `## Out-of-scope machinery findings (recorded, not filed)`' || return 1
@@ -414,11 +352,8 @@ setup() {
 
 # --- Group 10: no surface still claims a single unchecked wall --------------
 
-@test "Group 10: the three-unchecked-walls sentence is stated at both member-facing surfaces" {
-  local section
+@test "Group 10: the three-unchecked-walls sentence is stated at the disposition surface" {
   grep -qF -- "Three walls stand on that second question, all of them agent judgment and none of them gate-checked:" "$DISPOSITION" || return 1
-  section="$(extract_section_or_fail "$FRONTEND" '^### B-mw\. Machinery-path waive' '^#{2,3} ')" || return 1
-  printf '%s\n' "$section" | grep -qF -- "Three walls stand on that second question, all of them agent judgment and none of them gate-checked:" || return 1
 }
 
 @test "Group 10: no surface still claims the non-security screen is the sole unchecked wall" {
@@ -442,10 +377,6 @@ setup() {
   grep -qF -- "and the finding itself clears both disqualifiers" "$DISPOSITION" || return 1
 }
 
-@test "Group 11: code-audit-frontend.md states the abuse-check runs alongside the disqualifiers, not alone" {
-  grep -qF -- "and by two disqualifiers no gate checks" "$FRONTEND" || return 1
-}
-
 @test "Group 11: the retired path-terms-decide-alone phrasing is absent from PR Merge Workflow.md and Audit Disposition and Debt Fix.md" {
   grep -qF -- "Either eligibility term alone is sufficient" "$WIKI" && return 1
   grep -qF -- "Either term alone is sufficient," "$DISPOSITION" && return 1
@@ -453,20 +384,6 @@ setup() {
 }
 
 # --- Group 12: the member-side condition list is coherent -------------------
-
-@test "Group 12: section B-mw's condition list requires clearing both disqualifiers" {
-  local section
-  section="$(extract_section_or_fail "$FRONTEND" '^### B-mw\. Machinery-path waive' '^#{2,3} ')" || return 1
-  printf '%s\n' "$section" | grep -qF -- "and neither disqualifier below fires" || return 1
-  printf '%s\n' "$section" | grep -qF -- "or that either disqualifier catches" || return 1
-}
-
-@test "Group 12: section F's disposition-ledger bullet points at section B-mw's eligibility test" {
-  # File-scoped deliberately: this literal lives in section F, outside the
-  # B-mw extraction window, so a section-scoped assertion here would either
-  # pass vacuously or fail on the wrong grounds.
-  grep -qF -- "section B-mw's eligibility test clears" "$FRONTEND" || return 1
-}
 
 @test "Group 12: the retired unconditional-union phrasing is absent from code-audit-frontend.md" {
   grep -qF -- 'is not **both** non-security and in the union above' "$FRONTEND" && return 1
@@ -594,8 +511,6 @@ setup() {
   printf '%s\n' "$section" | grep -qE -- 'was changed|previously did|as of ' && return 1
   section="$(extract_section_or_fail "$DISPOSITION" '^### Out-of-scope waive' '^#{2,3} ')" || return 1
   printf '%s\n' "$section" | grep -qE -- 'was changed|previously did|as of ' && return 1
-  section="$(extract_section_or_fail "$FRONTEND" '^### B-mw\. Machinery-path waive' '^#{2,3} ')" || return 1
-  printf '%s\n' "$section" | grep -qE -- 'was changed|previously did|as of ' && return 1
   true
 }
 
@@ -621,10 +536,4 @@ setup() {
   local section
   section="$(extract_section_or_fail "$DISPOSITION" '^### Out-of-scope waive' '^#{2,3} ')" || return 1
   printf '%s\n' "$section" | grep -qF -- 'wrapped `<!-- gaia-debt-key: … -->` form (`.claude/skills/file-tech-debt/SKILL.md`)' || return 1
-}
-
-@test "Group H: section B-mw's waive instruction states the wrapped dedup-key grammar, at its own occurrence" {
-  local section
-  section="$(extract_section_or_fail "$FRONTEND" '^### B-mw\. Machinery-path waive' '^#{2,3} ')" || return 1
-  printf '%s\n' "$section" | grep -qF -- 'and its dedup key in the wrapped `<!-- gaia-debt-key: … -->` form (`.claude/skills/file-tech-debt/SKILL.md`)' || return 1
 }
