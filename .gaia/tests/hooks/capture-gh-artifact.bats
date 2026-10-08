@@ -442,3 +442,20 @@ edge_file() { printf '%s/.gaia/local/telemetry/links.jsonl' "$REPO"; }
 
   [ ! -e "$(edge_file)" ]
 }
+
+@test "hook-payload.sh missing: exit 0 with empty stdout, no breadcrumb" {
+  build_repo
+  mkdir -p "$REPO/.claude/hooks"
+  cp -R "$REPO_ROOT/.claude/hooks/lib" "$REPO/.claude/hooks/lib"
+  rm -f "$REPO/.claude/hooks/lib/hook-payload.sh"
+  cp "$HOOK_ABSOLUTE_PATH" "$REPO/.claude/hooks/capture-gh-artifact.sh"
+  cd "$REPO"
+
+  local input
+  input=$("$HELPERS/mock-hook-input.sh" post-tool-use S1 Bash "gh pr create --fill" "https://github.com/acme/widgets/pull/7")
+  invoke_hook "$input" "$REPO/.claude/hooks/capture-gh-artifact.sh"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  any_breadcrumb_exists && return 1
+  return 0
+}

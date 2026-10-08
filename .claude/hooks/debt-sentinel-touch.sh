@@ -42,18 +42,21 @@ input=$(cat)
 
 command -v jq >/dev/null 2>&1 || exit 0
 
-tool_name=$(echo "$input" | jq -r '.tool_name // ""' 2>/dev/null)
-[ "$tool_name" = "Bash" ] || exit 0
+_hook_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
+# shellcheck source=/dev/null
+[ -n "${_hook_library_directory:-}" ] && [ -f "$_hook_library_directory/hook-payload.sh" ] && . "$_hook_library_directory/hook-payload.sh"
+type gaia_hook_payload_read >/dev/null 2>&1 || exit 0
+gaia_hook_payload_read "$input" || exit 0
+[ "$GAIA_HOOK_TOOL_NAME" = "Bash" ] || exit 0
 
 # Avoid the name `command`: it would shadow bash's `command` builtin.
-tool_command=$(echo "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
+tool_command=$GAIA_HOOK_COMMAND
 
 # Five debt-count-mutating gh invocations: `gh pr merge`, `gh issue create`,
 # `gh issue edit`, `gh issue close`, `gh issue reopen`. The `gh pr merge` arm
 # uses the shared arming decision, the same one pr-merge-audit-check.sh and
 # the other deny hooks use (.claude/hooks/lib/verb-arming.sh). A quoted verb
 # inside prose still arms here, fail-closed, with no safe narrowing.
-_hook_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
 # shellcheck source=/dev/null
 [ -n "${_hook_library_directory:-}" ] && [ -f "$_hook_library_directory/verb-arming.sh" ] && . "$_hook_library_directory/verb-arming.sh"
 type gaia_verb_armed >/dev/null 2>&1 || exit 0

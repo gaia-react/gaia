@@ -92,10 +92,18 @@ if ! type gaia_require_jq >/dev/null 2>&1; then
 fi
 gaia_require_jq 'the worthiness presence gate' "$input" tool_input 'gh'
 
-tool_name=$(echo "$input" | jq -r '.tool_name // ""' 2>/dev/null)
+# shellcheck source=lib/hook-payload.sh
+[ -n "$_jq_library_directory" ] && [ -f "$_jq_library_directory/hook-payload.sh" ] && . "$_jq_library_directory/hook-payload.sh" 2>/dev/null
+if ! type gaia_hook_payload_read >/dev/null 2>&1; then
+  printf 'BLOCKED: worthiness-presence-check.sh cannot load lib/hook-payload.sh, so this call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
+  exit 2
+fi
+gaia_hook_payload_read "$input" || exit 0
+
+tool_name=$GAIA_HOOK_TOOL_NAME
 [ "$tool_name" = "Bash" ] || exit 0
 
-command=$(echo "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
+command=$GAIA_HOOK_COMMAND
 
 # Arm the gate when this tool call carries a `gh pr merge`, through the shared
 # arming decision (.claude/hooks/lib/verb-arming.sh): the same raw start/sep
@@ -199,7 +207,7 @@ source "$gaia_scripts/main-root-lib.sh" 2>/dev/null || exit 0
 # rather than by a raw git call this hook writes itself. Payload cwd is
 # measured, not contracted, and only established on PreToolUse, so the
 # fallback is mandatory.
-payload_cwd=$(echo "$input" | jq -r '.cwd // empty' 2>/dev/null)
+payload_cwd=$GAIA_HOOK_CWD
 source_cwd="$PWD"
 if [[ "$payload_cwd" == /* ]] && gaia_resolve_tree_root "$payload_cwd" >/dev/null 2>&1; then
   source_cwd="$payload_cwd"

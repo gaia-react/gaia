@@ -37,7 +37,18 @@ gaia_require_jq 'the manifest write guard' "$payload" tool_input 'manifest.json'
 # The GAIA_MANIFEST_WRITE= exemption is not read here: with no jq the command
 # that would carry it cannot be read, so a legitimate writer refuses too.
 
-tool_name=$(jq -r '.tool_name // empty' <<<"$payload")
+set +e
+# shellcheck source=lib/hook-payload.sh
+[ -n "$_jq_library_directory" ] && [ -f "$_jq_library_directory/hook-payload.sh" ] && . "$_jq_library_directory/hook-payload.sh" 2>/dev/null
+set -e
+if ! type gaia_hook_payload_read >/dev/null 2>&1; then
+  printf 'BLOCKED: block-manifest-write.sh cannot load lib/hook-payload.sh, so this call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
+  exit 2
+fi
+# An empty or unreadable payload names nothing to guard, and the hook stands
+# down with status 0, as the per-field reads did for an empty payload.
+gaia_hook_payload_read "$payload" || exit 0
+tool_name="$GAIA_HOOK_TOOL_NAME"
 
 DENY_MESSAGE="BLOCKED: .gaia/manifest.json is release-generated and lists only files GAIA ships; feature work never adds to it."
 
@@ -74,14 +85,14 @@ is_guarded_path() {
 
 case "$tool_name" in
   Edit | Write | MultiEdit)
-    file_path=$(jq -r '.tool_input.file_path // empty' <<<"$payload")
+    file_path="$GAIA_HOOK_FILE_PATH"
     [[ -n "$file_path" ]] || exit 0
     is_guarded_path "$file_path" && deny "$DENY_MESSAGE"
     exit 0
     ;;
 
   Bash)
-    command_line=$(jq -r '.tool_input.command // empty' <<<"$payload")
+    command_line="$GAIA_HOOK_COMMAND"
     [[ -n "$command_line" ]] || exit 0
 
     # Exemption marker: allow unconditionally, before any vector inspection.

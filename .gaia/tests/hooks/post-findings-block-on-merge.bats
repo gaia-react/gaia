@@ -37,6 +37,7 @@ setup() {
   REPO_SCOPE_ABSOLUTE_PATH=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" && pwd)/repo-scope.sh
   VERB_ARMING_ABSOLUTE_PATH=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" && pwd)/verb-arming.sh
   VERB_ARMING_WALK_ABSOLUTE_PATH=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" && pwd)/verb-arming-walk.sh
+  HOOK_PAYLOAD_ABSOLUTE_PATH=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" && pwd)/hook-payload.sh
   REPO=$(mktemp -d -t post-findings-merge-test-XXXXXX)
 
   git -C "$REPO" init --quiet --initial-branch=main
@@ -60,6 +61,7 @@ setup() {
   cp "$REPO_SCOPE_ABSOLUTE_PATH" "$REPO/.claude/hooks/lib/repo-scope.sh"
   cp "$VERB_ARMING_ABSOLUTE_PATH" "$REPO/.claude/hooks/lib/verb-arming.sh"
   cp "$VERB_ARMING_WALK_ABSOLUTE_PATH" "$REPO/.claude/hooks/lib/verb-arming-walk.sh"
+  cp "$HOOK_PAYLOAD_ABSOLUTE_PATH" "$REPO/.claude/hooks/lib/hook-payload.sh"
   chmod +x "$REPO/.gaia/scripts/post-findings-block.sh"
 
   STUB_BINARY_DIRECTORY="$BATS_TEST_TMPDIR/bin"
@@ -740,4 +742,16 @@ run_staged_merge_hook() {
   [ "$status" -eq 0 ]
   grep -qF -- '"permissionDecision"' <<<"$output" && return 1
   return 0
+}
+
+@test "hook-payload.sh missing: exit 0 with empty stdout, nothing posted" {
+  write_sidecar
+  export FAKE_GH_STATE
+  stage_merge_hook
+  rm -f "$REPO/.claude/hooks/lib/hook-payload.sh"
+
+  run_staged_merge_hook
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ "$(cat "$FAKE_GH_STATE/post_count")" != "1" ]
 }

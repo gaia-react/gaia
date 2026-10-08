@@ -171,7 +171,18 @@ gaia_require_jq 'the dotenv and secret-path read guard' "$payload" tool_input 'e
 # wider of the two and refuses a superset of what the parsed path predicates
 # deny.
 
-tool_name=$(jq -r '.tool_name // empty' <<<"$payload")
+set +e
+# shellcheck source=lib/hook-payload.sh
+[ -n "$_jq_library_directory" ] && [ -f "$_jq_library_directory/hook-payload.sh" ] && . "$_jq_library_directory/hook-payload.sh" 2>/dev/null
+set -e
+if ! type gaia_hook_payload_read >/dev/null 2>&1; then
+  printf 'BLOCKED: block-sensitive-read.sh cannot load lib/hook-payload.sh, so this call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
+  exit 2
+fi
+# An empty or unreadable payload names nothing to guard, and the hook stands
+# down with status 0, as the per-field reads did for an empty payload.
+gaia_hook_payload_read "$payload" || exit 0
+tool_name="$GAIA_HOOK_TOOL_NAME"
 
 DENY_DOTENV_TOOL="BLOCKED: reading '.env' / '.env.*' files is denied to protect local secrets. Only '.env.example' is readable. This guard is heuristic defense-in-depth, not a sandbox."
 DENY_DUMP="BLOCKED: a bare environment dump (env/printenv) is denied so exported secrets cannot be printed into the transcript. Use 'env NAME=value <cmd>' to set a variable for a command. Heuristic defense-in-depth, not a sandbox."
@@ -318,7 +329,7 @@ process_segment() {
 
 case "$tool_name" in
   Read)
-    file_path=$(jq -r '.tool_input.file_path // empty' <<<"$payload")
+    file_path="$GAIA_HOOK_FILE_PATH"
     [[ -n "$file_path" ]] || exit 0
     is_dotenv_path "$file_path" && deny "$DENY_DOTENV_TOOL"
     is_secret_path "$file_path" && deny "$DENY_SECRET_TOOL"
@@ -335,8 +346,8 @@ case "$tool_name" in
     # the literal shapes (`.env`, `.env.local`, `*.key`, `secrets/**`) and not
     # every glob that could expand onto one. There is no dump arm here, because
     # the Grep tool reads files only.
-    grep_path=$(jq -r '.tool_input.path // empty' <<<"$payload")
-    grep_glob=$(jq -r '.tool_input.glob // empty' <<<"$payload")
+    grep_path="$GAIA_HOOK_PATH"
+    grep_glob="$GAIA_HOOK_GLOB"
     [[ -n "$grep_path" ]] && is_dotenv_path "$grep_path" && deny "$DENY_DOTENV_TOOL"
     [[ -n "$grep_glob" ]] && is_dotenv_path "$grep_glob" && deny "$DENY_DOTENV_TOOL"
     [[ -n "$grep_path" ]] && is_secret_path "$grep_path" && deny "$DENY_SECRET_TOOL"
@@ -345,7 +356,7 @@ case "$tool_name" in
     ;;
 
   Bash)
-    command_line=$(jq -r '.tool_input.command // empty' <<<"$payload")
+    command_line="$GAIA_HOOK_COMMAND"
     [[ -n "$command_line" ]] || exit 0
 
     while IFS= read -r segment; do

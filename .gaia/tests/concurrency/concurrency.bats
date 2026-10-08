@@ -455,6 +455,7 @@ JS
     .claude/hooks/red-verify-commit-check.sh \
     .claude/hooks/capture-red-observations.sh \
     .claude/hooks/lib/gaia-packages.sh \
+    .claude/hooks/lib/hook-payload.sh \
     .claude/hooks/lib/jq-availability.sh \
     .claude/hooks/lib/red-ledger.sh \
     .claude/hooks/lib/repo-scope.sh \

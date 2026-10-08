@@ -960,3 +960,20 @@ assert_nothing_released() { [ ! -s "$FAKE_GH_STATE/issue_edits" ]; }
   [ "$status" -eq 0 ]
   assert_nothing_released
 }
+
+@test "hook-payload.sh missing: exit 0 with empty stdout, no label edit" {
+  local scratch="$BATS_TEST_TMPDIR/scratch-hooks"
+  mkdir -p "$scratch/.claude/hooks"
+  cp -R "$(dirname "$HOOK_ABSOLUTE_PATH")/lib" "$scratch/.claude/hooks/lib"
+  cp "$HOOK_ABSOLUTE_PATH" "$scratch/.claude/hooks/issue-claim-release.sh"
+  rm -f "$scratch/.claude/hooks/lib/hook-payload.sh"
+
+  local input
+  input=$("$HELPERS/mock-hook-input.sh" post-tool-use S1 Bash 'gh pr merge 5 --squash')
+  cd "$REPO" || return 1
+  invoke_hook "$input" "$scratch/.claude/hooks/issue-claim-release.sh"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ ! -s "$FAKE_GH_STATE/issue_edits" ]
+  [ ! -s "$FAKE_GH_STATE/pr_view_calls" ]
+}

@@ -1587,3 +1587,36 @@ run_hook_with_shim() {
   run_hook "git -C $REPO push origin main"
   assert_denied_by_json
 }
+
+# --- the one-jq payload reader ---
+
+@test "lib/hook-payload.sh absent: a payload the hook would deny exits 2 naming the library" {
+  local hooks_directory scratch_hooks payload
+  hooks_directory=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
+  scratch_hooks="$BATS_TEST_TMPDIR/scratch-hooks"
+  mkdir -p "$scratch_hooks"
+  cp -R "$hooks_directory/." "$scratch_hooks/"
+  rm -f "$scratch_hooks/lib/hook-payload.sh"
+  payload=$(jq -nc --arg command 'git push --force origin main' '{tool_name: "Bash", tool_input: {command: $command}}')
+  run bash -c 'cd "$1" && printf %s "$2" | bash "$3"' _ "$BATS_TEST_TMPDIR" "$payload" "$scratch_hooks/block-main-destructive-git.sh"
+  [ "$status" -eq 2 ]
+  grep -qF 'BLOCKED: block-main-destructive-git.sh cannot load lib/hook-payload.sh' <<<"$output"
+}
+
+@test "a non-arming Bash payload spawns exactly one jq process" {
+  local hooks_directory shim_directory spawn_log real_jq payload spawn_count
+  hooks_directory=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
+  shim_directory="$BATS_TEST_TMPDIR/jq-shim"
+  spawn_log="$BATS_TEST_TMPDIR/jq-spawns"
+  real_jq=$(command -v jq)
+  mkdir -p "$shim_directory"
+  printf '#!/bin/sh\nprintf x >>"%s"\nexec "%s" "$@"\n' "$spawn_log" "$real_jq" >"$shim_directory/jq"
+  chmod +x "$shim_directory/jq"
+  : >"$spawn_log"
+  payload=$(jq -nc '{tool_name: "Bash", tool_input: {command: "ls -la"}}')
+  run env PATH="$shim_directory:$PATH" bash -c 'cd "$1" && printf %s "$2" | bash "$3"' _ "$BATS_TEST_TMPDIR" "$payload" "$hooks_directory/block-main-destructive-git.sh"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  spawn_count=$(wc -c <"$spawn_log" | tr -d ' ')
+  [ "$spawn_count" -eq 1 ]
+}

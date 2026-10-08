@@ -51,7 +51,17 @@ if ! type gaia_require_jq >/dev/null 2>&1; then
 fi
 gaia_require_jq 'the commit-floor bypass guard' "$payload" tool_input 'git'
 
-command_line=$(echo "$payload" | jq -r '.tool_input.command // empty')
+set +e
+# shellcheck source=lib/hook-payload.sh
+[ -n "$_jq_library_directory" ] && [ -f "$_jq_library_directory/hook-payload.sh" ] && . "$_jq_library_directory/hook-payload.sh" 2>/dev/null
+set -e
+if ! type gaia_hook_payload_read >/dev/null 2>&1; then
+  printf 'BLOCKED: block-no-verify.sh cannot load lib/hook-payload.sh, so this call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
+  exit 2
+fi
+gaia_hook_payload_read "$payload" || exit 0
+
+command_line=$GAIA_HOOK_COMMAND
 
 # Only act on git commands, short-circuit everything else. (Fast path only;
 # correctness comes from the command-position scan below.)

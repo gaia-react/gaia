@@ -566,6 +566,7 @@ jobs:
               - '.claude/settings.json'
               - '.claude/hooks/block-sensitive-read.sh'
               - '.claude/hooks/lib/reader-operands.sh'
+              - '.claude/hooks/lib/hook-payload.sh'
               - '.gaia/tests/helpers/hook-registration.sh'
               - '.gaia/scripts/hook-registration-lib.sh'
             # The commitlint config suite (.gaia/tests/commitlint/) runs the REAL
@@ -599,6 +600,7 @@ jobs:
               # against, and the helper that check sources.
               - '.claude/hooks/block-invalid-pr-title.sh'
               - '.claude/hooks/lib/jq-availability.sh'
+              - '.claude/hooks/lib/hook-payload.sh'
               - '.claude/hooks/lib/verb-arming.sh'
               - '.claude/hooks/lib/verb-arming-walk.sh'
               - '.claude/hooks/lib/repo-scope.sh'

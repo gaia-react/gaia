@@ -37,7 +37,17 @@ if ! type gaia_require_jq >/dev/null 2>&1; then
 fi
 gaia_require_jq 'the main-branch destructive-git guard' "$payload" tool_input 'git'
 
-command=$(echo "$payload" | jq -r '.tool_input.command // empty')
+set +e
+# shellcheck source=lib/hook-payload.sh
+[ -n "$_jq_library_directory" ] && [ -f "$_jq_library_directory/hook-payload.sh" ] && . "$_jq_library_directory/hook-payload.sh" 2>/dev/null
+set -e
+if ! type gaia_hook_payload_read >/dev/null 2>&1; then
+  printf 'BLOCKED: block-main-destructive-git.sh cannot load lib/hook-payload.sh, so this call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
+  exit 2
+fi
+gaia_hook_payload_read "$payload" || exit 0
+
+command=$GAIA_HOOK_COMMAND
 
 # Only act on git commands, short-circuit everything else. (Fast path only;
 # correctness comes from the command-position scan below.)
@@ -467,7 +477,7 @@ push_refspec_names_main() {
 # process's.
 hop_target() {
   local directory="$1" base
-  base=$(printf '%s' "$payload" | jq -r '.cwd // empty' 2>/dev/null) || base=""
+  base=$GAIA_HOOK_CWD
   [ -n "$base" ] || base="$PWD"
   case "$directory" in
     \"*\") directory="${directory#\"}"; directory="${directory%\"}" ;;
@@ -608,7 +618,7 @@ hop_guard() {
   fi
   if [ "$errexit_was" = 1 ]; then set -e; fi
   if command -v gaia_gh_artifact_read >/dev/null 2>&1; then
-    session_id=$(printf '%s' "$payload" | jq -r '.session_id // empty' 2>/dev/null) || session_id=""
+    session_id=$GAIA_HOOK_SESSION_ID
     if [ -n "$session_id" ]; then
       breadcrumb_path=$(gaia_gh_artifact_path "$(gaia_gh_artifact_cache_directory)" "$branch")
       # A year, not the lib's one-day default: session ids never repeat, so a

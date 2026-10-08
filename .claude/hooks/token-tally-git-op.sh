@@ -15,10 +15,15 @@ trap 'exit 0' ERR
 command -v jq >/dev/null 2>&1 || exit 0
 
 payload=$(cat)
-tool_name=$(jq -r '.tool_name // ""' <<<"$payload")
-[ "$tool_name" = "Bash" ] || exit 0
 
-command=$(jq -r '.tool_input.command // ""' <<<"$payload")
+_hook_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
+# shellcheck source=/dev/null
+[ -n "${_hook_library_directory:-}" ] && . "$_hook_library_directory/hook-payload.sh" 2>/dev/null || true
+type gaia_hook_payload_read >/dev/null 2>&1 || exit 0
+gaia_hook_payload_read "$payload" || exit 0
+[ "$GAIA_HOOK_TOOL_NAME" = "Bash" ] || exit 0
+
+command=$GAIA_HOOK_COMMAND
 
 # The verb fragment mirrors the mandated `git -C <path> commit|push` form
 # (.claude/rules/shell-cwd.md): an optional `-C <path>` group between `git`
@@ -30,7 +35,6 @@ command=$(jq -r '.tool_input.command // ""' <<<"$payload")
 # spaces, which the fragment's space-free group misses, still arms. Broader
 # arming here is the safe direction; this hook only records a tally row. A
 # quoted verb inside prose still arms; fail-closed, no safe narrowing.
-_hook_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
 # shellcheck source=/dev/null
 [ -n "${_hook_library_directory:-}" ] && "${BASH:-bash}" -n "$_hook_library_directory/verb-arming.sh" 2>/dev/null && . "$_hook_library_directory/verb-arming.sh" 2>/dev/null || true
 type gaia_verb_armed >/dev/null 2>&1 || exit 0
@@ -129,7 +133,7 @@ plan_directory="$(resolve_active_plan_directory)"
 
 feature_key="$(resolve_feature_key "$plan_directory")"
 slug="$(basename "$plan_directory")"
-session_id=$(jq -r '.session_id // ""' <<<"$payload")
+session_id=$GAIA_HOOK_SESSION_ID
 
 # Route the feature key to the flag matching its shape. An unclassifiable key
 # (neither SPEC- nor PLAN-, e.g. a bare `plan`/`plan-2` basename from a failed
