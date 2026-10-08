@@ -1780,7 +1780,7 @@
       "signal": "transcript_listing",
       "floor": false,
       "source": "Claude Code skills docs: disable-model-invocation removes the description from the listing; command files take the same fields",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T074946Z-listing"
     },
     {
       "id": "root-model-invocable-commands-listed",
@@ -1793,7 +1793,7 @@
       "signal": "transcript_listing",
       "floor": false,
       "source": "Claude Code skills docs: disable-model-invocation removes the description from the listing; command files take the same fields",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T074946Z-listing"
     },
     {
       "id": "manual-q1-bash-read-no-lazy-load",
