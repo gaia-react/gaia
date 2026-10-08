@@ -16,7 +16,6 @@ wiki/meta/**
 .github/forensics/**
 wiki/decisions/Forensics Triage Workflow.md
 # The forensics claude-code-action working-area ignore entry.
-.gitignore
 # The deprecated gaia-ci label entry.
 .gaia/labels.json
 # The guard and this list.
