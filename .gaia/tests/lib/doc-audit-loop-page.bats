@@ -175,7 +175,7 @@ hand_edit_sentences() {
 }
 
 @test "the Quality Gate page's stop-and-report step carries the fix-round clause" {
-  grep -qF -- '10. **Stop and report**: wait for user approval, except inside the PR Merge Workflow'"'"'s fix round ([[PR Merge Workflow#The fix round: fixer, verifier, gate]]).' "$QUALITY_GATE_PAGE"
+  grep -qF -- '10. **Stop and report**: wait for user approval, except inside a workflow whose own instructions commit without stopping: the PR Merge Workflow'"'"'s fix round ([[PR Merge Workflow#The fix round: fixer, verifier, gate]]),' "$QUALITY_GATE_PAGE"
 }
 
 # --- the audit loop unit ----------------------------------------------------

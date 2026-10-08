@@ -32,9 +32,6 @@ wiki
 **/npm-debug.log*
 **/.npm
 **/.eslintcache
-**/.jest-cache
-**/__pycache__
-**/*.pyc
 
 # Testing and Storybook output
 **/playwright
@@ -49,9 +46,7 @@ wiki
 **/.claude/worktrees
 **/.claude/scheduled_tasks.lock
 **/.claude/settings.local.json
-**/.claude-pr
 .gaia/local.bak.*
-.gaia/statusline/.use-vendored-base
 **/.gaia-backup
 **/.gaia-ports
 **/.gaia-merge

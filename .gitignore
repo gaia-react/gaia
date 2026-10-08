@@ -23,19 +23,12 @@ npm-debug.log*
 **/.playwright/output/
 .playwright-cli/
 coverage
-.jest-cache
-
-# Storybook
 
 # Optional npm cache directory
 .npm
 
 # Optional eslint cache
 .eslintcache
-
-# Python bytecode (observability test infra)
-__pycache__/
-*.pyc
 
 # Claude files
 **/.claude/agent-memory/
@@ -44,11 +37,6 @@ __pycache__/
 **/.claude/settings.local.json
 # React Doctor installs its Claude Code skill project-local; kept per-machine, never committed.
 **/.claude/skills/react-doctor/
-# claude-code-action runtime working area (mirrors .claude/ for sandboxed execution)
-.claude-pr/
-
-# Wiki sync system markers (project-local, never commit)
-**/.claude/wiki-*-checked
 
 # GAIA release/update working directories
 # No trailing slash: in the main checkout this is a directory, in a provisioned
@@ -60,7 +48,6 @@ __pycache__/
 # the line above does not cover it and the local state it holds would otherwise
 # be stageable.
 .gaia/local.bak.*
-.gaia/statusline/.use-vendored-base
 .gaia-backup/
 .gaia-merge/
 
