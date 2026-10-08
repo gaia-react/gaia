@@ -210,6 +210,23 @@ commit_base_files() {
   }
 }
 
+@test "a file whose basename occurs inside a directory path selects only suites naming its trailing path" {
+  base="$(commit_base_files \
+    '.gaia/cli/gaia=bundle' \
+    '.gaia/cli/src/main.ts=a' \
+    'tests/runs-bundle.bats=run "$REPO_ROOT/.gaia/cli/gaia" packages' \
+    'tests/runs-script.bats=run bash "$REPO_ROOT/.gaia/scripts/other.sh"')"
+  printf 'edited\n' >> "$FIXTURE/.gaia/cli/gaia"
+  git -C "$FIXTURE" commit -q -am edit
+
+  run --separate-stderr bash "$SCRIPT" --dir "$FIXTURE" "$base" HEAD
+  [ "$status" -eq 0 ]
+  [ "$output" = "tests/runs-bundle.bats" ] || {
+    printf 'got:\n%s\n' "$output" >&2
+    return 1
+  }
+}
+
 @test "a deleted suite is not printed, since there is nothing left to run" {
   git -C "$FIXTURE" rm -q tests/unrelated.bats
   git -C "$FIXTURE" commit -q -m drop-suite
