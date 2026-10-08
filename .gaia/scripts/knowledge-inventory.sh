@@ -12,8 +12,9 @@
 #   bash .gaia/scripts/knowledge-inventory.sh verify   [--root <project-root>] <report> [--scope-hint <text>]
 #
 # With no --root the project is the git top level of the working directory.
-# The memory dir derives from the root the same way Claude Code keys it, so a
-# root given through a symlink names a different memory dir than its target.
+# The memory dir derives from the root the way Claude Code keys it: every
+# character outside A-Za-z0-9- becomes a dash, and a root given through a
+# symlink names a different memory dir than its target.
 #
 # list      one `<store>\t<path>\t<words>\t<mtime-epoch>` row per markdown file.
 # counts    one line, `<store>=<n>` per store, space separated. Stage 1 copies
@@ -85,7 +86,7 @@ if [ -z "$root" ]; then
   root="$(git rev-parse --show-toplevel 2>/dev/null)" || fail_input "not inside a git work tree; pass --root"
 fi
 root="${root%/}"
-memory_dir="$HOME/.claude/projects/$(printf %s "$root" | sed 's|/|-|g')/memory"
+memory_dir="$HOME/.claude/projects/$(printf %s "$root" | sed 's/[^A-Za-z0-9-]/-/g')/memory"
 user_agent_memory_dir="$HOME/.claude/agent-memory"
 
 # store_files <store>: the store's markdown files, one per line, sorted.
@@ -111,7 +112,7 @@ count_line() {
 }
 
 modification_epoch() {
-  stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null
+  stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null
 }
 
 list_rows() {

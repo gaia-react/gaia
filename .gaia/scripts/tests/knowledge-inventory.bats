@@ -20,7 +20,7 @@ setup() {
   SCRIPT="${KNOWLEDGE_INVENTORY_SCRIPT:-$REPO_ROOT/.gaia/scripts/knowledge-inventory.sh}"
   export HOME="$BATS_TEST_TMPDIR/home"
   PROJECT="$BATS_TEST_TMPDIR/project"
-  MEMORY="$HOME/.claude/projects/$(printf %s "$PROJECT" | sed 's|/|-|g')/memory"
+  MEMORY="$HOME/.claude/projects/$(printf %s "$PROJECT" | sed 's/[^A-Za-z0-9-]/-/g')/memory"
   USER_AGENT_MEMORY="$HOME/.claude/agent-memory"
   mkdir -p "$PROJECT/.gaia/vendor" "$PROJECT/.claude/rules" "$PROJECT/wiki/concepts" \
     "$PROJECT/.claude/agent-memory/reviewer" "$PROJECT/frontend" "$MEMORY" "$USER_AGENT_MEMORY/helper"
@@ -110,6 +110,28 @@ class_of() {
   inventory counts
   [ "$status" -eq 0 ]
   [ "$output" = "memory=0 user_agent_memory=0 project_agent_memory=0 rules=2 wiki=2 claude_md=2" ]
+}
+
+@test "counts: a root with a dot and a plus reads the memory dir keyed with every non-alphanumeric as a dash" {
+  local odd_root="$BATS_TEST_TMPDIR/odd.root+name"
+  local odd_memory
+  odd_memory="$HOME/.claude/projects/$(printf %s "$odd_root" | sed 's/[^A-Za-z0-9-]/-/g')/memory"
+  mkdir -p "$odd_root" "$odd_memory"
+  printf 'x\n' >"$odd_memory/one.md"
+  run bash "$SCRIPT" counts --root "$odd_root"
+  [ "$status" -eq 0 ]
+  [[ "$output" == memory=1\ * ]]
+}
+
+@test "counts red twin: a memory dir keyed by slashes only is not read for a dotted root" {
+  local odd_root="$BATS_TEST_TMPDIR/odd.root+name"
+  local slash_only_memory
+  slash_only_memory="$HOME/.claude/projects/$(printf %s "$odd_root" | sed 's|/|-|g')/memory"
+  mkdir -p "$odd_root" "$slash_only_memory"
+  printf 'x\n' >"$slash_only_memory/one.md"
+  run bash "$SCRIPT" counts --root "$odd_root"
+  [ "$status" -eq 0 ]
+  [[ "$output" == memory=0\ * ]]
 }
 
 # --- list ---

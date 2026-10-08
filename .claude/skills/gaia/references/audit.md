@@ -17,7 +17,7 @@ This command ships in a template and runs in many clones across many machines. N
 
 ```bash
 PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-$(pwd)}")"
-MEMORY_DIR="$HOME/.claude/projects/$(echo "$PROJECT_ROOT" | sed 's|/|-|g')/memory"
+MEMORY_DIR="$HOME/.claude/projects/$(echo "$PROJECT_ROOT" | sed 's/[^A-Za-z0-9-]/-/g')/memory"
 AGENT_MEMORY_DIR="$HOME/.claude/agent-memory"
 ```
 
@@ -69,7 +69,7 @@ Use this to re-apply an existing report after fixing drift, or to retry without 
   >
   > ```bash
   > PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-$(pwd)}")"
-  > MEMORY_DIR="$HOME/.claude/projects/$(echo "$PROJECT_ROOT" | sed 's|/|-|g')/memory"
+  > MEMORY_DIR="$HOME/.claude/projects/$(echo "$PROJECT_ROOT" | sed 's/[^A-Za-z0-9-]/-/g')/memory"
   > AGENT_MEMORY_DIR="$HOME/.claude/agent-memory"
   > ```
   >
@@ -94,7 +94,7 @@ Use this to re-apply an existing report after fixing drift, or to retry without 
   >
   > ```bash
   > PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-$(pwd)}")"
-  > MEMORY_DIR="$HOME/.claude/projects/$(echo "$PROJECT_ROOT" | sed 's|/|-|g')/memory"
+  > MEMORY_DIR="$HOME/.claude/projects/$(echo "$PROJECT_ROOT" | sed 's/[^A-Za-z0-9-]/-/g')/memory"
   > AGENT_MEMORY_DIR="$HOME/.claude/agent-memory"
   > ```
   >
