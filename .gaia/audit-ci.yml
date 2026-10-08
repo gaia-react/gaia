@@ -375,6 +375,7 @@ unowned:
   - ".gaia/cli/test-fixtures/**/*.json"
   - ".gaia/cli/test-fixtures/**/*.md"
   - ".gaia/cli/test-fixtures/**/*.ts"
+  - ".gaia/cli/test-fixtures/**/*.yaml"
   # Scoped to `tests/` rather than the whole subtree: `.gaia/scripts/**/*.json`
   # also reaches `.gaia/scripts/token-rates.json`, the shipped rate table the
   # cost tooling reads, and exempting it would not merely leave it ownerless but
