@@ -9,8 +9,6 @@
 # suppressed inside `if`/`||`); tests call them in `if` form so a red twin that
 # stops failing fails the test.
 
-# bats file_tags=whole-tree
-
 bats_require_minimum_version 1.5.0
 
 setup() {

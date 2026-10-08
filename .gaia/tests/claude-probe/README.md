@@ -2,7 +2,7 @@
 
 Maintainer-only (all of `.gaia/tests` is release-excluded). The probe observes how Claude Code loads GAIA's harness in the SPEC-092 layout (harness at the repository root, the app and its frontend-only harness under `frontend/`) and judges each observation against a committed expectation table. It is SPEC-092's Phase 0 gate (plan Phase 1) and the instrument behind UAT-001, UAT-017 and UAT-023.
 
-It spends tokens and needs Claude auth, so it runs by hand on a maintainer machine under a cost cap. CI runs only the harness's own tests (`.gaia/tests/lib/claude-probe.bats`), which use a stub `claude`.
+It spends tokens and needs Claude auth, so it runs by hand on a maintainer machine under a cost cap. Nothing runs it in CI.
 
 ## Files
 

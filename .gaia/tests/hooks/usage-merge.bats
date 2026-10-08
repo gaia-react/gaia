@@ -46,9 +46,8 @@
 #   memo beside the stores, so the render is also
 #   bounded in the hook by GAIA_USAGE_RENDER_CAP_SECONDS (default 10).
 #   Memoized readout (Apple M2 Pro, macOS 27.0, bash 5.3.15 and /bin/bash
-#   3.2.57, jq 1.7.1, 2026-10-01; stores from .gaia/tests/usage-perf/
-#   gen-usage-stores.sh seed 89, timed with time-usage-readout.sh --runs 5
-#   against e4b57e23). These stores are heavier than the 3.91 s point above:
+#   3.2.57, jq 1.7.1, 2026-10-01; synthetic stores from a seeded generator,
+#   seed 89, five timed runs each against e4b57e23). These stores are heavier than the 3.91 s point above:
 #   about 44 MB of usage.jsonl at 12 months against 25 MB. Medians, pre-change
 #   then changed:
 #     warm memo built on the stores minus their last day, then the last day
