@@ -1195,7 +1195,7 @@
       "signal": "post_tool_use",
       "floor": true,
       "source": "SPEC floor (each root deny holds for its real repository path); SEC-002; root deny Edit(.env) plus block-secrets-write.sh; plan C8 re-anchoring",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "fl-frontend-deny-edit-frontend-env",
@@ -1208,7 +1208,7 @@
       "signal": "post_tool_use",
       "floor": true,
       "source": "SPEC floor (each root deny holds for its real repository path); SEC-002; root deny Edit(.env) plus block-secrets-write.sh; plan C8 re-anchoring",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "fl-frontend-deny-edit-frontend-claude-settings-json",
@@ -1273,7 +1273,7 @@
       "signal": "post_tool_use",
       "floor": true,
       "source": "SPEC floor; SEC-002; sandbox denyRead .env plus block-sensitive-read.sh",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "fl-frontend-read-frontend-env",
@@ -1286,7 +1286,7 @@
       "signal": "post_tool_use",
       "floor": true,
       "source": "SPEC floor; SEC-002; sandbox denyRead .env plus block-sensitive-read.sh",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "frontend-read-pnpm-lock-yaml",
@@ -1325,7 +1325,7 @@
       "signal": "post_tool_use",
       "floor": true,
       "source": "SPEC floor (each root deny holds for its real repository path); SEC-002; root deny Edit(.env) plus block-secrets-write.sh",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "fl-root-deny-edit-frontend-env",
@@ -1338,7 +1338,7 @@
       "signal": "post_tool_use",
       "floor": true,
       "source": "SPEC floor (each root deny holds for its real repository path); SEC-002; root deny Edit(.env) plus block-secrets-write.sh",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "fl-root-deny-edit-frontend-claude-settings-json",
@@ -1403,7 +1403,7 @@
       "signal": "post_tool_use",
       "floor": false,
       "source": "SEC-002; sandbox denyRead .env plus block-sensitive-read.sh",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-read-frontend-env",
@@ -1416,7 +1416,7 @@
       "signal": "post_tool_use",
       "floor": false,
       "source": "SEC-002; sandbox denyRead .env plus block-sensitive-read.sh",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-read-pnpm-lock-yaml",
@@ -1767,7 +1767,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh pr merge *) stays down on ls -la alone, the negative control; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m01-pre-gh-pr-create",
@@ -1780,7 +1780,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh pr create *) stays down on ls -la alone, the negative control; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m01-pre-gh",
@@ -1793,7 +1793,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh *) stays down on ls -la alone, the negative control; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m01-pre-git",
@@ -1806,7 +1806,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(git *) stays down on ls -la alone, the negative control; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m01-pre-gh-pr-checkout",
@@ -1819,7 +1819,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh pr checkout *) stays down on ls -la alone, the negative control; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m01-pre-gh-pr-view",
@@ -1832,7 +1832,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh pr view *) stays down on ls -la alone, the negative control; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m01-post-gh-pr-merge",
@@ -1845,7 +1845,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PostToolUse handler behind if Bash(gh pr merge *) stays down on ls -la alone, the negative control; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m01-post-gh-pr-create",
@@ -1858,7 +1858,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PostToolUse handler behind if Bash(gh pr create *) stays down on ls -la alone, the negative control; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m01-post-gh",
@@ -1871,7 +1871,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PostToolUse handler behind if Bash(gh *) stays down on ls -la alone, the negative control; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m01-post-git",
@@ -1884,7 +1884,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PostToolUse handler behind if Bash(git *) stays down on ls -la alone, the negative control; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m01-post-gh-pr-checkout",
@@ -1897,7 +1897,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PostToolUse handler behind if Bash(gh pr checkout *) stays down on ls -la alone, the negative control; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m01-post-gh-pr-view",
@@ -1910,7 +1910,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PostToolUse handler behind if Bash(gh pr view *) stays down on ls -la alone, the negative control; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m02-pre-git",
@@ -1923,7 +1923,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(git *) spawns on git -C <root> status alone; docs: a rule matches the command it names",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m02-pre-gh-pr-merge",
@@ -1936,7 +1936,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh pr merge *) stays down on git -C <root> status alone; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m02-pre-gh-pr-create",
@@ -1949,7 +1949,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh pr create *) stays down on git -C <root> status alone; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m02-pre-gh",
@@ -1962,7 +1962,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh *) stays down on git -C <root> status alone; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m02-pre-gh-pr-checkout",
@@ -1975,7 +1975,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh pr checkout *) stays down on git -C <root> status alone; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m02-pre-gh-pr-view",
@@ -1988,7 +1988,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh pr view *) stays down on git -C <root> status alone; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m02-post-git",
@@ -2001,7 +2001,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PostToolUse handler behind if Bash(git *) spawns on git -C <root> status alone; docs: a rule matches the command it names",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m02-post-gh-pr-merge",
@@ -2014,7 +2014,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PostToolUse handler behind if Bash(gh pr merge *) stays down on git -C <root> status alone; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m02-post-gh-pr-create",
@@ -2027,7 +2027,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PostToolUse handler behind if Bash(gh pr create *) stays down on git -C <root> status alone; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m02-post-gh",
@@ -2040,7 +2040,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PostToolUse handler behind if Bash(gh *) stays down on git -C <root> status alone; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m02-post-gh-pr-checkout",
@@ -2053,7 +2053,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PostToolUse handler behind if Bash(gh pr checkout *) stays down on git -C <root> status alone; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m02-post-gh-pr-view",
@@ -2066,7 +2066,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PostToolUse handler behind if Bash(gh pr view *) stays down on git -C <root> status alone; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m03-pre-gh-pr-merge",
@@ -2079,7 +2079,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh pr merge *) spawns on gh pr merge <n> chained after git -C <root> status &&; docs: each subcommand of a compound command is checked separately",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m03-pre-gh",
@@ -2092,7 +2092,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh *) spawns on gh pr merge <n> chained after git -C <root> status &&; docs: each subcommand of a compound command is checked separately",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m03-pre-gh-pr-create",
@@ -2105,7 +2105,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh pr create *) stays down on gh pr merge <n> chained after git -C <root> status &&; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m04-pre-gh-pr-merge",
@@ -2118,7 +2118,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh pr merge *) spawns on gh pr merge <n> after a leading R=<root>;; docs: leading VAR=value assignments are stripped before matching, and each subcommand of a compound command is checked separately",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m04-pre-gh",
@@ -2131,7 +2131,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh *) spawns on gh pr merge <n> after a leading R=<root>;; docs: leading VAR=value assignments are stripped before matching, and each subcommand of a compound command is checked separately",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m04-pre-gh-pr-create",
@@ -2144,7 +2144,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh pr create *) stays down on gh pr merge <n> after a leading R=<root>;; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m05-pre-gh-pr-merge",
@@ -2157,7 +2157,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh pr merge *) spawns on gh pr merge <n> alone; docs: a rule matches the command it names",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m05-pre-gh",
@@ -2170,7 +2170,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh *) spawns on gh pr merge <n> alone; docs: a rule matches the command it names",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m05-pre-gh-pr-create",
@@ -2183,7 +2183,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh pr create *) stays down on gh pr merge <n> alone; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m06a-pre-gh-pr-merge",
@@ -2196,7 +2196,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh pr merge *) spawns on bare gh pr merge carrying only flags, alone; docs: a rule matches the command it names",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m06a-pre-gh",
@@ -2209,7 +2209,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh *) spawns on bare gh pr merge carrying only flags, alone; docs: a rule matches the command it names",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m06b-pre-gh-pr-merge",
@@ -2222,7 +2222,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh pr merge *) spawns on bare gh pr merge carrying only flags, chained after git -C <root> status &&; docs: each subcommand of a compound command is checked separately",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m06b-pre-gh",
@@ -2235,7 +2235,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh *) spawns on bare gh pr merge carrying only flags, chained after git -C <root> status &&; docs: each subcommand of a compound command is checked separately",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m07a-pre-gh-pr-create",
@@ -2248,7 +2248,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh pr create *) spawns on gh pr create carrying only flags, alone; docs: a rule matches the command it names",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m07a-pre-gh",
@@ -2261,7 +2261,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh *) spawns on gh pr create carrying only flags, alone; docs: a rule matches the command it names",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m07a-pre-gh-pr-merge",
@@ -2274,7 +2274,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh pr merge *) stays down on gh pr create carrying only flags, alone; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m07a-post-gh-pr-create",
@@ -2287,7 +2287,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PostToolUse handler behind if Bash(gh pr create *) spawns on gh pr create carrying only flags, alone; docs: a rule matches the command it names",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m07a-post-gh",
@@ -2300,7 +2300,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PostToolUse handler behind if Bash(gh *) spawns on gh pr create carrying only flags, alone; docs: a rule matches the command it names",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m07a-post-gh-pr-merge",
@@ -2313,7 +2313,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PostToolUse handler behind if Bash(gh pr merge *) stays down on gh pr create carrying only flags, alone; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m07b-pre-gh-pr-create",
@@ -2326,7 +2326,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh pr create *) spawns on gh pr create carrying only flags, chained after git -C <root> status &&; docs: each subcommand of a compound command is checked separately",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m07b-pre-gh",
@@ -2339,7 +2339,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh *) spawns on gh pr create carrying only flags, chained after git -C <root> status &&; docs: each subcommand of a compound command is checked separately",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m07b-pre-gh-pr-merge",
@@ -2352,7 +2352,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh pr merge *) stays down on gh pr create carrying only flags, chained after git -C <root> status &&; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m07b-post-gh-pr-create",
@@ -2365,7 +2365,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PostToolUse handler behind if Bash(gh pr create *) spawns on gh pr create carrying only flags, chained after git -C <root> status &&; docs: each subcommand of a compound command is checked separately",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m07b-post-gh",
@@ -2378,7 +2378,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PostToolUse handler behind if Bash(gh *) spawns on gh pr create carrying only flags, chained after git -C <root> status &&; docs: each subcommand of a compound command is checked separately",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m07b-post-gh-pr-merge",
@@ -2391,7 +2391,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PostToolUse handler behind if Bash(gh pr merge *) stays down on gh pr create carrying only flags, chained after git -C <root> status &&; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m08-pre-gh",
@@ -2404,7 +2404,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh *) spawns on gh issue edit <n> --add-label alone; docs: a rule matches the command it names",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m08-pre-gh-pr-merge",
@@ -2417,7 +2417,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh pr merge *) stays down on gh issue edit <n> --add-label alone; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m08-post-gh",
@@ -2430,7 +2430,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PostToolUse handler behind if Bash(gh *) spawns on gh issue edit <n> --add-label alone; docs: a rule matches the command it names",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m08-post-gh-pr-merge",
@@ -2443,7 +2443,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PostToolUse handler behind if Bash(gh pr merge *) stays down on gh issue edit <n> --add-label alone; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m09a-pre-git",
@@ -2456,7 +2456,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(git *) spawns on cd <root> && git commit --dry-run; docs: each subcommand of a compound command is checked separately",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m09a-pre-gh",
@@ -2469,7 +2469,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh *) stays down on cd <root> && git commit --dry-run; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m09a-post-git",
@@ -2482,7 +2482,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PostToolUse handler behind if Bash(git *) spawns on cd <root> && git commit --dry-run; docs: each subcommand of a compound command is checked separately",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m09a-post-gh",
@@ -2495,7 +2495,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PostToolUse handler behind if Bash(gh *) stays down on cd <root> && git commit --dry-run; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m09b-pre-git",
@@ -2508,7 +2508,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(git *) spawns on git -C <root> commit --dry-run alone; docs: a rule matches the command it names",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m09b-pre-gh",
@@ -2521,7 +2521,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh *) stays down on git -C <root> commit --dry-run alone; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m09b-post-git",
@@ -2534,7 +2534,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PostToolUse handler behind if Bash(git *) spawns on git -C <root> commit --dry-run alone; docs: a rule matches the command it names",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m09b-post-gh",
@@ -2547,7 +2547,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PostToolUse handler behind if Bash(gh *) stays down on git -C <root> commit --dry-run alone; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m10-pre-git",
@@ -2560,7 +2560,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(git *) spawns on git -C \"$R\" commit --dry-run after a leading R=<root>;; docs: leading VAR=value assignments are stripped before matching, and each subcommand of a compound command is checked separately",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m10-pre-gh",
@@ -2573,7 +2573,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh *) stays down on git -C \"$R\" commit --dry-run after a leading R=<root>;; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m10-post-git",
@@ -2586,7 +2586,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PostToolUse handler behind if Bash(git *) spawns on git -C \"$R\" commit --dry-run after a leading R=<root>;; docs: leading VAR=value assignments are stripped before matching, and each subcommand of a compound command is checked separately",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m10-post-gh",
@@ -2599,7 +2599,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PostToolUse handler behind if Bash(gh *) stays down on git -C \"$R\" commit --dry-run after a leading R=<root>;; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m11a-pre-gh-pr-view",
@@ -2612,7 +2612,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh pr view *) spawns on gh pr view <n> alone; docs: a rule matches the command it names",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m11a-pre-gh-pr-merge",
@@ -2625,7 +2625,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh pr merge *) stays down on gh pr view <n> alone; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m11a-post-gh-pr-view",
@@ -2638,7 +2638,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PostToolUse handler behind if Bash(gh pr view *) spawns on gh pr view <n> alone; docs: a rule matches the command it names",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m11a-post-gh-pr-merge",
@@ -2651,7 +2651,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PostToolUse handler behind if Bash(gh pr merge *) stays down on gh pr view <n> alone; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m11b-pre-gh-pr-view",
@@ -2664,7 +2664,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh pr view *) spawns on gh pr view <n> chained after git -C <root> status &&; docs: each subcommand of a compound command is checked separately",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m11b-pre-gh-pr-merge",
@@ -2677,7 +2677,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh pr merge *) stays down on gh pr view <n> chained after git -C <root> status &&; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m11b-post-gh-pr-view",
@@ -2690,7 +2690,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PostToolUse handler behind if Bash(gh pr view *) spawns on gh pr view <n> chained after git -C <root> status &&; docs: each subcommand of a compound command is checked separately",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m11b-post-gh-pr-merge",
@@ -2703,7 +2703,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PostToolUse handler behind if Bash(gh pr merge *) stays down on gh pr view <n> chained after git -C <root> status &&; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m11c-pre-gh-pr-view",
@@ -2716,7 +2716,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh pr view *) spawns on gh pr view <n> after a leading R=<root>;; docs: leading VAR=value assignments are stripped before matching, and each subcommand of a compound command is checked separately",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m11c-pre-gh-pr-merge",
@@ -2729,7 +2729,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh pr merge *) stays down on gh pr view <n> after a leading R=<root>;; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m11c-post-gh-pr-view",
@@ -2742,7 +2742,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PostToolUse handler behind if Bash(gh pr view *) spawns on gh pr view <n> after a leading R=<root>;; docs: leading VAR=value assignments are stripped before matching, and each subcommand of a compound command is checked separately",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m11c-post-gh-pr-merge",
@@ -2755,7 +2755,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PostToolUse handler behind if Bash(gh pr merge *) stays down on gh pr view <n> after a leading R=<root>;; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m11d-pre-gh-pr-view",
@@ -2768,7 +2768,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh pr view *) spawns on bare gh pr view carrying only flags; docs: a rule matches the command it names",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m11d-pre-gh-pr-merge",
@@ -2781,7 +2781,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh pr merge *) stays down on bare gh pr view carrying only flags; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m11d-post-gh-pr-view",
@@ -2794,7 +2794,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PostToolUse handler behind if Bash(gh pr view *) spawns on bare gh pr view carrying only flags; docs: a rule matches the command it names",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m11d-post-gh-pr-merge",
@@ -2807,7 +2807,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PostToolUse handler behind if Bash(gh pr merge *) stays down on bare gh pr view carrying only flags; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m12-post-dedup",
@@ -2820,7 +2820,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: the two same-command dedup handlers spawns on git -C <root> log --oneline -1 && gh pr view <n>, which matches both dedup handlers; docs: identical handler commands are deduplicated; observes whether two same-command handlers behind different rules both spawn on one call that matches both (the NOTE line carries spawn_count)",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m12-post-git",
@@ -2833,7 +2833,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PostToolUse handler behind if Bash(git *) spawns on git -C <root> log --oneline -1 && gh pr view <n>, which matches both dedup handlers; docs: each subcommand of a compound command is checked separately",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m12-post-gh-pr-view",
@@ -2846,7 +2846,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PostToolUse handler behind if Bash(gh pr view *) spawns on git -C <root> log --oneline -1 && gh pr view <n>, which matches both dedup handlers; docs: each subcommand of a compound command is checked separately",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m13a-pre-gh-pr-checkout",
@@ -2859,7 +2859,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh pr checkout *) spawns on gh pr checkout <n> chained after git -C <root> status &&; docs: each subcommand of a compound command is checked separately",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m13a-pre-gh",
@@ -2872,7 +2872,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh *) spawns on gh pr checkout <n> chained after git -C <root> status &&; docs: each subcommand of a compound command is checked separately",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m13a-pre-gh-pr-merge",
@@ -2885,7 +2885,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh pr merge *) stays down on gh pr checkout <n> chained after git -C <root> status &&; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m13b-pre-gh-pr-checkout",
@@ -2898,7 +2898,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh pr checkout *) spawns on gh pr checkout <n> alone; docs: a rule matches the command it names",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m13b-pre-gh",
@@ -2911,7 +2911,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh *) spawns on gh pr checkout <n> alone; docs: a rule matches the command it names",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m13b-pre-gh-pr-merge",
@@ -2924,7 +2924,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh pr merge *) stays down on gh pr checkout <n> alone; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m13c-pre-gh-pr-checkout",
@@ -2937,7 +2937,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh pr checkout *) spawns on gh pr checkout <n> after a leading R=<root>;; docs: leading VAR=value assignments are stripped before matching, and each subcommand of a compound command is checked separately",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m13c-pre-gh",
@@ -2950,7 +2950,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh *) spawns on gh pr checkout <n> after a leading R=<root>;; docs: leading VAR=value assignments are stripped before matching, and each subcommand of a compound command is checked separately",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     },
     {
       "id": "root-if-m13c-pre-gh-pr-merge",
@@ -2963,7 +2963,7 @@
       "signal": "probe_if",
       "floor": false,
       "source": "Hook if gating: a PreToolUse handler behind if Bash(gh pr merge *) stays down on gh pr checkout <n> after a leading R=<root>;; docs: the hook process is skipped when the call matches no subcommand of the rule",
-      "cited_run": null
+      "cited_run": ".gaia/tests/claude-probe/cited-runs/20261008T035451Z-hook-if"
     }
   ]
 }
