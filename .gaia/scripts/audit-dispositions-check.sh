@@ -23,6 +23,11 @@
 #                               or file when the finding is branch-authored
 #   security-not-fix            the same for a security:true key (a finding with no
 #                               boolean security field reads as true)
+#   security-file-not-private   a Critical or security:true key from outside the branch
+#                               disposed file while the repo is not confirmed PRIVATE
+#                               (`gh repo view` visibility, probed only when such an
+#                               entry exists; a failed probe is not PRIVATE): it diverts,
+#                               never a public or internal issue
 #   empty-reason                a non-fix disposition with an empty or blank reason
 #   vetoed-not-fix              a key vetoed for this round (effective_from_round <= r)
 #                               that is not fix; a synthetic fix entry for a vetoed key
@@ -104,6 +109,10 @@ def trim: gsub("^\\s+|\\s+$"; "");
                and ((.disposition == "file" and $lookup_entry.authored == false) | not)
             then (if ($lookup_entry.severity | IN("warning", "suggestion")) then "security-not-fix" else "critical-not-fix" end)
             else empty end),
+           (if $lookup_entry != null and .disposition == "file" and $lookup_entry.authored == false
+               and ((($lookup_entry.severity | IN("warning", "suggestion")) | not) or ($lookup_entry.security | if type == "boolean" then . else true end))
+               and $visibility != "PRIVATE"
+            then "security-file-not-private" else empty end),
            (if .disposition != "fix" and ((if (.reason | type) == "string" then .reason else "" end) | trim) == ""
             then "empty-reason" else empty end),
            (if $is_vetoed and .disposition != "fix" then "vetoed-not-fix" else empty end),
@@ -162,10 +171,25 @@ _live_lookup() {
   printf '%s' "$evaluator_output" | jq -c '.entries | map({member, finding_class, path, line, severity, security, cross_remit, authored})' 2>/dev/null || return 3
 }
 
+# _repo_visibility: PUBLIC, PRIVATE or INTERNAL from `gh repo view`, empty when
+# the probe fails (which reads as not PRIVATE).
+_repo_visibility() {
+  (cd "$ROOT" && gh repo view --json visibility --jq .visibility) 2>/dev/null || true
+}
+
 # _grade <round> <lookup-json>: prints violations; rc 0 none, 1 some, 3 input.
+# The first pass assumes the repo is not PRIVATE, so the visibility probe runs
+# only when a security-class file entry makes the answer matter.
 _grade() {
   local violations
-  violations="$(jq -r --argjson round "$1" --argjson lookup "$2" --argjson vetoes "$VETOES" "$_GRADE_JQ" "$RUN_FOLDER/dispositions-$1.json" 2>/dev/null)" || return 3
+  violations="$(jq -r --argjson round "$1" --argjson lookup "$2" --argjson vetoes "$VETOES" --arg visibility unprobed "$_GRADE_JQ" "$RUN_FOLDER/dispositions-$1.json" 2>/dev/null)" || return 3
+  case "$violations" in
+    *"violation: security-file-not-private "*)
+      if [ "$(_repo_visibility)" = PRIVATE ]; then
+        violations="$(jq -r --argjson round "$1" --argjson lookup "$2" --argjson vetoes "$VETOES" --arg visibility PRIVATE "$_GRADE_JQ" "$RUN_FOLDER/dispositions-$1.json" 2>/dev/null)" || return 3
+      fi
+      ;;
+  esac
   [ -z "$violations" ] && return 0
   printf '%s\n' "$violations"
   return 1
