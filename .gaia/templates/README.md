@@ -6,7 +6,7 @@
 pnpm dev
 ```
 
-The dev server runs on [http://localhost:3000](http://localhost:3000).
+The terminal prints the dev server URL. Each worktree gets its own port.
 
 ## Common scripts
 

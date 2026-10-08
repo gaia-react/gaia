@@ -16,7 +16,7 @@ Components and pages are tested by their Storybook stories (play functions, run 
 
 ## Running the gate
 
-`pnpm <script>` from `frontend/` equals `pnpm -C frontend <script>` from the repo root, and the root `package.json` proxies every frontend script, so `pnpm typecheck`, `pnpm lint`, `pnpm test`, and `pnpm pw` work from either directory. The Quality Gate steps live in `wiki/decisions/Quality Gate.md`.
+`pnpm <script>` from `frontend/` equals `pnpm -C frontend <script>` from the repo root, and the root `package.json` proxies every frontend script except `msw:init` (run it as `pnpm -C frontend msw:init`), so `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm pw`, and `pnpm shadcn` work from either directory. The Quality Gate steps live in `wiki/decisions/Quality Gate.md`.
 
 The harness CLI lives at the repo root: run `./.gaia/cli/gaia ...` from the root, or `../.gaia/cli/gaia ...` from `frontend/`. Scaffolders find the package through `.gaia/packages.json`, not the working directory.
 

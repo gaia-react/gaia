@@ -7,6 +7,11 @@
 #
 # The "old" control is an inline copy of the pre-move command, so the guard is
 # proven able to fail without reading git history (this PR is squash-merged).
+#
+# The maintainer-only "Frontend filter", piped after the Quick check, narrows
+# which gate-selecting commits run the frontend steps: CLI, test-harness, and
+# harness-script source belongs to no registered package. Its can-fail control
+# is the Quick check alone, which selects those same stages.
 
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
@@ -28,6 +33,20 @@ page_quick_check() {
     in_block && /^```$/ { exit }
     in_block { print }
   ' "$PAGE"
+}
+
+# The maintainer-only fenced block that follows the "Frontend filter:" line,
+# appended to the Quick check as a pipeline stage.
+page_frontend_check() {
+  local filter
+  filter="$(awk '
+    /^Frontend filter:$/ { armed = 1; next }
+    armed && /^```bash$/ { in_block = 1; next }
+    in_block && /^```$/ { exit }
+    in_block { print }
+  ' "$PAGE")"
+  [ -n "$filter" ] || return 1
+  printf '%s | %s\n' "$(page_quick_check)" "$filter"
 }
 
 # Stage the given paths in the temp repo, run the command, print its output.
@@ -95,4 +114,31 @@ staged_selection() {
     actual="$actual $(printf '%s' "$line" | sed -E 's/.*pnpm -C frontend ([a-z]+).*/\1/')"
   done
   [ "${actual# }" = "$expected" ]
+}
+
+@test "the page carries exactly one frontend filter" {
+  run page_frontend_check
+  [ "$status" -eq 0 ]
+  [ -n "$output" ]
+  [ "$(printf '%s\n' "$output" | wc -l | tr -d ' ')" -eq 1 ]
+}
+
+@test "staging only CLI, test-harness, and harness-script source skips the frontend steps" {
+  run staged_selection "$(page_frontend_check)" .gaia/cli/src/a.ts .gaia/tests/a.ts .gaia/scripts/lib/a.mjs
+  [ -z "$output" ]
+}
+
+@test "frontend source staged beside CLI source selects the frontend steps" {
+  run staged_selection "$(page_frontend_check)" .gaia/cli/src/a.ts frontend/app/a.tsx
+  [ "$output" = "frontend/app/a.tsx" ]
+}
+
+@test "root config and the package registry still select the frontend steps" {
+  run staged_selection "$(page_frontend_check)" package.json .gaia/packages.json frontend/tsconfig.json
+  [ "$(printf '%s\n' "$output" | wc -l | tr -d ' ')" -eq 3 ]
+}
+
+@test "guard can fail: the quick check alone selects a CLI-only stage" {
+  run staged_selection "$(page_quick_check)" .gaia/cli/src/a.ts
+  [ "$output" = ".gaia/cli/src/a.ts" ]
 }

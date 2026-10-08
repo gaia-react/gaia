@@ -181,7 +181,7 @@ Extract when a section meets **all** criteria:
 
 **Do not extract** when state/refs are shared across sections, extraction needs 5+ props/callbacks, section is under ~60 lines, or form validation is tightly coupled.
 
-How: Create `ParentComponent/NewSection/index.tsx`, move exclusive types/state/handlers/JSX, define minimal `Props` type.
+How: Create `parent-component/new-section/index.tsx`, move exclusive types/state/handlers/JSX, define minimal `Props` type.
 
 ## Data Loading
 
