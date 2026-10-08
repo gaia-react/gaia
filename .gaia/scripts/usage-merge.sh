@@ -1,7 +1,16 @@
 #!/usr/bin/env bash
-# Per-PR cost block for a `gh pr merge` Bash call. token-rollup-merge.sh runs
-# this with the PostToolUse payload on stdin and prints what it prints; it
-# always exits 0 and prints nothing when it has nothing to say.
+# Per-PR cost block for a `gh pr merge` Bash call. pr-merge-cost.sh runs this
+# with the PostToolUse payload on stdin and prints what it prints. It prints
+# nothing when it has nothing to say and exits 0 on every path except a missing
+# library: usage-lib.sh, usage.sh, or the Code Audit Team roster reader
+# (.claude/hooks/lib/audit-scope.sh) makes it exit 1 with one stderr line naming
+# the file, so the caller's unavailable marker fires instead of the block going
+# quiet.
+#
+# The Code Audit Team roster is the `auditors:` list of .gaia/audit-ci.yml in
+# the tree this script lives in; every render passes it as `--auditors`. When
+# the roster is unreadable or empty the render omits the flag and the line
+# `! audit line unavailable: ...` follows the block.
 #
 # One merge does three things: flush the merging session's transcript, read
 # the PR once with `gh pr view` (the only confirmation a merge happened), and
@@ -62,16 +71,25 @@ _um_script_path="${BASH_SOURCE[0]:-$0}"
 case "$_um_script_path" in */*) UM_SCRIPT_DIRECTORY="${_um_script_path%/*}" ;; *) UM_SCRIPT_DIRECTORY=. ;; esac
 
 UM_WORK=""
+# The status the EXIT trap hands back: 0 on every path except a missing
+# library, whose non-zero exit must survive the cleanup.
+UM_EXIT_CODE=0
 # shellcheck disable=SC2329  # invoked by the EXIT trap
 _um_cleanup() { [ -z "$UM_WORK" ] || rm -rf "$UM_WORK" 2>/dev/null; }
-trap '_um_cleanup; exit 0' EXIT
+trap '_um_cleanup; exit "$UM_EXIT_CODE"' EXIT
 trap 'exit 0' INT TERM
 
 [ "${GAIA_USAGE_HOOKS_DISABLE:-}" = 1 ] && exit 0
 command -v jq >/dev/null 2>&1 || exit 0
-# shellcheck source=usage-lib.sh
-. "$UM_SCRIPT_DIRECTORY/usage-lib.sh" 2>/dev/null || exit 0
-[ -f "$UM_SCRIPT_DIRECTORY/usage.sh" ] || exit 0
+# _um_missing <file>: one stderr line naming the file, then a non-zero exit.
+_um_missing() { printf 'usage-merge.sh: cannot load %s\n' "$1" >&2; UM_EXIT_CODE=1; exit 1; }
+# shellcheck source=/dev/null
+. "$UM_SCRIPT_DIRECTORY/usage-lib.sh" || _um_missing "$UM_SCRIPT_DIRECTORY/usage-lib.sh"
+[ -f "$UM_SCRIPT_DIRECTORY/usage.sh" ] || _um_missing "$UM_SCRIPT_DIRECTORY/usage.sh"
+# shellcheck source=/dev/null
+. "$UM_SCRIPT_DIRECTORY/../../.claude/hooks/lib/audit-scope.sh" || _um_missing "$UM_SCRIPT_DIRECTORY/../../.claude/hooks/lib/audit-scope.sh"
+UM_ROOT="$(cd "$UM_SCRIPT_DIRECTORY/../.." 2>/dev/null && pwd)" || UM_ROOT=""
+UM_ROSTER="$(audit_roster_member_names "$UM_ROOT/.gaia/audit-ci.yml" 2>/dev/null | paste -sd, -)" || UM_ROSTER=""
 UM_MAIN="$(gaia_usage_main_root)" || exit 0
 [ -n "$UM_MAIN" ] || exit 0
 
@@ -299,6 +317,7 @@ render() {
   [ -z "$1" ] || usage_arguments+=("$1")
   shift
   render_output=""
+  [ -z "$UM_ROSTER" ] || usage_arguments+=(--auditors "$UM_ROSTER")
   bash "$UM_SCRIPT_DIRECTORY/usage.sh" "${usage_arguments[@]}" "$@" "${common[@]}" </dev/null >"$render_file" 2>/dev/null 3>&- &
   render_pid=$!
   while kill -0 "$render_pid" 2>/dev/null; do
@@ -356,4 +375,7 @@ if [ "$timed_out" = 1 ]; then
   exit 0
 fi
 [ -z "$render_output" ] || printf '%s\n' "$render_output"
+if [ -n "$render_output" ] && [ -z "$UM_ROSTER" ]; then
+  printf '  ! audit line unavailable: no auditors roster in .gaia/audit-ci.yml\n'
+fi
 exit 0

@@ -208,7 +208,20 @@ subcommand_arguments() {
     pr-branch) echo "pr-branch 101" ;;
     initiative) echo "initiative issue:123" ;;
     reconcile) echo "reconcile" ;;
+    record) echo "record spec:SPEC-001 --workflow gaia-spec" ;;
+    represented) echo "represented spec:SPEC-001 --workflow gaia-spec" ;;
     *) return 1 ;;
+  esac
+}
+
+# subcommand_expected_status <name>: the exit status of the representative
+# argument list over the populated fixture. record and represented are gates, not
+# readouts: the fixture holds no close row for the ref and no start in the
+# invoking session, so each refuses with 1 before any network or ledger write.
+subcommand_expected_status() {
+  case "$1" in
+    record | represented) echo 1 ;;
+    *) echo 0 ;;
   esac
 }
 

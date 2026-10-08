@@ -67,7 +67,6 @@
     ".claude/hooks/pr-merge-audit-check.sh": "owned",
     ".claude/hooks/provision-worktree.sh": "owned",
     ".claude/hooks/red-verify-commit-check.sh": "owned",
-    ".claude/hooks/token-rollup-merge.sh": "owned",
     ".claude/hooks/token-tally-git-op.sh": "owned",
     ".claude/hooks/token-tally-review.sh": "owned",
     ".claude/hooks/usage-capture.sh": "owned",

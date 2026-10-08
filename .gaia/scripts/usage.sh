@@ -6,8 +6,10 @@
 # nothing else. Writes exit 0 written (or nothing owed), 1 refused (a cycle, or
 # no ledger mutex available), 2 usage or grammar error, 75 lock timeout; every
 # non-zero write leaves both stores untouched. With jq absent every subcommand
-# prints the inactive line and exits 0 before touching any file. A library
-# that cannot be loaded exits non-zero before any of that, naming the file.
+# prints the inactive line and exits 0 before touching any file, except `record`
+# and `represented`, which exit 2 (usage-record-lib.sh owns their exit codes).
+# A library that cannot be loaded exits non-zero before any of that, naming the
+# file.
 #
 # The merge hook and the PR-create hook call `pr`, `pr-branch`, and `link`;
 # they pass raw branch spellings through --branch and never normalize or key a
@@ -32,6 +34,8 @@ _usage_missing_library() { printf 'usage: cannot load %s\n' "$1" >&2; exit 1; }
 . "$_usage_script_directory/usage-memo-lib.sh" 2>/dev/null || _usage_missing_library "$_usage_script_directory/usage-memo-lib.sh"
 # shellcheck source=.gaia/scripts/token-pricing-lib.sh
 . "$_usage_script_directory/token-pricing-lib.sh" 2>/dev/null || _usage_missing_library "$_usage_script_directory/token-pricing-lib.sh"
+# shellcheck source=.gaia/scripts/usage-record-lib.sh
+. "$_usage_script_directory/usage-record-lib.sh" 2>/dev/null || _usage_missing_library "$_usage_script_directory/usage-record-lib.sh"
 
 usage_help() {
   cat <<'EOF'
@@ -48,6 +52,9 @@ usage: bash .gaia/scripts/usage.sh <subcommand> [args]
   initiative <ref>                                  spend under each root of <ref>
   initiative <ref> --line [--json]                  one Cost line for <ref> as the root
   reconcile                                         attributed vs unattributed spend
+  record <ref> --workflow <w> [--pr <N>] [--issue <N>] [--start <iso>] [--json]
+                                                    close a run, print its Cost line
+  represented <ref> --workflow <w>                  exit 0 when the run's close is on the ledger
 common: [--main-root <dir>] [--telemetry-dir <dir>] [--rate-table <path>]
         [--projects-root <dir>]
 link, unlink, declare: [--session <sid>] [--sidechain]
@@ -69,7 +76,7 @@ _is_iso() { [[ "${1-}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}
 
 MAIN_ROOT="" TELEMETRY_DIRECTORY="" RATE_TABLE="" PROJECTS_ROOT="" SESSION="" SIDECHAIN=false
 SOURCE="" MERGE="" PR_NUMBER="" BRANCH="" KEY="" MERGED_AT="" AT="" PARTIAL=0 UNCONFIRMED=0
-LINE=0 JSON=0 AUDITORS="" AUDITORS_GIVEN=0
+LINE=0 JSON=0 AUDITORS="" AUDITORS_GIVEN=0 WORKFLOW="" ISSUE_NUMBER="" START_ISO=""
 ARGS=()
 
 # rc 2 on a malformed flag; the caller decides whether that exits 2 or 0.
@@ -84,7 +91,7 @@ _parse() {
       --line) LINE=1; shift; continue ;;
       --json) JSON=1; shift; continue ;;
       --main-root | --telemetry-dir | --rate-table | --projects-root | --session | --source | \
-        --merge | --pr | --branch | --key | --merged-at | --at | --auditors)
+        --merge | --pr | --branch | --key | --merged-at | --at | --auditors | --workflow | --issue | --start)
         [ $# -ge 2 ] || { _error "$flag needs a value"; return 2; }
         case "$flag" in
           --main-root) MAIN_ROOT="$2" ;; --telemetry-dir) TELEMETRY_DIRECTORY="$2" ;;
@@ -92,6 +99,7 @@ _parse() {
           --source) SOURCE="$2" ;; --merge) MERGE="$2" ;; --pr) PR_NUMBER="$2" ;; --branch) BRANCH="$2" ;;
           --key) KEY="$2" ;; --merged-at) MERGED_AT="$2" ;; --at) AT="$2" ;;
           --auditors) AUDITORS="$2" AUDITORS_GIVEN=1 ;;
+          --workflow) WORKFLOW="$2" ;; --issue) ISSUE_NUMBER="$2" ;; --start) START_ISO="$2" ;;
         esac
         shift 2 ;;
       --) shift; while [ $# -gt 0 ]; do ARGS[${#ARGS[@]}]="$1"; shift; done ;;
@@ -441,6 +449,8 @@ case "$SUBCOMMAND" in
   pr-branch) _pre 0 "$@"; subcommand_pr_branch; exit 0 ;;
   initiative) _pre 0 "$@"; subcommand_initiative; exit 0 ;;
   reconcile) _pre 0 "$@"; subcommand_reconcile; exit 0 ;;
+  record) _record_main "$@"; exit ;;
+  represented) _represented_main "$@"; exit ;;
   "" | -h | --help) usage_help; exit 0 ;;
   *) usage_help >&2; exit 2 ;;
 esac

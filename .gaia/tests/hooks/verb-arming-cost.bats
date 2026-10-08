@@ -66,10 +66,9 @@
 #   The transition is a clean step, and identical on 3.2.57 and 5.3.15: 4 forks
 #   at 16,384 characters or fewer, 7 at 16,385 or more, matching the `-le` test
 #   the guard above names. It is uneven per hook rather than blurred, because
-#   the four arm on different verbs: across a `gh pr merge` boundary
+#   the hooks arm on different verbs: across a `gh pr merge` boundary
 #   token-tally-git-op.sh and capture-gh-artifact.sh stay at their pre-gate
-#   check, post-findings-block-on-merge.sh goes 1 -> 2, and token-rollup-merge.sh
-#   goes 1 -> 3.
+#   check and post-findings-block-on-merge.sh goes 1 -> 2.
 #
 #   An off-by-one sits between a requested size and the length the walker
 #   measures, and a sweep that misses it reads the boundary in the wrong
@@ -350,7 +349,7 @@ adopting_hooks() {
     post-findings-block-on-merge.sh \
     token-tally-git-op.sh \
     token-tally-review.sh \
-    token-rollup-merge.sh \
+    pr-merge-cost.sh \
     issue-claim-release.sh \
     debt-sentinel-touch.sh \
     capture-gh-artifact.sh \
@@ -528,8 +527,8 @@ CEILING_USAGE_MERGE_MS=4000
 @test "cost: the merge hook with the usage block live stays inside the cap plus headroom when gh cannot answer" {
   local copied_file
   mkdir -p "$REPO/.claude/hooks/lib" "$REPO/.gaia/scripts" "$REPO/.gaia/scripts/spec"
-  cp "$HOOKS_DIRECTORY/token-rollup-merge.sh" "$REPO/.claude/hooks/"
-  for copied_file in verb-arming.sh verb-arming-walk.sh repo-scope.sh gaia-active-plan.sh; do
+  cp "$HOOKS_DIRECTORY/pr-merge-cost.sh" "$REPO/.claude/hooks/"
+  for copied_file in verb-arming.sh verb-arming-walk.sh repo-scope.sh hook-payload.sh audit-scope.sh; do
     cp "$HOOKS_DIRECTORY/lib/$copied_file" "$REPO/.claude/hooks/lib/"
   done
   for copied_file in "$HOOKS_DIRECTORY"/../../.gaia/scripts/usage*.sh "$HOOKS_DIRECTORY"/../../.gaia/scripts/token-pricing-lib.sh \
@@ -544,7 +543,7 @@ CEILING_USAGE_MERGE_MS=4000
 
   unset GAIA_USAGE_HOOKS_DISABLE
   export GAIA_USAGE_MERGE_CAP_SECONDS=1
-  time_hook_ms "$REPO/.claude/hooks/token-rollup-merge.sh" "gh pr merge 30 --squash"
-  echo "token-rollup-merge.sh with the usage block live, gh failing, cap 1s: ${REPLY_MS}ms (ceiling ${CEILING_USAGE_MERGE_MS}ms)" >&2
+  time_hook_ms "$REPO/.claude/hooks/pr-merge-cost.sh" "gh pr merge 30 --squash"
+  echo "pr-merge-cost.sh with the usage block live, gh failing, cap 1s: ${REPLY_MS}ms (ceiling ${CEILING_USAGE_MERGE_MS}ms)" >&2
   [ "$REPLY_MS" -le "$CEILING_USAGE_MERGE_MS" ]
 }
