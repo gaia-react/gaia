@@ -153,7 +153,7 @@ ledger_path() {
   OUTPUT_DIRECTORY="$BATS_TEST_TMPDIR/out-1"
   LEDGER="$BATS_TEST_TMPDIR/ledger-1.jsonl"
 
-  # The producer-side seam under test: the SAME function spec.md step 7
+  # The producer-side seam under test: the SAME function spec/audit.md
   # sources and calls, never a hand-authored breadcrumb file.
   breadcrumb_path="$CACHE/audit-window-SPEC-032.json"
   run gaia_audit_window_write "$breadcrumb_path" "$AUDIT_REVIEW_SESSION" \

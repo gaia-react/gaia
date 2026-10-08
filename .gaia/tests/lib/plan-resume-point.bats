@@ -359,7 +359,7 @@ EOF
 }
 
 # --- 015: delimiter-agnostic parse (dash form) ------------------------------
-# The doc-grep style guard that both plan.md and the concept page use the
+# The doc-grep style guard that both plan/planner.md and the concept page use the
 # comma form is Phase 2's job; this asserts only that the parser itself
 # resolves a dash-form heading.
 

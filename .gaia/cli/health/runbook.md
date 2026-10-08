@@ -340,7 +340,7 @@ The cycle loop is adversarial against the product (five buckets, a fresh per-cyc
 
 The challenger is a single adversarial pass the Orchestrator spawns at the clean-exit boundary, AFTER a cycle produces a clean `findings.json` but BEFORE the RUN_DIR deletion and the A+ report. A substantiated finding from any lens REVOKES the clean exit.
 
-**Intentional divergences from the canonical adversarial-audit pattern** (`.claude/skills/gaia/references/spec.md` step 7, `.claude/skills/gaia/references/plan.md` step 4.6); these are deliberate, do not "fix" them back toward that shape:
+**Intentional divergences from the canonical adversarial-audit pattern** (`.claude/skills/gaia/references/spec/audit.md`, `.claude/skills/gaia/references/plan/decomposition-audit.md`); these are deliberate, do not "fix" them back toward that shape:
 
 1. **No interactive gate.** The loop is autonomous, so the challenger runs UNCONDITIONALLY on the terminal clean cycle. There is no recommended-but-optional prompt.
 2. **No refutation pass.** Challenger findings are binary and checkable (a defect exists at a file + pattern or it does not; a near-match matches a Decided entry or it does not), exactly like the plan-decomposition audit, so there is no severity-debate refutation round.
