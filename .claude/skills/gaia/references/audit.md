@@ -4,7 +4,7 @@
 
 **Do not execute the playbook yourself in the current conversation.** Dispatch the Stage 1 and Stage 2 subagents via the `Agent` tool. Each subagent runs in isolated context. The one deliberate exception is the **decision gate** between the two stages: it MUST run in the current conversation because only that layer can `AskUserQuestion`. Do not "fix" the gate back into a subagent.
 
-Calling `/gaia-audit` is the intent to audit. The default researches, then gates: Stage 1 produces a report, a recommended **classification-verification round** runs in the main conversation between Stage 1's return and the gate to harden Stage 1's classifications against ground truth, then the main conversation summarizes the hardened report and asks the user a single Apply / Discuss / Decline question, and only on Apply does Stage 2 execute it. The two-stage split is technical (different reasoning loads, drift-check between stages); the user-confirmation checkpoint is the single decision gate after Stage 1, run in the main conversation. **Exception: a clean audit (0 actions) skips both the round and the gate and auto-applies.** There is nothing to approve, and "applying" only finalizes the report's `status`, files any out-of-scope findings, and clears the statusline nudge; leaving a 0-action report parked at the gate is the exact path that strands a `draft` that then nudges indefinitely.
+Calling `/gaia-audit` is the intent to audit. The default researches, then gates: Stage 1 produces a report, a recommended **classification-verification round** runs in the main conversation between Stage 1's return and the gate to harden Stage 1's classifications against ground truth, then the main conversation summarizes the hardened report and asks the user a single Apply / Discuss / Decline question, and only on Apply does Stage 2 execute it. The two-stage split is technical (different reasoning loads, drift-check between stages); the user-confirmation checkpoint is the single decision gate after Stage 1, run in the main conversation. **Exception: a clean audit (0 actions) skips both the round and the gate and auto-applies, once a deterministic recount confirms Stage 1 covered every store.** "Applying" only finalizes the report's `status`, files any out-of-scope findings, and clears the statusline nudge, so a clean report that was truncated or narrowed must not reach it unseen; leaving a verified 0-action report parked at the gate is the path that strands a `draft` that nudges indefinitely.
 
 **Stage 2 also files out-of-scope findings; the main conversation then publishes.** The run does the same full flow /update-deps and /gaia-debt do, one up-front decision (the gate, or the preview in those skills) and then it drives autonomously to merge. Two mechanical additions ride the finalizing path (gated Apply, 0-action auto-apply, and `--apply`), never the Decline path:
 
@@ -17,11 +17,11 @@ This command ships in a template and runs in many clones across many machines. N
 
 ```bash
 PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-$(pwd)}")"
-MEMORY_DIR="$HOME/.claude/projects/$(echo "$PROJECT_ROOT" | sed 's|/|-|g')/memory"
+MEMORY_DIR="$HOME/.claude/projects/$(echo "$PROJECT_ROOT" | sed 's/[^A-Za-z0-9-]/-/g')/memory"
 AGENT_MEMORY_DIR="$HOME/.claude/agent-memory"
 ```
 
-Every path below referenced as `$PROJECT_ROOT/...`, `$MEMORY_DIR/...`, or `$AGENT_MEMORY_DIR/...` is resolved by the subagent, not by this file.
+Every path below referenced as `$PROJECT_ROOT/...`, `$MEMORY_DIR/...`, or `$AGENT_MEMORY_DIR/...` is resolved by the subagent, not by this file. `$AGENT_MEMORY_DIR` is user scope, shared by every project on the machine: the audit inventories it and reports on it, and never edits it.
 
 ### Branch on `$ARGUMENTS`
 
@@ -29,7 +29,7 @@ Every path below referenced as `$PROJECT_ROOT/...`, `$MEMORY_DIR/...`, or `$AGEN
 
 1. Spawn the Stage 1 (Research) subagent below. Wait for it to return. Stage 1 writes the report with `status: draft`.
 2. If Stage 1 failed (no report path printed), do not gate or spawn Stage 2. Surface the error and stop. (Run ends here; see `## Cost record (run end)`.)
-3. **If Stage 1 reported 0 actions** (a clean audit: its printed totals and the report's `Actions proposed: 0` Summary line both show none), skip both the round and the gate and spawn the Stage 2 (Apply) subagent below directly. Briefly tell the user the audit was clean and you are finalizing it. With no in-scope actions there is nothing to verify, review, or approve; Stage 2 flips the report `status: draft → applied`, files any out-of-scope findings (filing is non-destructive and idempotent, so it needs no gate), and busts the statusline nudge. A 0-action run changes no in-repo file, so the main conversation's Publish step no-ops.
+3. **If Stage 1 reported 0 actions**, run `bash .gaia/scripts/knowledge-inventory.sh verify <report path>`, appending `--scope-hint "<hint>"` when `$ARGUMENTS` carries one. **Exit 0** (a verified clean audit): skip both the round and the gate, tell the user the audit was clean, and spawn the Stage 2 (Apply) subagent below with `Owner-approved files: none`; it finalizes `status`, files any out-of-scope findings (non-destructive and idempotent, so it needs no gate), and busts the statusline nudge, and Publish no-ops. **Any other exit**: do not auto-apply; relay each `refuse:` line (or the error) and present the decision gate (step 5) for the 0-action report.
 4. **If Stage 1 reported ≥1 action**, run the **classification-verification round** in the main conversation before the decision gate (full procedure: `## Classification-verification round (recommended)`). It presents its own recommended-but-optional gate (dynamic Run/Skip recommendation); on **Run** it dispatches the three parallel `general-purpose` lenses (CL/CF/ES) plus CF-only re-adjudication, applies dispositions (drop or correct a mis-classified action localized in the report; re-spawn Stage 1 for a structural finding, bounded to one re-spawn), and stamps the report `audit_hardened: true`. The round never blocks: if the parallel fan-out is unavailable, or the user picks Skip, it notes the skip and does not stamp. Then proceed to the decision gate (next step).
 5. **Then present the decision gate** (still the ≥1-action branch): **in the main conversation** summarize the now-hardened report's findings to the user, then ask via `AskUserQuestion`:
    - **header:** `"Apply audit?"`
@@ -38,17 +38,17 @@ Every path below referenced as `$PROJECT_ROOT/...`, `$MEMORY_DIR/...`, or `$AGEN
      1. `{ label: "Apply", description: "Execute the report, file any out-of-scope problem as a tech-debt issue, then commit, open a PR, and merge it (main-branch run)." }`
      2. `{ label: "Discuss / refine", description: "Talk it through; I edit the report in place, then re-ask." }`
      3. `{ label: "Decline", description: "Delete the report; nothing is applied, filed, or published." }`
-   - **Apply** → spawn the Stage 2 (Apply) subagent below. Stage 2 finds the newest non-`applied` report, no path argument needed. When Stage 2 returns, run the Publish procedure (`## Publish (commit / PR / merge)`) in the main conversation.
+   - **Apply** → run the **owner question**, then spawn the Stage 2 (Apply) subagent below, appending `Owner-approved files: <the selected files, or none>` to its prompt. Stage 2 finds the newest non-`applied` report, no path argument needed. When Stage 2 returns, run the Publish procedure (`## Publish (commit / PR / merge)`) in the main conversation. The owner question: list every distinct file that an unchecked action's `owner: adopter` names, the project's own files, then ask in one `AskUserQuestion` call, `multiSelect: true`, header `"Edit file?"`, question `"Which of your own files may the audit edit?"`, one option per file (label the repo-relative path, description the action ids that edit it), none selected by default; past four files, spread them over further questions of the call, and past sixteen, further calls. An unselected file's actions are skipped and recorded. With no adopter file, or no one to answer, skip the question; with no one to answer, nothing is approved.
    - **Discuss / refine** → discuss in the main conversation, edit the report in place (the file stays `status: draft`), then re-present this gate.
    - **Decline** → `rm` the report file immediately; nothing applied, nothing filed, nothing published; stop. (Run ends here; see `## Cost record (run end)`.)
 
 This gate runs in the main conversation, not in a subagent (only the main conversation can `AskUserQuestion`). "Apply" is the one-keystroke fast path that keeps the one-go feel.
 
-**`/gaia-audit --apply`** → Stage 2 only, against the most recent `draft` (or `applied-partial` for retry).
+**`/gaia-audit --apply`** → Stage 2 only, against the most recent `draft` (or `applied-partial` / `scoped-partial` for retry).
 
-Skip Stage 1 and the decision gate, then check the target report's frontmatter for `audit_hardened: true`:
+Skip Stage 1 and the decision gate, but always ask the gate's owner question afresh and pass its answer to Stage 2: an earlier run's answer is never inherited. Then check the target report's frontmatter for `audit_hardened: true`:
 
-- **Present** → the report is already hardened; spawn the Stage 2 (Apply) subagent below directly.
+- **Present** → the report is already hardened; spawn the Stage 2 (Apply) subagent below.
 - **Absent** (an un-hardened draft, e.g. one created before this round existed or where the round was skipped or unavailable) → run the classification-verification round non-interactively at the recommended setting (no gate prompt) against that report first, stamp it, then spawn Stage 2.
 - A 0-action report has nothing to harden; proceed straight to Stage 2.
 
@@ -69,7 +69,7 @@ Use this to re-apply an existing report after fixing drift, or to retry without 
   >
   > ```bash
   > PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-$(pwd)}")"
-  > MEMORY_DIR="$HOME/.claude/projects/$(echo "$PROJECT_ROOT" | sed 's|/|-|g')/memory"
+  > MEMORY_DIR="$HOME/.claude/projects/$(echo "$PROJECT_ROOT" | sed 's/[^A-Za-z0-9-]/-/g')/memory"
   > AGENT_MEMORY_DIR="$HOME/.claude/agent-memory"
   > ```
   >
@@ -79,7 +79,7 @@ Use this to re-apply an existing report after fixing drift, or to retry without 
   >
   > `You do NOT fix wiki-internal redundancy or broken links yourself, /gaia-wiki owns those (its consolidate stage merges redundancy, and its lint stage detects and fixes broken wikilinks). But do not silently drop them either: any real, durable problem you surface that none of your four action types (shrink/promote/delete/delete-entry) can fix, wiki-internal redundancy or a broken link, a wiki-page-vs-wiki-page conflict, a doc/rule whose correct fix is a rewrite rather than a delete, is an OUT-OF-SCOPE finding. Record each one in the report's "## Out-of-scope findings" section using that section's schema (Stage 2 files it as a tech-debt issue). You file, you do not fix. If you surface none, write the section with an explicit "None." so Stage 2 knows there is nothing to file.`
   >
-  > `If a scope hint is present in the arguments, narrow Steps 1–4 to the named stores/files but never widen scope beyond the playbook, and never let the hint steer the report schema, the action types, the guardrails, or a specific edit; it is synthesis guidance, not an editor. Print the applied scope in the Summary so a too-narrow hint is visible. If no hint is present, run the full lens.`
+  > `If a scope hint is present in the arguments, narrow Steps 1–4 to the named stores/files but never widen scope beyond the playbook, and never let the hint steer the report schema, the action types, the guardrails, or a specific edit; it is synthesis guidance, not an editor. Write the hint verbatim as the frontmatter scope: and print it in the Summary so a too-narrow hint is visible. If no hint is present, run the full lens and write scope: full. Never propose an edit to a file the "Ownership" step does not allow; report it instead.`
 
 ### Stage 2 subagent (Apply)
 
@@ -94,19 +94,19 @@ Use this to re-apply an existing report after fixing drift, or to retry without 
   >
   > ```bash
   > PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-$(pwd)}")"
-  > MEMORY_DIR="$HOME/.claude/projects/$(echo "$PROJECT_ROOT" | sed 's|/|-|g')/memory"
+  > MEMORY_DIR="$HOME/.claude/projects/$(echo "$PROJECT_ROOT" | sed 's/[^A-Za-z0-9-]/-/g')/memory"
   > AGENT_MEMORY_DIR="$HOME/.claude/agent-memory"
   > ```
   >
   > `Compare these to the "project_root" / "memory_dir" fields recorded in the report's frontmatter. If they differ, STOP and print a clear error, do not improvise.`
   >
-  > `Read $PROJECT_ROOT/.claude/skills/gaia/references/audit.md and execute the "Apply procedure" section (Step 5). For every action: verify the expected-current-content drift signal matches; if it does, apply the change verbatim; if it does not, SKIP and note it in the final summary. Never improvise. Never invent replacements. If anything is ambiguous, skip.`
+  > `Read $PROJECT_ROOT/.claude/skills/gaia/references/audit.md and execute the "Apply procedure" section (Step 5). For every action: verify the expected-current-content drift signal matches; if it does, apply the change verbatim; if it does not, SKIP and note it in the final summary. The owner check runs before every write, against the "Owner-approved files:" line at the end of this prompt. Never improvise. Never invent replacements. If anything is ambiguous, skip.`
   >
   > `Then, before printing your summary, execute the "Dispose out-of-scope findings (Stage 2)" section: file every finding in the report's "## Out-of-scope findings" section as a tech-debt issue per that section's procedure (idempotent, so a re-run never double-files). Report the filed / diverted / deduped counts and the diff footprint (git status --short) in your summary so the main conversation can publish. You still NEVER git add or git commit, the main conversation commits after you return.`
 
 ### After the subagent(s) return
 
-Relay each subagent's final summary verbatim (report path + action counts, then done/skipped/failed counts, plus filed/diverted out-of-scope issue counts). Do not re-do the work. Do not inline the report body.
+Relay each subagent's final summary verbatim (report path + action counts, then done/skipped/failed counts, plus filed/diverted out-of-scope issue counts, and the report's `Report-only` list). Do not re-do the work. Do not inline the report body.
 
 Then, on any finalizing path (gated Apply, 0-action auto-apply, or `--apply`), run the **Publish procedure** (`## Publish (commit / PR / merge)`) in the main conversation. Publish reads Stage 2's reported diff footprint: if it is empty (a memory-only or 0-action run touched no in-repo file), Publish no-ops and the run ends here.
 
@@ -135,19 +135,19 @@ The report you produce is a **contract** to a Sonnet-level executor. Assume it c
 
 ## Step 0, Prune old reports
 
-Before writing the new report, self-maintain `$PROJECT_ROOT/.gaia/local/audit/`. The prune applies to `applied` / `applied-partial` reports only:
+Before writing the new report, self-maintain `$PROJECT_ROOT/.gaia/local/audit/`. The prune applies to finalized reports only (`applied`, `applied-partial`, and their scoped forms `scoped-applied`, `scoped-partial`):
 
 - **Never prune a `draft`** (live, unfinished work; it is resumable via `--apply`). Treat a missing `status:` as non-`applied`, do not prune it either.
-- Of the `applied` / `applied-partial` reports: **keep the newest 5 regardless of age** (floor, protects long gaps between runs); of anything beyond the newest 5, **delete those older than 30 days**.
+- Of the finalized reports: **keep the newest 5 regardless of age** (floor, protects long gaps between runs); of anything beyond the newest 5, **delete those older than 30 days**.
 
 ```bash
 if [ -d ".gaia/local/audit" ]; then
-  # Select only applied / applied-partial reports, newest first; drafts and
+  # Select only finalized reports, newest first; drafts and
   # status-less reports are never candidates for prune.
   ls -t .gaia/local/audit/KNOWLEDGE-*.md 2>/dev/null | while IFS= read -r f; do
     status="$(sed -n 's/^status:[[:space:]]*//p' "$f" 2>/dev/null | head -n1)"
     case "$status" in
-      applied|applied-partial) printf '%s\n' "$f" ;;
+      applied|applied-partial|scoped-applied|scoped-partial) printf '%s\n' "$f" ;;
     esac
   done | tail -n +6 | while IFS= read -r f; do
     if [ -n "$(find "$f" -mtime +30 -print 2>/dev/null)" ]; then
@@ -161,28 +161,7 @@ Report the count pruned in the summary line at the end of the run (e.g. `pruned 
 
 ## Step 1, Inventory
 
-Run in parallel:
-
-```bash
-# Machine-local memory (resolved dynamically)
-find "$MEMORY_DIR" -type f -name "*.md" 2>/dev/null
-find "$AGENT_MEMORY_DIR" -type f -name "*.md" 2>/dev/null
-
-# Project-local
-find "$PROJECT_ROOT/.claude/agent-memory" -type f -name "*.md" 2>/dev/null
-find "$PROJECT_ROOT/.claude/rules" -type f -name "*.md"
-
-# Wiki
-find "$PROJECT_ROOT/wiki" -type f -name "*.md"
-
-# Auto-loaded CLAUDE.md set (covers root, wiki, and any downstream app subdirs)
-find "$PROJECT_ROOT" -maxdepth 3 -name CLAUDE.md -not -path '*/node_modules/*'
-
-# Word counts for auto-loaded files
-wc -w "$PROJECT_ROOT"/CLAUDE.md "$PROJECT_ROOT"/.claude/rules/*.md 2>/dev/null
-```
-
-Record per file: path, word count, last-modified. Compute totals per store.
+Run `bash .gaia/scripts/knowledge-inventory.sh list` (one row per file: store, path, word count, last-modified epoch) and `bash .gaia/scripts/knowledge-inventory.sh counts` (one line of per-store file counts). Work from every row it lists; compute totals per store. Write the counts line verbatim as the report's `store_counts:`: a 0-action report auto-applies only when a fresh recount matches it.
 
 ## Step 2, Cross-store duplication
 
@@ -194,7 +173,7 @@ For every memory entry and every rules file, check whether the same fact lives i
 - **STALE**: references a file/branch/feature no longer present → mark for deletion
 - **CONFLICT**: a store asserts a policy that *contradicts* another canonical source on the same subject; opposed, not merely duplicated. Two scopes:
   - **Cross-store**: a memory entry or a `.claude/rules/*.md` file contradicts the wiki's canonical statement on the same subject. **Resolution favors the wiki.** Emit a `replace` swapping the contradicting line for a wikilink to the canonical page, or a `delete` if the contradicting entry has no residual value. Cite the canonical wiki page + line range in `reason` and note the superseded value inline (e.g. `reason: contradicts wiki/decisions/Foo.md L12-15 (canonical); local store asserted the opposite`).
-  - **Project-internal**: two committed project files assert opposing facts on the same subject (e.g. a command file vs a skill playbook vs a wiki page on which model a stage uses). **Resolution favors the authoritative source for that fact**, which you determine and justify in `reason`; it is NOT always the wiki (the command can be wrong and the wiki right; the wiki can be stale and the playbook right). Emit a `replace` on the non-authoritative file.
+  - **Project-internal**: two committed project files assert opposing facts on the same subject (e.g. a command file vs a skill playbook vs a wiki page on which model a stage uses). **Resolution favors the authoritative source for that fact**, which you determine and justify in `reason`; it is NOT always the wiki (the command can be wrong and the wiki right; the wiki can be stale and the playbook right). Emit a `replace` on the non-authoritative file when the Ownership step below allows it, else report it there.
   - **Two exclusions.** (a) A live `paths:`-scoped rule (including any provenance-marked `gaia-harden:` rule) that differs from the wiki is the sanctioned Rules-vs-wiki duplication case, never a CONFLICT; do not propose editing it on contradiction grounds. (b) If the conflict is **wiki-page-vs-wiki-page**, do NOT act; record it in `## Out-of-scope findings` (suggested fix: `run /gaia-wiki`) so Stage 2 files it, and move on.
 
 Rules-vs-wiki: a `.claude/rules/*.md` file is allowed to duplicate wiki content **only** if it exists to enforce auto-loading for a specific `paths:` glob. Otherwise it should link to the wiki page.
@@ -210,6 +189,13 @@ A `.claude/rules/*.md` rule whose first line after frontmatter is the provenance
 is an **ordinary rule** for this audit: inventory it, word-budget it, and apply DUPLICATE / obsolescence / supersession exactly as for a hand-authored rule. The marker grants **no policy-memory exemption**. Such a rule always carries a `paths:` glob, so it is the path-scoped case the Rules-vs-wiki note already permits to duplicate wiki content, no special-casing needed.
 
 The marker is documentation of WHY the rule exists, not a magic token. It also encodes one guardrail: **do NOT classify the rule STALE merely because its anti-pattern is no longer recurring.** A suppressed pattern going quiet is the rule working, not evidence it is stale, and lessons do not expire. The STALE definition already keys on "references a file/branch/feature no longer present", which does not include "the pattern stopped recurring"; non-recurrence is never a prune signal. Prune a provenance-marked rule only on **obsolescence** (its `paths:`-governed surface was removed), **redundancy** (a lint rule, hook, or test now enforces the same thing), **supersession**, or **duplication**.
+
+### Ownership (every action)
+
+A project mixes files GAIA ships, files a third party installed, and the project's own. Classify every file an action would write (its `path`, or a promote's `target_page` plus, unless `source_action: keep`, its `source_path`) in one call, `bash .gaia/scripts/knowledge-inventory.sh classify <file>...`; the script header defines the classes. Only `project-memory` and `adopter` files are editable: write the action with `owner: adopter` when any file it writes is `adopter`, else `owner: project-memory`. Every other class gets no action, only a line in the Summary's `Report-only` list naming the class, the file, the problem, and the remediation: `third-party` is upstream-owned and out of scope (name the vendor pin's package or the plugin); `ignored` goes to the tool that installed it or the machine's owner; `user-memory` is shared by every project on the machine, so the human edits it by hand; `gaia-shipped` is fixed by `/update-gaia`, or `/gaia-forensics` when the latest release still carries the defect. A non-zero exit from the script makes every action on an in-repo file report-only; quote its stderr line in the Summary.
+<!-- gaia:maintainer-only:start -->
+In the GAIA source repo there is no upstream: report a `gaia-shipped` finding with the remediation "fix it in an ordinary pull request". Scrubbed from adopter bundles.
+<!-- gaia:maintainer-only:end -->
 
 ## Step 3, Auto-load budget
 
@@ -240,6 +226,8 @@ generated: {YYYY-MM-DD HH:MM}
 generator: audit-knowledge stage-1 sonnet
 status: draft
 audit_hardened: false
+scope: {the scope hint verbatim, or full}
+store_counts: {verbatim output of knowledge-inventory.sh counts}
 project_root: {resolved PROJECT_ROOT}
 memory_dir: {resolved MEMORY_DIR}
 agent_memory_dir: {resolved AGENT_MEMORY_DIR}
@@ -267,10 +255,11 @@ Resolved paths (Stage 2 must match these):
 - Conflicts: {count}
 - Out-of-scope findings: {count} (filed as tech-debt issues by Stage 2)
 - Applied scope: {scope hint, or "full"}
+- Report-only: {None., or one sub-bullet per finding the Ownership step allows no action on: class, file, problem, remediation}
 
 ## Actions
 
-Each action is a fenced YAML block prefixed with a checkbox line. Stage 2 flips the checkbox from `[ ]` to `[x]` on success, `[~]` on skip, `[!]` on failure. Every block MUST carry the drift signals and, where applicable, the verbatim replacement that its own schema below names. Paths MUST be absolute (already expanded, no `$PROJECT_ROOT` placeholders in action bodies).
+Each action is a fenced YAML block prefixed with a checkbox line. Stage 2 flips the checkbox from `[ ]` to `[x]` on success, `[~]` on skip, `[!]` on failure. Every block MUST carry the drift signals and, where applicable, the verbatim replacement that its own schema below names. Paths MUST be absolute (already expanded, no `$PROJECT_ROOT` placeholders in action bodies). Every block also carries the `owner:` field the Ownership step decided, after its `type:`.
 
 ### Delete
 
@@ -379,7 +368,7 @@ End the research run by printing: report path and total actions per category. (S
 
 An adversarial verification round that hardens Stage 1's classifications against ground truth in the MAIN CONVERSATION, between Stage 1 returning its draft report and the Apply / Discuss / Decline decision gate. Stage 1's DUPLICATE / STALE / CONFLICT / PROMOTE / shrink classifications are single-pass semantic judgments that nothing else verifies before they drive edits, and for memory entries those edits are IRREVERSIBLE (machine-local under `$HOME/.claude`, no git undo). The round verifies the checkable claim behind each action against the actual stores, wiki, and repo, then drops, corrects, or re-spawns to harden the report before any human approval or any apply path consumes it.
 
-It runs only when Stage 1 reported ≥1 action; a 0-action report has nothing to verify and skips both the round and the decision gate (the existing 0-action auto-apply path is unchanged). The round dispatches the skill's own parallel `general-purpose` Agent fan-out (the same primitive Stage 1 and Stage 2 use), so it is available in every context including headless and `--apply` runs.
+It runs only when Stage 1 reported ≥1 action; a 0-action report has no classification to verify and skips the round (it skips the decision gate too once the inventory recount verifies it). The round dispatches the skill's own parallel `general-purpose` Agent fan-out (the same primitive Stage 1 and Stage 2 use), so it is available in every context including headless and `--apply` runs.
 
 **Deliberate divergences from the canonical adversarial pattern (`.claude/skills/gaia/references/spec/audit.md`, `.claude/skills/gaia/references/plan/decomposition-audit.md`). Do not "fix" these back to the spec shape:**
 
@@ -477,7 +466,7 @@ You are executing, not reasoning. Follow this loop exactly.
 
 ### Pre-flight
 
-1. Find the most recent non-`applied` report under `$PROJECT_ROOT/.gaia/local/audit/`: the newest `KNOWLEDGE-*.md` whose frontmatter `status:` is `draft` or `applied-partial` (an `applied` report has already been executed and must not be re-applied; skip it). If none, stop and print `no fresh report, run /gaia-audit first`. Otherwise check its mtime:
+1. Find the most recent non-`applied` report under `$PROJECT_ROOT/.gaia/local/audit/`: the newest `KNOWLEDGE-*.md` whose frontmatter `status:` is `draft`, `applied-partial`, or `scoped-partial` (an `applied` or `scoped-applied` report has already been executed and must not be re-applied; skip it). If none, stop and print `no fresh report, run /gaia-audit first`. Otherwise check its mtime:
    - mtime ≤ 24h → proceed normally.
    - 24h < mtime ≤ 72h → print `WARNING: draft is {age}h old; drift checks will catch any staleness` and continue.
    - mtime > 72h → stop and print `draft too old (>72h), re-run /gaia-audit`.
@@ -490,7 +479,8 @@ You are executing, not reasoning. Follow this loop exactly.
 For each unchecked action block:
 
 1. Dependency gate (`delete-entry` carrying `depends_on` only; every other action skips this step): look up the `depends_on` action id's checkbox in the report. If it is anything other than `[x]` (skipped `[~]`, failed `[!]`, still unchecked `[ ]`, or the id is not found), mark this delete-entry `[~]` skipped, record reason `paired action {id} not applied`, and move on WITHOUT removing anything. The `## Ordering` guarantees the referenced `promote`/`delete` is already processed by the time this runs, so its checkbox is authoritative.
-2. Verify drift signal. The first two bullets below cover every action type: each names its field-to-file pairings, so a type whose fields are spelled differently is not a separate case. A field the block omits is not checked.
+2. Verify drift signal. The first three bullets below cover every action type: each names its field-to-file pairings, so a type whose fields are spelled differently is not a separate case. A field the block omits is not checked.
+   - **owner** (every action): re-run `bash .gaia/scripts/knowledge-inventory.sh classify` on the files the action writes (the Ownership step names them). Any class other than `project-memory` / `adopter`, a non-zero exit, or an `owner:` that disagrees with the result → `[~]` skipped, `owner drift`, move on. An `adopter` file missing from the `Owner-approved files:` line → `[~]` skipped, `owner declined`, move on.
    - **sha field** (`expect_sha256` over `path`, `source_expect_sha256` over `source_path`): compute sha256 of the named file. Mismatch → `[~]` skipped, `sha drift`, move on.
    - **verbatim snippet field** (`expect` and `before` over `path`, `target_expect` over `target_page`, `source_before` over `source_path`): confirm the snippet appears verbatim in the named file. Missing → `[~]` skipped, `snippet drift`, move on.
    - **`promote` only:** confirm `source_action` is one of `delete` / `replace` / `keep`, and that a `replace` carries both `source_before` and `source_after`. Absent, unrecognized, or missing one of that pair → `[!]` failed, reason `unknown source_action`, **source untouched, do not apply**; never guess which was meant. This is a schema-validity check rather than a drift signal, and it runs here because its input is knowable before any write: in the apply step it would fail only after the wiki page, `wiki/log.md` and `wiki/index.md` had already been written.
@@ -533,7 +523,7 @@ Record the filed / diverted / deduped counts for the final summary. A backend-ab
 
 ### Post-flight
 
-Set the report frontmatter `status:` to the terminal value the verification step above decided: `applied` if every action is `[x]`, otherwise `applied-partial`. `applied-partial` is kept so `--apply` can retry the remainder. That verification checklist is the authority for this value, do not re-derive it here.
+Set the report frontmatter `status:` to the terminal value the verification step above decided: `applied` if every action is `[x]`, otherwise `applied-partial`; on a report whose `scope:` is not `full`, write `scoped-applied` / `scoped-partial` instead, so a scoped run never advances the statusline's last-audit anchor (it reads only `applied` and `applied-partial`). The partial forms are kept so `--apply` can retry the remainder. That verification checklist is the authority for this value, do not re-derive it here.
 
 Then bust the statusline cache so the audit nudge clears and a fresh check is triggered on the next render (mirrors the `/update-deps` post-run cache-bust). This runs on every Stage 2 completion: the gated Apply path, the `--apply` path, and the 0-action auto-apply path.
 

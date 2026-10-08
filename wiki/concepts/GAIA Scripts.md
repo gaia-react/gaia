@@ -121,6 +121,7 @@ The maintainer's copy of this page carries every root file. An adopter's copy ca
 | `gh-artifact-lib.sh` | yes | sourced | Shared breadcrumb for the GitHub pull request a run produced. |
 | `guard-awk-lib.sh` | no | sourced | Shared awk scaffolding the guard lints build their detectors on. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `hook-registration-lib.sh` | no | sourced | The shared read of `.claude/settings.json`'s registrations, and the oracle for whether a registered hook can stop a tool call. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
+| `knowledge-inventory.sh` | yes | `/gaia-audit` | Inventories the knowledge stores, classifies each file an audit action would write (memory scopes, then `fitness-ownership.sh`), and verifies a clean report against a fresh recount before it may finalize without a human. |
 | `ledger-path-lib.sh` | yes | sourced | The one definition of every main-checkout ledger path, so renaming one changes one place. |
 | `link-worktree.sh` | yes | `provision-worktree.sh` hook, `/setup-gaia` | Lays the shared-state symlinks a linked worktree needs. |
 | `main-only-lib.sh` | yes | the main-only skills | Refusal helper for a flow that must run in the main checkout, never a linked worktree. |
