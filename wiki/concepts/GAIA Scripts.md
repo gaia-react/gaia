@@ -68,8 +68,10 @@ The maintainer's copy of this page carries every root file. An adopter's copy ca
 
 | Script | Ships | Invoker | What it is |
 |---|---|---|---|
+| `debt-backlog.sh` | yes | `/gaia-debt` | Excludes claimed, spec-parked and investigate-graded issues from the ordered backlog and groups the rest into related-fix clusters, from the dedup-key path and class. |
 | `debt-batch-budget.sh` | yes | `/gaia-debt` | Scores an operator-named batch against the named-batch budget from labels and dedup-key directories, and ranks the within-budget subsets to offer when it is over. |
 | `debt-count-refresh.sh` | yes | the statusline | Recomputes the open tech-debt count the statusline nudge shows. |
+| `debt-dedup.sh` | yes | the file-tech-debt skill | Reports whether a finding's path and line already match an open or declined tech-debt issue, so a filing is never duplicated. |
 | `debt-parse-args.sh` | yes | `/gaia-debt` | Parses the `/gaia-debt` argument string into `top` (no numbers) or the named issue numbers, plus any isolation mode the operator named, and refuses anything else. |
 | `debt-path-probe.sh` | yes | `/gaia-debt` | Reports whether each backlog issue's dedup-key path is still tracked, comparing every path against the index as data. |
 | `debt-stale-claims.sh` | yes | `/gaia-debt` | Prints the number of every open tech-debt issue whose `in-progress` claim is stale. It never strips a label; the caller does. |
