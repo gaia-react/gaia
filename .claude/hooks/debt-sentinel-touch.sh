@@ -13,11 +13,12 @@
 # orchestrator/human after the skill has left the conversation, so this hook
 # is the reliable trigger rather than a best-effort in-conversation touch.
 #
-# This complements two in-flow touches that are best-effort belt-and-suspenders,
-# not replacements: the audit's own touch after it files an issue (the
+# This complements one in-flow touch that is best-effort belt-and-suspenders,
+# not a replacement: the audit's own touch after it files an issue (the
 # file-tech-debt skill's sentinel-touch step, which runs inside the audit
-# subagent), and the `/gaia-debt` skill's touch after it
-# opens a fix PR. A main-session `gh issue create`/`close` is caught only here.
+# subagent). The `/gaia-debt` skill touches nothing itself, because every claim,
+# release, park, and reopen it makes is a `gh issue` command this hook answers.
+# A main-session `gh issue create`/`close` is caught only here.
 # The SessionStart reconcile hook (debt-session-reconcile.sh) backstops closes
 # that never reach any hook at all.
 #
