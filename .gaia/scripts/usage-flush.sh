@@ -281,12 +281,16 @@ _uf_barrier() {
 # Sets UF_AGENT_TYPE and UF_AGENT_ID for a transcript. A sidecar's type is the
 # agentType of the agent-<id>.meta.json beside it, read for the whole session in
 # one jq pass the first time any of its sidecars is prepared (one jq per meta
-# costs seconds on a session with dozens); a missing, unreadable or oddly
-# spelled meta reads as unknown. The map is a newline-led string so the lookup
+# costs seconds on a session with dozens; a pass that fails is redone per file);
+# a missing, unreadable, unparseable or oddly spelled meta reads as unknown, and
+# only that sidecar. The map is a newline-led string so the lookup
 # stays in bash and exact.
 UF_META_SESSIONS=$'\n' UF_META_MAP=$'\n'
 _uf_load_metas() {
   local session_directory="$1" meta_file meta_output
+  local meta_filter='[inputs | select(type == "object")
+      | "\(input_filename | sub("\\.meta\\.json\\z"; ".jsonl"))\t\(.agentType | if type == "string" and test("\\A[A-Za-z0-9._:-]+\\z") then . else "unknown" end)\n"]
+    | join("")'
   local -a meta_files=()
   case "$UF_META_SESSIONS" in *$'\n'"$session_directory"$'\n'*) return 0 ;; esac
   UF_META_SESSIONS="$UF_META_SESSIONS$session_directory"$'\n'
@@ -294,9 +298,14 @@ _uf_load_metas() {
     if [ -f "$meta_file" ]; then meta_files[${#meta_files[@]}]="$meta_file"; fi
   done
   [ "${#meta_files[@]}" -gt 0 ] || return 0
-  meta_output="$(jq -nr '[inputs | select(type == "object")
-      | "\(input_filename | sub("\\.meta\\.json\\z"; ".jsonl"))\t\(.agentType | if type == "string" and test("\\A[A-Za-z0-9._:-]+\\z") then . else "unknown" end)\n"]
-    | join("")' "${meta_files[@]}" 2>/dev/null)" || meta_output=""
+  # One unparseable meta fails the whole pass with no output, so a failed pass
+  # is redone one file at a time and only the bad file reads as unknown.
+  meta_output="$(jq -nr "$meta_filter" "${meta_files[@]}" 2>/dev/null)" || {
+    meta_output=""
+    for meta_file in "${meta_files[@]}"; do
+      meta_output="$meta_output$(jq -nr "$meta_filter" "$meta_file" 2>/dev/null)"$'\n' || true
+    done
+  }
   UF_META_MAP="$UF_META_MAP$meta_output"
 }
 _uf_agent_fields() {

@@ -129,6 +129,16 @@ race_a_close() {
   [ "$(segments | jq -r '.[] | select(.agent_id == "dc1") | .agent_type')" = unknown ]
 }
 
+@test "agent fields: one unparseable meta reads as unknown without disturbing the other sidecars" {
+  install
+  printf '{"agentType":"code-audit-fro' >"$PROJECTS_DIRECTORY/$(encode_project_path "$ROOT")/s-af/subagents/agent-bad1.meta.json"
+  run flush_session
+  [ "$status" -eq 0 ]
+  [ "$(segments | jq -r '.[] | select(.agent_id == "ca1") | .agent_type')" = code-audit-frontend ]
+  [ "$(segments | jq -r '.[] | select(.agent_id == "gp1") | .agent_type')" = general-purpose ]
+  [ "$(segments | jq -r '.[] | select(.agent_id == "wf1") | .agent_type')" = Explore ]
+}
+
 @test "agent fields: dropping the two fields leaves exactly the segments the flusher produced without them" {
   install
   run flush_session
