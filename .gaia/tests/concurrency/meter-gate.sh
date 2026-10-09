@@ -13,8 +13,8 @@
 #
 # Run: bash .gaia/tests/concurrency/meter-gate.sh
 # Prerequisites: bats-core on PATH. The suite drives node in three scenarios
-# (C3-05, C4-04, C4-07), which need BOTH `pnpm install` at the repo root and
-# `pnpm -C .gaia/cli install`; see README.md.
+# (C3-05, C4-04, C4-07), which need `pnpm install` at the repo root, which
+# provisions the CLI member too; see README.md.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

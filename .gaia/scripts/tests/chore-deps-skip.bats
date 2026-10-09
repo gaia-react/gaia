@@ -34,9 +34,13 @@ setup() {
   [ "$status" -eq 0 ]
   [ "$output" = "true" ]
 
-  run bash "$PREDICATE" 'chore(deps): x' <<<$'.gaia/cli/package.json\n.gaia/cli/pnpm-lock.yaml\n.gaia/cli/pnpm-workspace.yaml'
+  run bash "$PREDICATE" 'chore(deps): x' <<<$'.gaia/cli/package.json\npnpm-lock.yaml'
   [ "$status" -eq 0 ]
   [ "$output" = "true" ]
+
+  run bash "$PREDICATE" 'chore(deps): x' <<<$'.gaia/cli/package.json\n.gaia/cli/src/index.ts'
+  [ "$status" -eq 0 ]
+  [ "$output" = "false" ]
 
   run bash "$PREDICATE" 'chore(deps): x' <<<$'package.json\napp/x.ts'
   [ "$status" -eq 0 ]

@@ -1,0 +1,6 @@
+packages:
+  - frontend
+  # The release scrub removes the next entry.
+
+# Settings below pass through the scrub untouched.
+strictPeerDependencies: false

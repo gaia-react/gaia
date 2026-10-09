@@ -25,9 +25,9 @@ Or read the raw suite by hand, without the gate:
 ## Prerequisites
 
 - `bats-core` on PATH.
-- `pnpm install` at the repo root **and** `pnpm -C .gaia/cli install`: three
-  scenarios (`C3-05`, `C4-04`, `C4-07`) drive real node code and need both
-  installs to pass rather than red for want of a dependency.
+- `pnpm install` at the repo root, which provisions every workspace member
+  including the CLI: three scenarios (`C3-05`, `C4-04`, `C4-07`) drive real
+  node code and need it to pass rather than red for want of a dependency.
 
 ## Files
 

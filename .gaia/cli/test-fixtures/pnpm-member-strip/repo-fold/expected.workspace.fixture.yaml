@@ -1,0 +1,109 @@
+packages:
+  - frontend
+
+# pnpm settings. In pnpm 10.x+ only auth/registry settings are read from
+# .npmrc; everything else (including supply-chain hardening) lives here.
+
+# Supply-chain hardening; see https://pnpm.io/settings
+# Delay installs until a published version has had time to be vetted.
+# Value is in minutes; 4320 = 3 days. Publicized npm compromises have been
+# pulled within hours, mostly within a day, so three days clears that range
+# with margin for a weekend publish that waits until Monday for removal. A
+# longer window mostly delays security fixes: anything still undetected after
+# three days tends to stay undetected for weeks.
+minimumReleaseAge: 4320
+
+# Require a decision when a resolution breaches the window above, rather than
+# letting it through. An interactive terminal gets a prompt; CI and any other
+# non-TTY gets a hard install failure. With this false there is no decision to
+# make: pnpm merges the offending `name@version` into minimumReleaseAgeExclude
+# below and writes this file back on an ordinary install/add/update, so the
+# window degrades from "block an immature version" to "admit it and record a
+# permanent exemption", with nothing red.
+#
+# Stated explicitly even though pnpm infers it. Setting minimumReleaseAge with
+# this key absent already turns strict mode on, so this changes no behaviour
+# today. It pins the behaviour where the policy is stated instead of leaving it
+# resting on a default in pnpm's config reader. The flag is pnpm
+# 11-only, and 10.x needs none of it: it reads the window above but ships no
+# auto-exemption path at all, so a breach there resolves to an older mature
+# version or fails outright and the exclusion list stays hand-written. The weak
+# behaviour this key closes arrived with pnpm 11, alongside the key itself.
+#
+# When an install IS blocked, the escape hatch is no longer automatic, which is
+# the point. Do not reach for minimumReleaseAgeExclude first, and do not approve
+# the prompt reflexively; approving it writes the same permanent exemption. Wait
+# for the package to age past the cutoff, which costs nothing on a routine bump.
+# Exempt it only when the version is needed before then AND its provenance has
+# been checked by hand, and then scope the entry below to the exact version with
+# a comment saying who checked it and why, the way every entry there already is.
+minimumReleaseAgeStrict: true
+
+# Fail the install if a package's trust level has decreased vs prior releases.
+trustPolicy: no-downgrade
+
+# Acknowledge known-good packages that trip no-downgrade. Each is an old,
+# pre-provenance release that is the correct, required version for its dependent
+# (the requiring package is named per entry below). A newer MAJOR line later
+# added npm provenance, so pnpm reads the older unattested release as a trust
+# downgrade. These are not supply-chain regressions. Scope each exception to the
+# exact version; no-downgrade stays enforced for everything else.
+#   - semver@6.3.1: final 6.x release; required by eslint-plugin-import (^6.3.1)
+#   - eslint-import-resolver-typescript@3.10.1: final 3.x release; required by
+#     eslint-plugin-canonical (^3.7.0)
+#   - chokidar@4.0.3: final 4.x release; required by @react-router/dev (^4.0.0)
+trustPolicyExclude:
+  - 'semver@6.3.1'
+  - 'eslint-import-resolver-typescript@3.10.1'
+  - 'chokidar@4.0.3'
+
+# Exempt first-party packages from the release-age delay. The 3-day window
+# defends against malicious THIRD-party updates; @gaia-react/lint is authored,
+# reviewed, and published by this project's own maintainer, so the
+# community-vetting rationale does not apply.
+minimumReleaseAgeExclude:
+  - '@gaia-react/lint'
+
+# Resolution settings. pnpm 11 reads these from pnpm-workspace.yaml, not from
+# .npmrc (which it consults only for auth/registry). publicHoistPattern lifts
+# stylelint's shared config/plugins and prettier plugins to the root
+# node_modules so those tools resolve them; savePrefix '' pins exact versions on
+# `pnpm add`; strictPeerDependencies off keeps peer mismatches as warnings
+# rather than install failures.
+publicHoistPattern:
+  - '*stylelint*'
+  - 'prettier-plugin-*'
+savePrefix: ''
+strictPeerDependencies: false
+
+# Dependency version overrides. pnpm 11 reads these here; the package.json
+# "pnpm" field is no longer honored. Keys use pnpm's parent>child / version-range
+# syntax.
+#
+# Entries here are usually security floors, not peer-conflict fixes, and they
+# exist for the same reason: the vulnerable package is transitive-only and its
+# parent's declared range ALREADY admits the patched version, but nothing
+# re-resolves it. `pnpm update` addresses direct dependencies only, and
+# `pnpm dedupe` collapses duplicate resolutions that already exist; neither
+# lifts a transitive holding a single satisfying resolution already pinned in
+# the lockfile. A range permitting the fix is not the same as the fix landing,
+# so the override is the only lever. Apply with `pnpm dedupe`, never a bare
+# `pnpm install`, which short-circuits on an overrides-only change
+# (wiki/dependencies/pnpm-overrides.md).
+#
+# Each entry is expected to retire on its own once its parent bumps its own
+# pin. /update-deps Phase 0 and Phase 6 toggle every key here and drop the ones
+# whose removal no longer reintroduces an advisory, so none of these is
+# load-bearing beyond the advisory it names. Document each entry below with the
+# advisory it clears and the parent that reaches it.
+overrides: {}
+
+# Build-script approval. pnpm 11 replaces the onlyBuiltDependencies allowlist
+# with the allowBuilds map (true = the package may run install/build scripts).
+# With strictDepBuilds on by default, an unlisted package that needs to build
+# fails the install loudly instead of silently skipping its scripts.
+allowBuilds:
+  core-js-pure: true
+  esbuild: true
+  msw: false
+  unrs-resolver: true
