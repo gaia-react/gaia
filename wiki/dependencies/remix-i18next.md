@@ -23,7 +23,7 @@ Versions come from `package.json`.
 - `storybook-react-i18next`
 
 > [!note] Single shared version, no forcing override
-> `i18next`, `react-i18next`, and `remix-i18next` are each declared as direct dependencies, so pnpm resolves a single shared copy of each (`remix-i18next` declares `i18next`/`react-i18next` as peers, `react-i18next` declares `i18next` as a peer) and consumers stay on one version without any override. Dependency `overrides` live in `pnpm-workspace.yaml` (pnpm 11 ignores the package.json `pnpm` field). See [[pnpm]] and [[pnpm-overrides]] for the override audit flow and the current override list.
+> `i18next`, `react-i18next`, and `remix-i18next` are each declared as direct dependencies, so pnpm resolves a single shared copy of each (`remix-i18next` declares `i18next`/`react-i18next` as peers, `react-i18next` declares `i18next` as a peer) and consumers stay on one version without any override. Dependency `overrides` live in `pnpm-workspace.yaml` (pnpm 11 ignores the package.json `pnpm` field). The active overrides, if any, are the `overrides:` map in that file; see [[pnpm-overrides]] for the override audit flow.
 
 ## Client wiring
 
