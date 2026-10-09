@@ -84,7 +84,7 @@ argv_block() {
 @test "no tracked file invokes the retired tally script" {
   # The name is assembled so this file does not hold it.
   local retired="token-""tally.sh" files
-  [ "$(git -C "$REPO_ROOT" ls-files | wc -l | tr -d ' ')" -gt 963 ]
+  [ "$(git -C "$REPO_ROOT" ls-files -z | tr -cd '\0' | wc -c | tr -d ' ')" -gt 963 ]
   files="$(git -C "$REPO_ROOT" grep -l -F -- "$retired" -- . \
     ':!CHANGELOG.md' ':!wiki/log.md' ':!wiki/meta' ':!wiki/decisions' \
     ':!.gaia/tests/fixtures/dedup-key-corpus' \

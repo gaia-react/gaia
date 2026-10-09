@@ -18,7 +18,7 @@ setup() {
 }
 
 script_files() {
-  git -C "$REPO_ROOT" ls-files -- '.gaia/scripts/*.sh' | grep -v -E '(^|/)tests/fixtures/' || true
+  git -C "$REPO_ROOT" ls-files -z -- '.gaia/scripts/*.sh' | tr '\0' '\n' | grep -v -E '(^|/)tests/fixtures/' || true
 }
 
 # definition_pattern <name-suffix-or-exact> <ends-with|exact>

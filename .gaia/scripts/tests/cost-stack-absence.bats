@@ -74,7 +74,7 @@ allowed_hit_count() {
 }
 
 @test "the grep's input set is non-empty and plausibly sized" {
-  tracked="$(git -C "$REPO_ROOT" ls-files | wc -l | tr -d ' ')"
+  tracked="$(git -C "$REPO_ROOT" ls-files -z | tr -cd '\0' | wc -c | tr -d ' ')"
   # Floor: half the tracked-file count at authoring time (1927).
   [ "$tracked" -gt 963 ]
 }
@@ -108,7 +108,7 @@ allowed_hit_count() {
 
 @test "every retired file is absent from the tracked tree" {
   [ "${#RETIRED_FILES[@]}" -gt 0 ]
-  tracked="$(git -C "$REPO_ROOT" ls-files)"
+  tracked="$(git -C "$REPO_ROOT" ls-files -z | tr '\0' '\n')"
   for name in "${RETIRED_FILES[@]}"; do
     if printf '%s\n' "$tracked" | grep -q -E "(^|/)${name//./\\.}\$"; then
       printf 'still tracked: %s\n' "$name" >&2
