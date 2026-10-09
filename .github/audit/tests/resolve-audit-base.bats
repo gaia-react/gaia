@@ -75,6 +75,14 @@ setup() {
 
   git -C "$SANDBOX" checkout --quiet -b feature
 
+  # A bare origin carrying main, so the resolver's base is the fully-qualified
+  # remote-tracking ref, cached as this branch's audit base.
+  . "$REPO_ROOT/.gaia/tests/helpers/catchup-fixture.sh"
+  # The fixture removes an existing origin before adding its own, and that
+  # removal is unguarded, so give it one to remove.
+  git -C "$SANDBOX" remote add origin "$BATS_TEST_TMPDIR/placeholder-origin"
+  catchup_add_origin "$SANDBOX"
+
   # Every test posts its whole-team signals through this one mock, so it is
   # installed here in the parent shell: a fixture that posts a status from a
   # command substitution could not export PATH or the token to the test.
@@ -93,6 +101,8 @@ setup() {
   cp "$REPO_ROOT/.claude/hooks/lib/audit-rules-changed.sh" "$SANDBOX/.claude/hooks/lib/audit-rules-changed.sh"
   cp "$REPO_ROOT/.claude/hooks/lib/audit-clearance.sh" "$SANDBOX/.claude/hooks/lib/audit-clearance.sh"
   cp "$REPO_ROOT/.claude/hooks/lib/gaia-version.sh" "$SANDBOX/.claude/hooks/lib/gaia-version.sh"
+  cp "$REPO_ROOT/.claude/hooks/lib/audit-base-provenance.sh" "$SANDBOX/.claude/hooks/lib/audit-base-provenance.sh"
+  cp "$REPO_ROOT/.claude/hooks/lib/audit-branch-patch.sh" "$SANDBOX/.claude/hooks/lib/audit-branch-patch.sh"
 
   # The team-signal arm scans every roster member's markers, so the roster is
   # provisioned too (uncommitted, like the libs).
@@ -256,6 +266,15 @@ main_sha() {
   git -C "$SANDBOX" rev-parse main
 }
 
+# The fully-qualified base reference line 1 names on a full-scope answer.
+MAIN_REF="refs/remotes/origin/main"
+
+# The branch's fork point from the base: line 3 on every arm that is not
+# anchored, and the argument-less form's line there.
+fork_point() {
+  git -C "$SANDBOX" merge-base "$MAIN_REF" HEAD
+}
+
 # Write a writer-shaped clearance record into the sandbox's local audit store.
 #   $1 member   $2 provenance (earned|refused)   $3 recorded tree
 #   $4 recorded version (irrelevant for a refusal, which is version-blind)
@@ -410,7 +429,7 @@ EOF
   add_commit b
   run --separate-stderr run_in_sandbox
   [ "$status" -eq 0 ]
-  [ "$output" = "main" ]
+  [ "$output" = "$(fork_point)" ]
 }
 
 # -----------------------------------------------------------------------------
@@ -437,7 +456,7 @@ set_origin_reference() {
   set_origin_reference main main
   run --separate-stderr run_in_sandbox
   [ "$status" -eq 0 ]
-  [ "$output" = "origin/main" ]
+  [ "$output" = "$(fork_point)" ]
 }
 
 # This resolver decides how much of the tree a member reviews: a base taken from
@@ -453,11 +472,11 @@ set_origin_reference() {
   unset GITHUB_ACTIONS
   run --separate-stderr run_in_sandbox
   [ "$status" -eq 0 ]
-  [ "$output" = "origin/main" ]
+  [ "$output" = "$(fork_point)" ]
   export GITHUB_ACTIONS=true
   run --separate-stderr run_in_sandbox
   [ "$status" -eq 0 ]
-  [ "$output" = "origin/main" ]
+  [ "$output" = "$(fork_point)" ]
 }
 
 @test "stdout is identical with the CI variables exported and without them, in both forms" {
@@ -467,7 +486,7 @@ set_origin_reference() {
   set_origin_reference main main
   set_origin_reference release main
   run --separate-stderr run_in_sandbox
-  [ "$output" = "origin/main" ]
+  [ "$output" = "$(fork_point)" ]
   plain="$output"
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   plain="$plain|$output"
@@ -487,14 +506,14 @@ set_origin_reference() {
   add_commit b
   run --separate-stderr run_in_sandbox
   [ "$status" -eq 0 ]
-  [ "$output" = "main" ]
+  [ "$output" = "$(fork_point)" ]
   without_trailer_stderr="$stderr"
 
   amend_head_with_trailer "GAIA-Audit: 1.2.3 ${DIGEST} $(tree_of HEAD)"
   add_commit c
   run --separate-stderr run_in_sandbox
   [ "$status" -eq 0 ]
-  [ "$output" = "main" ]
+  [ "$output" = "$(fork_point)" ]
   [ "${stderr%%$'\n'*}" = "${without_trailer_stderr%%$'\n'*}" ]
   grep -qF "reason=no-anchor" <<<"$stderr"
 }
@@ -507,9 +526,9 @@ set_origin_reference() {
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(member_base)" = "main" ]
+  [ "$(member_base)" = "$MAIN_REF" ]
   [ "$(member_reason)" = "no-anchor" ]
-  [ "$(member_shared_base)" = "main" ]
+  [ "$(member_shared_base)" = "$(fork_point)" ]
 }
 
 # -----------------------------------------------------------------------------
@@ -547,7 +566,7 @@ set_origin_reference() {
   install_gh_mock "${base}=9.9.9 ${DIGEST} $(git -C "$SANDBOX" rev-parse "${base}^{tree}")"
   run --separate-stderr run_in_sandbox
   [ "$status" -eq 0 ]
-  [ "$output" = "main" ]
+  [ "$output" = "$(fork_point)" ]
 }
 
 # -----------------------------------------------------------------------------
@@ -577,7 +596,7 @@ set_origin_reference() {
   git -C "$SANDBOX" commit --quiet -m "remove version"
   run --separate-stderr run_in_sandbox
   [ "$status" -eq 0 ]
-  [ "$output" = "main" ]
+  [ "$output" = "$(fork_point)" ]
 }
 
 @test ".gaia/VERSION empty → main ref" {
@@ -589,7 +608,7 @@ set_origin_reference() {
   git -C "$SANDBOX" commit --quiet -m "blank version"
   run --separate-stderr run_in_sandbox
   [ "$status" -eq 0 ]
-  [ "$output" = "main" ]
+  [ "$output" = "$(fork_point)" ]
 }
 
 @test "matching status on HEAD is not used as its own base" {
@@ -597,7 +616,7 @@ set_origin_reference() {
   status_at_head "1.2.3 ${DIGEST} $(tree_of HEAD)"
   run --separate-stderr run_in_sandbox
   [ "$status" -eq 0 ]
-  [ "$output" = "main" ]
+  [ "$output" = "$(fork_point)" ]
 }
 
 # -----------------------------------------------------------------------------
@@ -608,7 +627,7 @@ set_origin_reference() {
   add_commit a
   run --separate-stderr run_in_sandbox
   [ "$status" -eq 0 ]
-  [ "$output" = "main" ]
+  [ "$output" = "$(fork_point)" ]
 }
 
 @test "no GH_TOKEN → status path skipped → main ref" {
@@ -622,7 +641,7 @@ set_origin_reference() {
   unset GITHUB_REPOSITORY || true
   run --separate-stderr run_in_sandbox
   [ "$status" -eq 0 ]
-  [ "$output" = "main" ]
+  [ "$output" = "$(fork_point)" ]
 }
 
 @test "status base: pending GAIA-Audit ancestor is not a usable base" {
@@ -636,7 +655,7 @@ set_origin_reference() {
     "${base}=[{\"context\":\"GAIA-Audit\",\"state\":\"pending\",\"description\":\"1.2.3 ${DIGEST} ${base_tree}\"}]"
   run --separate-stderr run_in_sandbox
   [ "$status" -eq 0 ]
-  [ "$output" = "main" ]
+  [ "$output" = "$(fork_point)" ]
 }
 
 @test "status base: success GAIA-Audit ancestor is a usable base" {
@@ -664,7 +683,7 @@ set_origin_reference() {
 
   run --separate-stderr run_in_sandbox
   [ "$status" -eq 0 ]
-  [ "$output" = "main" ]
+  [ "$output" = "$(fork_point)" ]
   grep -qF "machinery changed" <<<"$stderr"
 }
 
@@ -706,7 +725,7 @@ set_origin_reference() {
 
   run --separate-stderr run_in_sandbox
   [ "$status" -eq 0 ]
-  [ "$output" = "main" ]
+  [ "$output" = "$(fork_point)" ]
   [ "$output" != "$base" ]
   grep -qF "libs unavailable" <<<"$stderr"
 }
@@ -727,7 +746,7 @@ set_origin_reference() {
 
   run --separate-stderr run_in_sandbox
   [ "$status" -eq 0 ]
-  [ "$output" = "main" ]
+  [ "$output" = "$(fork_point)" ]
   grep -qF "machinery changed" <<<"$stderr"
 }
 
@@ -813,7 +832,7 @@ assert_global_reset_for() {
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ] || return 1
   [ "$(member_line_count)" -eq 4 ] || return 1
-  [ "$(member_base)" = "main" ] || return 1
+  [ "$(member_base)" = "$MAIN_REF" ] || return 1
   [ "$(member_base)" != "$base" ] || return 1
   [ "$(member_reason)" = "rules-reset-global" ] || return 1
   [ -z "$(member_anchor_tree)" ] || return 1
@@ -848,7 +867,7 @@ assert_global_reset_for() {
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(member_base)" = "main" ]
+  [ "$(member_base)" = "$MAIN_REF" ]
   [ "$(member_reason)" = "rules-reset-member" ]
   grep -qF ".claude/agents/${DEFAULT_MEMBER}.md" <<<"$stderr"
 
@@ -872,10 +891,10 @@ assert_global_reset_for() {
   # The same delta legitimately resets the SHARED key base, which keeps the
   # flat machinery test. Lines 1 and 3 diverging is what the two-base split is
   # for, not a defect.
-  [ "$(member_shared_base)" = "main" ]
+  [ "$(member_shared_base)" = "$(fork_point)" ]
   run --separate-stderr run_in_sandbox
   [ "$status" -eq 0 ]
-  [ "$output" = "main" ]
+  [ "$output" = "$(fork_point)" ]
   [ "$output" = "$(member_shared_base)" ]
 }
 
@@ -917,7 +936,7 @@ assert_global_reset_for() {
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(member_base)" = "main" ]
+  [ "$(member_base)" = "$MAIN_REF" ]
   [ "$(member_base)" != "$base" ]
   [ "$(member_reason)" = "rules-reset-global" ]
   grep -qF ".claude/rules/quality-gate.md" <<<"$stderr"
@@ -1003,7 +1022,7 @@ assert_global_reset_for() {
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(member_base)" = "main" ]
+  [ "$(member_base)" = "$MAIN_REF" ]
   [ "$(member_base)" != "$unusable_clearance_sha" ]
   [ "$(member_reason)" = "no-anchor" ]
 }
@@ -1018,7 +1037,7 @@ assert_global_reset_for() {
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(member_base)" = "main" ]
+  [ "$(member_base)" = "$MAIN_REF" ]
   [ "$(member_base)" != "$unusable_clearance_sha" ]
   [ "$(member_reason)" = "no-anchor" ]
 }
@@ -1167,7 +1186,7 @@ golden_value() {
 rendered_member_line() {
   local value
   value="$(sed -n "${1}p" "$MEMBER_OUTPUT_FILE")"
-  if [ "$value" = "main" ]; then
+  if [ "$value" = "$MAIN_REF" ] || [ "$value" = "$(fork_point)" ]; then
     printf '%s\n' "main-ref"
   else
     printf '%s\n' "$value"
@@ -1202,7 +1221,7 @@ assert_refusal_fallback() {
   local cause="$1" refusal_line
   [ "$status" -eq 0 ] || return 1
   [ "$(member_line_count)" -eq 4 ] || return 1
-  [ "$(member_base)" = "main" ] || return 1
+  [ "$(member_base)" = "$MAIN_REF" ] || return 1
   [ "$(member_base)" != "$REFUSED_SHA" ] || return 1
   [ "$(member_reason)" = "no-anchor" ] || return 1
   [ -z "$(member_anchor_tree)" ] || return 1
@@ -1224,7 +1243,7 @@ assert_refusal_fallback() {
   [ "$(rendered_member_line 3)" = "$(golden_value refusal-only member 3)" ]
   run --separate-stderr run_in_sandbox
   [ "$status" -eq 0 ]
-  [ "$output" = "main" ]
+  [ "$output" = "$(fork_point)" ]
   [ "$(golden_value refusal-only argless 1)" = "main-ref" ]
 }
 
@@ -1384,7 +1403,7 @@ assert_refusal_fallback() {
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(member_base)" = "main" ]
+  [ "$(member_base)" = "$MAIN_REF" ]
   [ "$(member_base)" != "$REFUSED_SHA" ]
   [ "$(member_reason)" = "rules-reset-member" ]
 }
@@ -1398,7 +1417,7 @@ assert_refusal_fallback() {
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(member_base)" = "main" ]
+  [ "$(member_base)" = "$MAIN_REF" ]
   [ "$(member_base)" != "$REFUSED_SHA" ]
   [ "$(member_reason)" = "rules-reset-global" ]
 }
@@ -1545,10 +1564,10 @@ assert_refusal_fallback() {
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   assert_refusal_anchor
-  [ "$(member_shared_base)" = "main" ]
+  [ "$(member_shared_base)" = "$(fork_point)" ]
   run --separate-stderr run_in_sandbox
   [ "$status" -eq 0 ]
-  [ "$output" = "main" ]
+  [ "$output" = "$(fork_point)" ]
   [ "$output" = "$argless_without_link" ]
 }
 
@@ -1563,7 +1582,7 @@ assert_refusal_fallback() {
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(member_base)" = "main" ]
+  [ "$(member_base)" = "$MAIN_REF" ]
   [ "$(member_base)" != "$earned_sha" ]
   [ "$(member_reason)" = "no-anchor" ]
   grep -qF "refused content at HEAD" <<<"$stderr"
@@ -1580,7 +1599,7 @@ assert_refusal_fallback() {
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(member_base)" = "main" ]
+  [ "$(member_base)" = "$MAIN_REF" ]
   [ "$(member_base)" != "$earned_sha" ]
   [ "$(member_reason)" = "no-anchor" ]
 }
@@ -1764,7 +1783,7 @@ assert_refusal_fallback() {
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(member_base)" = "main" ]
+  [ "$(member_base)" = "$MAIN_REF" ]
   [ "$(member_reason)" = "no-anchor" ]
   [ -z "$(member_anchor_tree)" ]
 }
@@ -1778,7 +1797,7 @@ assert_refusal_fallback() {
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(member_base)" = "main" ]
+  [ "$(member_base)" = "$MAIN_REF" ]
   [ "$(member_reason)" = "no-anchor" ]
   grep -qF "unverifiable" <<<"$stderr"
 }
@@ -1809,7 +1828,7 @@ assert_refusal_fallback() {
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(member_base)" = "main" ]
+  [ "$(member_base)" = "$MAIN_REF" ]
   [ "$(member_reason)" = "no-anchor" ]
   grep -qF "unverifiable" <<<"$stderr"
 }
@@ -1823,7 +1842,7 @@ assert_refusal_fallback() {
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(member_base)" = "main" ]
+  [ "$(member_base)" = "$MAIN_REF" ]
   [ "$(member_reason)" = "no-anchor" ]
   grep -qF "roster is unreadable" <<<"$stderr"
 }
@@ -1851,7 +1870,7 @@ trace_clearance_scans() {
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(member_base)" = "main" ]
+  [ "$(member_base)" = "$MAIN_REF" ]
   [ "$(member_reason)" = "no-anchor" ]
   grep -qF "non-full clearance" <<<"$stderr" && return 1
   [ "$(sort "$CLEARANCE_SCAN_TRACE" | tr '\n' ',')" = "${DEFAULT_MEMBER} earned,${DEFAULT_MEMBER} refused," ]
@@ -1892,10 +1911,10 @@ assert_degraded_without() {
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ] || return 1
   [ "$(member_line_count)" -eq 4 ] || return 1
-  [ "$(member_base)" = "main" ] || return 1
+  [ "$(member_base)" = "$MAIN_REF" ] || return 1
   [ "$(member_base)" != "$base" ] || return 1
   [ "$(member_reason)" = "degraded" ] || return 1
-  [ "$(member_shared_base)" = "main" ] || return 1
+  [ "$(member_shared_base)" = "$(fork_point)" ] || return 1
   grep -qF "$library_name" <<<"$stderr" || return 1
   return 0
 }
@@ -1962,10 +1981,10 @@ assert_degraded_with_unparseable() {
   run --separate-stderr run_member "$DEFAULT_MEMBER" /bin/bash
   [ "$status" -eq 0 ] || return 1
   [ "$(member_line_count)" -eq 4 ] || return 1
-  [ "$(member_base)" = "main" ] || return 1
+  [ "$(member_base)" = "$MAIN_REF" ] || return 1
   [ "$(member_base)" != "$base" ] || return 1
   [ "$(member_reason)" = "degraded" ] || return 1
-  [ "$(member_shared_base)" = "main" ] || return 1
+  [ "$(member_shared_base)" = "$(fork_point)" ] || return 1
   grep -qF "$library_name" <<<"$stderr" || return 1
   return 0
 }
@@ -2027,7 +2046,7 @@ assert_degraded_with_unparseable() {
 
   run --separate-stderr run_member "$DEFAULT_MEMBER" /bin/bash
   [ "$status" -eq 0 ]
-  [ "$(member_base)" = "main" ]
+  [ "$(member_base)" = "$MAIN_REF" ]
   [ "$(member_reason)" = "no-anchor" ]
   [ "$(member_shared_base)" = "$base" ]
   grep -qF "reason=degraded" <<<"$stderr" && return 1
@@ -2042,7 +2061,7 @@ assert_degraded_with_unparseable() {
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(member_base)" = "main" ]
+  [ "$(member_base)" = "$MAIN_REF" ]
   [ "$(member_reason)" = "no-anchor" ]
   [ "$(member_shared_base)" = "$base" ]
   grep -qF "reason=degraded" <<<"$stderr" && return 1
@@ -2057,7 +2076,7 @@ assert_degraded_with_unparseable() {
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(member_base)" = "main" ]
+  [ "$(member_base)" = "$MAIN_REF" ]
   [ "$(member_reason)" = "no-anchor" ]
   [ -z "$(member_anchor_tree)" ]
   [ "$(member_shared_base)" = "$base" ]
@@ -2119,9 +2138,9 @@ assert_degraded_with_unparseable() {
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
   [ "$(member_line_count)" -eq 4 ]
-  [ "$(member_base)" = "main" ]
+  [ "$(member_base)" = "$MAIN_REF" ]
   [ "$(member_reason)" = "no-version" ]
-  [ "$(member_shared_base)" = "main" ]
+  [ "$(member_shared_base)" = "$(fork_point)" ]
   [ -z "$(member_anchor_tree)" ]
 }
 
@@ -2196,7 +2215,7 @@ characterization_render_value() {
     printf '%s\n' "empty"
     return 0
   fi
-  if [ "$value" = "main" ]; then
+  if [ "$value" = "$MAIN_REF" ] || [ "$value" = "$(fork_point)" ]; then
     printf '%s\n' "main-ref"
     return 0
   fi
@@ -2389,7 +2408,7 @@ assert_characterization_count() {
 
   run --separate-stderr bash -c "cd '$SANDBOX' && '$SCRIPT' --bogus"
   [ "$status" -eq 0 ]
-  [ "$output" = "main" ]
+  [ "$output" = "$(fork_point)" ]
   [ "$output" != "$base" ]
   grep -qF "unknown argument" <<<"$stderr"
 }
@@ -2401,7 +2420,7 @@ assert_characterization_count() {
 
   run --separate-stderr bash -c "cd '$SANDBOX' && '$SCRIPT' --member ''"
   [ "$status" -eq 0 ]
-  [ "$output" = "main" ]
+  [ "$output" = "$(fork_point)" ]
   [ "$output" != "$base" ]
   grep -qF "non-empty value" <<<"$stderr"
 }
@@ -2413,7 +2432,7 @@ assert_characterization_count() {
 
   run --separate-stderr bash -c "cd '$SANDBOX' && '$SCRIPT' --member"
   [ "$status" -eq 0 ]
-  [ "$output" = "main" ]
+  [ "$output" = "$(fork_point)" ]
   grep -qF "requires a value" <<<"$stderr"
 }
 
@@ -2508,4 +2527,389 @@ assert_characterization_count() {
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
   [ "$(member_reason)" = "no-version" ]
+}
+
+# =============================================================================
+# Catch-up merges. Resets read the branch's own change since the anchor, so
+# what a clean merge of the base brings in resets nothing; line 3 is the
+# branch's fork point, so the artifact key survives the merge; the base is the
+# fully-qualified remote-tracking ref, which a local branch cannot shadow.
+# =============================================================================
+
+# The reason token on the stderr decision line of the last run.
+stderr_reason() {
+  sed -n 's/^resolve-audit-base: member=.* reason=\([a-z-]*\) anchor_tree=.*$/\1/p' <<<"$stderr" | head -n 1
+}
+
+# A fully cleared branch: a team signal with a full review at its tree, and an
+# earned full clearance for every member at that tree. Sets
+# CLEARED_TREE.
+clear_branch_fully() {
+  add_commit cleared
+  stamp_anchor >/dev/null
+  CLEARED_TREE="$(tree_of HEAD)"
+  write_clearance "$DEFAULT_MEMBER" earned "$CLEARED_TREE" 1.2.3 full >/dev/null
+  write_clearance "$OTHER_MEMBER" earned "$CLEARED_TREE" 1.2.3 full >/dev/null
+}
+
+# A scratch copy of the resolver with <sed script> applied, installed as SCRIPT.
+# The mutation must change the file, or the case proving a guard can fail would
+# prove nothing.
+mutate_resolver() {
+  local mutant="$BATS_TEST_TMPDIR/mutant-resolve-audit-base.sh"
+  sed -e "$1" "$SCRIPT" > "$mutant"
+  chmod +x "$mutant"
+  if cmp -s "$SCRIPT" "$mutant"; then
+    return 1
+  fi
+  SCRIPT="$mutant"
+}
+
+# The mutation that makes the reset read the whole anchor..HEAD name diff again.
+WHOLE_DIFF_MUTATION='s|audit_branch_patch_changed_paths "[$]repo_root" "[$]base_tip" "[$]1" "[$]head_sha"|git -C "$repo_root" diff --name-only -z "$1" "$head_sha"|'
+
+# Whether any member, or the argument-less form, resets after the base changed
+# <path> and the branch merged it cleanly. Echoes the reasons seen.
+reasons_after_base_changes() {
+  local member_name
+  catchup_base_commit "$1" "from the base" || return 1
+  catchup_merge_base || return 1
+  run --separate-stderr run_in_sandbox
+  printf 'argless=%s\n' "$(stderr_reason)"
+  for member_name in "$DEFAULT_MEMBER" "$OTHER_MEMBER" "$SUPPORT_MEMBER"; do
+    run --separate-stderr run_member "$member_name"
+    printf '%s=%s\n' "$member_name" "$(member_reason)"
+  done
+}
+
+assert_no_reset_reasons() {
+  local reasons="$1"
+  grep -qE 'rules-reset-global|rules-reset-member|machinery-reset' <<<"$reasons" && return 1
+  grep -qx 'argless=team-signal' <<<"$reasons" || return 1
+  grep -qx "${DEFAULT_MEMBER}=member-clearance" <<<"$reasons" || return 1
+  return 0
+}
+
+@test "a base-only change to a machinery path resets nothing after a clean catch-up" {
+  require_jq
+  clear_branch_fully
+  assert_no_reset_reasons "$(reasons_after_base_changes ".claude/rules/new-rule.md")"
+}
+
+@test "a base-only change to a global rules path resets nothing after a clean catch-up" {
+  require_jq
+  clear_branch_fully
+  assert_no_reset_reasons "$(reasons_after_base_changes ".claude/rules/quality-gate.md")"
+}
+
+@test "a base-only change to a member's agent definition resets nothing after a clean catch-up" {
+  require_jq
+  clear_branch_fully
+  assert_no_reset_reasons "$(reasons_after_base_changes ".claude/agents/${OTHER_MEMBER}.md")"
+}
+
+@test "the base-only change resets once the reset reads the whole anchor..HEAD name diff again" {
+  require_jq
+  clear_branch_fully
+  mutate_resolver "$WHOLE_DIFF_MUTATION"
+  catchup_base_commit ".claude/rules/new-rule.md" "from the base"
+  catchup_merge_base
+  run --separate-stderr run_in_sandbox
+  [ "$(stderr_reason)" = "machinery-reset" ]
+
+  catchup_base_commit ".claude/rules/quality-gate.md" "from the base"
+  catchup_merge_base
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  [ "$(member_reason)" = "rules-reset-global" ]
+}
+
+@test "a branch edit to a machinery path still resets the argument-less form after a catch-up" {
+  require_jq
+  clear_branch_fully
+  add_machinery_commit
+  fork_before="$(fork_point)"
+  catchup_base_commit "base-only.txt" "from the base"
+  catchup_merge_base
+  run --separate-stderr run_in_sandbox
+  [ "$(stderr_reason)" = "machinery-reset" ]
+  [ "$output" = "$fork_before" ]
+}
+
+@test "a branch edit to a global rules path still resets every member after a catch-up" {
+  require_jq
+  clear_branch_fully
+  add_global_rules_commit
+  catchup_base_commit "base-only.txt" "from the base"
+  catchup_merge_base
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  [ "$(member_reason)" = "rules-reset-global" ]
+  [ "$(member_base)" = "$MAIN_REF" ]
+  run --separate-stderr run_member "$OTHER_MEMBER"
+  [ "$(member_reason)" = "rules-reset-global" ]
+}
+
+@test "a branch edit to one member's agent definition resets that member and no other" {
+  require_jq
+  clear_branch_fully
+  commit_append ".claude/agents/${OTHER_MEMBER}.md"
+  catchup_base_commit "base-only.txt" "from the base"
+  catchup_merge_base
+  run --separate-stderr run_member "$OTHER_MEMBER"
+  [ "$(member_reason)" = "rules-reset-member" ]
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  [ "$(member_reason)" = "member-clearance" ]
+  run --separate-stderr run_member "$SUPPORT_MEMBER"
+  [ "$(member_reason)" = "member-clearance" ]
+}
+
+# --- Line 3 and the artifact key -------------------------------------------
+
+# The merge base a caller keys the artifact on, for a line 3 value.
+key_base_of() {
+  git -C "$SANDBOX" merge-base "$1" HEAD
+}
+
+# Record the shared base the member form (line 3) and the argument-less form
+# print, and the merge base each keys on, under the prefix $1.
+record_shared_bases() {
+  local line_three argless
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  line_three="$(member_shared_base)"
+  run --separate-stderr run_in_sandbox
+  argless="$output"
+  printf -v "${1}_line_three" '%s' "$line_three"
+  printf -v "${1}_line_three_key" '%s' "$(key_base_of "$line_three")"
+  printf -v "${1}_argless" '%s' "$argless"
+  printf -v "${1}_argless_key" '%s' "$(key_base_of "$argless")"
+}
+
+# The values are set by record_shared_bases through printf -v, which the linter cannot see.
+# shellcheck disable=SC2154
+assert_shared_bases_stable() {
+  [ -n "$before_line_three" ] || return 1
+  [ -n "$before_argless" ] || return 1
+  [ "$before_line_three" = "$after_line_three" ] || return 1
+  [ "$before_line_three_key" = "$after_line_three_key" ] || return 1
+  [ "$before_argless" = "$after_argless" ] || return 1
+  [ "$before_argless_key" = "$after_argless_key" ] || return 1
+  return 0
+}
+
+catch_up_cleanly() {
+  catchup_base_commit "base-only.txt" "from the base"
+  catchup_merge_base
+}
+
+@test "line 3 is stable across a clean catch-up on the team-signal arm" {
+  require_jq
+  add_commit a
+  anchor_sha="$(stamp_anchor)"
+  add_commit b
+  record_shared_bases before
+  [ "$before_line_three" = "$anchor_sha" ]
+  catch_up_cleanly
+  record_shared_bases after
+  assert_shared_bases_stable
+  [ "$after_line_three" = "$anchor_sha" ]
+}
+
+@test "line 3 is stable across a clean catch-up on the member-clearance arm" {
+  require_jq
+  add_commit a
+  write_clearance "$DEFAULT_MEMBER" earned "$(tree_of HEAD)" 1.2.3 full >/dev/null
+  add_commit b
+  record_shared_bases before
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  [ "$(member_reason)" = "member-clearance" ]
+  catch_up_cleanly
+  record_shared_bases after
+  assert_shared_bases_stable
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  [ "$(member_reason)" = "member-clearance" ]
+}
+
+@test "line 3 is the fork point before any catch-up and stays stable across one on the no-anchor arm" {
+  add_commit a
+  add_commit b
+  record_shared_bases before
+  [ "$before_line_three" = "$(git -C "$SANDBOX" merge-base refs/remotes/origin/main HEAD)" ]
+  [ "$before_argless" = "$before_line_three" ]
+  catch_up_cleanly
+  record_shared_bases after
+  assert_shared_bases_stable
+  # The merge base with the base reference itself moved: that is what the fork
+  # point protects the artifact key from.
+  [ "$(fork_point)" != "$before_line_three" ]
+}
+
+@test "line 3 is stable across a clean catch-up on the reset arms" {
+  require_jq
+  add_commit a
+  stamp_anchor >/dev/null
+  add_global_rules_commit
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  [ "$(member_reason)" = "rules-reset-global" ]
+  record_shared_bases before
+  catch_up_cleanly
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  [ "$(member_reason)" = "rules-reset-global" ]
+  record_shared_bases after
+  assert_shared_bases_stable
+  run --separate-stderr run_in_sandbox
+  [ "$(stderr_reason)" = "machinery-reset" ]
+}
+
+@test "line 3 is stable across a clean catch-up on the degraded arm" {
+  add_commit a
+  add_commit b
+  rm -f "$SANDBOX/.claude/hooks/lib/audit-scope.sh"
+  record_shared_bases before
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  [ "$(member_reason)" = "degraded" ]
+  catch_up_cleanly
+  record_shared_bases after
+  assert_shared_bases_stable
+  run --separate-stderr run_in_sandbox
+  [ "$(stderr_reason)" = "degraded" ]
+}
+
+@test "line 3 is stable across a clean catch-up on the no-version arm" {
+  add_commit a
+  add_commit b
+  rm -f "$SANDBOX/.gaia/VERSION"
+  record_shared_bases before
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  [ "$(member_reason)" = "no-version" ]
+  catch_up_cleanly
+  record_shared_bases after
+  assert_shared_bases_stable
+  run --separate-stderr run_in_sandbox
+  [ "$(stderr_reason)" = "no-version" ]
+}
+
+@test "the argument-less early arms print the main ref again, and the key moves, once the pin is removed" {
+  add_commit a
+  add_commit b
+  mutate_resolver '/^  \[ "[$]member_form" = "true" \] || base="[$]shared_base"$/d'
+  rm -f "$SANDBOX/.claude/hooks/lib/audit-scope.sh"
+  record_shared_bases before
+  catch_up_cleanly
+  record_shared_bases after
+  [ "$before_argless" = "$MAIN_REF" ]
+  [ "$before_argless_key" != "$after_argless_key" ]
+
+  # The same for no-version, on a fresh branch tip.
+  add_commit c
+  rm -f "$SANDBOX/.gaia/VERSION"
+  record_shared_bases before
+  catchup_base_commit "second-base-only.txt" "from the base"
+  catchup_merge_base
+  record_shared_bases after
+  [ "$before_argless_key" != "$after_argless_key" ]
+}
+
+@test "no local base reference: line 3 and the argument-less line are the main ref, degraded, naming the fetch" {
+  add_commit a
+  git -C "$SANDBOX" remote set-head origin -d >/dev/null
+  git -C "$SANDBOX" update-ref -d refs/remotes/origin/main
+  run --separate-stderr run_in_sandbox
+  [ "$status" -eq 0 ]
+  [ "$output" = "refs/remotes/origin/main" ]
+  [ "$(stderr_reason)" = "degraded" ]
+  grep -qF "git fetch origin" <<<"$stderr"
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  [ "$status" -eq 0 ]
+  [ "$(member_base)" = "refs/remotes/origin/main" ]
+  [ "$(member_reason)" = "degraded" ]
+  [ "$(member_shared_base)" = "refs/remotes/origin/main" ]
+  grep -qF "git fetch origin" <<<"$stderr"
+}
+
+# --- A branch named like the remote-tracking ref ---------------------------
+
+record_all_outputs() {
+  run --separate-stderr run_in_sandbox
+  printf 'argless=%s\n%s\n' "$output" "$stderr"
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  printf 'member=%s\n%s\n' "$(cat "$MEMBER_OUTPUT_FILE")" "$stderr"
+}
+
+@test "a local branch named origin/main changes no resolver output" {
+  add_commit a
+  stamp_anchor >/dev/null
+  add_commit b
+  honest="$(record_all_outputs)"
+  forged_commit="$(git -C "$SANDBOX" commit-tree -m forged 4b825dc642cb6eb9a060e54bf8d69288fbee4904)"
+  git -C "$SANDBOX" branch origin/main "$forged_commit"
+  [ "$(git -C "$SANDBOX" rev-parse --verify --quiet refs/heads/origin/main)" = "$forged_commit" ]
+  with_forged="$(record_all_outputs)"
+  [ -n "$honest" ]
+  [ "$honest" = "$with_forged" ]
+}
+
+@test "the forged-branch output diverges once the base reference loses its full spelling" {
+  add_commit a
+  add_commit b
+  forged_commit="$(git -C "$SANDBOX" commit-tree -m forged 4b825dc642cb6eb9a060e54bf8d69288fbee4904)"
+  git -C "$SANDBOX" branch origin/main "$forged_commit"
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  [ "$(member_reason)" = "no-anchor" ]
+  sed -i.orig 's|reference="refs/remotes/origin/[$]{name}"|reference="origin/${name}"|' "$SANDBOX/.claude/hooks/lib/audit-base-provenance.sh"
+  if cmp -s "$SANDBOX/.claude/hooks/lib/audit-base-provenance.sh" "$SANDBOX/.claude/hooks/lib/audit-base-provenance.sh.orig"; then
+    return 1
+  fi
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  [ "$(member_reason)" = "degraded" ]
+}
+
+# --- Earlier-recipe anchors ------------------------------------------------
+
+# A marker or a posted status from before the branch-own recipe still anchors
+# incremental scope: the match is on version and tree, and the earlier recipe
+# attested the full content at that tree, a superset of the branch's own
+# change. The digest field is never compared here, so an earlier recipe's value
+# anchors exactly as a current one does; the merge gate is what refuses it.
+@test "an earlier-recipe full marker at a branch commit's tree still anchors the member" {
+  require_jq
+  add_commit a
+  anchor_tree="$(tree_of HEAD)"
+  write_clearance "$DEFAULT_MEMBER" earned "$anchor_tree" 1.2.3 full >/dev/null
+  add_commit b
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  [ "$status" -eq 0 ]
+  [ "$(member_reason)" = "member-clearance" ]
+  [ "$(member_anchor_tree)" = "$anchor_tree" ]
+  [ "$(member_base)" != "$MAIN_REF" ]
+}
+
+@test "an earlier-recipe status at a branch commit still anchors the team signal" {
+  require_jq
+  add_commit a
+  anchor_sha="$(stamp_anchor)"
+  add_commit b
+  run --separate-stderr run_in_sandbox
+  [ "$output" = "$anchor_sha" ]
+  [ "$(stderr_reason)" = "team-signal" ]
+}
+
+# --- Criss-cross -----------------------------------------------------------
+
+@test "a criss-cross against the base resolves degraded, main ref on line 1, naming the remedy" {
+  add_commit a
+  catchup_criss_cross
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  [ "$status" -eq 0 ]
+  [ "$(member_base)" = "$MAIN_REF" ]
+  [ "$(member_reason)" = "degraded" ]
+  grep -qF "git merge --no-edit" <<<"$stderr"
+  grep -qF "more than one merge base" <<<"$stderr"
+}
+
+@test "the criss-cross answer is the merge-base-status arm: without it the walk carries on" {
+  add_commit a
+  catchup_criss_cross
+  mutate_resolver 's|"[$]merge_base_status" -eq 3|"$merge_base_status" -eq 99|'
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  [ "$status" -eq 0 ]
+  [ "$(member_reason)" != "degraded" ]
 }

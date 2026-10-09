@@ -19,7 +19,7 @@ setup() {
   ROOT="$BATS_TEST_TMPDIR/root"
   mkdir -p "$ROOT/.gaia" "$ROOT/.claude/rules/maintainers"
   printf '1.6.1\n' > "$ROOT/.gaia/VERSION"
-  git -C "$ROOT" init --quiet --initial-branch=feat/light-telemetry
+  git -C "$ROOT" init --quiet --initial-branch=main
   git -C "$ROOT" config user.email "test@example.com"
   git -C "$ROOT" config user.name "Test"
   git -C "$ROOT" config commit.gpgsign false
@@ -27,6 +27,13 @@ setup() {
   seed_audit_roster "$ROOT"
   git -C "$ROOT" add .gaia/audit-ci.yml .gaia/VERSION README.md
   git -C "$ROOT" commit --quiet -m "init"
+  # The digest is measured against the base the branch forked from, so the
+  # sandbox carries an origin and a feature branch, with the base cached.
+  . "$REPO_ROOT/.gaia/tests/helpers/catchup-fixture.sh"
+  # The fixture removes an existing origin before adding its own, and that
+  # removal fails under errexit when there is none to remove.
+  git -C "$ROOT" remote add origin "$BATS_TEST_TMPDIR/placeholder-origin.git"
+  catchup_add_origin "$ROOT" main --feature feat/light-telemetry
 
   MAINTAINER_RULE="$ROOT/.claude/rules/maintainers/harness-triage-threshold.md"
   TELEMETRY_DIRECTORY="$ROOT/.gaia/local/telemetry"

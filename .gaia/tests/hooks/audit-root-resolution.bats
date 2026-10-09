@@ -202,7 +202,7 @@ setup() {
     cp "$REPO_ROOT/.claude/hooks/$script_name" "$MAIN/.claude/hooks/$script_name"
     chmod +x "$MAIN/.claude/hooks/$script_name"
   done
-  for script_name in audit-scope.sh audit-machinery.sh audit-clearance.sh audit-digest.sh gaia-version.sh audit-base-provenance.sh \
+  for script_name in audit-scope.sh audit-machinery.sh audit-clearance.sh audit-digest.sh audit-branch-patch.sh gaia-version.sh audit-base-provenance.sh \
            jq-availability.sh hook-payload.sh verb-arming.sh verb-arming-walk.sh repo-scope.sh \
            cross-repo-refusal.sh audit-bypass-stamp.sh; do
     cp "$REPO_ROOT/.claude/hooks/lib/$script_name" "$MAIN/.claude/hooks/lib/$script_name"
@@ -267,6 +267,15 @@ setup() {
   git -C "$MAIN" add -A
   git -C "$MAIN" commit --quiet -m "seed audit-root-resolution fixture"
 
+  # The digest is measured against the base reference, so the fixture carries an
+  # origin with `main` and the feature branch's audit base cached as `main`.
+  . "$REPO_ROOT/.gaia/tests/helpers/catchup-fixture.sh"
+  # The fixture removes an existing origin before adding its own, and that
+  # removal fails under errexit when there is none to remove.
+  git -C "$MAIN" remote add origin "$MAIN.placeholder-origin.git"
+  catchup_add_origin "$MAIN" main
+  git -C "$MAIN" config branch.feature.gaia-audit-base main
+
   git -C "$MAIN" worktree add --quiet -b feature "$WORKTREE" main
 
   # Diverge every roster member's owned file so MAIN and WORKTREE produce genuinely
@@ -290,7 +299,7 @@ teardown() {
     git -C "$MAIN" worktree remove --force "$WORKTREE" 2>/dev/null || rm -rf "$WORKTREE"
     git -C "$MAIN" worktree prune 2>/dev/null || true
   fi
-  [ -n "${MAIN:-}" ] && rm -rf "$MAIN"
+  [ -n "${MAIN:-}" ] && rm -rf "$MAIN" "$MAIN.catchup-base" "$MAIN.catchup-origin.git"
   [ -n "${OUTSIDE:-}" ] && rm -rf "$OUTSIDE"
   [ -n "${GH_BIN:-}" ] && rm -rf "$GH_BIN"
   return 0
@@ -307,13 +316,16 @@ physical_path() {
   ( cd "$1" 2>/dev/null && pwd -P )
 }
 
-# digest_of <root> <member> [<ref>]: the real content digest, sourced fresh
-# from this fixture's own copy of the digest engine, so every assertion below compares
-# against the SAME computation the hooks themselves perform, never a
-# hand-derived value.
+# digest_of <root> <member> [<ref>]: the real branch-own digest, sourced fresh
+# from this fixture's own copy of the digest engine over the root's merge base
+# with its local base reference, so every assertion below compares against the
+# SAME computation the hooks themselves perform, never a hand-derived value.
 digest_of() {
   local root="$1" member="$2" git_reference="${3:-HEAD}"
-  bash -c '. "$1"; audit_member_digest "$2" "$3" "$4"' _ "$DIGEST_LIBRARY" "$root" "$member" "$git_reference"
+  bash -c '. "$1"
+    reference="$(audit_local_base_reference "$2")" || exit 1
+    merge_base="$(audit_branch_patch_merge_base "$2" "$reference" HEAD)" || exit 1
+    audit_branch_member_digest "$2" "$3" "$merge_base" "$4"' _ "$DIGEST_LIBRARY" "$root" "$member" "$git_reference"
 }
 
 # run_stdout_only <cmd...>: runs `bats run` with stderr discarded, so $output
@@ -437,7 +449,35 @@ EOF
 # its absence) before reaching the root question it exists to test.
 invoke_merge_hook_in() {
   install_gh_stub
+  install_gate_base_lookup
   PATH="$GH_BIN:$PATH" invoke_hook_in "$1" "$(cat "$2")" "$HOOK_MERGE"
+}
+
+# install_gate_base_lookup: make the stub above answer what the merge gate reads
+# to derive a digest. The gate takes the base branch name from the pull request
+# record and that branch's tip from GitHub, so `pr view` answers a record
+# naming main and the branches endpoint answers with the tip of the fixture's
+# bare origin. It replaces the stub wholesale: the poster stages still use the
+# one above, whose failing `pr view` they rely on.
+install_gate_base_lookup() {
+  cat > "$GH_BIN/gh" <<EOF
+#!/usr/bin/env bash
+printf '%s\t%s\n' "\$PWD" "\$*" >> "$GH_LOG"
+case "\$*" in *isCrossRepository*) printf 'false\n'; exit 0 ;; esac
+case "\$1" in
+  auth) exit 0 ;;
+  repo) printf 'test-owner/test-repo\n'; exit 0 ;;
+  pr) printf '{"title":"","baseRefName":"main","number":"30"}\n'; exit 0 ;;
+  api)
+    case "\$*" in
+      *repos/*/branches/*) git -C "$CATCHUP_ORIGIN" rev-parse refs/heads/main; exit \$? ;;
+    esac
+    exit 0
+    ;;
+  *) exit 1 ;;
+esac
+EOF
+  chmod +x "$GH_BIN/gh"
 }
 
 # write_merge_payload -> a fresh PreToolUse JSON payload file for a

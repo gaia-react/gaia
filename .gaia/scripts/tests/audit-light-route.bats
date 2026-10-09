@@ -187,14 +187,23 @@ assert_keyed_decision_recorded() {
   expect_route full no-full-clearance
 }
 
-@test "an unresolvable main ref routes full anchor-unresolved" {
+@test "an unresolvable base reference routes full degraded, the digest being underivable" {
   lsb_init
   lsb_full_clearance "$FRONTEND"
   lsb_commit frontend/app/notes.md "one line"
   lsb_git update-ref -d refs/remotes/origin/main
   lsb_git branch -q -D main
   lsb_route "$FRONTEND"
-  expect_route full anchor-unresolved
+  expect_route full degraded
+}
+
+@test "twin: a local branch named main never stands in for the missing base reference" {
+  lsb_init
+  lsb_full_clearance "$FRONTEND"
+  lsb_commit frontend/app/notes.md "one line"
+  lsb_git update-ref -d refs/remotes/origin/main
+  lsb_route "$FRONTEND"
+  expect_route full degraded
 }
 
 # --- refusals -------------------------------------------------------------
@@ -960,6 +969,308 @@ b.md"
   lsb_commit frontend/app/sw.js "self.x = 1"
   lsb_route "$FRONTEND"
   expect_route light light-eligible
+}
+
+# --- the branch's own change since the anchor -------------------------------
+
+# put_file <base|branch> <path> <content-file-or-text>: commit the file on that
+# side.
+put_file() {
+  case "$1" in
+    base) lsb_catchup_base_commit "$2" "$3" ;;
+    branch) lsb_catchup_branch_commit "$2" "$3" ;;
+  esac
+}
+
+# reason_content <base|branch> <reason>: commit, on that side, the content that
+# raises <reason> when the branch itself carries it.
+reason_content() {
+  local side="$1" reason="$2" gate_copy="$BATS_TEST_TMPDIR/gate-copy.sh" big_file="$BATS_TEST_TMPDIR/big.md"
+  case "$reason" in
+    machinery) put_file "$side" .claude/hooks/lib/repo-scope.sh "# helper" ;;
+    rules-reset-global)
+      { cat "$LSB_ROOT/.claude/hooks/pr-merge-audit-check.sh"; printf '# touched\n'; } >"$gate_copy"
+      put_file "$side" .claude/hooks/pr-merge-audit-check.sh "$gate_copy"
+      ;;
+    ownerless) put_file "$side" frontend/public/sw.js "self.x = 1" ;;
+    hard-full) put_file "$side" frontend/app/probe.test.ts "export const probe = 1;" ;;
+    special-file)
+      case "$side" in
+        base) catchup_symlink base frontend/app/link.md seed.md ;;
+        branch) catchup_symlink branch frontend/app/link.md seed.md && _lsb_set_head ;;
+      esac
+      ;;
+    over-cap)
+      catchup_lines 60 big >"$big_file"
+      put_file "$side" frontend/app/big.md "$big_file"
+      ;;
+  esac
+}
+
+# scoped_route_copy: an untracked copy of the router that reads the range from
+# the anchor to HEAD, as the router did before the branch's own change was the
+# unit. The tracked tree stays clean, so the copy routes the same sandbox.
+scoped_route_copy() {
+  local copy="$LSB_ROOT/.gaia/scripts/audit-light-route-range.sh"
+  sed -e 's#^  audit_branch_patch_changed_paths "\$root" "\$main_reference" "\$anchor_sha" HEAD >"\$changed_file" 2>/dev/null \\$#  git -C "$root" diff --name-only -z "$anchor_sha" HEAD >"$changed_file" 2>/dev/null \\#' \
+    -e 's#^    rebased_tree="\$(audit_branch_patch_rebased_anchor_tree "\$root" "\$main_reference" "\$anchor_sha" HEAD 2>/dev/null)" \\$#    rebased_tree="$anchor_sha" \\#' \
+    "$LSB_ROOT/.gaia/scripts/audit-light-route.sh" >"$copy"
+  grep -qF 'diff --name-only -z "$anchor_sha" HEAD' "$copy" || return 1
+  grep -qF 'rebased_tree="$anchor_sha" \' "$copy" || return 1
+  printf '%s\n' "$copy"
+}
+
+# assert_base_content_is_not_the_branchs <reason>: a cleared branch catches up
+# with a base carrying content that would raise <reason> on the branch, then
+# makes one small commit on an owned path. The route is light, and the delta,
+# its line count and the record cover only that commit. A copy of the router
+# that reads the whole range raises <reason> on the same sandbox.
+assert_base_content_is_not_the_branchs() {
+  local reason="$1" record input range_copy
+  lsb_init
+  lsb_catchup_init
+  lsb_full_clearance "$FRONTEND"
+  reason_content base "$reason"
+  lsb_catch_up
+  lsb_catchup_branch_commit frontend/app/notes.md "$(printf 'one\ntwo\nthree')"
+  lsb_route "$FRONTEND"
+  expect_route light light-eligible || return 1
+  record="$(route_record_for "$FRONTEND")"
+  input="$(input_file_for "$FRONTEND")"
+  [ "$(jq -r .lines "$record")" = "3" ] || return 1
+  [ "$(jq -c '[.files[].path]' "$record")" = '["frontend/app/notes.md"]' ] || return 1
+  grep -qxF 'files: 1' "$input" || return 1
+  grep -qxF 'added: 3' "$input" || return 1
+  grep -qF 'frontend/app/notes.md' "$input" || return 1
+  range_copy="$(scoped_route_copy)" || return 1
+  run bash "$range_copy" --root "$LSB_ROOT" --member "$FRONTEND" --check
+  expect_route full "$reason"
+}
+
+# assert_branch_content_raises <reason>: the same content committed on the
+# branch itself after the clearance raises <reason>.
+assert_branch_content_raises() {
+  lsb_init
+  lsb_catchup_init
+  lsb_full_clearance "$FRONTEND"
+  reason_content branch "$1"
+  lsb_route "$FRONTEND"
+  expect_route full "$1"
+}
+
+@test "base-only machinery content after a clean catch-up leaves a small branch commit light" {
+  assert_base_content_is_not_the_branchs machinery
+}
+
+@test "paired: the same machinery content committed on the branch routes full machinery" {
+  assert_branch_content_raises machinery
+}
+
+@test "base-only global-rules content after a clean catch-up leaves a small branch commit light" {
+  assert_base_content_is_not_the_branchs rules-reset-global
+}
+
+@test "paired: the same global-rules content committed on the branch routes full rules-reset-global" {
+  assert_branch_content_raises rules-reset-global
+}
+
+@test "base-only ownerless content after a clean catch-up leaves a small branch commit light" {
+  assert_base_content_is_not_the_branchs ownerless
+}
+
+@test "paired: the same ownerless content committed on the branch routes full ownerless" {
+  assert_branch_content_raises ownerless
+}
+
+@test "base-only hard-full content after a clean catch-up leaves a small branch commit light" {
+  assert_base_content_is_not_the_branchs hard-full
+}
+
+@test "paired: the same hard-full content committed on the branch routes full hard-full" {
+  assert_branch_content_raises hard-full
+}
+
+@test "a base-only symlink after a clean catch-up leaves a small branch commit light" {
+  assert_base_content_is_not_the_branchs special-file
+}
+
+@test "paired: the same symlink committed on the branch routes full special-file" {
+  assert_branch_content_raises special-file
+}
+
+@test "base-only lines past the cap after a clean catch-up leave a small branch commit light" {
+  assert_base_content_is_not_the_branchs over-cap
+}
+
+@test "paired: the same lines past the cap committed on the branch route full over-cap" {
+  assert_branch_content_raises over-cap
+}
+
+@test "a base-only path holding a newline after a clean catch-up leaves a small branch commit light" {
+  local record range_copy
+  lsb_init
+  lsb_catchup_init
+  lsb_full_clearance "$FRONTEND"
+  lsb_catchup_base_commit $'frontend/app/a\nb.md' "x"
+  lsb_catch_up
+  lsb_catchup_branch_commit frontend/app/notes.md "$(printf 'one\ntwo\nthree')"
+  lsb_route "$FRONTEND"
+  expect_route light light-eligible
+  record="$(route_record_for "$FRONTEND")"
+  [ "$(jq -r .lines "$record")" = "3" ]
+  [ "$(jq -c '[.files[].path]' "$record")" = '["frontend/app/notes.md"]' ]
+  range_copy="$(scoped_route_copy)"
+  run bash "$range_copy" --root "$LSB_ROOT" --member "$FRONTEND" --check
+  expect_route full unclassifiable-path
+}
+
+@test "paired: the same path holding a newline, deleted by the branch after the clearance, routes full unclassifiable-path" {
+  lsb_init
+  lsb_catchup_init
+  printf 'x\n' >"$LSB_ROOT/frontend/app/a
+b.md"
+  lsb_git add -A && lsb_git commit -q -m newline
+  lsb_marker_json "$FRONTEND" earned full "$(lsb_git rev-parse 'HEAD^{tree}')" "$(version_literal)" >/dev/null
+  lsb_git rm -q "frontend/app/a
+b.md"
+  lsb_git commit -q -m remove
+  lsb_route "$FRONTEND"
+  expect_route full unclassifiable-path
+}
+
+@test "a catch-up that only moves the base leaves the delta empty: full no-delta" {
+  lsb_init
+  lsb_catchup_init
+  lsb_full_clearance "$FRONTEND"
+  lsb_catchup_base_commit frontend/app/from-base.md "base text"
+  lsb_catch_up
+  lsb_route "$FRONTEND"
+  expect_route full no-delta
+}
+
+@test "an anchor whose replay onto the merge base conflicts routes full unclassifiable-path" {
+  lsb_init
+  lsb_catchup_init
+  lsb_catchup_branch_commit frontend/app/seed.md "branch text"
+  lsb_full_clearance "$FRONTEND"
+  lsb_catchup_base_commit frontend/app/seed.md "base text"
+  lsb_catch_up --no-commit
+  printf 'resolved\n' >"$LSB_ROOT/frontend/app/seed.md"
+  lsb_commit_merge
+  lsb_catchup_branch_commit frontend/app/notes.md "one line"
+  lsb_route "$FRONTEND"
+  expect_route full unclassifiable-path
+}
+
+@test "twin: the same history with the base editing another file replays cleanly and routes light" {
+  lsb_init
+  lsb_catchup_init
+  lsb_catchup_branch_commit frontend/app/seed.md "branch text"
+  lsb_full_clearance "$FRONTEND"
+  lsb_catchup_base_commit frontend/app/other.md "base text"
+  lsb_catch_up
+  lsb_catchup_branch_commit frontend/app/notes.md "one line"
+  lsb_route "$FRONTEND"
+  expect_route light light-eligible
+  [ "$(jq -c '[.files[].path]' "$(route_record_for "$FRONTEND")")" = '["frontend/app/notes.md"]' ]
+}
+
+@test "the delta of an edit the base shifted counts only the branch's lines, in HEAD's line numbers" {
+  local record
+  lsb_init
+  lsb_catchup_init
+  lsb_catchup_base_commit frontend/app/shared.md "$(catchup_lines 12 shared)"
+  lsb_catch_up
+  lsb_full_clearance "$FRONTEND"
+  lsb_catchup_branch_commit frontend/app/shared.md "$(catchup_lines 12 shared 10=branch-edit)"
+  lsb_catchup_base_commit frontend/app/shared.md "$(catchup_lines 12 shared 1+=base-inserted)"
+  lsb_catch_up
+  lsb_route "$FRONTEND"
+  expect_route light light-eligible
+  record="$(route_record_for "$FRONTEND")"
+  [ "$(jq -c '[.files[] | [.path, .added, .deleted, .post_ranges]]' "$record")" = '[["frontend/app/shared.md",1,1,[[11,11]]]]' ]
+}
+
+# --- digests of the older recipe ---------------------------------------------
+
+# A route record and a verdict written under an older digest sit under a name
+# the current digest never produces, so nothing about them is read.
+@test "a route record and verdict under an older digest are not reused" {
+  local legacy digest legacy_record legacy_verdict before
+  lsb_init
+  lsb_full_clearance "$FRONTEND"
+  lsb_commit frontend/app/notes.md "one line"
+  legacy="$(printf 'older recipe' | { shasum -a 256 2>/dev/null || sha256sum; } | awk '{ print $1 }')"
+  mkdir -p "$(light_directory)"
+  legacy_record="$(light_directory)/$legacy.$FRONTEND.route.json"
+  legacy_verdict="$(light_directory)/$legacy.$FRONTEND.verdict.json"
+  printf '{"schema":1,"digest":"%s","route":"light"}\n' "$legacy" >"$legacy_record"
+  printf '{"schema":1,"digest":"%s","verdict":"clear"}\n' "$legacy" >"$legacy_verdict"
+  before="$(cksum <"$legacy_record")"
+  lsb_route "$FRONTEND"
+  expect_route light light-eligible
+  digest="$(lsb_member_digest "$FRONTEND")"
+  [ "$digest" != "$legacy" ]
+  [ -f "$(light_directory)/$digest.$FRONTEND.route.json" ]
+  [ "$(jq -r .digest "$(light_directory)/$digest.$FRONTEND.route.json")" = "$digest" ]
+  [ ! -f "$(light_directory)/$digest.$FRONTEND.verdict.json" ]
+  [ "$(cksum <"$legacy_record")" = "$before" ]
+}
+
+@test "a full marker earned under an older digest recipe at a branch commit still anchors the route" {
+  local legacy copy
+  legacy="$(printf 'older recipe' | { shasum -a 256 2>/dev/null || sha256sum; } | awk '{ print $1 }')"
+  lsb_init
+  lsb_marker_json "$FRONTEND" earned full "$LSB_TREE" "$(version_literal)" "$legacy" >/dev/null
+  lsb_commit frontend/app/notes.md "one line"
+  lsb_route "$FRONTEND"
+  expect_route light light-eligible
+  copy="$LSB_ROOT/.gaia/scripts/audit-light-route-digest-match.sh"
+  sed -e 's#^  full_trees="\$(light_route_full_anchor_trees "\$version" <<<"\$scan")"$#  full_trees="$(grep -F -- "$digest" <<<"$scan" | light_route_full_anchor_trees "$version")"#' \
+    "$LSB_ROOT/.gaia/scripts/audit-light-route.sh" >"$copy"
+  grep -qF 'grep -F -- "$digest" <<<"$scan" | light_route_full_anchor_trees' "$copy"
+  run bash "$copy" --root "$LSB_ROOT" --member "$FRONTEND" --check
+  expect_route full no-full-clearance
+}
+
+# --- the digest CLI -----------------------------------------------------------
+
+@test "the digest CLI prints the branch-own digest the library derives over the merge base" {
+  local expected merge_base
+  lsb_init
+  lsb_commit frontend/app/notes.md "one line"
+  merge_base="$(lsb_git merge-base refs/remotes/origin/main HEAD)"
+  expected="$(bash -c '. "$1"; audit_branch_member_digest "$2" "$3" "$4"' _ \
+    "$LSB_ROOT/.claude/hooks/lib/audit-digest.sh" "$LSB_ROOT" "$FRONTEND" "$merge_base")"
+  [ "${#expected}" -eq 64 ]
+  run bash "$LSB_ROOT/.gaia/scripts/audit-member-digest.sh" --root "$LSB_ROOT" --member "$FRONTEND"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$expected" ]
+  run bash "$LSB_ROOT/.gaia/scripts/audit-member-digest.sh" --root "$LSB_ROOT" --member "$FRONTEND" --ref "$(lsb_git write-tree)"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$expected" ]
+  lsb_commit frontend/app/more.md "another line"
+  run bash "$LSB_ROOT/.gaia/scripts/audit-member-digest.sh" --root "$LSB_ROOT" --member "$FRONTEND"
+  [ "$status" -eq 0 ]
+  [ "$output" != "$expected" ]
+}
+
+@test "the digest CLI with no origin base reference exits non-zero and prints nothing" {
+  lsb_init
+  lsb_commit frontend/app/notes.md "one line"
+  lsb_git update-ref -d refs/remotes/origin/main
+  run bash -c 'bash "$1" --root "$2" --member "$3" 2>/dev/null' _ \
+    "$LSB_ROOT/.gaia/scripts/audit-member-digest.sh" "$LSB_ROOT" "$FRONTEND"
+  [ "$status" -ne 0 ]
+  [ -z "$output" ]
+}
+
+@test "the digest CLI exits non-zero for a member the roster does not name" {
+  lsb_init
+  run bash -c 'bash "$1" --root "$2" --member "$3" 2>/dev/null' _ \
+    "$LSB_ROOT/.gaia/scripts/audit-member-digest.sh" "$LSB_ROOT" "code-audit-nobody"
+  [ "$status" -ne 0 ]
+  [ -z "$output" ]
 }
 
 # --- persistence, --check and telemetry -----------------------------------

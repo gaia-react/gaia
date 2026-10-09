@@ -62,18 +62,12 @@ CLAUDE.md
 EOF
 )"
 
-# light_route_main_reference <root>: the ref that bounds the walk: origin/main,
-# then main. The answer is the same everywhere; no environment variable moves
-# it.
+# light_route_main_reference <root>: the fully qualified local base reference
+# that bounds the walk, from the same resolver every other local caller uses, so
+# the walk, the digest and the changed set agree on one base. Non-zero when it
+# does not resolve; there is no local-branch fallback.
 light_route_main_reference() {
-  local root="$1"
-  if git -C "$root" rev-parse --verify --quiet origin/main >/dev/null 2>&1; then
-    printf 'origin/main'
-  elif git -C "$root" rev-parse --verify --quiet main >/dev/null 2>&1; then
-    printf 'main'
-  else
-    printf 'origin/main'
-  fi
+  audit_local_base_reference "$1"
 }
 
 # light_route_diff <root> <diff-args...>: `git diff` with every option that
@@ -202,16 +196,21 @@ light_route_post_ranges() {
     END { print "[" out "]" }'
 }
 
-# light_route_read_delta <root> <anchor> <head> <scratch-directory>: the raw
-# and numstat rows over anchor..head, aligned by index into LIGHT_DELTA_PATH,
-# LIGHT_DELTA_SOURCE_MODE, LIGHT_DELTA_TARGET_MODE, LIGHT_DELTA_ADDED and
-# LIGHT_DELTA_DELETED, with LIGHT_DELTA_COUNT rows. Returns 1 on a git failure
+# light_route_read_delta <root> <from-tree-ish> <head> <scratch-directory>
+# <paths-file>: the raw and numstat rows of <from-tree-ish>..<head> restricted
+# to the NUL-delimited paths in <paths-file>, aligned by index into
+# LIGHT_DELTA_PATH, LIGHT_DELTA_SOURCE_MODE, LIGHT_DELTA_TARGET_MODE,
+# LIGHT_DELTA_ADDED and LIGHT_DELTA_DELETED, with LIGHT_DELTA_COUNT rows. Two
+# batched diffs; the diff command has no pathspec-file option, so the paths are
+# arguments, and an argument list the OS refuses fails the diff (the caller
+# routes that Full). An empty <paths-file> yields zero rows without running the
+# diff, because an empty pathspec means every path. Returns 1 on a diff failure
 # or when the two listings disagree on count or path. NUL-delimited reads keep
-# any path byte intact; a path holding a newline is the caller's to refuse.
-# The arrays are this function's output, read only by its caller.
+# any path byte intact; a path holding a newline is the caller's to refuse. The
+# arrays are this function's output, read only by its caller.
 # shellcheck disable=SC2034
 light_route_read_delta() {
-  local root="$1" anchor="$2" head="$3" scratch="$4" tab meta path record rest index=0
+  local root="$1" from="$2" head="$3" scratch="$4" paths_file="$5" tab meta path record rest index=0 pathspecs=()
   tab="$(printf '\t')"
   LIGHT_DELTA_COUNT=0
   LIGHT_DELTA_PATH=()
@@ -219,8 +218,12 @@ light_route_read_delta() {
   LIGHT_DELTA_TARGET_MODE=()
   LIGHT_DELTA_ADDED=()
   LIGHT_DELTA_DELETED=()
-  light_route_diff "$root" --raw -z --no-abbrev "$anchor" "$head" >"$scratch/raw" 2>/dev/null || return 1
-  light_route_diff "$root" --numstat -z "$anchor" "$head" >"$scratch/numstat" 2>/dev/null || return 1
+  while IFS= read -r -d '' path; do
+    pathspecs[${#pathspecs[@]}]="$path"
+  done <"$paths_file"
+  [ "${#pathspecs[@]}" -gt 0 ] || return 0
+  light_route_diff "$root" --raw -z --no-abbrev "$from" "$head" -- ${pathspecs[@]+"${pathspecs[@]}"} >"$scratch/raw" 2>/dev/null || return 1
+  light_route_diff "$root" --numstat -z "$from" "$head" -- ${pathspecs[@]+"${pathspecs[@]}"} >"$scratch/numstat" 2>/dev/null || return 1
   while IFS= read -r -d '' meta && IFS= read -r -d '' path; do
     meta="${meta#:}"
     LIGHT_DELTA_SOURCE_MODE[LIGHT_DELTA_COUNT]="${meta%% *}"

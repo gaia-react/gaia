@@ -37,6 +37,7 @@ setup() {
   THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"
   SCRIPT="$REPO_ROOT/.gaia/scripts/audit-resolve-scope.sh"
+  . "$REPO_ROOT/.gaia/tests/helpers/catchup-fixture.sh"
 
   # The Code Audit Team members. The list is spelled out rather than
   # globbed: a glob would silently pass if a member file were renamed away,
@@ -125,6 +126,7 @@ make_repo() {
   cp "$REPO_ROOT/.gaia/audit-ci.yml" "$repository_directory/.gaia/"
   cp "$REPO_ROOT/.claude/hooks/lib/audit-scope.sh" \
     "$REPO_ROOT/.claude/hooks/lib/audit-base-provenance.sh" \
+    "$REPO_ROOT/.claude/hooks/lib/audit-branch-patch.sh" \
     "$REPO_ROOT/.claude/hooks/lib/audit-rules-changed.sh" \
     "$REPO_ROOT/.claude/hooks/lib/audit-clearance.sh" \
     "$REPO_ROOT/.claude/hooks/lib/audit-digest.sh" \
@@ -139,7 +141,11 @@ make_repo() {
   git -C "$repository_directory" config commit.gpgsign false
   git -C "$repository_directory" add -A
   git -C "$repository_directory" commit -q -m init
+  # The branch-own patch is measured against refs/remotes/origin/main, with
+  # main cached as the feature branch's audit base so no `gh` lookup runs.
+  catchup_add_origin "$repository_directory" >/dev/null
   git -C "$repository_directory" checkout -q -b feat
+  git -C "$repository_directory" config branch.feat.gaia-audit-base main
   printf 'change\n' > "$repository_directory/app/a.ts"
   git -C "$repository_directory" add -A
   git -C "$repository_directory" commit -q -m "touch app/a.ts"

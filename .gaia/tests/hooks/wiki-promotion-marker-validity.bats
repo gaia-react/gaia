@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 # A wiki promotion commit lands after every Code Audit Team member has cleared,
 # so it must not rotate any member's marker. Each marker is keyed to its
-# member's content digest, and wiki pages are ownerless and allowlisted, so a
+# member's branch-own digest, and wiki pages are ownerless and allowlisted, so a
 # commit touching only wiki pages leaves every digest byte-identical. The red
 # twin proves the comparison can fail: a commit inside a member's remit rotates
 # that member's digest.
@@ -33,6 +33,13 @@ setup() {
   echo "log" > "$SANDBOX/wiki/log.md"
   git -C "$SANDBOX" add -A
   git -C "$SANDBOX" commit --quiet -m "seed"
+  # Each marker is keyed to the branch's own patch against its base, so the
+  # promotion commits land on a feature branch forked from a seeded base. The
+  # fixture removes an existing origin before adding its own, and that removal
+  # fails under errexit when there is none to remove.
+  . "$REPO_ROOT/.gaia/tests/helpers/catchup-fixture.sh"
+  git -C "$SANDBOX" remote add origin "$BATS_TEST_TMPDIR/placeholder-origin.git"
+  catchup_add_origin "$SANDBOX" main --feature feat/promotion
 }
 
 roster_members() {

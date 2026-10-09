@@ -111,6 +111,18 @@
       "source": "SPEC-077 §shared"
     },
     {
+      "id": "audit-review-diffs",
+      "path": "audit/*.review.diff",
+      "match": "glob",
+      "kind": "file",
+      "scope": "shared",
+      "keyed_by": "base-sha plus branch, computed by gaia_audit_key (.gaia/scripts/audit-key-lib.sh), plus the member -- the same partition the scope digests use",
+      "why": "The per-member review input a blend reaches the reviewer as: the branch's changed hunks since the member's anchor plus the remerge-diff of any merge commit that changed a path, so a conflict resolution is read as a diff and never as a whole file.",
+      "writer": "code",
+      "reaped_by": null,
+      "source": "scope resolution: .gaia/scripts/audit-resolve-scope.sh writes it beside the scope digest"
+    },
+    {
       "id": "audit-security-notes",
       "path": "audit/security/*.md",
       "match": "glob",

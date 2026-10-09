@@ -48,11 +48,20 @@
 #
 # Output (stdout), one KEY=value per line, in this order:
 #   AUDIT_ROOT FULL_BASE BASE_REF BASE_REASON KEY_REF ANCHOR_TREE BASE_SHA
-#   KEY_BASE AUDIT_KEY ELIG_BASE D_SCOPE DEFINITION, then one FULL_CHANGED=<path> per
-#   whole-PR path, one CHANGED=<path> per review-scope path, one
+#   KEY_BASE AUDIT_KEY ELIG_BASE D_SCOPE REVIEW_DIFF DEFINITION, then one
+#   FULL_CHANGED=<path> per whole-PR path, one CHANGED=<path> per path whose
+#   branch-own identity changed since the anchor (every branch-own path when
+#   the review base is the local base reference itself, so content the base
+#   brought in through a catch-up merge never lists), one
 #   ELIG_CHANGED=<path> per eligibility path, one
 #   DIRTY=<status line> per dirty in-scope entry, its path raw rather than
-#   quoted. DEFINITION is `unchanged` when the member's definition under the main
+#   quoted. REVIEW_DIFF names the member's review input, a diff file under
+#   <root>/.gaia/local/audit/ holding the branch's changed hunks on the CHANGED
+#   paths since the anchor plus the remerge-diff of any merge commit that
+#   changed one, so a conflict resolution reaches the reviewer as a diff and
+#   never as a whole file; it is empty (with a stderr warning) when AUDIT_KEY
+#   is empty or the diff cannot be produced, and the file is empty when CHANGED
+#   is. DEFINITION is `unchanged` when the member's definition under the main
 #   checkout and under the working root are byte-identical (the session already
 #   holds the main checkout's copy in its system prompt), else
 #   `reread <root>/.claude/agents/<member>.md`; a missing main-checkout copy, an
@@ -71,7 +80,9 @@
 #      empty, which disengages the waive rather than stopping the audit that
 #      reads it.
 #   1  the membership base is unresolvable, the base-provenance resolver it
-#      comes from is missing, or a diff listing either changed-path list fails.
+#      comes from is missing, or a listing of either changed-path list fails,
+#      the review list included when the local base tip is absent (next step
+#      `git fetch origin`) or the branch has more than one merge base with it.
 #      Nothing after it runs: an empty FULL_BASE or a failed diff makes the
 #      list empty at status 0, which reads exactly like a pull request that
 #      touched nothing in the member's remit, and a self-skip there writes no
@@ -286,19 +297,89 @@ if [ "$eligibility" -eq 1 ]; then
   printf 'ELIG_BASE=%s\n' "$ELIG_BASE"
 fi
 
-# Three-dot against HEAD: the clearance digest is computed over HEAD's tracked
-# content, so the review list must name HEAD's changes, not the working tree's
-# and not an advanced ref tip's.
+# The branch-own statement: the clearance digest is computed over the branch's
+# own patch against the local base reference, committed content only, so the
+# review list names the paths whose branch-own identity changed since the
+# anchor. Content the base brought in through a catch-up merge is trusted as
+# already audited and never lists; an edit made inside a merge commit does.
+#
+# Lowercase names throughout: a path here is never a review base, and the base
+# derivation check polices the upper-case spellings.
+_ars_review_failure() {
+  printf 'could not list the review increment (%s): %s; review scope is unresolvable\n' "$1" "$2" >&2
+  exit 1
+}
+
+# _ars_helper_status_message <status>: the cause and next step a branch-own
+# helper's return code stands for.
+_ars_helper_status_message() {
+  case "$1" in
+    4) printf 'the local base tip is not present; run git fetch origin' ;;
+    3) printf 'more than one merge base with the base tip; merge the base branch into this branch to make it unique' ;;
+    *) printf 'the branch-own patch could not be computed' ;;
+  esac
+}
+
 changed=()
+anchor_commit=""
+local_base_reference=""
+BASE_TIP=""
 if [ -n "$BASE_SHA" ]; then
-  if ! git -C "$root" diff --name-only -z --no-renames "${BASE_SHA}...HEAD" -- ${review_paths[@]+"${review_paths[@]}"} > "$ars_temporary_directory/review" 2>"$ars_temporary_directory/review.err"; then
-    printf 'could not list the review increment (%s...HEAD): %s; review scope is unresolvable\n' \
-      "$BASE_SHA" "$(head -1 "$ars_temporary_directory/review.err")" >&2
-    exit 1
+  branch_patch_library="$self_root/.claude/hooks/lib/audit-branch-patch.sh"
+  provenance_library_path="$self_root/.claude/hooks/lib/audit-base-provenance.sh"
+  [ -f "$branch_patch_library" ] || _ars_review_failure "$BASE_SHA" "branch-own patch library missing at $branch_patch_library"
+  [ -f "$provenance_library_path" ] || _ars_review_failure "$BASE_SHA" "base-provenance resolver missing at $provenance_library_path"
+  # shellcheck source=/dev/null
+  . "$branch_patch_library"
+  # shellcheck source=/dev/null
+  . "$provenance_library_path"
+
+  local_base_reference="$(audit_local_base_reference "$root")" || _ars_review_failure "$BASE_SHA" "no local base reference; run git fetch origin"
+  BASE_TIP="$(git -C "$root" rev-parse --verify --quiet "${local_base_reference}^{commit}")" || _ars_review_failure "$BASE_SHA" "cannot resolve $local_base_reference; run git fetch origin"
+
+  # The review base is an anchor commit unless it is the local base reference
+  # itself, which is the full-scope shape and has no anchor.
+  list_anchor="$BASE_TIP"
+  if [ "$BASE_REF" != "$local_base_reference" ]; then
+    anchor_commit="$BASE_SHA"
+    list_anchor="$anchor_commit"
+  fi
+
+  # With the tip as the anchor the anchor's own patch is empty, so the listing
+  # is every path of the branch's own patch.
+  helper_status=0
+  audit_branch_patch_changed_paths "$root" "$BASE_TIP" "$list_anchor" HEAD > "$ars_temporary_directory/own" 2>"$ars_temporary_directory/own.err" || helper_status=$?
+  [ "$helper_status" -eq 0 ] || _ars_review_failure "$BASE_SHA...HEAD" "$(_ars_helper_status_message "$helper_status")"
+
+  if [ "${#review_paths[@]}" -gt 0 ]; then
+    # Git applies the pathspecs, never a hand-rolled glob. A changed path can
+    # sit in the anchor's patch only (the branch reverted it), so both sides
+    # are listed and their union is intersected with the changed paths.
+    : > "$ars_temporary_directory/pathspec-hits"
+    for side_commit in HEAD ${anchor_commit:+"$anchor_commit"}; do
+      SIDE_BASE="$(audit_branch_patch_merge_base "$root" "$BASE_TIP" "$side_commit")" || _ars_review_failure "$BASE_SHA...HEAD" "$(_ars_helper_status_message "$?")"
+      if ! git -C "$root" diff --name-only -z --no-renames "${SIDE_BASE}...${side_commit}" -- "${review_paths[@]}" >> "$ars_temporary_directory/pathspec-hits" 2>"$ars_temporary_directory/pathspec.err"; then
+        _ars_review_failure "${SIDE_BASE}...${side_commit}" "$(head -1 "$ars_temporary_directory/pathspec.err")"
+      fi
+    done
+    LC_ALL=C sort -z -u "$ars_temporary_directory/pathspec-hits" > "$ars_temporary_directory/pathspec-sorted" || _ars_review_failure "$BASE_SHA...HEAD" "could not sort the pathspec listing"
+    : > "$ars_temporary_directory/narrowed"
+    previous_path=""
+    have_previous=0
+    while IFS= read -r -d '' path; do
+      if [ "$have_previous" -eq 1 ] && [ "$path" = "$previous_path" ]; then
+        printf '%s\0' "$path" >> "$ars_temporary_directory/narrowed"
+        have_previous=0
+        continue
+      fi
+      previous_path="$path"
+      have_previous=1
+    done < <(cat "$ars_temporary_directory/own" "$ars_temporary_directory/pathspec-sorted" | LC_ALL=C sort -z)
+    mv -f "$ars_temporary_directory/narrowed" "$ars_temporary_directory/own"
   fi
   while IFS= read -r -d '' path; do
     changed+=("$path")
-  done < "$ars_temporary_directory/review"
+  done < "$ars_temporary_directory/own"
 fi
 
 # `Read` returns working-tree bytes while the clearance attests to HEAD, so a
@@ -332,6 +413,41 @@ capture_options=(--base-reason "$BASE_REASON")
 D_SCOPE="$("$root/.gaia/scripts/audit-scope-digest.sh" --capture "${capture_options[@]}" --root "$root" --member "$member" --base "$KEY_BASE")" || D_SCOPE=""
 [ -n "$D_SCOPE" ] || printf 'could not capture a scope digest; a gating member'"'"'s earned clearance write will refuse without one\n' >&2
 printf 'D_SCOPE=%s\n' "$D_SCOPE"
+
+# The review input a blend reaches the reviewer as: the branch's changed hunks
+# since the anchor, plus the remerge-diff of any merge commit that changed a
+# path's identity, so a conflict resolution or an edit made inside a merge is
+# read as a diff and never as a whole file. Written per member under the audit
+# key so concurrent members of one round never share a file. An empty CHANGED
+# gets an empty file without calling the helper, whose no-path form means every
+# path.
+REVIEW_DIFF=""
+if [ -z "$AUDIT_KEY" ]; then
+  printf 'no audit key; the review diff is not written\n' >&2
+else
+  review_diff_directory="$root/.gaia/local/audit"
+  review_diff_target="$review_diff_directory/${AUDIT_KEY}.${member}.review.diff"
+  review_diff_temporary=""
+  if mkdir -p "$review_diff_directory" 2>/dev/null; then
+    review_diff_temporary="$(mktemp "$review_diff_directory/.review-diff.XXXXXX" 2>/dev/null)" || review_diff_temporary=""
+  fi
+  review_diff_ready=0
+  if [ -z "$review_diff_temporary" ]; then
+    printf 'could not create the review diff under %s\n' "$review_diff_directory" >&2
+  elif [ "${#changed[@]}" -eq 0 ]; then
+    review_diff_ready=1
+  elif [ -n "$BASE_TIP" ] && audit_branch_patch_review_input "$root" "$BASE_TIP" "$anchor_commit" HEAD "${changed[@]}" > "$review_diff_temporary" 2>"$ars_temporary_directory/review-diff.err"; then
+    review_diff_ready=1
+  else
+    printf 'could not produce the review diff: %s\n' "$(head -1 "$ars_temporary_directory/review-diff.err" 2>/dev/null)" >&2
+  fi
+  if [ "$review_diff_ready" -eq 1 ] && mv -f "$review_diff_temporary" "$review_diff_target" 2>/dev/null; then
+    REVIEW_DIFF="$review_diff_target"
+  else
+    [ -z "$review_diff_temporary" ] || rm -f "$review_diff_temporary"
+  fi
+fi
+printf 'REVIEW_DIFF=%s\n' "$REVIEW_DIFF"
 
 # The session loaded the main checkout's copy of the definition, so a member
 # re-reads only when the working root's copy differs from it.

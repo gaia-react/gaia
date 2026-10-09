@@ -15,11 +15,11 @@
 #
 #   --root         REQUIRED, and validated: it must be a checkout ROOT, not a
 #                  subdirectory of one and not a path a worktree used to
-#                  occupy. The member's content digest is derived from it
+#                  occupy. The member's branch-own digest is derived from it
 #                  (never from the caller's CWD) via the digest engine
 #                  (.claude/hooks/lib/audit-digest.sh), which bounds a worktree
 #                  run from stamping a marker keyed to another worktree's
-#                  content.
+#                  branch.
 #   --member       REQUIRED. The Code Audit Team member writing the clearance.
 #   --provenance   REQUIRED. earned | refused.
 #   --supersede-refusal <reason>
@@ -95,11 +95,14 @@
 #     goes to stderr and any failure is absorbed, so stdout stays the marker
 #     path and a refusal that cannot post one is still durably on disk.
 #   - Exit 0 on write; stdout is the marker path. Exit 2 on a usage error, when
-#     the member's content digest cannot be derived, or when the body cannot be
+#     the member's branch-own digest cannot be derived, or when the body cannot be
 #     built (message on stderr) -- never a marker written keyed to an empty or
-#     partial digest, and never an empty or partial body published. Exit 3 when
-#     the open-finding accounting below fails: nothing is published, no ledger
-#     byte changes, no status is posted, and the scope capture is kept.
+#     partial digest, and never an empty or partial body published. A base tip
+#     missing locally and a merge base that is not unique are exit 2 with their
+#     one next step named (`git fetch origin`; the merge that makes the merge base
+#     unique). Exit 3 when the open-finding accounting below fails: nothing is
+#     published, no ledger byte changes, no status is posted, and the scope
+#     capture is kept.
 #   - The body is schema 4. `schema` is informational: no reader validates it,
 #     and clearance_acceptable ignores it entirely, so a schema-3 body on disk
 #     still validates exactly as before. A refused body carries
@@ -109,10 +112,19 @@
 #     the content it is keyed to, which the incremental-scope resolver requires
 #     before it anchors a member on its own refusal. Otherwise the key is absent.
 #
+# Branch-own digest
+#   The member's digest covers the branch's own patch against the local base
+#   reference (`audit_branch_digests_local`), bound to the branch. Content the
+#   base brought in, by a clean catch-up merge, is not in it, so a catch-up
+#   rotates no marker and leaves a scope capture equal to the write-time digest;
+#   a change to the branch's own patch on the member's paths (including one made
+#   inside a merge commit) rotates it.
+#
 # Audit key (the ledger, the findings sidecar, and the scope capture)
 #   <key> = gaia_audit_key "$(git merge-base <KEY_REF> HEAD)" <root>, where
-#   <KEY_REF> is line 1 of the argument-less .github/audit/resolve-audit-base.sh,
-#   run from the checkout root and resolved from this script's own location. The
+#   <KEY_REF> is the single line of the argument-less .github/audit/resolve-audit-base.sh,
+#   run from the checkout root and resolved from this script's own location: the
+#   branch's fork point, which a catch-up merge of the base never moves. The
 #   merge-base it was built from is the KEY BASE. When that cannot be derived the
 #   key falls back to the --base key (key base = the --base value); with neither,
 #   nothing is located. The ledger records the key base as `.base_sha`, and both
@@ -139,7 +151,11 @@
 #   set, EXCEPT when this member's scope capture recorded `base_reason`
 #   `member-refusal`: the round then reviewed only the delta since the refusal,
 #   so an unreadable or stale ledger is itself an exit 3 rather than an empty
-#   set. No severity gate: re-reporting an open Critical or Important on an
+#   set. A second exception covers a ledger written under an earlier key
+#   derivation: with no ledger at the key, any ledger of this branch that holds
+#   an open entry for this member under a base that is neither the key base nor
+#   on HEAD's first-parent history is an exit 3 that lists each such ledger,
+#   newest first, and prints the `jq` command re-keying the newest. No severity gate: re-reporting an open Critical or Important on an
 #   earned write counts as accounted, exactly as on a refused write; whether an
 #   earned marker is warranted stays the member protocol's precondition.
 #   - jq is REQUIRED: it builds the body, so every value is escaped by
@@ -231,6 +247,14 @@ error() {
 # Resolve the digest engine and the version normalizer from THIS file's own
 # on-disk location, never cwd, never $ROOT: .gaia/scripts -> ../../.claude/hooks/lib.
 _write_clearance_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.claude/hooks/lib" 2>/dev/null && pwd)" || true
+if [ -n "${_write_clearance_library_directory:-}" ] && [ -f "$_write_clearance_library_directory/audit-branch-patch.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$_write_clearance_library_directory/audit-branch-patch.sh"
+fi
+if [ -n "${_write_clearance_library_directory:-}" ] && [ -f "$_write_clearance_library_directory/audit-base-provenance.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$_write_clearance_library_directory/audit-base-provenance.sh"
+fi
 if [ -n "${_write_clearance_library_directory:-}" ] && [ -f "$_write_clearance_library_directory/audit-digest.sh" ]; then
   # shellcheck source=/dev/null
   . "$_write_clearance_library_directory/audit-digest.sh"
@@ -337,7 +361,7 @@ if [ -z "$ROOT" ]; then
 fi
 
 # --root must BE a checkout root, not a subdirectory of one and not a path a
-# worktree used to occupy. The content digest, the HEAD tree and the marker
+# worktree used to occupy. The branch-own digest, the HEAD tree and the marker
 # store below are all derived from it, so a path that merely SITS INSIDE a
 # checkout mints a marker attesting to content the caller never named. Compare
 # physically resolved paths, via `cd <path> && pwd -P` rather than `realpath`
@@ -443,15 +467,39 @@ if [ "$_scope_digest_malformed" -eq 1 ]; then
   exit 2
 fi
 
-# The member's content digest is the marker's validity key. Fail closed: never
+# The member's branch-own digest is the marker's validity key. Fail closed: never
 # write a marker keyed to an empty or partial digest.
-command -v audit_member_digest >/dev/null 2>&1 || {
+command -v audit_branch_digests_local >/dev/null 2>&1 || {
   error "cannot load the digest engine (.claude/hooks/lib/audit-digest.sh)"
   exit 2
 }
-digest="$(audit_member_digest "$ROOT" "$MEMBER" 2>/dev/null || true)"
-if [ -z "$digest" ]; then
-  error "cannot derive a content digest for member '$MEMBER' at --root '$ROOT'"
+digest=""
+digest_status=0
+digests_all="$(audit_branch_digests_local "$ROOT" 2>/dev/null)" || digest_status=$?
+# The base tip not being present locally and the merge base not being unique each
+# have one next step the operator can take; every other failure is "cannot derive".
+case "$digest_status" in
+  0) ;;
+  4)
+    error "cannot derive a branch-own digest for member '$MEMBER': the base branch tip is not present locally. Run: git fetch origin"
+    exit 2
+    ;;
+  3)
+    _merge_remedy_reference="$(audit_local_base_reference "$ROOT" 2>/dev/null || true)"
+    error "cannot derive a branch-own digest for member '$MEMBER': this branch has more than one merge base with the base branch. Run: git merge --no-edit ${_merge_remedy_reference:-refs/remotes/origin/main}"
+    exit 2
+    ;;
+esac
+while IFS= read -r _digest_line; do
+  if [ "${_digest_line%%$'\t'*}" = "$MEMBER" ]; then
+    digest="${_digest_line#*$'\t'}"
+    break
+  fi
+done <<EOF
+$digests_all
+EOF
+if [ "$digest_status" -ne 0 ] || [ -z "$digest" ]; then
+  error "cannot derive a branch-own digest for member '$MEMBER' at --root '$ROOT'"
   exit 2
 fi
 
@@ -701,6 +749,60 @@ _current_ledger() {
   printf '%s\n' "$current"
 }
 
+# _orphaned_ledger_candidates: prints, newest first, the path of every re-run
+# ledger of this branch that holds an open entry for this member under a base
+# that is neither the current key base nor on HEAD's first-parent history.
+#
+# Why that test cannot misfire on an earlier round's ledger: the key base is the
+# branch's fork point, and an incremental round keys on a past HEAD of this
+# branch. The fork point and every past HEAD sit on HEAD's first-parent chain,
+# and a catch-up merge adds to that chain without ever removing from it. A base
+# off the chain is therefore a base tip a merge brought in (the key derivation
+# before it was stable across catch-ups) or a commit a rebase or amend removed.
+#
+# Newest is by the committer date of the ledger's base; a base git cannot
+# resolve sorts last.
+_orphaned_ledger_candidates() {
+  local branch_slug candidate candidate_base chain="" chain_loaded=0
+  local committer_date rows="" newline=$'\n'
+  branch_slug="$(gaia_branch_slug "$ROOT" 2>/dev/null)" || return 0
+  [ -n "$branch_slug" ] || return 0
+  for candidate in "${audit_directory}/"*".${branch_slug}.rerun.json"; do
+    [ -f "$candidate" ] || continue
+    [ "$candidate" != "$ledger" ] || continue
+    candidate_base="$(jq -rs --arg branch "$branch" --arg member "$MEMBER" '
+      if (length == 1) and ((.[0] | type) == "object") and (.[0].schema == 1)
+         and (.[0].branch == $branch)
+         and ((.[0].base_sha | type) == "string") and ((.[0].base_sha | length) > 0)
+         and ((.[0].remaining | type) == "array")
+         and any(.[0].remaining[]; type == "object" and .member == $member)
+      then .[0].base_sha else empty end' "$candidate" 2>/dev/null)" || continue
+    [ -n "$candidate_base" ] || continue
+    [ "$candidate_base" != "$key_base" ] || continue
+    if [ "$chain_loaded" -eq 0 ]; then
+      chain="$(git -C "$ROOT" rev-list --first-parent HEAD 2>/dev/null)" || return 0
+      chain="${newline}${chain}${newline}"
+      chain_loaded=1
+    fi
+    case "$chain" in
+      *"${newline}${candidate_base}${newline}"*) continue ;;
+    esac
+    committer_date=""
+    case "$candidate_base" in
+      *[!0-9a-f]*) ;;
+      *) committer_date="$(git -C "$ROOT" log -1 --format=%ct "${candidate_base}^{commit}" 2>/dev/null || true)" ;;
+    esac
+    case "$committer_date" in
+      '' | *[!0-9]*) rows="${rows}0000000000000"$'\t'"${candidate}"$'\n' ;;
+      *) rows="${rows}$(printf '1%012d' "$committer_date")"$'\t'"${candidate}"$'\n' ;;
+    esac
+  done
+  [ -n "$rows" ] || return 0
+  printf '%s' "$rows" | LC_ALL=C sort -r | while IFS= read -r candidate; do
+    printf '%s\n' "${candidate#*$'\t'}"
+  done
+}
+
 # _findings_report <path>: the findings sidecar as compact JSON when it parses
 # as one object, else `null`.
 _findings_report() {
@@ -747,6 +849,32 @@ if [ -n "$audit_key" ]; then
   fi
 
   current_ledger="$(_current_ledger "$ledger")"
+
+  # No ledger at the key is not yet "nothing open": a branch that caught up with
+  # its base before the key stopped moving on a catch-up wrote its ledger under
+  # the base tip it merged. Publishing now would read an empty open set and drop
+  # that ledger's open entries for this member.
+  if [ ! -f "$ledger" ]; then
+    orphaned_ledgers="$(_orphaned_ledger_candidates)"
+    if [ -n "$orphaned_ledgers" ]; then
+      newest_orphaned_ledger="${orphaned_ledgers%%$'\n'*}"
+      error "open-finding accounting failed: there is no re-run ledger at '$ledger', but this branch has ledger(s) with open entries for member '$MEMBER' keyed to a base that is not on this branch's history. The branch caught up with its base before the audit key stopped moving on a catch-up, or its history was rewritten; writing now would drop those open findings silently."
+      error "Ledger(s), newest first:"
+      while IFS= read -r orphaned_ledger_path; do
+        printf 'audit-write-clearance:   %s\n' "$orphaned_ledger_path" >&2
+      done <<EOF
+$orphaned_ledgers
+EOF
+      if [ "$newest_orphaned_ledger" != "$orphaned_ledgers" ]; then
+        error "The recovery below re-keys the newest of them; the others are older rounds of the same branch and stay where they are."
+      fi
+      error "Recovery: re-key the ledger to the current key base, then retry this write:"
+      printf 'audit-write-clearance:   jq --arg base %q %s %q > %q\n' \
+        "$key_base" "'.base_sha = \$base'" "$newest_orphaned_ledger" "$ledger" >&2
+      error "$accounting_protocol_pointer"
+      exit 3
+    fi
+  fi
 
   # A round resolved on member-refusal reviewed only the delta since the
   # refusal; its open findings live nowhere but the ledger, so a ledger that

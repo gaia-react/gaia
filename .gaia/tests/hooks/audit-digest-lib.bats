@@ -366,14 +366,13 @@ mutate_commit() {
 # exit on any fail-closed condition (never swallowed into 0). Usage errors exit 2.
 # ---------------------------------------------------------------------------
 
-@test "CLI: prints the same 64-hex digest the lib computes, exit 0" {
-  ROOT="$BATS_TEST_TMPDIR/cli"
-  mkdir -p "$ROOT"
-  seed_repo "$ROOT"
-  run bash "$CLI" --root "$ROOT" --member code-audit-frontend
+@test "CLI: prints the member's branch-own digest line the lib computes, exit 0" {
+  v2_seed "$BATS_TEST_TMPDIR/cli" || return 1
+  catchup_branch_commit frontend/app/x.ts "$(catchup_lines 40 x 5=edited)" || return 1
+  run bash "$CLI" --root "$CATCHUP_ROOT" --member "$FRONTEND_MEMBER"
   [ "$status" -eq 0 ]
   [ "${#output}" -eq 64 ]
-  [ "$output" = "$(digest_of "$ROOT" code-audit-frontend)" ] || return 1
+  [ "$output" = "$(v2_local | awk -F'\t' -v member="$FRONTEND_MEMBER" '$1 == member { print $2 }')" ] || return 1
 }
 
 @test "CLI: missing --root or --member exits 2" {
@@ -387,10 +386,10 @@ mutate_commit() {
 }
 
 @test "CLI: a fail-closed digest exits non-zero with empty stdout (never swallowed)" {
-  ROOT="$BATS_TEST_TMPDIR/cli3"
-  mkdir -p "$ROOT"
-  seed_repo "$ROOT"
-  run bash "$CLI" --root "$ROOT" --member code-audit-frontend --ref no-such-ref
+  v2_seed "$BATS_TEST_TMPDIR/cli3" || return 1
+  run bash "$CLI" --root "$CATCHUP_ROOT" --member "$FRONTEND_MEMBER"
+  [ "$status" -eq 0 ]
+  run bash -c 'bash "$1" --root "$2" --member "$3" --ref no-such-ref 2>/dev/null' _ "$CLI" "$CATCHUP_ROOT" "$FRONTEND_MEMBER"
   [ "$status" -ne 0 ]
   [ -z "$output" ]
 }

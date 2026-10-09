@@ -29,6 +29,9 @@
 #      field 1; a refusal naming another member declines on the same
 #      well-formedness key the success arm uses, and the pushed-head guards
 #      apply to the failure state too
+#  10. a base tip GitHub reports that is not present locally -> the success arm
+#      declines naming `git fetch origin` while the refusal arm still posts;
+#      the full set of base states lives in the sibling suite
 #
 # Case 5 is the regression this suite exists to pin. A content-preserving
 # commit that exists only locally leaves local HEAD's tree byte-identical to
@@ -89,6 +92,9 @@ setup() {
   seed_audit_roster "$REPO"
   git -C "$REPO" add .gaia/audit-ci.yml .gaia/VERSION README.md
   git -C "$REPO" commit --quiet -m "init"
+  # The base tip the gh stub reports for the PR's base branch: the commit the
+  # branch forked from, present locally, so the merge base is the init commit.
+  BASE_TIP=$(git -C "$REPO" rev-parse HEAD)
 
   API_CALLS="$BATS_TEST_TMPDIR/api-calls"
 }
@@ -105,12 +111,14 @@ push_head_to_upstream() {
   git -C "$REPO" push --quiet --set-upstream origin main
 }
 
-# Helper: the real audit_member_digest, sourced fresh in a subshell (mirroring
+# Helper: the real branch-own digest, sourced fresh in a subshell (mirroring
 # the other hook suites), so a fixture marker carries the SAME digest the
-# hook itself derives rather than a hardcoded one.
+# hook itself derives rather than a hardcoded one. The merge base is the one the
+# hook derives from the stub's base tip.
 digest_of() {
-  local root="$1" member="$2" reference="${3:-HEAD}"
-  bash -c '. "$1"; audit_member_digest "$2" "$3" "$4"' _ "$DIGEST_LIBRARY" "$root" "$member" "$reference"
+  local root="$1" member="$2" target="${3:-HEAD}"
+  bash -c '. "$1"; merge_base=$(audit_branch_patch_merge_base "$2" "$3" HEAD) || exit 1; audit_branch_member_digest "$2" "$4" "$merge_base" "$5"' \
+    _ "$DIGEST_LIBRARY" "$root" "$BASE_TIP" "$member" "$target"
 }
 
 # Write a writer-shaped schema-3 EARNED clearance for MEMBER, keyed to MEMBER's
@@ -155,17 +163,22 @@ write_refusal() {
 
 # Install a gh stub on a prepended PATH.
 #   $1  the sha `gh pr view --json headRefOid,title,files` reports; empty means "no PR
-#       resolvable" (the stub exits non-zero, as gh does off a PR branch). The
-#       reply carries no title line, which the hook reads as an unreadable title.
-#   $2  the exit status `gh api` returns (default 0, a successful POST).
-# Every `gh api` invocation is appended to $API_CALLS, so a test can assert a
-# POST happened on the expected sha, or that none happened at all.
+#       resolvable" for that read (the stub exits non-zero, as gh does off a PR
+#       branch). The reply carries no title line, which the hook reads as an
+#       unreadable title. The base-branch read answers `main` regardless, so a
+#       case about the head fallback still reaches the success arm's base check.
+#   $2  the exit status the statuses POST returns (default 0, a successful POST).
+# The stub answers the base branch lookup (`main`) and the base tip lookup
+# ($BASE_TIP) without recording them: only the statuses POST is appended to
+# $API_CALLS, so a test can assert a POST happened on the expected sha, or that
+# none happened at all.
 install_gh_stub() {
   local pr_head="${1:-}" api_exit_status="${2:-0}"
   STUB_BINARY_DIRECTORY="$BATS_TEST_TMPDIR/bin"
   mkdir -p "$STUB_BINARY_DIRECTORY"
   printf '%s' "$pr_head" > "$BATS_TEST_TMPDIR/pr-head"
   printf '%s' "$api_exit_status" > "$BATS_TEST_TMPDIR/api-rc"
+  printf '%s' "$BASE_TIP" > "$BATS_TEST_TMPDIR/base-tip"
   : > "$API_CALLS"
   cat > "$STUB_BINARY_DIRECTORY/gh" <<EOF
 #!/usr/bin/env bash
@@ -180,6 +193,12 @@ case "$1" in
       [ ! -f "$stub_directory/ready-stderr" ] || cat "$stub_directory/ready-stderr" >&2
       exit "$(cat "$stub_directory/ready-rc" 2>/dev/null || printf 0)"
     fi
+    case " $* " in
+      *" baseRefName "*)
+        printf 'main\n'
+        exit 0
+        ;;
+    esac
     # The draft-state read before a success flip: true unless a case plants
     # false, kept out of call-order so the flip order stays readable.
     case " $* " in
@@ -195,6 +214,12 @@ case "$1" in
     ;;
   repo) printf 'gaia-react/gaia\n'; exit 0 ;;
   api)
+    case "$2" in
+      repos/*/branches/*)
+        cat "$stub_directory/base-tip"
+        exit 0
+        ;;
+    esac
     printf '%s\n' "$*" >> "$stub_directory/api-calls"
     printf '%s\n' "$*" >> "$stub_directory/call-order"
     exit "$(cat "$stub_directory/api-rc")"
@@ -328,6 +353,11 @@ assert_no_post() {
 }
 
 @test "un-pushed message amend on a pushed commit: declines stamp not pushed" {
+  # The amended commit is branch work on top of the base tip, so the base tip
+  # the stub reports survives the amend.
+  printf 'branch work\n' > "$REPO/branch-work.txt"
+  git -C "$REPO" add branch-work.txt
+  git -C "$REPO" commit --quiet -m "branch work"
   push_head_to_upstream
   pushed_sha=$(git -C "$REPO" rev-parse HEAD)
   install_gh_stub "$pushed_sha"
@@ -416,6 +446,9 @@ assert_no_post() {
   marker=$(write_marker code-audit-frontend)
   git -C "$REPO" checkout --quiet --detach HEAD
   short=$(git -C "$REPO" rev-parse --short "$pushed_sha")
+
+  # A detached checkout has no branch to key the digest on, so CI names it.
+  export GAIA_AUDIT_KEY_BRANCH=main
 
   cd "$REPO"
   run "$HOOK_ABSOLUTE_PATH" "$marker"
@@ -596,10 +629,12 @@ assert_no_post() {
   pushed_sha=$(git -C "$REPO" rev-parse HEAD)
   install_gh_stub "$pushed_sha"
 
-  mirror="$BATS_TEST_TMPDIR/hooks"
-  mkdir -p "$mirror/lib"
+  mirror="$BATS_TEST_TMPDIR/mirror/.claude/hooks"
+  mkdir -p "$mirror/lib" "$BATS_TEST_TMPDIR/mirror/.gaia/scripts"
   cp "$HOOK_ABSOLUTE_PATH" "$mirror/post-audit-status.sh"
   cp "$(dirname "$HOOK_ABSOLUTE_PATH")"/lib/*.sh "$mirror/lib/"
+  # The digest library locates the key library relative to its own location.
+  cp "$(dirname "$HOOK_ABSOLUTE_PATH")/../../.gaia/scripts/audit-key-lib.sh" "$BATS_TEST_TMPDIR/mirror/.gaia/scripts/audit-key-lib.sh"
   # Rename the function out of the lib copy; every other reader stays intact.
   sed -i.bak 's/^clearance_member_refused()/_disabled_clearance_member_refused()/' \
     "$mirror/lib/audit-clearance.sh"
@@ -756,4 +791,72 @@ pr ready --undo" ]
   [ "$status" -ne 0 ]
   grep -qF -- 'run it by hand: gh pr ready --undo' <<<"$output" || return 1
   grep -qF -- "state=failure" "$API_CALLS" || return 1
+}
+
+# -----------------------------------------------------------------------------
+# Trusted base: the success arm measures against the base tip GitHub reports
+# -----------------------------------------------------------------------------
+
+# A forty-hex id no repository carries.
+ABSENT_TIP=0123456789abcdef0123456789abcdef01234567
+
+# A scratch copy of the hook tree whose merge-base derivation is replaced by
+# SUBSTITUTE, so a test can prove a base guard decides the outcome.
+mutated_hook_mirror() {
+  local substitute="$1"
+  mirror="$BATS_TEST_TMPDIR/mirror/.claude/hooks"
+  mkdir -p "$mirror/lib" "$BATS_TEST_TMPDIR/mirror/.gaia/scripts"
+  cp "$HOOK_ABSOLUTE_PATH" "$mirror/post-audit-status.sh"
+  cp "$(dirname "$HOOK_ABSOLUTE_PATH")"/lib/*.sh "$mirror/lib/"
+  cp "$(dirname "$HOOK_ABSOLUTE_PATH")/../../.gaia/scripts/audit-key-lib.sh" "$BATS_TEST_TMPDIR/mirror/.gaia/scripts/audit-key-lib.sh"
+  sed -i.bak "s|merge_base=\"\$(audit_branch_patch_merge_base \"\$repo_root\" \"\$base_tip\" HEAD 2>/dev/null)\"|merge_base=\"$substitute\"|" "$mirror/post-audit-status.sh"
+  rm -f "$mirror/post-audit-status.sh.bak"
+  grep -qF -- "merge_base=\"$substitute\"" "$mirror/post-audit-status.sh"
+}
+
+@test "success with a base tip that is not present locally: declines naming git fetch origin, no POST" {
+  push_head_to_upstream
+  pushed_sha=$(git -C "$REPO" rev-parse HEAD)
+  install_gh_stub "$pushed_sha"
+  marker=$(write_marker code-audit-frontend)
+  printf '%s' "$ABSENT_TIP" > "$BATS_TEST_TMPDIR/base-tip"
+
+  cd "$REPO"
+  run "$HOOK_ABSOLUTE_PATH" "$marker"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "status: declined: trusted base unverified, the base tip is not present locally; next step: git fetch origin" ]
+  assert_no_post || return 1
+}
+
+@test "refusal with a base tip that is not present locally: still posts the failure status" {
+  push_head_to_upstream
+  pushed_sha=$(git -C "$REPO" rev-parse HEAD)
+  install_gh_stub "$pushed_sha"
+  refusal=$(write_refusal code-audit-frontend)
+  printf '%s' "$ABSENT_TIP" > "$BATS_TEST_TMPDIR/base-tip"
+  short=$(git -C "$REPO" rev-parse --short "$pushed_sha")
+
+  cd "$REPO"
+  run "$HOOK_ABSOLUTE_PATH" "$refusal"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "status: posted GAIA-Audit failure ${short}" ]
+  grep -qF -- "state=failure" "$API_CALLS" || return 1
+}
+
+@test "the base presence guard can fail: with the merge-base derivation replaced on a scratch copy, the absent tip is not declined" {
+  push_head_to_upstream
+  pushed_sha=$(git -C "$REPO" rev-parse HEAD)
+  install_gh_stub "$pushed_sha"
+  marker=$(write_marker code-audit-frontend)
+  printf '%s' "$ABSENT_TIP" > "$BATS_TEST_TMPDIR/base-tip"
+  mutated_hook_mirror "$BASE_TIP" || return 1
+
+  cd "$REPO"
+  run bash "$mirror/post-audit-status.sh" "$marker"
+
+  [ "$status" -eq 0 ]
+  grep -qF -- "status: posted GAIA-Audit success" <<<"$output" || return 1
+  grep -qF -- "state=success" "$API_CALLS" || return 1
 }

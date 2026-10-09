@@ -756,7 +756,7 @@ mutate_resolver() {
   local repo
   repo="$(make_fixture_repo resolver-two-dot)"
   copy_resolver "$repo"
-  mutate_resolver "$repo" 's/"\$\{BASE_SHA\}\.\.\.HEAD"/"\${BASE_SHA}"/' 'diff --name-only -z --no-renames "${BASE_SHA}" --'
+  mutate_resolver "$repo" 's/"\$\{SIDE_BASE\}\.\.\.\$\{side_commit\}"/"\${SIDE_BASE}"/' 'diff --name-only -z --no-renames "${SIDE_BASE}" --'
   commit_fixture_repo "$repo"
   run gaia_check_audit_base_derivation "$repo"
   [ "$status" -eq 1 ]
@@ -777,7 +777,7 @@ mutate_resolver() {
 @test "real repo: every changed-file diff in the roster is a three-dot range" {
   # Assertion 3 states the rule negatively (a count of violations), so this
   # pins the positive form directly: every `diff --name-only` the five
-  # definitions carry inside a fence resolves `<something>...HEAD`. A
+  # definitions carry inside a fence resolves a three-dot range (`<something>...HEAD`, or the resolver's per-side `${...}...${...}` pathspec listing). A
   # definition that drops to two-dot reds here as well as on the check.
   #
   # The `"?` accepts both spellings of the assignment. Requiring `$(` to sit
@@ -807,7 +807,7 @@ mutate_resolver() {
   }
   while IFS= read -r line; do
     [ -n "$line" ] || continue
-    grep -qF '...HEAD' <<<"$line" || {
+    grep -qE '\.\.\.(HEAD|\$\{[A-Za-z_]+\})' <<<"$line" || {
       printf 'changed-file diff is not a three-dot range: %s\n' "$line"
       return 1
     }

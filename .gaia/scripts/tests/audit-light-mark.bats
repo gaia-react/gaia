@@ -694,6 +694,33 @@ line 5')"
   assert_no_marker
 }
 
+# The resolver's argument-less line is a commit when it names the branch's fork
+# point instead of a ref; the light sidecar must still land under the key the
+# members' own sidecars use.
+@test "the light sidecar shares the member sidecar's key when the resolver prints a commit" {
+  local fork_point resolver="$BATS_TEST_TMPDIR/resolver.sh" full_name light_name
+  lsb_init
+  fork_point="$(lsb_git merge-base refs/remotes/origin/main HEAD)"
+  {
+    printf '#!/usr/bin/env bash\n'
+    printf 'if [ "$#" -eq 0 ]; then printf "%%s\\n" "%s"; else printf "%%s\\n%%s\\n%%s\\n\\n" "%s" no-anchor "%s"; fi\n' \
+      "$fork_point" "$fork_point" "$fork_point"
+  } >"$resolver"
+  cp "$resolver" "$LSB_ROOT/.github/audit/resolve-audit-base.sh"
+  lsb_git add -A && lsb_git commit -q -m "pin the resolver answer"
+  lsb_full_clearance "$FRONTEND"
+  lsb_commit frontend/app/notes.md "$(printf 'one\ntwo\nthree')"
+  lsb_route "$FRONTEND"
+  [ "$output" = "$(printf 'light\tlight-eligible')" ]
+  preseed_full_sidecar
+  clear_reply_to_file
+  lsb_mark "$FRONTEND" "$REPLY_FILE"
+  expect_line "light-cleared"
+  full_name="$(basename "$(full_sidecar_files)")"
+  light_name="$(basename "$(light_sidecar_files)")"
+  [ "${full_name%".$FRONTEND.findings.json"}" = "${light_name%".$FRONTEND.light.findings.json"}" ]
+}
+
 # --- degraded ---------------------------------------------------------------
 
 @test "an underivable digest prints full degraded and persists nothing" {

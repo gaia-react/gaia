@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# audit-scope-digest.sh: the carry for a Code Audit Team member's own content
+# audit-scope-digest.sh: the carry for a Code Audit Team member's branch-own
 # digest between the two moments that must agree -- scope resolution and
 # clearance write -- on the two different Bash calls a member makes for them.
 #
@@ -20,8 +20,13 @@
 #   audit-scope-digest.sh --read    --root <path> --member <name> --base <key-base>
 #   audit-scope-digest.sh --release --root <path> --member <name> --base <key-base>
 #
-#   --capture  Derives the member's content digest, writes the scope file,
-#              prints the 64-hex digest on stdout, exits 0. On an
+#   --capture  Derives the member's branch-own digest, writes the scope file,
+#              prints the 64-hex digest on stdout, exits 0. The digest is
+#              taken over the branch's own patch against the local base
+#              reference, so a clean catch-up merge of the base leaves it
+#              unchanged. A base tip absent locally (next step `git fetch
+#              origin`) or more than one merge base with it (next step: merge
+#              the base branch) fails the capture on stderr. On an
 #              underivable digest or an unwritable scope file: prints nothing
 #              on stdout, a diagnostic on stderr, exits non-zero. Fail loud
 #              here -- the member must learn at capture time, not at write
@@ -376,13 +381,41 @@ if [ "$RECAPTURE" -ne 1 ] && [ -f "$scope_file" ]; then
   fi
 fi
 
-command -v audit_member_digest >/dev/null 2>&1 || {
+command -v audit_branch_digests_local >/dev/null 2>&1 || {
   emit_error "cannot load the digest engine (.claude/hooks/lib/audit-digest.sh)"
   exit 1
 }
-digest="$(audit_member_digest "$ROOT" "$MEMBER" 2>/dev/null || true)"
+# The status is read from the call itself: the base tip being absent and the
+# merge base being ambiguous each have a different remedy, and both would
+# otherwise read as an empty digest.
+derive_status=0
+all_digests="$(audit_branch_digests_local "$ROOT" 2>/dev/null)" || derive_status=$?
+case "$derive_status" in
+  0) ;;
+  4)
+    emit_error "the local base tip is not present; run git fetch origin, then capture again"
+    exit 1
+    ;;
+  3)
+    emit_error "the branch has more than one merge base with the base tip; merge the base branch into this branch to make it unique, then capture again"
+    exit 1
+    ;;
+  *)
+    emit_error "cannot derive a branch-own digest for member '$MEMBER' at --root '$ROOT'; if the local base reference is missing, run git fetch origin"
+    exit 1
+    ;;
+esac
+digest=""
+while IFS= read -r digest_line; do
+  if [ "${digest_line%%$'\t'*}" = "$MEMBER" ]; then
+    digest="${digest_line#*$'\t'}"
+    break
+  fi
+done <<EOF
+$all_digests
+EOF
 if [ -z "$digest" ]; then
-  emit_error "cannot derive a content digest for member '$MEMBER' at --root '$ROOT'"
+  emit_error "cannot derive a branch-own digest for member '$MEMBER' at --root '$ROOT'"
   exit 1
 fi
 

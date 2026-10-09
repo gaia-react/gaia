@@ -41,7 +41,7 @@
 #   <marker-path>  A clearance artifact on disk for the current tree
 #                  (.gaia/local/audit/<digest>.ok for code-audit-frontend,
 #                  .gaia/local/audit/<digest>.<member>.ok for a specialized
-#                  member, <digest> the member's own 64-hex content digest;
+#                  member, <digest> the member's own 64-hex branch-own digest;
 #                  the same two names with a .refused extension for a refusal).
 #                  Its existence gates this call. On the success path the
 #                  orchestrator passes any one current member's own marker
@@ -71,13 +71,22 @@
 #   is itself the reason the roster is not clear.
 #
 #   Order-independence rests on the DIGEST key. Markers are named for the
-#   member's own content digest, not its commit sha, so a commit that leaves
-#   every blob byte-identical rotates no member's digest and does not orphan
-#   a sibling member's marker. Keyed to the commit, such a commit would
+#   member's own branch-own digest, not its commit sha, so a commit that leaves
+#   the branch's own patch unchanged (an empty commit, or a clean catch-up
+#   merge of the base) rotates no member's digest and does not orphan a
+#   sibling member's marker. Keyed to the commit, such a commit would
 #   invalidate every marker written before it, and the member that finished
 #   last would find the others' markers gone and decline forever. The POST
 #   itself still targets the commit sha: a GitHub commit status has nowhere
 #   else to land.
+#
+#   The SUCCESS arm measures that digest against a trusted base: the PR's base
+#   branch name and its current tip come from GitHub through gh, the tip must
+#   exist locally, and the branch must have a unique merge base with it. A base
+#   that cannot be verified declines, naming the one next step, rather than
+#   falling back to a local ref the branch could have forged. The REFUSAL arm
+#   never verifies the base: a refusal must always be able to retract an
+#   earlier success, and it names the digest its caller already holds.
 #
 # Exit codes
 #   0 , Posted successfully OR declined (precondition failed). One stdout
@@ -93,6 +102,13 @@
 #          version normalizer unavailable (lib/gaia-version.sh)
 #          version file empty
 #          frontend digest unavailable
+#          branch patch library unavailable (lib/audit-branch-patch.sh)
+#          trusted base unverified, <gh failure line>; next step: gh auth status
+#          trusted base unverified, the base tip is not present locally; next
+#            step: git fetch origin
+#          trusted base unverified, more than one merge base with the base
+#            branch; next step: git merge --no-edit refs/remotes/origin/<base>
+#          trusted base unverified, no unique merge base could be derived
 #          clearance reader unavailable
 #          caller holds a live refusal
 #          repo slug unresolved
@@ -152,6 +168,10 @@ if [ -n "$_library_directory" ]; then
   # shellcheck source=/dev/null
   [ -f "$_library_directory/audit-clearance.sh" ] && . "$_library_directory/audit-clearance.sh" 2>/dev/null
   # shellcheck source=/dev/null
+  [ -f "$_library_directory/audit-branch-patch.sh" ] && . "$_library_directory/audit-branch-patch.sh" 2>/dev/null
+  # shellcheck source=/dev/null
+  [ -f "$_library_directory/audit-base-provenance.sh" ] && . "$_library_directory/audit-base-provenance.sh" 2>/dev/null
+  # shellcheck source=/dev/null
   [ -f "$_library_directory/audit-digest.sh" ] && . "$_library_directory/audit-digest.sh" 2>/dev/null
   # shellcheck source=/dev/null
   [ -f "$_library_directory/gaia-version.sh" ] && . "$_library_directory/gaia-version.sh" 2>/dev/null
@@ -181,6 +201,19 @@ emit_decline() {
 
 emit_error() {
   printf 'post-audit-status: %s\n' "$1" >&2
+}
+
+# digest_for_member <member>: the member's digest out of branch_digest_lines
+# (`<member>\t<digest>` per line), or nothing when the member is not listed.
+digest_for_member() {
+  local line
+  while IFS= read -r line; do
+    if [ "${line%%$'\t'*}" = "$1" ]; then
+      printf '%s' "${line#*$'\t'}"
+      return 0
+    fi
+  done <<<"$branch_digest_lines"
+  return 0
 }
 
 marker="${1:-}"
@@ -254,7 +287,7 @@ fi
 #
 #   repo_root   The ACTING tree. Everything this script measures is a property
 #               of the tree being audited and pushed: the .gaia/VERSION it
-#               stamps into the status description, the content digests it
+#               stamps into the status description, the branch-own digests it
 #               derives, the HEAD/upstream/tree shas it compares against the
 #               PR head, and the roster resolver it runs. Main-anchoring these
 #               reads main's HEAD tree while head_sha comes from the acting
@@ -280,14 +313,16 @@ if command -v gaia_resolve_main_root >/dev/null 2>&1; then
 fi
 [ -n "$store_root" ] || store_root="$repo_root"
 
-# The version and the frontend digest are inputs to the SUCCESS description and
-# to the member-aware gate, and the refusal arm reads neither: its description is
-# built from the caller's own member and digest, and it skips the gate. So these
-# three preconditions are scoped to the success arm rather than applied to both.
-# Declining a refusal over a field it never reads would be the wrong direction:
-# it withholds a retraction while the stale success it exists to retract stands.
+# The version, the trusted base and the digests are inputs to the SUCCESS
+# description and to the member-aware gate, and the refusal arm reads none of
+# them: its description is built from the caller's own member and digest, and it
+# skips the gate. So these preconditions are scoped to the success arm rather
+# than applied to both. Declining a refusal over a field it never reads, or over
+# a base it never measures against, would be the wrong direction: it withholds a
+# retraction while the stale success it exists to retract stands.
 version=""
 frontend_digest=""
+branch_digest_lines=""
 if [ "$post_state" = "success" ]; then
   version_file="${repo_root}/.gaia/VERSION"
   if [ ! -f "$version_file" ]; then
@@ -306,10 +341,58 @@ if [ "$post_state" = "success" ]; then
     exit 0
   fi
 
-  # Frontend digest (the status description's second field). Fail closed: never post a status without a
-  # real digest. Reused below by the member-aware gate for the frontend
-  # member's own digest, avoiding a second tree walk.
-  frontend_digest="$(audit_member_digest "$repo_root" code-audit-frontend 2>/dev/null || true)"
+  # Fail closed when any function the trusted-base derivation needs is missing:
+  # a partial library set must decline, never fall through to a weaker base.
+  if ! command -v audit_branch_patch_merge_base >/dev/null 2>&1 \
+     || ! command -v audit_github_repository >/dev/null 2>&1 \
+     || ! command -v audit_github_pr_base_branch >/dev/null 2>&1 \
+     || ! command -v audit_github_base_tip >/dev/null 2>&1 \
+     || ! command -v audit_branch_digests_all >/dev/null 2>&1; then
+    emit_decline "branch patch library unavailable (lib/audit-branch-patch.sh)"
+    exit 0
+  fi
+
+  # The trusted base comes from GitHub, never from a local ref. On a failure a
+  # library call prints nothing on stdout and one line on stderr, so the
+  # captured text is a message only when the call failed.
+  base_failure=""
+  base_repository=""
+  base_tip=""
+  base_branch="$(audit_github_pr_base_branch "$repo_root" 2>&1)" || base_failure="$base_branch"
+  if [ -z "$base_failure" ]; then
+    base_repository="$(audit_github_repository "$repo_root" 2>&1)" || base_failure="$base_repository"
+  fi
+  if [ -z "$base_failure" ]; then
+    base_tip="$(audit_github_base_tip "$repo_root" "$base_repository" "$base_branch" 2>&1)" || base_failure="$base_tip"
+  fi
+  if [ -n "$base_failure" ]; then
+    emit_decline "trusted base unverified, ${base_failure}; next step: gh auth status"
+    exit 0
+  fi
+
+  merge_base_status=0
+  merge_base="$(audit_branch_patch_merge_base "$repo_root" "$base_tip" HEAD 2>/dev/null)" || merge_base_status=$?
+  case "$merge_base_status" in
+    0) ;;
+    4)
+      emit_decline "trusted base unverified, the base tip is not present locally; next step: git fetch origin"
+      exit 0
+      ;;
+    3)
+      emit_decline "trusted base unverified, more than one merge base with the base branch; next step: git merge --no-edit refs/remotes/origin/${base_branch}"
+      exit 0
+      ;;
+    *)
+      emit_decline "trusted base unverified, no unique merge base could be derived"
+      exit 0
+      ;;
+  esac
+
+  # Every member's digest in one pass, so one identities listing serves the
+  # frontend digest below and the member-aware gate. Fail closed: never post a
+  # status without a real digest.
+  branch_digest_lines="$(audit_branch_digests_all "$repo_root" "$merge_base" 2>/dev/null || true)"
+  frontend_digest="$(digest_for_member code-audit-frontend)"
   if [ -z "$frontend_digest" ]; then
     emit_decline "frontend digest unavailable"
     exit 0
@@ -391,7 +474,7 @@ fi
 # maintainer member still withholds over an unresolved finding. An ABSENT or
 # non-executable resolver falls back to the single-marker POST below, so a
 # partial/early-resume tree is never bricked. Each member is keyed to its OWN
-# digest (owned files + machinery), not the frontend digest or the tree; there
+# branch-own digest, not the frontend digest or the tree; there
 # is no carried provenance, so every dispatched member's clearance is earned.
 #
 # The resolver derives its own root from cwd, so it runs anchored on
@@ -461,11 +544,7 @@ if [ "$post_state" = "success" ] && [ -x "$resolver" ]; then
   pending=""
   while IFS= read -r roster_member; do
     [ -n "$roster_member" ] || continue
-    if [ "$roster_member" = "code-audit-frontend" ]; then
-      member_digest="$frontend_digest"
-    else
-      member_digest="$(audit_member_digest "$repo_root" "$roster_member" 2>/dev/null || true)"
-    fi
+    member_digest="$(digest_for_member "$roster_member")"
     # Refusal-first, mirroring the merge hook's own precedence
     # (pr-merge-audit-check.sh's member loop). A member that cleared a digest in
     # one wave and refused the SAME digest in a later one holds both artifacts,
@@ -498,8 +577,8 @@ fi
 # field 1 is a fixed word that can never be a version, field 2 a member name
 # that can never be a 64-hex digest), so it cannot pass for a cleared status:
 # defense in depth behind the state-aware readers, which already reject any
-# non-success state. It names the refusing member and the exact content digest,
-# which is what an operator needs to find the artifact on disk.
+# non-success state. It names the refusing member and the exact branch-own
+# digest, which is what an operator needs to find the artifact on disk.
 if [ "$post_state" = "failure" ]; then
   status_description="refused by ${marker_member} ${marker_digest}"
 else

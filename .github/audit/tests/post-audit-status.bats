@@ -24,7 +24,9 @@
 # fail per the test), `gh repo view --json nameWithOwner` (a fixed slug),
 # `gh pr view --json headRefOid,title,files` (the pushed head sha captured by
 # push_branch, plus the PR title and, one per line, the PR's changed paths,
-# when a test writes them), and `gh api .../statuses ... --method POST`
+# when a test writes them), `gh pr view --json baseRefName` (`main`),
+# `gh api repos/.../branches/main` (the bare remote's main tip, the trusted
+# base the success arm measures against), and `gh api .../statuses ... --method POST`
 # (records the invocation only when the target sha exists on a bare remote,
 # proving it is genuinely fetchable, not just that the mock accepted it
 # unconditionally).
@@ -58,6 +60,13 @@
 #      short sha re-resolves to the sha the POST actually targeted (#794).
 #   5. Frontend digest unavailable (masked sha256 tool) → declines fail-closed,
 #      never posts a status with a missing or empty digest field.
+#   7. Trusted base: the success arm declines, naming the one next step, when
+#      the base tip is not present locally, when gh cannot answer for the base
+#      (failing and hanging), and when the branch has more than one merge base,
+#      each with a scratch-copy disable case under which a success posts. The
+#      refusal arm posts failure for the same states. After each remedy, and
+#      after a clean catch-up merge, one success posts whose frontend digest is
+#      the branch-own one. One identities listing serves a whole success run.
 #   6. chore(deps) waiver: a dep-bump PR title with a manifest-only file list
 #      waives an unmarked code-audit-frontend and no other member; a
 #      non-matching or unreadable title, an empty or non-manifest file list,
@@ -69,6 +78,8 @@ setup() {
   SCRIPT="$THIS_DIRECTORY/../../../.claude/hooks/post-audit-status.sh"
   [ -x "$SCRIPT" ] || skip "post-audit-status.sh not executable"
   DIGEST_LIBRARY="$THIS_DIRECTORY/../../../.claude/hooks/lib/audit-digest.sh"
+  . "$THIS_DIRECTORY/../../../.gaia/tests/helpers/gh-base-stub.sh"
+  . "$THIS_DIRECTORY/../../../.gaia/tests/helpers/catchup-fixture.sh"
 
   SANDBOX="$BATS_TEST_TMPDIR/sandbox"
   mkdir -p "$SANDBOX/.gaia"
@@ -119,11 +130,14 @@ push_branch() {
 #            changed path on its own line when PR_FILES_FILE holds any; no
 #            title file prints the sha alone, which reads as an unreadable
 #            title
-#   api    → verify the `statuses/<sha>` target exists on the bare REMOTE
-#            before accepting: append the full argv to POST_LOG and exit 0
-#            only when the sha is a fetchable commit there, else exit 1 and
-#            record nothing (the same 422 a real unpushed target sha gets),
-#            so a regression to the local unpushed sha fails the test.
+#   api    → `branches/<name>` prints the bare REMOTE's tip of that branch
+#            and records nothing. A `statuses/<sha>` target is verified to
+#            exist on the bare REMOTE before accepting: append the full argv
+#            to POST_LOG and exit 0 only when the sha is a fetchable commit
+#            there, else exit 1 and record nothing (the same 422 a real
+#            unpushed target sha gets), so a regression to the local unpushed
+#            sha fails the test.
+#   pr view --json baseRefName → `main`.
 install_gh_mock() {
   local auth_ok="$1"
   GH_BIN="$BATS_TEST_TMPDIR/bin"
@@ -146,6 +160,12 @@ case "$1" in
     printf 'gaia-react/gaia\n'
     ;;
   pr)
+    case " $* " in
+      *" baseRefName "*)
+        printf 'main\n'
+        exit 0
+        ;;
+    esac
     [ -f "$pushed_head_file" ] || exit 1
     cat "$pushed_head_file"
     if [ -s "$pr_title_file" ]; then
@@ -158,6 +178,12 @@ case "$1" in
     fi
     ;;
   api)
+    case "$2" in
+      repos/*/branches/*)
+        git -C "$remote" rev-parse "refs/heads/${2##*/branches/}"
+        exit $?
+        ;;
+    esac
     sha="${2##*statuses/}"
     sha="${sha%% *}"
     if [ -n "$sha" ] && git -C "$remote" cat-file -e "${sha}^{commit}" 2>/dev/null; then
@@ -183,12 +209,14 @@ current_tree() {
   git -C "$SANDBOX" rev-parse "HEAD^{tree}"
 }
 
-# The real audit_member_digest, sourced fresh in a subshell (mirrors
-# .gaia/tests/hooks/audit-digest-lib.bats's digest_of), so assertions compute
-# the SAME digest the script itself derives rather than hardcoding one.
+# The real branch-own digest, sourced fresh in a subshell, so assertions compute
+# the SAME digest the script itself derives rather than hardcoding one. The
+# merge base is taken against the sandbox's origin/main, the base the gh mock
+# reports.
 digest_of() {
-  local root="$1" member="$2" reference="${3:-HEAD}"
-  bash -c '. "$1"; audit_member_digest "$2" "$3" "$4"' _ "$DIGEST_LIBRARY" "$root" "$member" "$reference"
+  local root="$1" member="$2" target="${3:-HEAD}"
+  bash -c '. "$1"; merge_base="$5"; [ -n "$merge_base" ] || merge_base=$(audit_branch_patch_merge_base "$2" refs/remotes/origin/main HEAD) || exit 1; audit_branch_member_digest "$2" "$3" "$merge_base" "$4"' \
+    _ "$DIGEST_LIBRARY" "$root" "$member" "$target" "${DIGEST_MERGE_BASE:-}"
 }
 
 # Write a writer-shaped schema-3 EARNED clearance for MEMBER at PATH (an
@@ -793,4 +821,351 @@ EOF
   [ "$status" -eq 0 ]
   [ "$output" = "status: declined: frontend digest unavailable" ]
   [ ! -f "$POST_LOG" ]
+}
+
+# -----------------------------------------------------------------------------
+# 7. Trusted base: the success arm measures against the base tip GitHub reports
+#    and declines, naming one next step, when it cannot. The refusal arm never
+#    verifies the base. These cases use the shared gh stub and a real bare origin
+#    with a base branch that moves, instead of the mock above.
+# -----------------------------------------------------------------------------
+
+# A forty-hex id no repository carries.
+ABSENT_TIP=0123456789abcdef0123456789abcdef01234567
+
+# Point the gh stub's PR record at the sandbox's current HEAD and its base tip at
+# $1 (default: the sandbox's origin/main). Call again after HEAD or the base moves.
+refresh_stub() {
+  GH_STUB_BASE_TIP="${1:-$(git -C "$SANDBOX" rev-parse refs/remotes/origin/main)}"
+  GH_STUB_PR_JSON="$(jq -n --arg head "$(git -C "$SANDBOX" rev-parse HEAD)" '{headRefOid: $head, title: "", files: []}')"
+  export GH_STUB_BASE_TIP GH_STUB_PR_JSON
+}
+
+install_base_stub() {
+  gh_base_stub_install "$BATS_TEST_TMPDIR/base-bin"
+  export PATH="$BATS_TEST_TMPDIR/base-bin:$PATH"
+  export GH_STUB_LOG="$BATS_TEST_TMPDIR/stub.log"
+  export GH_STUB_REPOSITORY=gaia-react/gaia
+  export GH_STUB_BASE_BRANCH=main
+  : > "$GH_STUB_LOG"
+}
+
+# Lines of the stub's call log containing the fixed string $1.
+logged_calls() {
+  local count
+  count=$(grep -cF -- "$1" "$GH_STUB_LOG") || count=0
+  printf '%s' "$count"
+}
+
+# Write both members' earned markers for the current branch-own digests and set
+# FRONTEND_MARKER and SHELL_MARKER (sandbox-relative paths).
+write_both_markers() {
+  local frontend_digest shell_digest
+  frontend_digest=$(digest_of "$SANDBOX" code-audit-frontend) || return 1
+  shell_digest=$(digest_of "$SANDBOX" code-audit-maintainer-shell) || return 1
+  mkdir -p "$SANDBOX/.gaia/local/audit"
+  FRONTEND_MARKER=".gaia/local/audit/${frontend_digest}.ok"
+  SHELL_MARKER=".gaia/local/audit/${shell_digest}.code-audit-maintainer-shell.ok"
+  write_body "$SANDBOX/$FRONTEND_MARKER" code-audit-frontend
+  write_body "$SANDBOX/$SHELL_MARKER" code-audit-maintainer-shell
+}
+
+# A feature branch with a bare origin whose base branch is `main`, a mixed
+# frontend + shell change (so two members are dispatched), the gh stub installed
+# and pointed at the sandbox, and both members' markers written.
+build_audited_branch() {
+  install_resolver
+  catchup_add_origin "$SANDBOX" main --feature feat/catchup || return 1
+  catchup_branch_commit frontend/app/x.ts "export const x = 1;" || return 1
+  catchup_branch_commit .gaia/scripts/example.sh "#!/bin/bash" || return 1
+  install_base_stub
+  refresh_stub
+  write_both_markers
+}
+
+# A scratch copy of the poster and the libraries it loads, with the literal
+# text $1 replaced by $2, so a test can prove a guard decides an outcome. Sets
+# POSTER_COPY. Fails when $1 is not in the poster.
+mutate_poster() {
+  local root="$BATS_TEST_TMPDIR/poster-copy" text
+  rm -rf "$root"
+  mkdir -p "$root/.claude/hooks/lib" "$root/.gaia/scripts"
+  cp "$SCRIPT" "$root/.claude/hooks/post-audit-status.sh"
+  cp "$THIS_DIRECTORY"/../../../.claude/hooks/lib/*.sh "$root/.claude/hooks/lib/"
+  cp "$THIS_DIRECTORY/../../../.gaia/scripts/audit-key-lib.sh" "$root/.gaia/scripts/audit-key-lib.sh"
+  POSTER_COPY="$root/.claude/hooks/post-audit-status.sh"
+  text="$(cat "$POSTER_COPY")"
+  [[ "$text" == *"$1"* ]] || return 1
+  # The replacement text carries no ampersand, which bash 5.2 would expand.
+  printf '%s\n' "${text/"$1"/$2}" > "$POSTER_COPY"
+  [ "$(cat "$POSTER_COPY")" != "$text" ]
+}
+
+run_copy() {
+  ( cd "$SANDBOX" && bash "$POSTER_COPY" "$1" )
+}
+
+# The mutation that lets a poster ignore the merge-base verdict: the merge base
+# becomes the fixed commit $1, whatever the base tip is.
+MERGE_BASE_DERIVATION='merge_base="$(audit_branch_patch_merge_base "$repo_root" "$base_tip" HEAD 2>/dev/null)" || merge_base_status=$?'
+
+@test "trusted base: a base tip that is not present locally declines naming git fetch origin, and posts no success" {
+  build_audited_branch
+  refresh_stub "$ABSENT_TIP"
+
+  run run_helper "$FRONTEND_MARKER"
+  [ "$status" -eq 0 ]
+  [ "$output" = "status: declined: trusted base unverified, the base tip is not present locally; next step: git fetch origin" ]
+  [ "$(logged_calls 'state=success')" = 0 ]
+}
+
+@test "trusted base: the presence check can fail, a scratch copy that ignores the merge-base verdict posts despite the absent tip" {
+  build_audited_branch
+  refresh_stub "$ABSENT_TIP"
+  merge_base=$(git -C "$SANDBOX" merge-base HEAD refs/remotes/origin/main)
+  mutate_poster "$MERGE_BASE_DERIVATION" "merge_base=\"$merge_base\"" || return 1
+
+  run run_copy "$FRONTEND_MARKER"
+  [ "$status" -eq 0 ]
+  grep -qF -- "status: posted GAIA-Audit success" <<<"$output" || return 1
+  [ "$(logged_calls 'state=success')" = 1 ]
+}
+
+@test "trusted base: gh failing for the base lookup declines naming gh auth status, and posts no success" {
+  build_audited_branch
+  export GH_STUB_FAIL_BRANCHES=1
+
+  run run_helper "$FRONTEND_MARKER"
+  [ "$status" -eq 0 ]
+  grep -qF -- "status: declined: trusted base unverified, " <<<"$output" || return 1
+  grep -qF -- "gh failed reading the base branch tip" <<<"$output" || return 1
+  grep -qF -- "next step: gh auth status" <<<"$output" || return 1
+  [ "$(logged_calls 'state=success')" = 0 ]
+}
+
+@test "trusted base: gh hanging for the base lookup declines at the deadline, leaves no process behind, and posts no success" {
+  build_audited_branch
+  export GH_STUB_HANG_BRANCHES=1
+  export GAIA_AUDIT_GH_DEADLINE_SECONDS=1
+  export GH_STUB_PID_LOG="$BATS_TEST_TMPDIR/pids"
+
+  run run_helper "$FRONTEND_MARKER"
+  [ "$status" -eq 0 ]
+  grep -qF -- "status: declined: trusted base unverified, " <<<"$output" || return 1
+  grep -qF -- "timed out" <<<"$output" || return 1
+  grep -qF -- "next step: gh auth status" <<<"$output" || return 1
+  [ "$(logged_calls 'state=success')" = 0 ]
+
+  [ -s "$GH_STUB_PID_LOG" ]
+  while read -r stub_pid sleeper_pid; do
+    kill -0 "$stub_pid" 2>/dev/null && return 1
+    kill -0 "$sleeper_pid" 2>/dev/null && return 1
+  done < "$GH_STUB_PID_LOG"
+  true
+}
+
+@test "trusted base: the gh failure check can fail, a scratch copy that continues past it posts despite the failing lookup" {
+  build_audited_branch
+  export GH_STUB_FAIL_BRANCHES=1
+  local_tip=$(git -C "$SANDBOX" rev-parse refs/remotes/origin/main)
+  mutate_poster 'if [ -n "$base_failure" ]; then' \
+    "if [ -n \"\$base_failure\" ]; then base_tip=\"$local_tip\"; base_failure=\"\"; fi; if false; then" || return 1
+
+  run run_copy "$FRONTEND_MARKER"
+  [ "$status" -eq 0 ]
+  grep -qF -- "status: posted GAIA-Audit success" <<<"$output" || return 1
+  [ "$(logged_calls 'state=success')" = 1 ]
+}
+
+@test "trusted base: more than one merge base declines naming the merge, and posts no success" {
+  build_audited_branch
+  catchup_criss_cross
+  refresh_stub
+
+  run run_helper "$FRONTEND_MARKER"
+  [ "$status" -eq 0 ]
+  [ "$output" = "status: declined: trusted base unverified, more than one merge base with the base branch; next step: git merge --no-edit refs/remotes/origin/main" ]
+  [ "$(logged_calls 'state=success')" = 0 ]
+}
+
+@test "trusted base: the uniqueness check can fail, a scratch copy that takes the first merge base posts despite the criss-cross" {
+  build_audited_branch
+  catchup_criss_cross
+  refresh_stub
+  first_merge_base=$(git -C "$SANDBOX" merge-base --all HEAD refs/remotes/origin/main | head -1)
+  [ "$(git -C "$SANDBOX" merge-base --all HEAD refs/remotes/origin/main | wc -l)" -gt 1 ]
+  # Markers for the digests the scratch copy will derive from that merge base.
+  DIGEST_MERGE_BASE="$first_merge_base" write_both_markers
+  mutate_poster "$MERGE_BASE_DERIVATION" "merge_base=\"$first_merge_base\"" || return 1
+
+  run run_copy "$FRONTEND_MARKER"
+  [ "$status" -eq 0 ]
+  grep -qF -- "status: posted GAIA-Audit success" <<<"$output" || return 1
+  [ "$(logged_calls 'state=success')" = 1 ]
+}
+
+# A refusal retracts an earlier success whatever the state of the base: the
+# retraction is the one post that must always be able to land.
+@test "trusted base: a refusal posts failure on HEAD after an earlier success, with the base tip absent locally" {
+  build_audited_branch
+  frontend_digest=$(digest_of "$SANDBOX" code-audit-frontend)
+
+  # The earlier success lands while the base is healthy, before the refusal.
+  run run_helper "$FRONTEND_MARKER"
+  [ "$status" -eq 0 ]
+  [ "$(logged_calls 'state=success')" = 1 ]
+  write_refusal_body "$SANDBOX/.gaia/local/audit/${frontend_digest}.refused" code-audit-frontend
+
+  refresh_stub "$ABSENT_TIP"
+  head_sha=$(git -C "$SANDBOX" rev-parse HEAD)
+  run run_helper ".gaia/local/audit/${frontend_digest}.refused"
+  [ "$status" -eq 0 ]
+  [ "$output" = "status: posted GAIA-Audit failure $(git -C "$SANDBOX" rev-parse --short HEAD)" ]
+  grep -F -- "statuses/${head_sha}" "$GH_STUB_LOG" | grep -qF -- "state=failure" || return 1
+}
+
+@test "trusted base: a refusal posts failure on HEAD after an earlier success, with more than one merge base" {
+  build_audited_branch
+  frontend_digest=$(digest_of "$SANDBOX" code-audit-frontend)
+
+  run run_helper "$FRONTEND_MARKER"
+  [ "$status" -eq 0 ]
+  [ "$(logged_calls 'state=success')" = 1 ]
+  write_refusal_body "$SANDBOX/.gaia/local/audit/${frontend_digest}.refused" code-audit-frontend
+
+  catchup_criss_cross
+  refresh_stub
+  head_sha=$(git -C "$SANDBOX" rev-parse HEAD)
+  run run_helper ".gaia/local/audit/${frontend_digest}.refused"
+  [ "$status" -eq 0 ]
+  [ "$output" = "status: posted GAIA-Audit failure $(git -C "$SANDBOX" rev-parse --short HEAD)" ]
+  grep -F -- "statuses/${head_sha}" "$GH_STUB_LOG" | grep -qF -- "state=failure" || return 1
+}
+
+@test "trusted base: the arm separation can fail, a scratch copy that verifies the base on both arms posts no failure" {
+  build_audited_branch
+  frontend_digest=$(digest_of "$SANDBOX" code-audit-frontend)
+  write_refusal_body "$SANDBOX/.gaia/local/audit/${frontend_digest}.refused" code-audit-frontend
+  refresh_stub "$ABSENT_TIP"
+  mutate_poster $'if [ "$post_state" = "success" ]; then\n  version_file=' \
+    $'if true; then\n  version_file=' || return 1
+
+  run run_copy ".gaia/local/audit/${frontend_digest}.refused"
+  [ "$status" -eq 0 ]
+  grep -qF -- "status: declined: trusted base unverified" <<<"$output" || return 1
+  [ "$(logged_calls 'state=failure')" = 0 ]
+}
+
+# After a remedy and with every member holding a marker for its current digest,
+# exactly one success posts and its description carries the branch-own frontend
+# digest in field 2.
+assert_one_success_after_remedy() {
+  local frontend_digest
+  write_both_markers
+  refresh_stub
+  : > "$GH_STUB_LOG"
+  frontend_digest=$(digest_of "$SANDBOX" code-audit-frontend)
+
+  run run_helper "$FRONTEND_MARKER"
+  [ "$status" -eq 0 ]
+  grep -qF -- "status: posted GAIA-Audit success " <<<"$output" || return 1
+  [ "$(logged_calls 'state=success')" = 1 ]
+  grep -qF -- "description=1.2.3 ${frontend_digest} $(current_tree)" "$GH_STUB_LOG" || return 1
+}
+
+@test "trusted base: after the base tip is fetched, one success posts with the branch-own frontend digest" {
+  build_audited_branch
+  refresh_stub "$ABSENT_TIP"
+  run run_helper "$FRONTEND_MARKER"
+  [ "$(logged_calls 'state=success')" = 0 ]
+
+  assert_one_success_after_remedy
+}
+
+@test "trusted base: after gh recovers, one success posts with the branch-own frontend digest" {
+  build_audited_branch
+  export GH_STUB_FAIL_BRANCHES=1
+  run run_helper "$FRONTEND_MARKER"
+  [ "$(logged_calls 'state=success')" = 0 ]
+
+  unset GH_STUB_FAIL_BRANCHES
+  assert_one_success_after_remedy
+}
+
+@test "trusted base: after the base is merged to make the merge base unique, one success posts with the branch-own frontend digest" {
+  build_audited_branch
+  catchup_criss_cross
+  refresh_stub
+  run run_helper "$FRONTEND_MARKER"
+  [ "$(logged_calls 'state=success')" = 0 ]
+
+  catchup_merge_base
+  assert_one_success_after_remedy
+}
+
+@test "a clean catch-up merge re-posts success on the merge commit with the same frontend digest" {
+  build_audited_branch
+  frontend_digest=$(digest_of "$SANDBOX" code-audit-frontend)
+  run run_helper "$FRONTEND_MARKER"
+  [ "$status" -eq 0 ]
+  [ "$(logged_calls 'state=success')" = 1 ]
+  grep -qF -- "description=1.2.3 ${frontend_digest} " "$GH_STUB_LOG" || return 1
+  before_head=$(git -C "$SANDBOX" rev-parse HEAD)
+
+  catchup_base_commit docs/base-note.md "arrived from the base"
+  catchup_merge_base
+  merge_head=$(git -C "$SANDBOX" rev-parse HEAD)
+  [ "$merge_head" != "$before_head" ]
+  refresh_stub
+  : > "$GH_STUB_LOG"
+
+  # Any existing member marker will do: the shell member's, written before the
+  # merge, still names its current digest.
+  run run_helper "$SHELL_MARKER"
+  [ "$status" -eq 0 ]
+  [ "$output" = "status: posted GAIA-Audit success $(git -C "$SANDBOX" rev-parse --short HEAD)" ]
+  grep -F -- "statuses/${merge_head}" "$GH_STUB_LOG" | grep -qF -- "description=1.2.3 ${frontend_digest} " || return 1
+  [ "$(digest_of "$SANDBOX" code-audit-frontend)" = "$frontend_digest" ]
+}
+
+# git wrapper that records every invocation's arguments, then runs the real git.
+install_git_logger() {
+  local real_git
+  real_git="$(command -v git)"
+  GIT_CALL_LOG="$BATS_TEST_TMPDIR/git-calls.log"
+  : > "$GIT_CALL_LOG"
+  mkdir -p "$BATS_TEST_TMPDIR/git-logger"
+  cat > "$BATS_TEST_TMPDIR/git-logger/git" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$GIT_CALL_LOG"
+exec "$real_git" "\$@"
+EOF
+  chmod +x "$BATS_TEST_TMPDIR/git-logger/git"
+  export PATH="$BATS_TEST_TMPDIR/git-logger:$PATH"
+}
+
+@test "a success run lists the branch's identities once, not once per member" {
+  build_audited_branch
+  install_git_logger
+
+  run run_helper "$FRONTEND_MARKER"
+  [ "$status" -eq 0 ]
+  grep -qF -- "status: posted GAIA-Audit success " <<<"$output" || return 1
+  # Both dispatched members' markers were checked.
+  [ "$(logged_calls 'state=success')" = 1 ]
+  listings=$(grep -c -- 'diff-tree -r --raw -z' "$GIT_CALL_LOG") || listings=0
+  [ "$listings" = 1 ]
+}
+
+@test "the single identities listing can fail, a scratch copy that derives each member's digest on its own lists them more than once" {
+  build_audited_branch
+  install_git_logger
+  mutate_poster 'member_digest="$(digest_for_member "$roster_member")"' \
+    'member_digest="$(audit_branch_member_digest "$repo_root" "$roster_member" "$merge_base" 2>/dev/null || true)"' || return 1
+
+  run run_copy "$FRONTEND_MARKER"
+  [ "$status" -eq 0 ]
+  grep -qF -- "status: posted GAIA-Audit success " <<<"$output" || return 1
+  listings=$(grep -c -- 'diff-tree -r --raw -z' "$GIT_CALL_LOG") || listings=0
+  [ "$listings" -gt 1 ]
 }

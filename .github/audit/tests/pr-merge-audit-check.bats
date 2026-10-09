@@ -25,17 +25,23 @@
 # first (`--json isCrossRepository`) always answers `false`.
 #
 # The status description is three positional fields, "<version>
-# <frontend-digest> <tree>" (C3): field 2 is the frontend content digest, the
+# <frontend-digest> <tree>": field 2 is the frontend branch-own digest, the
 # validity key the hook compares; field 3 (tree) is a plain data field, never
 # compared. current_frontend_digest() computes the SAME digest the hook itself
-# would, via the real digest engine, so fixtures never hand-derive a value
-# that could drift from the hook's own computation.
+# would, via the real digest engine over the sandbox's merge base with the base
+# tip the mocked gh reports, so fixtures never hand-derive a value that could
+# drift from the hook's own computation.
+#
+# The sandbox carries a bare origin (the catch-up fixture) and the mocked gh
+# answers the base lookup from it: the hook reads the base branch name from
+# the PR record and the base tip from GitHub, never from a local ref.
 #
 # The @test names below are this suite's index of what it pins; a numbered
 # coverage list up here only drifts behind them.
 
 setup() {
   . "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/tests/helpers/audit-roster.sh"
+  . "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/tests/helpers/catchup-fixture.sh"
   THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   SCRIPT="$THIS_DIRECTORY/../../../.claude/hooks/pr-merge-audit-check.sh"
   LIBRARY_DIRECTORY="$( cd "$THIS_DIRECTORY/../../../.claude/hooks/lib" && pwd )"
@@ -62,7 +68,7 @@ setup() {
   # No .gaia/scripts/resolve-audit-members.sh is present in the sandbox, so
   # the hook always takes its legacy zero-dispatch path, and the GitHub
   # commit status fallback is the deciding signal.
-  git -C "$SANDBOX" checkout --quiet -b feature
+  catchup_add_origin "$SANDBOX" main --feature feature || return 1
   echo "export const x = 1;" > "$SANDBOX/app/x.ts"
   git -C "$SANDBOX" add app/x.ts
   git -C "$SANDBOX" commit --quiet -m "feat: add x"
@@ -87,15 +93,20 @@ current_tree() {
 # computed via the real digest engine (never hand-derived), so it is always
 # the SAME value pr-merge-audit-check.sh itself would compute.
 current_frontend_digest() {
-  bash -c '. "$1"; audit_member_digest "$2" code-audit-frontend' _ "$LIBRARY_DIRECTORY/audit-digest.sh" "$SANDBOX"
+  local tip
+  tip="$(git -C "$CATCHUP_ORIGIN" rev-parse refs/heads/main)"
+  bash -c '. "$1"; merge_base="$(audit_branch_patch_merge_base "$2" "$3")" && audit_branch_member_digest "$2" code-audit-frontend "$merge_base"' \
+    _ "$LIBRARY_DIRECTORY/audit-digest.sh" "$SANDBOX" "$tip"
 }
 
 # Install a fake `gh` on a prepended PATH. It dispatches on argv:
 #   - `gh api .../statuses --jq <expr>` → run the real jq (with the hook's own
 #     state-filtered expression) against the crafted statuses array.
 #   - `gh pr view --json title,baseRefName` → the PR record the hook reads once:
-#     an empty title (so chore(deps) never fires) and whatever base ref the test
-#     declared, if any.
+#     an empty title (so chore(deps) never fires), the PR number and whatever
+#     base ref the test declared (main unless it declared another).
+#   - `gh repo view` and `gh api repos/.../branches/<base>` → the repository
+#     and the tip of the bare origin's branch, the base lookup the digest needs.
 #   - anything else                     → empty.
 # Returns the full JSON array so the hook's --jq state filter is what decides.
 # Also sets GITHUB_REPOSITORY so the hook skips `gh repo view`.
@@ -104,11 +115,12 @@ install_gh_array_mock() {
   GH_BIN="$BATS_TEST_TMPDIR/bin"
   mkdir -p "$GH_BIN"
   printf '%s' "$payload" > "$BATS_TEST_TMPDIR/gh-statuses.json"
-  : > "$BATS_TEST_TMPDIR/gh-pr-base-ref"
+  printf 'main\n' > "$BATS_TEST_TMPDIR/gh-pr-base-ref"
   cat > "$GH_BIN/gh" <<EOF
 #!/usr/bin/env bash
 statuses_file="$BATS_TEST_TMPDIR/gh-statuses.json"
 base_reference_file="$BATS_TEST_TMPDIR/gh-pr-base-ref"
+origin_directory="$CATCHUP_ORIGIN"
 EOF
   cat >> "$GH_BIN/gh" <<'EOF'
 args="$*"
@@ -121,7 +133,18 @@ case "$args" in
     # always empty, so the chore(deps) bypass never fires; the base ref is
     # empty unless a test declared one, which makes the hook fall back to the
     # remote's advertised default exactly as it does with no PR at all.
-    jq -n --arg base_reference "$(cat "$base_reference_file")" '{title:"", baseRefName:$base_reference}'
+    jq -n --arg base_reference "$(cat "$base_reference_file")" '{title:"", baseRefName:$base_reference, number:12}'
+    ;;
+  "repo view"*)
+    printf 'gaia-react/gaia\n'
+    ;;
+  *"/branches/"*)
+    for argument in "$@"; do
+      case "$argument" in
+        repos/*/branches/*) branch_name="${argument##*/branches/}" ;;
+      esac
+    done
+    git -C "$origin_directory" rev-parse "refs/heads/$branch_name"
     ;;
   *statuses*)
     jq_expression=""

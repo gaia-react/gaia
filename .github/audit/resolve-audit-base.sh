@@ -30,7 +30,8 @@
 #   When no usable ancestor exists, first audit of a PR, every prior run
 #   cancelled or failed (those post nothing), a .gaia/VERSION bump
 #   invalidated older audits, or the version file is missing; the helper
-#   emits the main ref so the caller falls back to a full-scope review. A
+#   emits the main ref (member form line 1) or the branch's fork point
+#   (argument-less form) so the caller falls back to a full-scope review. A
 #   commit nobody reviewed carries no signal to anchor on, and a refusal
 #   anchors only while its open findings are on record, so neither shortcut
 #   leaves content unread with nothing owed on it.
@@ -38,9 +39,8 @@
 # Invocation
 #   .github/audit/resolve-audit-base.sh [--member <name>]
 #
-#   The argument-less form resolves the shared pull-request-wide base, and its
-#   resolution is unchanged on every input except the inverted degraded arm
-#   below. The merge-time
+#   The argument-less form resolves the shared pull-request-wide base. The
+#   merge-time
 #   findings hook is not one of them and no longer calls this script at all:
 #   the block it posts selects its sidecars on the branch, across every base. `--member <name>` is the per-member form; the Code Audit Team's
 #   agent definitions are the only call sites that can name a member.
@@ -52,21 +52,33 @@
 #
 # Output (stdout), argument-less form
 #   Exactly ONE line, suitable for a `base...HEAD` diff:
-#     <40-hex-sha>: resolved incremental base (an audited PR ancestor)
-#     origin/main: the fallback: review the full PR diff
-#     (or main when neither remote-tracking ref resolves)
+#     <40-hex-sha>: resolved incremental base (an audited PR ancestor), or on
+#       every unanchored arm the branch's fork point, the first parent of the
+#       oldest branch commit the base does not reach
+#     refs/remotes/origin/main: when the fork point cannot be computed
+#       (no local base reference), with reason degraded and a stderr line
+#       naming git fetch origin
+#   The single line is the shared base on every arm, early ones included, so
+#   the artifact key derived from it does not move when the branch merges the
+#   base.
 #
 # Output (stdout), --member form
 #   Exactly FOUR newline-terminated lines:
-#     1. the per-member review base ref, which SCOPES that member's review
+#     1. the per-member review base ref, which SCOPES that member's review; on
+#        a full-scope answer the fully-qualified local base reference
 #     2. the reason token (closed set, below)
-#     3. the shared pull-request-wide base ref, which KEYS every artifact
+#     3. the shared pull-request-wide base, which KEYS every artifact: the
+#        whole-team anchor commit, else the branch's fork point
 #     4. the recorded tree of the clearance or refusal that anchored line 1,
 #        or EMPTY on every path where neither anchored it
 #
 #   Line 3 comes from the same code path the argument-less form prints, so
 #   co-dispatched members agree on the key structurally rather than
-#   incidentally: each receives byte-identically what the argument-less form
+#   incidentally. The fork point is a first-parent notion: a catch-up merge of
+#   the base keeps the branch as its first parent, so the merge base of line 3
+#   and HEAD, which the artifact key is built from, is the same before and
+#   after the merge. Before any catch-up it equals the merge base of the base
+#   reference and HEAD. each receives byte-identically what the argument-less form
 #   carries, which is what makes the shared re-run ledger one file per round.
 #   The findings block used to be the second beneficiary of that agreement and
 #   is no longer a beneficiary at all; the ledger is the whole reason line 3
@@ -124,20 +136,26 @@
 # Base reset on machinery change
 #   A version-matching candidate is not automatically safe: if any
 #   gate-machinery file (the ownership classifier, the machinery matcher,
-#   the digest recipe itself) changed between that candidate and HEAD, the
-#   candidate's audit ran under different membership/scoping rules than
-#   HEAD's, even though the version string didn't move. Reviewing only
+#   the digest recipe itself) changed on the branch between that candidate and
+#   HEAD, the candidate's audit ran under different membership/scoping rules
+#   than HEAD's, even though the version string didn't move. Reviewing only
 #   <candidate>..HEAD would then leave the candidate's own pre-base content
-#   unreviewed under the new rules. The argument-less form keeps that one
-#   flat test over the whole machinery set (via the batch machinery matcher,
-#   sourced from the checkout), so its resolution stays what it has always
-#   been.
+#   unreviewed under the new rules. The argument-less form applies one flat
+#   test over the whole machinery set (via the batch machinery matcher,
+#   sourced from the checkout).
+#
+#   The delta that test reads is the branch's own change since the candidate:
+#   the paths whose branch-own patch differs between the candidate and HEAD.
+#   What a catch-up merge brought in from the base is not in it, so a base-only
+#   edit to a machinery path resets nothing, while a branch edit to one still
+#   does, including one made inside a merge commit. When that change cannot be
+#   computed the reset fires.
 #
 # The two-tier reset, --member form only
 #   The flat test is far broader than the question a single member is
 #   asking. A repair to one member's own lens file, or an edit to a hook
 #   that only posts a status, resets every member. So the per-member form
-#   tests the same delta in two tiers (audit-rules-changed.sh):
+#   tests the same branch-own delta in two tiers (audit-rules-changed.sh):
 #     global tier  the files deciding what a member owns, what counts as
 #                  machinery, how a digest is computed, whether a clearance
 #                  is believed, which members are dispatched, or under which
@@ -168,8 +186,8 @@
 #   CHAINED TRUST, a documented assumption rather than a proof. A clearance
 #   body records the member, the digest, the version, the write-time HEAD
 #   commit, and the tree, but never the RANGE the member reviewed. So a
-#   clearance at commit C attests a content digest over that member's owned
-#   files at C; that it covers everything up to C holds only by chaining,
+#   clearance at commit C attests a branch-own digest over that member's owned
+#   paths at C; that it covers everything up to C holds only by chaining,
 #   each clearance inheriting the coverage of the ones before it. A single
 #   vacuous clearance would therefore propagate forward invisibly. The
 #   clearance validity predicate this arm leans on is likewise a
@@ -188,7 +206,7 @@
 #   member's earned `review: full` marker must record S's tree. Check (a)
 #   matches a marker by the tree it recorded, so a non-full marker whose tree
 #   left the range (a content amend or a rebase rewrites the commit trees
-#   while the marker stays valid by content digest) is not found and does not
+#   while the marker stays valid by branch-own digest) is not found and does not
 #   disable the arm; the reviewed delta of that member can then fall before
 #   the anchor. Either failing check disables the
 #   arm for the run and logs why; the walk still continues, so the per-member
@@ -255,8 +273,9 @@
 #   sound in the normal case and fail-open in a degraded one.
 #
 # Fail direction: an unloadable library resets to full scope
-#   With the classifier, the machinery matcher, or the rules-tier predicate
-#   unsourceable, NEITHER tier can be evaluated, so the anchor's soundness
+#   With the classifier, the machinery matcher, the rules-tier predicate, or
+#   the base libraries unsourceable, or with no local base reference to compute
+#   the fork point against (the answer then names git fetch origin), NEITHER tier can be evaluated, so the anchor's soundness
 #   for the resolving member cannot be established at all and the narrowing
 #   it would permit is member-specific and invisible. Both forms therefore
 #   emit the full-scope main ref and log the degradation; on no path is a
@@ -282,7 +301,21 @@
 #   the floor). Walking into main's own history could pick a deeper main
 #   commit and pull already-merged, unrelated changes into this PR's review
 #   scope. The merge-base bound prevents that; reaching the floor yields the
-#   main ref, i.e. the same scope as origin/main...HEAD.
+#   main ref, i.e. the full branch-own scope. A merge base that is not unique
+#   (a criss-cross) leaves no single range to walk, so it resolves degraded
+#   with the remedy named.
+#
+# Where the main ref comes from
+#   The resolver reads its base name through audit_local_base_reference, which
+#   consults the per-branch cache and makes at most one `gh` lookup per branch
+#   on a cache miss. That bounded lookup does not reintroduce the hazard of a
+#   base that resolves only sometimes, which for a resolver that SCOPES a
+#   review could land at or near HEAD, empty the reviewed delta, and let a
+#   member earn a clearance having read nothing: a failed lookup writes no
+#   cache and falls to origin/HEAD then main, the same answer the resolver
+#   always gave, and a success is fixed thereafter. The name is never taken
+#   from the environment. The fully-qualified remote-tracking spelling is the
+#   only form used, so a local branch named like it cannot stand in.
 #
 # Conventions
 #   - Bash 3.2 compatible (macOS default). No associative arrays / mapfile.
@@ -334,6 +367,10 @@ done
 
 emit() {
   local base="$1" reason="$2" anchor_tree="$3"
+  # The argument-less form prints one line and that line is the shared base, so
+  # an early arm that names the main ref for line 1 still prints the fork point
+  # here: the artifact key is derived from it.
+  [ "$member_form" = "true" ] || base="$shared_base"
   printf 'resolve-audit-base: member=%s base=%s reason=%s anchor_tree=%s\n' \
     "${member:--}" "$base" "$reason" "${anchor_tree:--}" >&2
   if [ "$member_form" = "true" ]; then
@@ -353,38 +390,54 @@ if [ -z "$repo_root" ]; then
   # Defensive: not in a git repo, so nothing can be sourced out of the
   # checkout either. Full scope; the caller's git will error loudly on the
   # broken environment.
-  main_reference="origin/main"
+  main_reference="refs/remotes/origin/main"
   shared_base="$main_reference"
   echo "resolve-audit-base: not inside a git checkout; resetting to full scope (${main_reference})." >&2
   emit "$main_reference" degraded ""
 fi
 
 # -----------------------------------------------------------------------------
-# Resolve a "main ref": used both for the fallback output and to bound the
-# ancestry walk via merge-base.
+# Resolve the main ref and the branch's fork point. The main ref scopes the
+# full-scope fallback and bounds the ancestry walk; the fork point is what line
+# 3 carries on every arm that is not anchored, because the artifact key is
+# derived from it.
 # -----------------------------------------------------------------------------
 
-resolve_main_reference() {
-  # No declared-base-ref arm and no `gh` fallback: this resolver SCOPES a
-  # review, so a base that resolves only sometimes, or one taken from the
-  # environment, could land at or near HEAD, empty the reviewed delta, and let
-  # a member earn a clearance marker having read nothing. It runs from hooks
-  # and agent bootstraps where gh may be absent, and a base that is always the
-  # repository default is the one every run can reproduce.
-  if git -C "$repo_root" rev-parse --verify --quiet origin/main >/dev/null 2>&1; then
-    printf 'origin/main'
-    return 0
+# Bracketed for the reason given at the version-normalizer load below. Absence
+# of either library leaves the base unresolved, which takes the degraded arm
+# further down, the same way an absent predicate library does.
+for base_library_file in audit-base-provenance.sh audit-branch-patch.sh; do
+  set +e
+  # shellcheck source=/dev/null
+  [ -f "${repo_root}/.claude/hooks/lib/${base_library_file}" ] && . "${repo_root}/.claude/hooks/lib/${base_library_file}" 2>/dev/null
+  set -e
+done
+
+main_reference="refs/remotes/origin/main"
+fork_point="$main_reference"
+base_tip=""
+base_failure=""
+if ! command -v audit_local_base_reference >/dev/null 2>&1 \
+  || ! command -v audit_branch_patch_fork_point >/dev/null 2>&1 \
+  || ! command -v audit_branch_patch_merge_base >/dev/null 2>&1 \
+  || ! command -v audit_branch_patch_changed_paths >/dev/null 2>&1; then
+  base_failure="the base libraries (audit-base-provenance.sh, audit-branch-patch.sh) are unavailable"
+elif ! resolved_reference="$(audit_local_base_reference "$repo_root" 2>/dev/null)"; then
+  base_failure="no local base reference ${main_reference} to compute against"
+else
+  main_reference="$resolved_reference"
+  base_tip="$(git -C "$repo_root" rev-parse --verify --quiet "${main_reference}^{commit}" 2>/dev/null || true)"
+  if [ -z "$base_tip" ]; then
+    base_failure="${main_reference} does not resolve to a commit"
+  elif computed_fork_point="$(audit_branch_patch_fork_point "$repo_root" "$base_tip" HEAD 2>/dev/null)" \
+    && [ -n "$computed_fork_point" ]; then
+    fork_point="$computed_fork_point"
+  else
+    base_failure="the branch's fork point from ${main_reference} could not be computed"
+    main_reference="refs/remotes/origin/main"
   fi
-  if git -C "$repo_root" rev-parse --verify --quiet main >/dev/null 2>&1; then
-    printf 'main'
-    return 0
-  fi
-  # Last resort: emit origin/main anyway; the caller's diff errors loudly if
-  # it truly can't resolve.
-  printf 'origin/main'
-}
-main_reference="$(resolve_main_reference)"
-shared_base="$main_reference"
+fi
+shared_base="$fork_point"
 
 # A mis-invocation cannot be trusted to be a member call site, so it degrades
 # to the argument-less full-scope shape rather than guessing a four-line one.
@@ -434,7 +487,21 @@ if [ -z "$head_sha" ]; then
   emit "$main_reference" no-anchor ""
 fi
 
-merge_base=$(git -C "$repo_root" merge-base "$main_reference" HEAD 2>/dev/null || true)
+# A unique merge base bounds the walk. More than one (a criss-cross) leaves no
+# single PR range to walk, so the answer is full scope with the remedy named.
+merge_base=""
+if [ -n "$base_tip" ]; then
+  if merge_base=$(audit_branch_patch_merge_base "$repo_root" "$base_tip" HEAD 2>/dev/null); then
+    :
+  else
+    merge_base_status=$?
+    merge_base=""
+    if [ "$merge_base_status" -eq 3 ]; then
+      echo "resolve-audit-base: HEAD has more than one merge base with ${main_reference}; merge the base branch (git merge --no-edit ${main_reference}) to make it unique. Resetting to full scope (${main_reference})." >&2
+      emit "$main_reference" degraded ""
+    fi
+  fi
+fi
 if [ -n "$merge_base" ]; then
   candidates=$(git -C "$repo_root" rev-list --max-count="$MAXIMUM_WALK_COMMIT_COUNT" "${merge_base}..HEAD" 2>/dev/null || true)
 else
@@ -466,20 +533,27 @@ status_version_for() {
   printf '%s' "$description" | awk '{print $1}'
 }
 
-# delta_for <anchor> → the anchor..HEAD delta, one path per line.
+# delta_for <anchor> → the branch's own change since the anchor, one path per
+# line; non-zero when it cannot be computed.
+#
+# The branch's own change excludes whatever a catch-up merge of the base brought
+# in, so a base-only edit to a machinery or rules path resets nothing while a
+# branch edit to one still does. Callers treat a failure as a reset.
 #
 # Fed to the batch matchers by here-string, never by pipe: they return on the
-# first match without draining stdin, so a piped git-diff writing past the
+# first match without draining stdin, so a piped producer writing past the
 # ~64KB pipe buffer takes SIGPIPE (141), and under `set -o pipefail` the
 # pipeline status collapses to false -- silently skipping the reset.
 #
-# `-z` because the matchers compare their prefixes literally: under git's
-# default core.quotePath a path carrying non-ASCII or control bytes comes back
-# wrapped in literal double quotes, and a token starting with `"` prefix-matches
-# nothing, so the reset silently does not fire. The `tr` puts back the newlines
-# the here-string feed reads by.
+# The listing is NUL-terminated because the matchers compare their prefixes
+# literally: a path carrying non-ASCII or control bytes would come back wrapped
+# in literal double quotes under git's default core.quotePath, and a token
+# starting with `"` prefix-matches nothing. The `tr` puts back the newlines the
+# here-string feed reads by; pipefail carries the producer's status through it.
 delta_for() {
-  git -C "$repo_root" diff --name-only -z "$1" "$head_sha" 2>/dev/null | tr '\0' '\n' || true
+  local listing
+  listing="$(audit_branch_patch_changed_paths "$repo_root" "$base_tip" "$1" "$head_sha" 2>/dev/null | tr '\0' '\n')" || return 1
+  printf '%s' "$listing"
 }
 
 # -----------------------------------------------------------------------------
@@ -507,6 +581,11 @@ set +e
 # shellcheck source=/dev/null
 [ -f "$key_library" ] && . "$key_library" 2>/dev/null
 set -e
+
+if [ -n "$base_failure" ]; then
+  echo "resolve-audit-base: ${base_failure}; run git fetch origin. Resetting to full scope (${main_reference})." >&2
+  emit "$main_reference" degraded ""
+fi
 
 missing_library=""
 if ! command -v audit_owner_for_path >/dev/null 2>&1; then
@@ -569,6 +648,10 @@ if [ "$member_form" = "true" ] && command -v clearance_scan >/dev/null 2>&1; the
       # the last full one; a body lacking the field (a legacy marker) is not
       # full either.
       [ "$recorded_review" = "full" ] || continue
+      # The recorded digest is not compared with any recipe's output, so a
+      # marker earned under the earlier whole-tree recipe still anchors on its
+      # version and tree: that recipe attested the full content at the tree, a
+      # superset of the branch's own change. The merge gate is what refuses it.
       # The digest comes from the record body, never from the scan's sha
       # column; clearance_scan has already checked it equals the filename stem.
       recorded_digest="$(clearance_field "$(scan_field "$scan_line" 5)" digest)"
@@ -800,8 +883,10 @@ done
 
 shared_reason="no-anchor"
 if [ -n "$team_anchor" ]; then
-  shared_delta="$(delta_for "$team_anchor")"
-  if [ -n "$shared_delta" ] && audit_delta_has_machinery >/dev/null <<<"$shared_delta"; then
+  if ! shared_delta="$(delta_for "$team_anchor")"; then
+    echo "resolve-audit-base: the branch's own change since ${team_anchor} could not be computed; treating it as a machinery change." >&2
+    shared_reason="machinery-reset"
+  elif [ -n "$shared_delta" ] && audit_delta_has_machinery >/dev/null <<<"$shared_delta"; then
     shared_reason="machinery-reset"
   else
     shared_base="$team_anchor"
@@ -811,7 +896,7 @@ fi
 
 if [ "$member_form" != "true" ]; then
   if [ "$shared_reason" = "machinery-reset" ]; then
-    echo "resolve-audit-base: machinery changed between ${team_anchor} and HEAD; resetting to full scope (${main_reference})." >&2
+    echo "resolve-audit-base: machinery changed on this branch between ${team_anchor} and HEAD; resetting to full scope (${main_reference})." >&2
   fi
   emit "$shared_base" "$shared_reason" ""
 fi
@@ -964,9 +1049,11 @@ if [ -z "$winner" ]; then
   emit "$main_reference" no-anchor ""
 fi
 
-member_delta="$(delta_for "$winner")"
 reset_hit=""
-if [ -n "$member_delta" ]; then
+if ! member_delta="$(delta_for "$winner")"; then
+  echo "resolve-audit-base: the branch's own change since ${winner} could not be computed; treating it as a global rules change." >&2
+  reset_hit="global${TAB}-"
+elif [ -n "$member_delta" ]; then
   reset_hit="$(audit_rules_reset_for "$member" <<<"$member_delta" || true)"
 fi
 
@@ -975,10 +1062,10 @@ if [ -n "$reset_hit" ]; then
   reset_path=""
   IFS="$TAB" read -r reset_tier reset_path <<<"$reset_hit"
   if [ "$reset_tier" = "member" ]; then
-    echo "resolve-audit-base: ${member}'s own agent definition changed between ${winner} and HEAD (${reset_path}); resetting to full scope (${main_reference})." >&2
+    echo "resolve-audit-base: ${member}'s own agent definition changed on this branch between ${winner} and HEAD (${reset_path}); resetting to full scope (${main_reference})." >&2
     emit "$main_reference" rules-reset-member ""
   fi
-  echo "resolve-audit-base: a global rules path changed between ${winner} and HEAD (${reset_path}); resetting to full scope (${main_reference})." >&2
+  echo "resolve-audit-base: a global rules path changed on this branch between ${winner} and HEAD (${reset_path}); resetting to full scope (${main_reference})." >&2
   emit "$main_reference" rules-reset-global ""
 fi
 

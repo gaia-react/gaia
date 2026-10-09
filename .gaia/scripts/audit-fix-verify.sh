@@ -115,10 +115,10 @@
 #     branch's slug. A marker or refusal is skipped only when its body's tree is
 #     a well-formed object id that differs from this root's HEAD tree and from
 #     the tree of its working content, its sha differs from HEAD, and the digest
-#     in its file name is none of the member content digests this root resolves
-#     to (at HEAD and for the working content). A body with no tree, a malformed
-#     tree, or a digest this root's members own counts, as does every marker
-#     when the member digests cannot be resolved. Another branch's concurrent
+#     in its file name is none of this branch's branch-own digests (at HEAD and
+#     for the working content). A body with no tree, a malformed tree, or a
+#     digest this branch's members own counts, as does every marker when the
+#     branch-own digests cannot be resolved. Another branch's concurrent
 #     audit never fails this branch's round.
 #
 # Known limits: an untracked path is judged on presence only, never content,
@@ -666,7 +666,7 @@ EOF
       # name lacks this branch's slug. A marker or refusal (named by digest
       # only) is skipped when its body carries a well-formed tree that is
       # neither this root's HEAD tree nor its working-content tree, a sha other
-      # than HEAD, and its name's digest is none of this root's member content
+      # than HEAD, and its name's digest is none of this branch's branch-own
       # digests: the merge gate reads a marker by that name and never reads
       # the body's tree, so a body that merely differs from HEAD proves
       # nothing. Anything that cannot be proven foreign counts, so the check
@@ -684,9 +684,10 @@ EOF
         digests_ok=1
         for tree_reference in HEAD "$worktree_tree"; do
           # The batch form prints `<member><TAB><digest>` lines and nothing at
-          # all when it cannot resolve the roster.
+          # all when it cannot resolve the roster or the base. The merge base
+          # comes from HEAD in both calls: a bare tree id has no history.
           # shellcheck source=/dev/null
-          if ! member_digest_lines="$( (. "$ROOT/.claude/hooks/lib/audit-digest.sh" && audit_digests_all "$ROOT" "$tree_reference") 2>/dev/null)" ||
+          if ! member_digest_lines="$( (. "$ROOT/.claude/hooks/lib/audit-digest.sh" && audit_branch_digests_local "$ROOT" "$tree_reference") 2>/dev/null)" ||
             [ -z "$member_digest_lines" ]; then
             digests_ok=0
             break

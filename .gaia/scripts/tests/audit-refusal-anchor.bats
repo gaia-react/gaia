@@ -41,6 +41,7 @@ setup() {
   THIS_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
   REPO_ROOT="$(git -C "$THIS_DIRECTORY" rev-parse --show-toplevel)"
   . "$REPO_ROOT/.gaia/tests/helpers/audit-roster.sh"
+  . "$REPO_ROOT/.gaia/tests/helpers/catchup-fixture.sh"
   # A `gh` that answers nothing, so no probe reaches the developer's real `gh`.
   mkdir -p "$BATS_TEST_TMPDIR/no-gh"
   printf '#!/usr/bin/env bash\nexit 1\n' > "$BATS_TEST_TMPDIR/no-gh/gh"
@@ -79,7 +80,10 @@ build_sandbox() {
   printf '.gaia/local/\n' >> "$directory/.git/info/exclude"
   git -C "$directory" add -A
   git -C "$directory" commit -q -m base
-  git -C "$directory" checkout -q -b fix/refusal-anchor
+  # The fixture's origin retrofit removes any existing `origin` first and exits
+  # non-zero when there is none, so a placeholder remote precedes it.
+  git -C "$directory" remote add origin "$BATS_TEST_TMPDIR/placeholder-origin.git"
+  catchup_add_origin "$directory" main --feature fix/refusal-anchor
   ROOT="$(cd "$directory" && pwd -P)"
   AUDIT_DIRECTORY="$ROOT/.gaia/local/audit"
   AUDIT_KEY=""
@@ -120,7 +124,9 @@ ledger_path() {
 }
 
 member_digest() {
-  bash -c '. "$1"; audit_member_digest "$2" "$3"' _ "$ROOT/.claude/hooks/lib/audit-digest.sh" "$ROOT" "$1"
+  local merge_base
+  merge_base="$(git -C "$ROOT" merge-base refs/remotes/origin/main HEAD)" || return 1
+  bash -c '. "$1"; audit_branch_member_digest "$2" "$3" "$4"' _ "$ROOT/.claude/hooks/lib/audit-digest.sh" "$ROOT" "$1" "$merge_base"
 }
 
 # finding_object <line> <title>: one valid finding in the member's own file.

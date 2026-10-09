@@ -19,7 +19,8 @@
 #   no-full-clearance    neither a `review: full` earned marker nor a refusal at
 #                        the current version has a tree that is a commit in the
 #                        walk range
-#   anchor-unresolved    merge-base or the range walk failed
+#   anchor-unresolved    the base reference, merge-base, the range walk or the
+#                        branch's changed paths could not be established
 #   refusal-newer        a refusal at HEAD, or one the anchor walk did not take
 #                        (recorded at another version)
 #   refusal-open-security the anchor is a refusal and its open findings cannot
@@ -30,8 +31,9 @@
 #   rules-reset-global   a global-rules path changed since the anchor
 #   rules-reset-member   this member's own agent definition changed
 #   unclassifiable-path  raw and numstat rows disagree, a path holds a newline,
-#                        or the classifiers misalign (all before special-file);
-#                        the glob matcher errors (after it)
+#                        the classifiers misalign, or the anchor's change cannot
+#                        be replayed onto HEAD's merge base (all before
+#                        special-file); the glob matcher errors (after it)
 #   special-file         binary, mode change, symlink or submodule row
 #   machinery            a gate-machinery path changed
 #   ownerless            an in-scope path no member owns changed
@@ -53,6 +55,14 @@
 # member read that tree and listed what it found, so the delta since it is
 # judged against that list. Anchoring on it needs no earlier clearance. A tree
 # that carries both counts as the refusal.
+#
+# Every reason and the reviewer's delta are computed over the branch's own
+# change since the anchor, not over the anchor-to-HEAD range: a catch-up merge
+# of the base moves HEAD without changing that change, so content the base
+# brought in neither forces Full (a base-only edit to a rules, machinery or
+# classifier path raises no reset) nor counts toward the cap. The delta is the
+# anchor's own change replayed onto HEAD's merge base, diffed against HEAD; when
+# that replay cannot be produced the route is Full.
 #
 # Fail direction: everything this script cannot establish routes Full. A wrong
 # `light` is the one outcome that lets the merge gate pass on content no full
@@ -112,7 +122,8 @@ _light_route_load_libraries() {
   . "$(dirname "${BASH_SOURCE[0]}")/audit-key-lib.sh" 2>/dev/null || return 1
   for library in gaia_read_version audit_scope_init audit_owners_for_paths audit_out_of_scope_allowlisted \
     audit_roster_light_config audit_glob_matches audit_machinery_flags audit_rules_reset_for \
-    clearance_scan audit_member_digest light_route_main_reference light_route_diff \
+    clearance_scan audit_branch_digests_local audit_branch_patch_changed_paths audit_branch_patch_rebased_anchor_tree \
+    audit_local_base_reference light_route_main_reference light_route_diff \
     light_route_full_anchor_trees light_route_refusal_trees light_route_refusal_checklist light_route_post_ranges \
     light_route_read_delta light_route_hard_full_rule gaia_branch_slug; do
     command -v "$library" >/dev/null 2>&1 || return 1
@@ -123,7 +134,7 @@ _light_route_files_json() {
   local index=0 ranges
   : >"$files_json_file"
   while [ "$index" -lt "$selected_count" ]; do
-    ranges="$(light_route_post_ranges "$root" "$anchor_sha" "$head_sha" "${selected_path[$index]}")"
+    ranges="$(light_route_post_ranges "$root" "$rebased_tree" "$head_sha" "${selected_path[$index]}")"
     [ -n "$ranges" ] || ranges="[]"
     jq -n -c --arg path "${selected_path[$index]}" --argjson added "${selected_added[$index]}" \
       --argjson deleted "${selected_deleted[$index]}" --argjson post_ranges "$ranges" \
@@ -222,7 +233,12 @@ light_route_main() {
   command -v sha256sum >/dev/null 2>&1 || command -v shasum >/dev/null 2>&1 || _light_route_degraded
   _light_route_load_libraries || _light_route_degraded
 
-  digest="$(audit_member_digest "$root" "$member" 2>/dev/null)" || digest=""
+  local digest_lines digest_line
+  digest=""
+  digest_lines="$(audit_branch_digests_local "$root" 2>/dev/null)" || digest_lines=""
+  while IFS= read -r digest_line; do
+    [ "${digest_line%%"$TAB"*}" = "$member" ] && digest="${digest_line#*"$TAB"}"
+  done <<<"$digest_lines"
   case "$digest" in *[!0-9a-f]* | '') _light_route_degraded ;; esac
   [ "${#digest}" -eq 64 ] || _light_route_degraded
   head_sha="$(git -C "$root" rev-parse --verify --quiet HEAD 2>/dev/null)" || _light_route_degraded
@@ -241,6 +257,7 @@ light_route_main() {
   cap=""
   total_lines=0
   hard_full_rule=""
+  rebased_tree=""
   delta_computed="false"
   selected_count=0
 
@@ -282,7 +299,7 @@ light_route_main() {
   { [ -n "$full_trees" ] || [ -n "$refusal_trees" ]; } || _light_route_finish full no-full-clearance
 
   local main_reference merge_base candidates sha candidate_tree newer_trees=""
-  main_reference="$(light_route_main_reference "$root")"
+  main_reference="$(light_route_main_reference "$root" 2>/dev/null)" || _light_route_finish full anchor-unresolved
   merge_base="$(git -C "$root" merge-base "$main_reference" HEAD 2>/dev/null)" || _light_route_finish full anchor-unresolved
   [ -n "$merge_base" ] || _light_route_finish full anchor-unresolved
   candidates="$(git -C "$root" rev-list --max-count="$MAXIMUM_WALK_COMMIT_COUNT" "${merge_base}..HEAD" 2>/dev/null)" \
@@ -333,18 +350,36 @@ light_route_main() {
       || _light_route_finish full refusal-open-security
   fi
 
+  # The branch's own change since the anchor, as NUL-delimited paths. Every
+  # check below reads this set, never the anchor-to-HEAD range.
+  local changed_file="$scratch_directory/changed"
+  audit_branch_patch_changed_paths "$root" "$main_reference" "$anchor_sha" HEAD >"$changed_file" 2>/dev/null \
+    || _light_route_finish full anchor-unresolved
+  # A newline byte can only sit inside a path, as the records end in NUL.
+  [ "$(tr -cd '\n' <"$changed_file" | wc -c | tr -d ' ')" = "0" ] || _light_route_finish full unclassifiable-path
+
   # Here-string, never a pipe: audit_rules_reset_for returns on its first hit
   # without draining stdin, and a piped writer would take SIGPIPE.
   local names reset_hit
-  names="$(light_route_diff "$root" --name-only -z "$anchor_sha" "$head_sha" 2>/dev/null | tr '\0' '\n')" \
-    || _light_route_finish full anchor-unresolved
+  names="$(tr '\0' '\n' <"$changed_file")"
   reset_hit="$(audit_rules_reset_for "$member" <<<"$names")" || reset_hit=""
   case "$reset_hit" in
     "global$TAB"*) _light_route_finish full rules-reset-global ;;
     "member$TAB"*) _light_route_finish full rules-reset-member ;;
   esac
 
-  light_route_read_delta "$root" "$anchor_sha" "$head_sha" "$scratch_directory" || _light_route_finish full unclassifiable-path
+  # Line counts and ranges need the branch's change in HEAD's own line
+  # coordinates, which is the anchor's change replayed onto HEAD's merge base.
+  # A conflicting replay (or a git without the feature) leaves no delta to
+  # measure, and the reasons cannot be told apart from an unreadable path set,
+  # so it routes Full under the unreadable-path reason.
+  if [ -s "$changed_file" ]; then
+    rebased_tree="$(audit_branch_patch_rebased_anchor_tree "$root" "$main_reference" "$anchor_sha" HEAD 2>/dev/null)" \
+      || rebased_tree=""
+    [ -n "$rebased_tree" ] || _light_route_finish full unclassifiable-path
+  fi
+
+  light_route_read_delta "$root" "$rebased_tree" "$head_sha" "$scratch_directory" "$changed_file" || _light_route_finish full unclassifiable-path
   local index=0 paths_newline_separated="" owners=() machinery=() classified
   while [ "$index" -lt "$LIGHT_DELTA_COUNT" ]; do
     case "${LIGHT_DELTA_PATH[$index]}" in *$'\n'*) _light_route_finish full unclassifiable-path ;; esac
@@ -439,7 +474,7 @@ light_route_main() {
     jq -r '.[] | ["finding", .key, .path, (.line | tostring), .severity, .title] | join("\t")' <<<"$checklist_json" >>"$body" \
       || _light_route_finish full unclassifiable-path
   fi
-  light_route_diff "$root" -U3 "$anchor_sha" "$head_sha" -- ${selected_path[@]+"${selected_path[@]}"} >>"$body" 2>/dev/null \
+  light_route_diff "$root" -U3 "$rebased_tree" "$head_sha" -- ${selected_path[@]+"${selected_path[@]}"} >>"$body" 2>/dev/null \
     || _light_route_finish full unclassifiable-path
   LC_ALL=C grep -aqF -- "$nonce" "$body" && _light_route_finish full fence-collision
   {
