@@ -3,12 +3,9 @@
 # The usage readout path is network-free: a model absent from the rate tables
 # prices as unpriced and never triggers a fetch. Proved two ways: behaviorally
 # (curl, wget and nc stubs first on PATH record any call into a sentinel file)
-# and structurally (no non-comment line of the readout scripts, and no line of
-# gaia_rates_load, names a network tool or a retired rate-library entry point).
-#
-# The GAIA_RATES_* exports in setup keep the pricing-path hermeticity guard
-# (token-rates-hermetic.bats) satisfied for a suite that names usage.sh; the
-# readout under test reads neither of them.
+# and structurally (no non-comment line of the readout scripts, and no non-comment
+# line of the pricing library, names a network tool or a retired rate-library
+# entry point, and the library sources no other file).
 #
 # Run under bash 5 (.claude/rules/bats-assertions.md):
 #   .gaia/scripts/bats5.sh .gaia/scripts/tests/pricing-no-network.bats
@@ -22,6 +19,10 @@ bats_require_minimum_version 1.5.0
 READOUT_FILES=(usage-render-lib.sh usage-memo-lib.sh usage.sh)
 READOUT_PATTERN='curl|wget|/dev/tcp|GAIA_RATES_FEED_|gaia_rates_heal|gaia_rates_prepare|gaia_resolve_rate_table'
 LOAD_PATTERN='curl|wget|/dev/tcp|GAIA_RATES_FEED_'
+# A source line is `source <path>` or `. <path>` with a quoted, variable or
+# path-shaped operand; the bare `. as $name` of a jq program in the library's
+# heredoc is not one.
+SOURCE_PATTERN='^[[:space:]]*(source[[:space:]]|\.[[:space:]]+["'"'"'$/.~])'
 
 setup() {
   SCRIPTS="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
@@ -48,8 +49,6 @@ EOF
     chmod +x "$TEMPORARY_DIRECTORY/bin/$tool_name"
   done
   export PATH="$TEMPORARY_DIRECTORY/bin:$PATH"
-  export GAIA_RATES_STATE_DIRECTORY="$BATS_TEST_TMPDIR/rates-state"
-  export GAIA_RATES_FEED_URL="file://$BATS_TEST_TMPDIR/absent-feed.json"
   unset CLAUDE_CODE_SESSION_ID GAIA_TALLY_PROJECTS_ROOT
 }
 
@@ -94,6 +93,31 @@ function_body() {
   grep -qF 'GAIA_RATES_JSON' <<<"$body"
   grep -qE -- "$LOAD_PATTERN" <<<"$body" && { printf 'gaia_rates_load names a network entry point:\n%s\n' "$body" >&2; return 1; }
   true
+}
+
+# library_violations <file>: every non-comment line of the pricing library that
+# names a network entry point or sources another file; empty when it is clean.
+library_violations() {
+  non_comment_matches "$1" "$LOAD_PATTERN|$SOURCE_PATTERN"
+}
+
+@test "static: the pricing library as a whole names no network tool and sources no other file" {
+  local violations
+  [ -s "$SCRIPTS/token-pricing-lib.sh" ]
+  violations="$(library_violations "$SCRIPTS/token-pricing-lib.sh")"
+  [ -z "$violations" ] || { printf 'token-pricing-lib.sh has a network or source line:\n%s\n' "$violations" >&2; return 1; }
+}
+
+@test "guard red: a pricing library gaining a source line or a top-level curl call trips the whole-file check" {
+  local scratch="$TEMPORARY_DIRECTORY/library-mutant.sh"
+  cp "$SCRIPTS/token-pricing-lib.sh" "$scratch"
+  [ -z "$(library_violations "$scratch")" ]
+  # shellcheck disable=SC2016 # the appended line is literal text to scan, not to expand
+  printf '%s\n' 'source "$(dirname "${BASH_SOURCE[0]}")/other-lib.sh" 2>/dev/null || true' >>"$scratch"
+  [ -n "$(library_violations "$scratch")" ]
+  cp "$SCRIPTS/token-pricing-lib.sh" "$scratch"
+  printf '%s\n' 'curl -s https://example.invalid/token-rates.json >/dev/null 2>&1 || true' >>"$scratch"
+  [ -n "$(library_violations "$scratch")" ]
 }
 
 # mutant_scripts <name>: a scratch copy of the scripts directory (files only, no

@@ -124,9 +124,9 @@ Runs after `gh pr merge`, in this order. Each step runs only after the one befor
    bash .gaia/scripts/plan-archive.sh <PLAN_DIR>
    ```
 
-   A spec-colocated plan subfolder is deleted; a spec-less plan folder is reduced to `SUMMARY.md` and `cost.json`, with its `RUNNING` sentinel cleared. Without a verified `SUMMARY.md` the helper leaves the folder untouched. It always exits 0.
+   A spec-colocated plan subfolder is deleted; a spec-less plan folder is reduced to `SUMMARY.md`, with its `RUNNING` sentinel cleared. Without a verified `SUMMARY.md` the helper leaves the folder untouched. It always exits 0.
 
-**Retention.** The SPEC folder's `SUMMARY.md` and `cost.json`, and a reduced spec-less plan folder, stay for `GAIA_SPEC_RETENTION_DAYS` (default 30). Nothing reaps them early; the pre-flight sweep reaps them once past the window.
+**Retention.** The SPEC folder's `SUMMARY.md` and a reduced spec-less plan folder, stay for `GAIA_SPEC_RETENTION_DAYS` (default 30). Nothing reaps them early; the pre-flight sweep reaps them once past the window.
 
 ## Pre-flight sweep
 
@@ -174,4 +174,4 @@ bash .gaia/scripts/spec/spec-archive-merged.sh "$PWD" 2>/dev/null || true
 bash .gaia/scripts/spec/plan-archive-merged.sh "$PWD" 2>/dev/null || true
 ```
 
-Both delete a merged folder once its `merged_at` is past `GAIA_SPEC_RETENTION_DAYS` (default 30), its layers are consolidated, and its cost is represented in the cost ledger; a folder still holding unconsolidated layers or an unrepresented cost is kept. The plan reap takes two kinds of row: rows confirmed against a merged PR (`pr_number`, stamped at the post-merge close or by pass 1's scan) and older merged rows without one, which age out on `merged_at` alone.
+Both delete a merged folder once its `merged_at` is past `GAIA_SPEC_RETENTION_DAYS` (default 30), its layers are consolidated, and its cost is represented in the usage ledger; a folder still holding unconsolidated layers or an unrepresented cost is kept. The plan reap takes two kinds of row: rows confirmed against a merged PR (`pr_number`, stamped at the post-merge close or by pass 1's scan) and older merged rows without one, which age out on `merged_at` alone.

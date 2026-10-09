@@ -15,7 +15,6 @@ setup() {
   # shellcheck source=.gaia/scripts/tests/helpers/usage-memo-env.sh
   . "$BATS_TEST_DIRNAME/helpers/usage-memo-env.sh"
   umemo_setup
-  export GAIA_RATES_FEED_DISABLE=1 GAIA_RATES_STATE_DIRECTORY="$BATS_TEST_TMPDIR/rates-state"
   # The retired store's file name, built from parts so no test file carries it whole.
   POISON="$UM_TELEMETRY_DIRECTORY/cost"".jsonl"
   CAPTURE_DIRECTORY="$BATS_TEST_TMPDIR/cap"

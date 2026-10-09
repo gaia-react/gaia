@@ -59,9 +59,8 @@ _umemo_build_tree() {
   local root="$1" script_file
   mkdir -p "$root/.gaia/scripts" "$root/.gaia/scripts/spec"
   for script_file in "$UM_SOURCE_ROOT"/.gaia/scripts/usage*.sh "$UM_SOURCE_ROOT"/.gaia/scripts/token-pricing-lib.sh \
-    "$UM_SOURCE_ROOT"/.gaia/scripts/token-rates-local-lib.sh "$UM_SOURCE_ROOT"/.gaia/scripts/token-rates-feed-lib.sh \
     "$UM_SOURCE_ROOT"/.gaia/scripts/ledger-path-lib.sh "$UM_SOURCE_ROOT"/.gaia/scripts/main-root-lib.sh \
-    "$UM_SOURCE_ROOT"/.gaia/scripts/branch-name-lib.sh "$UM_SOURCE_ROOT"/.gaia/scripts/token-rollup.sh; do
+    "$UM_SOURCE_ROOT"/.gaia/scripts/branch-name-lib.sh; do
     cp "$script_file" "$root/.gaia/scripts/" || return 1
   done
   cp "$UM_SOURCE_ROOT/.gaia/scripts/spec/with-ledger-lock.sh" "$root/.gaia/scripts/spec/" || return 1
@@ -91,6 +90,22 @@ umemo_setup() {
   for pinned_file in $UMEMO_PINNED; do
     cp "$UM_BASELINE_DIRECTORY/$pinned_file" "$UM_OLD/.gaia/scripts/$pinned_file" || return 1
   done
+  # The frozen baseline prices through gaia_resolve_rate_table, which the
+  # production pricing lib no longer defines. Appending it to the old tree's
+  # copy alone keeps both trees pricing from the same table.
+  cat >>"$UM_OLD/.gaia/scripts/token-pricing-lib.sh" <<'SHIM'
+
+# Test-only: the frozen baseline prices through this name and the production
+# lib no longer defines it. Prints its first argument when non-empty, else the
+# distributed table of this tree.
+gaia_resolve_rate_table() {
+  if [[ -n "${1:-}" ]]; then
+    printf '%s' "$1"
+  else
+    printf '%s' "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/token-rates.json"
+  fi
+}
+SHIM
   # The frozen baseline loads the ledger lock only from its old relative path.
   mkdir -p "$UM_OLD/.specify/extensions/gaia/lib" || return 1
   cp "$UM_SOURCE_ROOT/.gaia/scripts/spec/with-ledger-lock.sh" "$UM_OLD/.specify/extensions/gaia/lib/" || return 1
@@ -112,7 +127,6 @@ umemo_setup() {
 EOF
   UM_OUTPUT_FILE="$UM_TEMPORARY_DIRECTORY/u.out"
   UM_ERROR_FILE="$UM_TEMPORARY_DIRECTORY/u.err"
-  export GAIA_RATES_FEED_DISABLE=1 GAIA_RATES_STATE_DIRECTORY="$UM_TEMPORARY_DIRECTORY/rates-state"
   unset CLAUDE_CODE_SESSION_ID GAIA_TALLY_PROJECTS_ROOT GITHUB_ACTIONS GAIA_USAGE_MEMO_TRACE GAIA_USAGE_MEMO_SEAM
   return 0
 }

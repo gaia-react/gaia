@@ -30,8 +30,8 @@ setup() {
 }
 
 # rate_for <model> <date> -> "<input> <output>" via the REAL rate_window, so a
-# row whose window is nested wrongly fails here exactly as it would in
-# token-tally.sh, rather than passing a shallow has-key check.
+# row whose window is nested wrongly fails here exactly as it would in a
+# readout, rather than passing a shallow has-key check.
 #
 # It does NOT catch a string-typed rate: jq renders "\(.input)" identically for
 # `5` and `"5"`, so every equality assertion below passes either way. The rate

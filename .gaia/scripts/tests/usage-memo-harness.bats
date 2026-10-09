@@ -257,8 +257,6 @@ probe_index() { jq -r --arg category "$1" '[.probes[].category] | index($categor
 @test "the harness registers both capture hooks and sets the hermetic environment" {
   jq -e '[.hooks.Stop[].hooks[].command, .hooks.SessionStart[].hooks[].command]
     | all(contains("/.claude/hooks/usage-capture.sh"))' "$UM_MAIN/.claude/settings.json" >/dev/null
-  [ "$GAIA_RATES_FEED_DISABLE" = 1 ]
-  case "$GAIA_RATES_STATE_DIRECTORY" in "$UM_TELEMETRY_DIRECTORY"*) return 1 ;; esac
   # A second setup clears what a polluted environment carries in.
   export CLAUDE_CODE_SESSION_ID=x GAIA_TALLY_PROJECTS_ROOT=/x GITHUB_ACTIONS=true GAIA_USAGE_MEMO_TRACE=/x GAIA_USAGE_MEMO_SEAM=/x
   umemo_setup

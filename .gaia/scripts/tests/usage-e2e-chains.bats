@@ -15,7 +15,6 @@
 bats_require_minimum_version 1.5.0
 
 setup() {
-  export GAIA_RATES_FEED_DISABLE=1 GAIA_RATES_STATE_DIRECTORY="$BATS_TEST_TMPDIR/rates-state"
   # shellcheck source=fixtures/usage/e2e/helpers.sh
   . "$BATS_TEST_DIRNAME/fixtures/usage/e2e/helpers.sh"
   build_repo

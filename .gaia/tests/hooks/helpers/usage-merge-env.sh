@@ -46,9 +46,8 @@ build_repo() {
     cp "$SOURCE_ROOT/.claude/hooks/lib/$copied_file" "$REPO/.claude/hooks/lib/"
   done
   for copied_file in "$SOURCE_ROOT"/.gaia/scripts/usage*.sh "$SOURCE_ROOT"/.gaia/scripts/token-pricing-lib.sh \
-    "$SOURCE_ROOT"/.gaia/scripts/token-rates-local-lib.sh "$SOURCE_ROOT"/.gaia/scripts/token-rates-feed-lib.sh \
     "$SOURCE_ROOT"/.gaia/scripts/ledger-path-lib.sh "$SOURCE_ROOT"/.gaia/scripts/main-root-lib.sh \
-    "$SOURCE_ROOT"/.gaia/scripts/branch-name-lib.sh "$SOURCE_ROOT"/.gaia/scripts/token-rollup.sh; do
+    "$SOURCE_ROOT"/.gaia/scripts/branch-name-lib.sh; do
     cp "$copied_file" "$REPO/.gaia/scripts/"
   done
   cp "$SOURCE_ROOT/.gaia/scripts/spec/with-ledger-lock.sh" "$REPO/.gaia/scripts/spec/"

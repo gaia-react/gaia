@@ -11,10 +11,11 @@
 #   - copies (NOT symlinks) of the scripts under test from the real repo so
 #     ${BASH_SOURCE[0]}-relative sourcing inside the scripts resolves to the
 #     tmp lib dir and finds the sibling with-ledger-lock.sh
-#   - copies of cost-represented.sh, ledger-path-lib.sh, its sibling
-#     main-root-lib.sh, and branch-name-lib.sh under .gaia/scripts, and an empty
-#     .gaia/local/telemetry/cost.jsonl, so spec-archive-merged.sh's
-#     representation gate resolves against this tmp repo, not the real one
+#   - copies of ledger-path-lib.sh, main-root-lib.sh and branch-name-lib.sh
+#     under .gaia/scripts, usage.sh with every library it sources (through
+#     helpers/usage-gate.sh), and an empty .gaia/local/telemetry/usage.jsonl,
+#     so the archive sweeps' usage-ledger gate resolves against this tmp repo,
+#     not the real one. Tests append close rows with seed_close_row.
 #   - one initial commit so require_git / rev-parse --git-dir succeeds
 #
 # Flags (repeatable, order-independent):
@@ -114,20 +115,23 @@ for library_name in spec-allocator.sh plan-allocator.sh ledger-update.sh ledger-
   chmod +x ".gaia/scripts/spec/${library_name}"
 done
 
-# Copy the cost-representation gate + ledger-path resolver so
-# spec-archive-merged.sh's representation gate resolves against this tmp
-# repo's own git identity and cost.jsonl instead of the real repo's.
-# ledger-path-lib.sh sources its own sibling main-root-lib.sh by on-disk
-# location, so that sibling is copied alongside it too. branch-name-lib.sh is
-# what the SPEC allocator, renumber, and reconcile read branch names through.
-for script_name in cost-represented.sh ledger-path-lib.sh main-root-lib.sh branch-name-lib.sh; do
+# Copy the ledger-path resolver and the usage gate so the archive sweeps'
+# gate resolves against this tmp repo's own git identity and usage ledger
+# instead of the real repo's. ledger-path-lib.sh sources its own sibling
+# main-root-lib.sh by on-disk location, so that sibling is copied alongside it
+# too. branch-name-lib.sh is what the SPEC allocator, renumber, and reconcile
+# read branch names through.
+for script_name in ledger-path-lib.sh main-root-lib.sh branch-name-lib.sh; do
   cp "${real_scripts}/${script_name}" ".gaia/scripts/${script_name}"
   chmod +x ".gaia/scripts/${script_name}"
 done
+# shellcheck source=usage-gate.sh
+. "${_helper_directory}/usage-gate.sh"
+copy_usage_gate "$real_repo" "$repository_directory"
 
-# Empty cost ledger so the gate resolves; individual tests append rows to
-# exercise representation.
-: > .gaia/local/telemetry/cost.jsonl
+# Empty usage ledger so the gate reads; individual tests append close rows
+# with seed_close_row, or remove the file to exercise the unreadable form.
+: > .gaia/local/telemetry/usage.jsonl
 
 # Remote (--with-origin / --seed-remote-tag / --origin-reject-spec-tags) ops
 # are stashed here, in argument order, and executed AFTER the initial commit

@@ -23,7 +23,6 @@ setup() {
   make_repo "$MAIN" main
   register_hooks "$MAIN"
   mkdir -p "$TELEMETRY_DIRECTORY" "$TEMPORARY_DIRECTORY/projects"
-  export GAIA_RATES_FEED_DISABLE=1 GAIA_RATES_STATE_DIRECTORY="$BATS_TEST_TMPDIR/rates-state"
   unset CLAUDE_CODE_SESSION_ID GAIA_TALLY_PROJECTS_ROOT
   RATES="$FIXTURES_DIRECTORY/rates-a.json"
 }

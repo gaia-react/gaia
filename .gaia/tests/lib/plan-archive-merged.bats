@@ -1,17 +1,18 @@
 #!/usr/bin/env bats
 # Delete-sweep tests for plan-archive-merged.sh, the plans-side mirror of
 # spec-archive-merged.sh (see spec-archive-merged.bats for the shared design
-# notes: age gate, consolidation gate, representation gate).
+# notes: age gate, consolidation gate, usage-ledger gate).
 #
 # Does NOT use helpers/tmp-spec-repo.sh: that shared harness seeds only the
 # specs ledger. Instead mirrors the self-copy sandbox pattern from
 # .gaia/scripts/tests/plan-archive.bats: copy the script under test plus its
-# runtime deps (cost-represented.sh, ledger-path-lib.sh) into an isolated
-# sandbox and seed the plans ledger explicitly, so every sweep touches only
-# throwaway fixtures.
+# runtime deps (usage.sh with its libraries, ledger-path-lib.sh) into an
+# isolated sandbox and seed the plans ledger explicitly, so every sweep touches
+# only throwaway fixtures. The usage-ledger gate reads the sandbox's own
+# usage.jsonl; the happy-path fixture seeds the gaia-plan close it needs.
 #
 # By the time a plan reaches this sweep it has already been reduced to
-# SUMMARY.md + cost.json by plan-archive.sh, so the seeded happy-path fixture
+# SUMMARY.md by plan-archive.sh, so the seeded happy-path fixture
 # is SUMMARY.md-only (no SPEC.md); the consolidation-gate tests below add
 # SPEC.md back in to exercise the defensive keep case.
 #
@@ -36,18 +37,20 @@ setup() {
   cp "$ARCHIVE_SOURCE" "$SANDBOX/.gaia/scripts/spec/plan-archive-merged.sh"
   chmod +x "$SANDBOX/.gaia/scripts/spec/plan-archive-merged.sh"
   cp "$SOURCE_LIBRARY_DIRECTORY/ledger-lib.sh" "$SANDBOX/.gaia/scripts/spec/ledger-lib.sh"
-  # Representation gate deps, copied so the gate resolves against this
-  # sandbox's own cost ledger instead of the real repo's.
-  cp "$REPO_ROOT/.gaia/scripts/cost-represented.sh" "$SANDBOX/.gaia/scripts/cost-represented.sh"
+  # Usage-ledger gate deps, copied so the gate resolves against this
+  # sandbox's own usage ledger instead of the real repo's.
+  # shellcheck source=helpers/usage-gate.sh
+  . "$THIS_DIRECTORY/helpers/usage-gate.sh"
+  copy_usage_gate "$REPO_ROOT" "$SANDBOX"
   cp "$REPO_ROOT/.gaia/scripts/ledger-path-lib.sh" "$SANDBOX/.gaia/scripts/ledger-path-lib.sh"
   cp "$REPO_ROOT/.gaia/scripts/main-root-lib.sh" "$SANDBOX/.gaia/scripts/main-root-lib.sh"
 
   printf '{\n  "version": 1,\n  "plans": []\n}\n' > "$SANDBOX/.gaia/local/plans/ledger.json"
-  : > "$SANDBOX/.gaia/local/telemetry/cost.jsonl"
+  : > "$SANDBOX/.gaia/local/telemetry/usage.jsonl"
 
   PLANS="$SANDBOX/.gaia/local/plans"
   LEDGER="$SANDBOX/.gaia/local/plans/ledger.json"
-  COST_LEDGER="$SANDBOX/.gaia/local/telemetry/cost.jsonl"
+  TELEMETRY="$SANDBOX/.gaia/local/telemetry"
 
   # A fixed merged_at ("2026-01-02T00:00:00Z"), so every reap test below needs
   # the age gate collapsed to stay deterministic regardless of wall-clock
@@ -76,11 +79,13 @@ refute_contains() {
   fi
 }
 
-# _seed_merged_plan <plan_id>: appends a merged ledger row AND writes the
-# already-consolidated folder shape (SUMMARY.md only), the sweep's
-# happy-path fixture.
+# _seed_merged_plan <plan_id> [unrecorded]: appends a merged ledger row AND
+# writes the already-consolidated folder shape (SUMMARY.md only), the sweep's
+# happy-path fixture, plus the gaia-plan close the usage-ledger gate needs
+# unless the second argument is "unrecorded".
 _seed_merged_plan() {
   local id="$1"
+  [ "${2:-}" = unrecorded ] || seed_close_row "$TELEMETRY" "plan:$id" gaia-plan
   local temporary_file; temporary_file="$(mktemp)"
   jq --arg id "$id" \
     '.plans += [{id: $id, allocated_at: "2026-01-01T00:00:00Z", source: "allocated", subject: $id, status: "merged", merged_at: "2026-01-02T00:00:00Z"}]' \
@@ -163,26 +168,10 @@ _days_ago() {
   jq -rn --argjson days "$1" '(now - ($days * 86400)) | strftime("%Y-%m-%dT%H:%M:%SZ")'
 }
 
-# _seed_cost_row <plan_id> <session> <fresh> <cache_write> <cache_read> <output>:
-# appends a cost.jsonl row keyed by plan_id, matching token-tally's schema.
-_seed_cost_row() {
-  local id="$1" session="$2" fresh="$3" cache_write="$4" cache_read="$5" output="$6"
-  local total=$((fresh + cache_write + cache_read + output))
-  jq -cn --arg id "$id" --arg session_id "$session" \
-    --argjson fresh "$fresh" --argjson cache_write "$cache_write" \
-    --argjson cache_read "$cache_read" --argjson output "$output" --argjson total "$total" \
-    '{schema_version: 1, kind: "execute", spec_id: null, plan_id: $id, plan_slug: null,
-      session_id: $session_id,
-      buckets: {fresh_input: $fresh, cache_write: $cache_write, cache_read: $cache_read, output: $output},
-      total: $total, seq: 0, final: true, source: "test"}' \
-    >> "$COST_LEDGER"
-}
+# --- 1: delete happy path (SUMMARY.md-only, run recorded) ------------------
 
-# --- 1: delete happy path (SUMMARY.md-only, cost represented) ---------------
-
-@test "1: a merged row whose cost is represented is deleted; ledger row untouched" {
+@test "1: a merged row whose run is on the usage ledger is deleted; ledger row untouched" {
   _seed_merged_plan PLAN-001
-  _seed_cost_row PLAN-001 sess-1 100 10 5 20
 
   run _archive "$SANDBOX"
   [ "$status" -eq 0 ]
@@ -299,7 +288,7 @@ _seed_cost_row() {
 }
 
 
-@test "12: a merged folder past the retention window with represented cost is reaped" {
+@test "12: a merged folder past the retention window with its run recorded is reaped" {
   _seed_merged_plan PLAN-001
   _set_merged_at PLAN-001 "$(_days_ago 45)"
   export GAIA_SPEC_RETENTION_DAYS=30
@@ -343,7 +332,7 @@ _seed_cost_row() {
 
 # --- 16/17: GAIA_SPEC_RETENTION_DAYS knob is honored --------------------------
 
-@test "16: GAIA_SPEC_RETENTION_DAYS=0 reaps a just-merged represented folder" {
+@test "16: GAIA_SPEC_RETENTION_DAYS=0 reaps a just-merged recorded folder" {
   _seed_merged_plan PLAN-001
   _set_merged_at PLAN-001 "$(_days_ago 0)"
   export GAIA_SPEC_RETENTION_DAYS=0
@@ -418,11 +407,10 @@ _seed_cost_row() {
 
 # --- 21: consolidation gate keeps a SPEC.md/no-SUMMARY.md shape -------------
 
-@test "21: a folder holding SPEC.md with no SUMMARY.md is kept past the window even when cost-represented (defensive)" {
+@test "21: a folder holding SPEC.md with no SUMMARY.md is kept past the window even when its run is recorded (defensive)" {
   _seed_merged_plan PLAN-001
   rm -f "$PLANS/PLAN-001/SUMMARY.md"
   printf '# Spec\n' > "$PLANS/PLAN-001/SPEC.md"
-  _seed_cost_row PLAN-001 sess-1 100 10 5 20
   _set_merged_at PLAN-001 "$(_days_ago 45)"
   export GAIA_SPEC_RETENTION_DAYS=30
 
@@ -551,7 +539,6 @@ _seed_cost_row() {
   cp "$REPO_ROOT/.gaia/scripts/summary-verify.sh" "$SANDBOX/.gaia/scripts/summary-verify.sh"
   _seed_merged_plan PLAN-001
   _set_pr_number PLAN-001 2601
-  _seed_cost_row PLAN-001 sess-1 100 10 5 20
   summary_text="$(cat "$PLANS/PLAN-001/SUMMARY.md")"
   rm -f "$PLANS/PLAN-001/SUMMARY.md"
   printf '## Phase 1\n' > "$PLANS/PLAN-001/PROGRESS.md"
@@ -572,11 +559,10 @@ _seed_cost_row() {
 
 # --- 29: a folder with no SUMMARY.md is never reaped ------------------------
 
-@test "29: an aged, cost-represented folder holding only plan files and no SUMMARY.md is kept" {
+@test "29: an aged, recorded folder holding only plan files and no SUMMARY.md is kept" {
   _seed_merged_plan PLAN-001
   rm -f "$PLANS/PLAN-001/SUMMARY.md"
   printf '# Plan\n' > "$PLANS/PLAN-001/PLAN.md"
-  _seed_cost_row PLAN-001 sess-1 100 10 5 20
   _set_merged_at PLAN-001 "$(_days_ago 45)"
   export GAIA_SPEC_RETENTION_DAYS=30
 
@@ -604,14 +590,35 @@ _seed_cost_row() {
   [ ! -e "$PLANS/PLAN-001" ]
 }
 
-@test "31: an unparseable cost.json leaves its folder for review and the sweep still reaps the next row" {
-  _seed_merged_plan PLAN-001
+@test "31: a run missing from the usage ledger leaves its folder, prints the keep line, and the sweep still reaps the next row" {
+  _seed_merged_plan PLAN-001 unrecorded
   _seed_merged_plan PLAN-002
-  printf '{ not json' > "$PLANS/PLAN-001/cost.json"
 
-  run --separate-stderr _archive "$SANDBOX"
+  run _archive "$SANDBOX"
   [ "$status" -eq 0 ]
-  grep -qF "left PLAN-001 folder for review" <<<"$stderr"
+  assert_contains "Kept .gaia/local/plans/PLAN-001: no gaia-plan run recorded for plan:PLAN-001; outside a live gaia-plan run, record it: bash .gaia/scripts/usage.sh record plan:PLAN-001 --workflow gaia-plan --start <iso>"
   [ -d "$PLANS/PLAN-001" ]
   [ ! -e "$PLANS/PLAN-002" ]
+}
+
+@test "32: a missing usage ledger keeps the folder and the keep line names the ledger path" {
+  _seed_merged_plan PLAN-001
+  rm -f "$TELEMETRY/usage.jsonl"
+
+  run _archive "$SANDBOX"
+  [ "$status" -eq 0 ]
+  refute_contains "Deleted"
+  assert_contains "Kept .gaia/local/plans/PLAN-001: usage ledger missing or unreadable (.gaia/local/telemetry/usage.jsonl) for plan:PLAN-001; once it reads, outside a live gaia-plan run, record it: bash .gaia/scripts/usage.sh record plan:PLAN-001 --workflow gaia-plan --start <iso>"
+  [ -d "$PLANS/PLAN-001" ]
+}
+
+@test "33: a gaia-spec close for the same number does not clear a plan folder" {
+  _seed_merged_plan PLAN-001 unrecorded
+  seed_close_row "$TELEMETRY" plan:PLAN-001 gaia-spec
+
+  run _archive "$SANDBOX"
+  [ "$status" -eq 0 ]
+  refute_contains "Deleted"
+  assert_contains "no gaia-plan run recorded for plan:PLAN-001"
+  [ -d "$PLANS/PLAN-001" ]
 }

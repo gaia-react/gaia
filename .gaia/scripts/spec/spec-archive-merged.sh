@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# spec-archive-merged.sh: delete a merged SPEC folder once its cost is fully
-# represented in cost.jsonl. Run by the pre-flight sweep of /gaia-spec and
+# spec-archive-merged.sh: delete a merged SPEC folder once the usage ledger
+# records the runs the folder needs. Run by the pre-flight sweep of /gaia-spec and
 # /gaia-plan (.claude/skills/gaia/references/spec/lifecycle.md).
 #
 # Why this exists: a PR can merge out-of-band (the github.com button, another
@@ -32,12 +32,13 @@
 # to .gaia/scripts/summary-verify.sh when present (exit 0 = well-formed);
 # absent that script, a plain non-empty SUMMARY.md is the floor.
 #
-# Representation gate: once a candidate clears the age gate, this sources
-# .gaia/scripts/cost-represented.sh and asks whether every cost.md phase
-# section under the folder is already captured, value for value, in the
-# main-checkout cost.jsonl (resolved via .gaia/scripts/ledger-path-lib.sh). Any
-# non-zero verdict blocks that one id: the folder is left in place for review,
-# and the sweep moves on to the next candidate.
+# Usage-ledger gate: once a candidate clears the age gate, this asks
+# `usage.sh represented` (against the main checkout's usage ledger) whether a
+# close is recorded for spec:<id> under gaia-spec, and also under gaia-plan
+# when the folder holds a plan or plan-<N> subfolder. Any non-zero verdict
+# blocks that one id: the folder is left in place, one stdout keep line names
+# the missing run and the `usage.sh record` recovery command, and the sweep
+# moves on to the next candidate.
 #
 # The ledger row's merged/merged_at stamp is a precondition set upstream (git
 # reconcile), not by this sweep, and stays untouched; it
@@ -47,8 +48,9 @@
 # session/lock/audit), best-effort.
 #
 # Best-effort and fail-open by contract, exactly like spec-reconcile.sh: a
-# missing jq / ledger or an unrepresented cost never blocks a caller. One
-# stdout line summarizes what was deleted; diagnostics go to stderr.
+# missing jq / ledger or an unrecorded run never blocks a caller. One stdout
+# line summarizes what was deleted, and one names each kept folder;
+# diagnostics go to stderr.
 #
 # Usage:
 #   spec-archive-merged.sh <repo_root> [<spec_id>] [--close]
@@ -95,13 +97,22 @@ _consolidation_gate_pass() {
   [ -s "$summary" ]
 }
 
-# Source the shared ledger-path lib from this script's own directory, never
-# through repo_root: repo_root is the value whose trustworthiness is in
-# question here, so loading a library by it would decide correctness with the
-# input under test.
+# Source the shared ledger-path and main-root libs from this script's own
+# directory, never through repo_root: repo_root is the value whose
+# trustworthiness is in question here, so loading a library by it would decide
+# correctness with the input under test. A library that cannot load sweeps
+# nothing.
 _library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../ledger-path-lib.sh
-. "${_library_directory}/../ledger-path-lib.sh" 2>/dev/null || true
+. "${_library_directory}/../ledger-path-lib.sh" 2>/dev/null || {
+  echo "spec-archive-merged: cannot load ${_library_directory}/../ledger-path-lib.sh; nothing swept" >&2
+  exit 0
+}
+# shellcheck source=../main-root-lib.sh
+. "${_library_directory}/../main-root-lib.sh" 2>/dev/null || {
+  echo "spec-archive-merged: cannot load ${_library_directory}/../main-root-lib.sh; nothing swept" >&2
+  exit 0
+}
 # The age test lives in ledger-lib.sh. Loaded bracketed against an unparseable
 # copy; without it no age can be judged, and an unknown age must never read as
 # past the window, so the sweep reaps nothing.
@@ -127,12 +138,34 @@ ledger_path="${specs_directory}/ledger.json"
 [ -f "$ledger_path" ] || exit 0
 command -v jq >/dev/null 2>&1 || exit 0
 
-# shellcheck source=../cost-represented.sh
-. "${repo_root}/.gaia/scripts/cost-represented.sh" 2>/dev/null || true
+# The usage ledger lives under the main checkout, resolved from repo_root's own
+# git identity and never the caller's cwd. An unresolved root fails the gate
+# closed: every candidate is kept.
+main_root="$(gaia_resolve_main_root "$repo_root" 2>/dev/null || true)"
 
-# Resolve the main-checkout cost ledger from repo_root's own git identity,
-# never the caller's cwd (a subshell cd keeps this script's cwd unchanged).
-cost_ledger="$(cd "$repo_root" 2>/dev/null && gaia_resolve_ledger_path 2>/dev/null || true)"
+# _usage_gate <relative_folder> <ref> <workflow>: 0 when the usage ledger
+# records a <workflow> close for <ref>. Otherwise prints the keep line for the
+# folder on stdout and returns 1: the unreadable-ledger form when
+# `usage.sh represented` exits 2 or the main checkout is unresolved, the
+# no-run-recorded form for any other failure.
+_usage_gate() {
+  local relative_folder="$1" ref="$2" workflow="$3" gate_status=2 recovery_command
+  recovery_command="outside a live ${workflow} run, record it: bash .gaia/scripts/usage.sh record ${ref} --workflow ${workflow} --start <iso>"
+  if [ -n "$main_root" ]; then
+    gate_status=0
+    bash "${repo_root}/.gaia/scripts/usage.sh" represented "$ref" --workflow "$workflow" \
+      --main-root "$main_root" </dev/null >/dev/null 2>&1 || gate_status=$?
+  fi
+  [ "$gate_status" -ne 0 ] || return 0
+  if [ "$gate_status" -eq 2 ]; then
+    printf 'Kept %s: usage ledger missing or unreadable (.gaia/local/telemetry/usage.jsonl) for %s; once it reads, %s\n' \
+      "$relative_folder" "$ref" "$recovery_command"
+  else
+    printf 'Kept %s: no %s run recorded for %s; %s\n' \
+      "$relative_folder" "$workflow" "$ref" "$recovery_command"
+  fi
+  return 1
+}
 
 # Candidate rows (local, cheap): merged but possibly still in the active dir.
 # An optional single-id filter narrows the sweep to one row.
@@ -170,16 +203,18 @@ while IFS= read -r spec_id; do
     continue
   fi
 
-  # Representation gate: refuse to delete a folder whose cost.md sections are
-  # not fully accounted for in cost.jsonl. Any non-zero verdict, including an
-  # unresolved cost ledger, blocks this id and leaves the folder untouched.
-  gate_status=2
-  if [ -n "$cost_ledger" ] && declare -f cost_folder_represented >/dev/null 2>&1; then
-    cost_folder_represented "$folder" spec_id "$spec_id" "$cost_ledger" >/dev/null 2>&1
-    gate_status=$?
+  # Usage-ledger gate: refuse to delete a folder whose runs the usage ledger
+  # does not record. Any non-zero verdict, including an unresolved main
+  # checkout, blocks this id and leaves the folder untouched. A folder that
+  # holds a plan or plan-<N> subfolder also needs its gaia-plan run recorded.
+  if ! _usage_gate ".gaia/local/specs/${spec_id}" "spec:${spec_id}" gaia-spec; then
+    continue
   fi
-  if [ "$gate_status" -ne 0 ]; then
-    echo "spec-archive-merged: cost not fully represented in cost.jsonl; left $spec_id folder for review" >&2
+  holds_plan=0
+  for plan_subfolder in "$folder"/plan "$folder"/plan-[0-9]*; do
+    [ -d "$plan_subfolder" ] && holds_plan=1
+  done
+  if [ "$holds_plan" -eq 1 ] && ! _usage_gate ".gaia/local/specs/${spec_id}" "spec:${spec_id}" gaia-plan; then
     continue
   fi
 

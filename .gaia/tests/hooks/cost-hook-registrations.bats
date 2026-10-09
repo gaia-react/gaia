@@ -13,7 +13,6 @@ bats_require_minimum_version 1.5.0
 
 setup() {
   SOURCE_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
-  export GAIA_RATES_STATE_DIRECTORY="$BATS_TEST_TMPDIR/rates-state" GAIA_RATES_FEED_DISABLE=1
   SETTINGS_FILES=("$SOURCE_ROOT/.claude/settings.json" "$SOURCE_ROOT/frontend/.claude/settings.json")
 }
 
@@ -27,6 +26,18 @@ registered_commands() {
 # guarded by `if: Bash(gh pr merge *)`.
 merge_commands() {
   jq -r '[.hooks.PostToolUse // [] | .[] | .hooks[]? | select((.if // "") == "Bash(gh pr merge *)") | .command] | .[]' "$1"
+}
+
+# retired_tally_hooks_present <hooks-directory>: the retired token-tally hook
+# files found in the directory; the directory passes when this prints nothing
+# and the directory itself holds hooks.
+retired_tally_hooks_present() {
+  [ -f "$1/pr-merge-cost.sh" ] || { printf 'no hooks read from %s\n' "$1" >&2; return 2; }
+  local retired_hook
+  for retired_hook in token-tally-review.sh token-tally-git-op.sh; do
+    [ -e "$1/$retired_hook" ] && printf '%s\n' "$retired_hook"
+  done
+  true
 }
 
 # retired_tally_registrations <settings-file>: the registrations naming either
@@ -44,6 +55,10 @@ retired_tally_registrations() {
     [ -n "$(registered_commands "$settings_file")" ]
     [ -z "$(retired_tally_registrations "$settings_file")" ]
   done
+}
+
+@test "neither token-tally hook file exists under .claude/hooks" {
+  [ -z "$(retired_tally_hooks_present "$SOURCE_ROOT/.claude/hooks")" ]
 }
 
 @test "the gh pr merge PostToolUse registration names pr-merge-cost.sh and nothing names token-rollup-merge.sh" {
@@ -68,6 +83,18 @@ retired_tally_registrations() {
   jq '.hooks.Stop[0].hooks += [{"type":"command","command":"\"$(git rev-parse --show-toplevel)/.claude/hooks/token-tally-review.sh\""}]' \
     "$SOURCE_ROOT/.claude/settings.json" >"$scratch"
   [ -n "$(retired_tally_registrations "$scratch")" ]
+}
+
+@test "guards-must-fail: a scratch hooks directory holding a token-tally hook is caught" {
+  local scratch="$BATS_TEST_TMPDIR/hooks" retired_hook
+  for retired_hook in token-tally-review.sh token-tally-git-op.sh; do
+    rm -rf "$scratch"
+    mkdir -p "$scratch"
+    cp "$SOURCE_ROOT/.claude/hooks/pr-merge-cost.sh" "$scratch/"
+    [ -z "$(retired_tally_hooks_present "$scratch")" ]
+    : >"$scratch/$retired_hook"
+    [ "$(retired_tally_hooks_present "$scratch")" = "$retired_hook" ]
+  done
 }
 
 @test "guards-must-fail: a scratch settings copy registering token-rollup-merge.sh on the merge verb is caught" {

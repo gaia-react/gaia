@@ -22,7 +22,6 @@ setup() {
   git -C "$MAIN" -c user.email=t@example.com -c user.name=T -c commit.gpgsign=false commit -q --allow-empty -m init
   register_hooks
   mkdir -p "$TELEMETRY_DIRECTORY" "$PROJECTS_DIRECTORY"
-  export GAIA_RATES_FEED_DISABLE=1 GAIA_RATES_STATE_DIRECTORY="$BATS_TEST_TMPDIR/rates-state"
   unset CLAUDE_CODE_SESSION_ID GAIA_TALLY_PROJECTS_ROOT
 }
 

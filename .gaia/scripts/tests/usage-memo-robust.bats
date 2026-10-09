@@ -30,8 +30,6 @@ setup() {
   . "$BATS_TEST_DIRNAME/helpers/usage-memo-env.sh"
   umemo_setup
   umemo_load_store identity
-  export GAIA_RATES_STATE_DIRECTORY="$BATS_TEST_TMPDIR/rates-state"
-  export GAIA_RATES_FEED_DISABLE=1
   export GAIA_USAGE_MEMO_TRACE="$BATS_TEST_TMPDIR/trace"
   : >"$GAIA_USAGE_MEMO_TRACE"
   PROBES="$UM_FIXTURES/identity/probes.json"

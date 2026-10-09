@@ -639,7 +639,7 @@ git push
 
 Do not open a PR and do not merge; the branch owner (the user, or the CI workflow) drives it from here. (Run ends here; see `## Cost record (run end)`.)
 
-If any `git push`, `gh pr create`, or `gh pr merge` above exits non-zero, print the command's error and STOP. Do not retry, force-push, or amend, a rejected push or blocked merge is the user's call to resolve. (Run ends here; see `## Cost record (run end)`, passing `--github-*` only if `gh pr create` already succeeded before the failure.)
+If any `git push`, `gh pr create`, or `gh pr merge` above exits non-zero, print the command's error and STOP. Do not retry, force-push, or amend, a rejected push or blocked merge is the user's call to resolve. (Run ends here; see `## Cost record (run end)`, passing `--pr` only if `gh pr create` already succeeded before the failure.)
 
 ## Cost record (run end)
 
@@ -655,17 +655,17 @@ Every path that ends a `/gaia-audit` run appends exactly one cost record, the ru
 Standalone final step, one call:
 
 ```bash
-bash .gaia/scripts/token-tally.sh --action command --command gaia-audit
+bash .gaia/scripts/usage.sh record command:gaia-audit --workflow gaia-audit
 ```
 
-**Artifact pass-through.** When this run opened a pull request and the URL `gh pr create` printed appeared in this run's own Bash tool result, append:
+and the pull request is on the current repo, append:
 
 ```bash
-  --github-type pr --github-number <N> --github-repo '<owner>/<name>'
+  --pr <N>
 ```
 
-Never look the number up (`gh pr list`, `gh pr view`), never reuse a number from an earlier run, a different branch, or a `gh` command run outside this workflow, and never guess. If this run did not itself print a creation URL, pass no `--github-*` flags at all; the record correctly carries no artifact, and that is not an error.
+Never look the number up (`gh pr list`, `gh pr view`), never reuse a number from an earlier run, a different branch, or a `gh` command run outside this workflow, and never guess. If this run did not itself print a creation URL, pass no `--pr` at all; the record correctly carries no artifact, and that is not an error.
 
-**Report the line verbatim.** The tally prints exactly one line on stdout, e.g. `Cost: ~5.2M tokens, $4.12, 6m39s`. Relay it as the last line of the run's report; do not reassemble, reformat, or re-derive it.
+**Report the line verbatim.** On exit 0 the last stdout line is the Cost line, e.g. `Cost: ~5.2M tokens, $4.12, 6m39s`. Relay it as the last line of the run's report; do not reassemble, reformat, or re-derive it. On a non-zero exit nothing was recorded and no Cost line prints: relay the one stderr line in its place.
 
-The tally never blocks, never fails, and never turns a failed run into a successful one: it runs as a bare call with no exit-status ceremony around it. On a path that ends in an error (a rejected push, a blocked merge), record the cost, then report the failure exactly as before; recording the cost never implies success.
+The record never blocks and never turns a failed run into a successful one: a non-zero exit is reported, not retried. On a path that ends in an error (a rejected push, a blocked merge), record the cost, then report the failure exactly as before; recording the cost never implies success.

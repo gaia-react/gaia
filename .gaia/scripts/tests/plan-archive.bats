@@ -4,9 +4,12 @@
 # Each test runs the script inside an isolated `git init`'d temp sandbox so
 # its `git rev-parse --show-toplevel` resolves to the fixture root (not the
 # GAIA repo root) and every reduce/delete touches only throwaway fixtures. The
-# sandbox's own git-common-dir similarly resolves the representation gate's
-# cost ledger to the sandbox's own .gaia/local/telemetry/cost.jsonl, never the
-# real repo's.
+# sandbox's own git-common-dir similarly resolves the usage-ledger gate to the
+# sandbox's own .gaia/local/telemetry/usage.jsonl, never the real repo's.
+#
+# The gate is `usage.sh represented`: a plan folder is reduced or deleted only
+# when the usage ledger holds the close it needs, and is kept (with one stdout
+# keep line naming the recovery command) when it does not.
 #
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
@@ -17,6 +20,8 @@ setup() {
   REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"
   # snapshot_file + assert_files_identical: byte identity without `$(cat …)`.
   . "$REPO_ROOT/.gaia/tests/helpers/files.sh"
+  # copy_usage_gate + seed_close_row.
+  . "$REPO_ROOT/.gaia/tests/lib/helpers/usage-gate.sh"
 
   # Canonicalize via `pwd -P`: macOS resolves /tmp -> /private/tmp inside
   # `git rev-parse`, and the script derives its repo root the same way.
@@ -25,32 +30,28 @@ setup() {
   SANDBOX="$(cd "$SANDBOX_RAW" && pwd -P)"
   git -C "$SANDBOX" init --quiet
 
-  # The PLAN-NNN merge stamp shells out to ledger-update.sh, which sources
-  # ledger-lib.sh and with-ledger-lock.sh from its own dir; all are copied here so a
-  # PLAN-<digits> slug's stamp resolves instead of silently failing. The
-  # representation gate sources cost-represented.sh + ledger-path-lib.sh at
-  # their fixed repo-relative path, mirrored here the same way so the gate
-  # resolves against the sandbox's own cost ledger instead of no-op'ing.
-  # ledger-path-lib.sh now sources its own sibling main-root-lib.sh by
-  # on-disk location, so that sibling is copied alongside it too.
-  mkdir -p "$SANDBOX/.gaia/scripts/spec"
-  cp "$REPO_ROOT/.gaia/scripts/spec/ledger-update.sh" \
-    "$SANDBOX/.gaia/scripts/spec/ledger-update.sh"
-  cp "$REPO_ROOT/.gaia/scripts/spec/ledger-lib.sh" \
-    "$SANDBOX/.gaia/scripts/spec/ledger-lib.sh"
-  cp "$REPO_ROOT/.gaia/scripts/spec/with-ledger-lock.sh" \
-    "$SANDBOX/.gaia/scripts/spec/with-ledger-lock.sh"
-  mkdir -p "$SANDBOX/.gaia/scripts"
-  cp "$REPO_ROOT/.gaia/scripts/cost-represented.sh" \
-    "$SANDBOX/.gaia/scripts/cost-represented.sh"
-  cp "$REPO_ROOT/.gaia/scripts/ledger-path-lib.sh" \
-    "$SANDBOX/.gaia/scripts/ledger-path-lib.sh"
-  cp "$REPO_ROOT/.gaia/scripts/main-root-lib.sh" \
-    "$SANDBOX/.gaia/scripts/main-root-lib.sh"
+  install_scripts "$SANDBOX"
 
-  LEDGER="$SANDBOX/.gaia/local/telemetry/cost.jsonl"
-  mkdir -p "$(dirname "$LEDGER")"
-  : > "$LEDGER"
+  TELEMETRY="$SANDBOX/.gaia/local/telemetry"
+  mkdir -p "$TELEMETRY"
+  : > "$TELEMETRY/usage.jsonl"
+}
+
+# install_scripts <root>: the PLAN-NNN merge stamp shells out to
+# ledger-update.sh, which sources ledger-lib.sh and with-ledger-lock.sh from
+# its own dir; all are copied so a PLAN-<digits> slug's stamp resolves instead
+# of silently failing. The gate sources main-root-lib.sh at its fixed
+# repo-relative path and runs usage.sh from there, mirrored the same way.
+install_scripts() {
+  local root="$1"
+  mkdir -p "$root/.gaia/scripts/spec"
+  cp "$REPO_ROOT/.gaia/scripts/spec/ledger-update.sh" \
+    "$root/.gaia/scripts/spec/ledger-update.sh"
+  cp "$REPO_ROOT/.gaia/scripts/spec/ledger-lib.sh" \
+    "$root/.gaia/scripts/spec/ledger-lib.sh"
+  cp "$REPO_ROOT/.gaia/scripts/ledger-path-lib.sh" \
+    "$root/.gaia/scripts/ledger-path-lib.sh"
+  copy_usage_gate "$REPO_ROOT" "$root"
 }
 
 run_in_sandbox() {
@@ -69,8 +70,7 @@ copy_summary_verify() {
 # seed_plan <relative_directory>: creates a plan folder (relative to $SANDBOX) with the
 # canonical fixture set: SUMMARY.md (the consolidated artifact), PROGRESS.md
 # (the live run ledger), KICKOFF.md, RUNNING, .work/x. Callers that need the
-# representation gate to pass add a cost.json record afterward with
-# write_cost_json.
+# gate to pass add a close row afterward with seed_close.
 seed_plan() {
   local plan_directory="$SANDBOX/$1"
   mkdir -p "$plan_directory/.work"
@@ -81,51 +81,26 @@ seed_plan() {
   echo "scratch" > "$plan_directory/.work/x"
 }
 
-# write_cost_json <absolute_directory> <fresh_input> <cache_write> <cache_read> <output>: writes a
-# cost.json sidecar with one execute-phase record, the shape
-# cost-represented.sh's sidecar parser expects. Every plan folder in this
-# suite archives post-execution, so the kind is always "execute".
-write_cost_json() {
-  local plan_directory="$1" fresh_input="$2" cache_write="$3" cache_read="$4" output="$5"
-  jq -cn \
-    --argjson fresh_input "$fresh_input" --argjson cache_write "$cache_write" \
-    --argjson cache_read "$cache_read" --argjson output "$output" '
-    {execute: {
-      kind: "execute",
-      session_id: null,
-      buckets: {fresh_input: $fresh_input, cache_write: $cache_write, cache_read: $cache_read, output: $output},
-      total: ($fresh_input + $cache_write + $cache_read + $output)
-    }}
-  ' > "$plan_directory/cost.json"
-}
-
-# seed_cost_row <kind> <field> <value> <session> <fresh_input> <cache_write> <cache_read> <output>
-# Appends one row (token-tally/backfill schema) directly to the sandbox's
-# real cost ledger. plan-archive.sh resolves that path itself via
-# gaia_resolve_ledger_path (never a --ledger override), so this writes
-# straight to $LEDGER rather than threading a path through the script.
-seed_cost_row() {
-  local kind="$1" field="$2" value="$3" session_id="$4"
-  local fresh_input="$5" cache_write="$6" cache_read="$7" output="$8"
-  jq -cn \
-    --arg kind "$kind" --arg field "$field" --arg value "$value" --arg session_id "$session_id" \
-    --argjson fresh_input "$fresh_input" --argjson cache_write "$cache_write" \
-    --argjson cache_read "$cache_read" --argjson output "$output" '
-    {
-      schema_version: 1,
-      kind: $kind,
-      spec_id: null, plan_id: null, plan_slug: null,
-      session_id: (if $session_id == "" then null else $session_id end),
-      buckets: {fresh_input: $fresh_input, cache_write: $cache_write, cache_read: $cache_read, output: $output},
-      total: ($fresh_input + $cache_write + $cache_read + $output),
-      seq: 0, final: true, source: "test"
-    } | .[$field] = $value
-  ' >> "$LEDGER"
+# seed_close <ref> <workflow>: appends the close binding row `usage.sh
+# record` writes to the sandbox's usage ledger. plan-archive.sh resolves that
+# ledger itself from the main checkout (never a flag passed to the script).
+seed_close() {
+  seed_close_row "$TELEMETRY" "$1" "$2"
 }
 
 # assert_deleted <absolute_directory>: the dir (and everything under it) is gone.
 assert_deleted() {
   [ ! -e "$1" ]
+}
+
+# stub_usage_script: replaces the sandbox's usage.sh with one that logs every
+# invocation to $SANDBOX/usage-calls.log and exits 1 (no run recorded).
+stub_usage_script() {
+  {
+    echo '#!/usr/bin/env bash'
+    echo "echo \"\$*\" >> \"$SANDBOX/usage-calls.log\""
+    echo 'exit 1'
+  } > "$SANDBOX/.gaia/scripts/usage.sh"
 }
 
 # seed_plans_ledger <plan-row-json>: writes a one-row plans ledger at the
@@ -154,60 +129,94 @@ plan_row_field() {
 
 # --- 1. Spec-less PLAN-NNN reduce, ledger stamped merged --------------------
 
-@test "spec-less PLAN-NNN: represented cost -> reduced to SUMMARY.md + cost.json, RUNNING/PROGRESS.md gone, ledger stamped merged" {
+@test "spec-less PLAN-NNN: recorded run -> reduced to SUMMARY.md alone, RUNNING/PROGRESS.md gone, ledger stamped merged" {
   seed_plan ".gaia/local/plans/PLAN-005"
-  write_cost_json "$SANDBOX/.gaia/local/plans/PLAN-005" 10 1 1 2
-  seed_cost_row execute plan_id PLAN-005 "" 10 1 1 2
+  seed_close plan:PLAN-005 gaia-plan
   seed_plans_ledger '{"id":"PLAN-005","allocated_at":"2026-01-01T00:00:00Z","source":"allocated","subject":"x","status":"allocated"}'
   run run_in_sandbox ".gaia/local/plans/PLAN-005"
   [ "$status" -eq 0 ]
   [ -d "$SANDBOX/.gaia/local/plans/PLAN-005" ]
   [ -f "$SANDBOX/.gaia/local/plans/PLAN-005/SUMMARY.md" ]
-  [ -f "$SANDBOX/.gaia/local/plans/PLAN-005/cost.json" ]
   [ ! -e "$SANDBOX/.gaia/local/plans/PLAN-005/RUNNING" ]
   [ ! -e "$SANDBOX/.gaia/local/plans/PLAN-005/PROGRESS.md" ]
   [ ! -e "$SANDBOX/.gaia/local/plans/PLAN-005/KICKOFF.md" ]
+  [ "$(find "$SANDBOX/.gaia/local/plans/PLAN-005" -mindepth 1 | wc -l | tr -d ' ')" = "1" ]
   [ "$(plan_row_field PLAN-005 status)" = "merged" ]
   [ -n "$(plan_row_field PLAN-005 merged_at)" ]
-  grep -qF "Reduced plan folder to SUMMARY.md + cost.json" <<<"$output"
+  grep -qF "Reduced plan folder to SUMMARY.md (kept for age-reap)" <<<"$output"
 }
 
-# --- 2. Colocated plan delete, parent untouched (UAT-005) -------------------
+@test "spec-less PLAN-NNN reduce removes a legacy sidecar left in the folder" {
+  seed_plan ".gaia/local/plans/PLAN-008"
+  # Built from parts: a folder written by an older release holds this file, and
+  # the reduce must clear it with everything else.
+  echo "{}" > "$SANDBOX/.gaia/local/plans/PLAN-008/cost"".json"
+  seed_close plan:PLAN-008 gaia-plan
+  run run_in_sandbox ".gaia/local/plans/PLAN-008"
+  [ "$status" -eq 0 ]
+  [ "$(find "$SANDBOX/.gaia/local/plans/PLAN-008" -mindepth 1 | wc -l | tr -d ' ')" = "1" ]
+  [ -f "$SANDBOX/.gaia/local/plans/PLAN-008/SUMMARY.md" ]
+}
 
-@test "colocated plan: parent SPEC SUMMARY.md present + represented cost -> plan/ deleted, parent SPEC folder and SPEC.md untouched" {
+# --- 2. Colocated plan delete, parent untouched -----------------------------
+
+@test "colocated plan: parent SPEC SUMMARY.md present + gaia-plan close -> plan/ deleted, parent SPEC folder and SPEC.md untouched" {
   seed_plan ".gaia/local/specs/SPEC-005/plan"
   echo "spec body" > "$SANDBOX/.gaia/local/specs/SPEC-005/SPEC.md"
   echo "# SPEC-005" > "$SANDBOX/.gaia/local/specs/SPEC-005/SUMMARY.md"
-  write_cost_json "$SANDBOX/.gaia/local/specs/SPEC-005/plan" 5 0 0 1
-  seed_cost_row execute spec_id SPEC-005 "" 5 0 0 1
+  seed_close spec:SPEC-005 gaia-plan
   run run_in_sandbox ".gaia/local/specs/SPEC-005/plan"
   [ "$status" -eq 0 ]
   assert_deleted "$SANDBOX/.gaia/local/specs/SPEC-005/plan"
   [ -d "$SANDBOX/.gaia/local/specs/SPEC-005" ]
   [ -f "$SANDBOX/.gaia/local/specs/SPEC-005/SPEC.md" ]
   grep -qF "Deleted plan folder: .gaia/local/specs/SPEC-005/plan" <<<"$output"
+  grep -qF "the usage ledger holds the run record" <<<"$output"
 }
 
 # --- 3. Colocated plan-2 revision, same delete semantics --------------------
 
-@test "colocated plan-2 revision: parent SPEC SUMMARY.md present + represented cost -> deleted, parent untouched" {
+@test "colocated plan-2 revision: parent SPEC SUMMARY.md present + gaia-plan close -> deleted, parent untouched" {
   seed_plan ".gaia/local/specs/SPEC-005/plan-2"
   echo "# SPEC-005" > "$SANDBOX/.gaia/local/specs/SPEC-005/SUMMARY.md"
-  write_cost_json "$SANDBOX/.gaia/local/specs/SPEC-005/plan-2" 3 0 0 1
-  seed_cost_row execute spec_id SPEC-005 "" 3 0 0 1
+  seed_close spec:SPEC-005 gaia-plan
   run run_in_sandbox ".gaia/local/specs/SPEC-005/plan-2"
   [ "$status" -eq 0 ]
   assert_deleted "$SANDBOX/.gaia/local/specs/SPEC-005/plan-2"
   grep -qF "Deleted plan folder: .gaia/local/specs/SPEC-005/plan-2" <<<"$output"
 }
 
-# --- 3b. DEF-07 fail-closed consolidation gate: no parent SUMMARY.md -> kept
+@test "colocated plans: one gaia-plan close for the spec ref clears both plan and plan-2" {
+  seed_plan ".gaia/local/specs/SPEC-005/plan"
+  seed_plan ".gaia/local/specs/SPEC-005/plan-2"
+  echo "# SPEC-005" > "$SANDBOX/.gaia/local/specs/SPEC-005/SUMMARY.md"
+  seed_close spec:SPEC-005 gaia-plan
+  run run_in_sandbox ".gaia/local/specs/SPEC-005/plan"
+  [ "$status" -eq 0 ]
+  assert_deleted "$SANDBOX/.gaia/local/specs/SPEC-005/plan"
+  run run_in_sandbox ".gaia/local/specs/SPEC-005/plan-2"
+  [ "$status" -eq 0 ]
+  assert_deleted "$SANDBOX/.gaia/local/specs/SPEC-005/plan-2"
+}
+
+# --- 3a. Wrong workflow does not clear the gate -----------------------------
+
+@test "colocated plan: only a gaia-spec close for the spec ref -> kept with the gaia-plan keep line" {
+  seed_plan ".gaia/local/specs/SPEC-005/plan"
+  echo "# SPEC-005" > "$SANDBOX/.gaia/local/specs/SPEC-005/SUMMARY.md"
+  seed_close spec:SPEC-005 gaia-spec
+  run run_in_sandbox ".gaia/local/specs/SPEC-005/plan"
+  [ "$status" -eq 0 ]
+  [ -d "$SANDBOX/.gaia/local/specs/SPEC-005/plan" ]
+  [ "$output" = "Kept .gaia/local/specs/SPEC-005/plan: no gaia-plan run recorded for spec:SPEC-005; outside a live gaia-plan run, record it: bash .gaia/scripts/usage.sh record spec:SPEC-005 --workflow gaia-plan --start <iso>" ]
+}
+
+# --- 3b. Fail-closed consolidation gate: no parent SUMMARY.md -> kept --------
 
 @test "colocated plan: parent SPEC has no consolidated SUMMARY.md yet -> plan/ kept (fail-closed consolidation gate)" {
   seed_plan ".gaia/local/specs/SPEC-020/plan"
   echo "spec body" > "$SANDBOX/.gaia/local/specs/SPEC-020/SPEC.md"
-  write_cost_json "$SANDBOX/.gaia/local/specs/SPEC-020/plan" 5 0 0 1
-  seed_cost_row execute spec_id SPEC-020 "" 5 0 0 1
+  seed_close spec:SPEC-020 gaia-plan
   run run_in_sandbox ".gaia/local/specs/SPEC-020/plan"
   [ "$status" -eq 0 ]
   [ -d "$SANDBOX/.gaia/local/specs/SPEC-020/plan" ]
@@ -230,8 +239,7 @@ wiki_promote_targets: [decisions]
 
 Consolidated body.
 EOF
-  write_cost_json "$SANDBOX/.gaia/local/specs/SPEC-021/plan" 2 0 0 1
-  seed_cost_row execute spec_id SPEC-021 "" 2 0 0 1
+  seed_close spec:SPEC-021 gaia-plan
   run run_in_sandbox ".gaia/local/specs/SPEC-021/plan"
   [ "$status" -eq 0 ]
   assert_deleted "$SANDBOX/.gaia/local/specs/SPEC-021/plan"
@@ -245,65 +253,90 @@ EOF
   seed_plan ".gaia/local/specs/SPEC-022/plan"
   echo "spec body" > "$SANDBOX/.gaia/local/specs/SPEC-022/SPEC.md"
   echo "not well-formed" > "$SANDBOX/.gaia/local/specs/SPEC-022/SUMMARY.md"
-  write_cost_json "$SANDBOX/.gaia/local/specs/SPEC-022/plan" 2 0 0 1
-  seed_cost_row execute spec_id SPEC-022 "" 2 0 0 1
+  seed_close spec:SPEC-022 gaia-plan
   run run_in_sandbox ".gaia/local/specs/SPEC-022/plan"
   [ "$status" -eq 0 ]
   [ -d "$SANDBOX/.gaia/local/specs/SPEC-022/plan" ]
   grep -qF "Retained plan" <<<"$output"
 }
 
-# --- 4. No cost.md at all: nothing to lose, deletes outright ----------------
+# --- 4. Legacy slug: no usage ref, always kept, represented never called -----
 
-@test "plan with no cost.md: gate has nothing to lose -> deleted outright" {
+@test "legacy free-form slug: kept with the no-usage-ref keep line, usage.sh represented never called" {
   mkdir -p "$SANDBOX/.gaia/local/plans/bare/.work"
   echo "kickoff" > "$SANDBOX/.gaia/local/plans/bare/KICKOFF.md"
   : > "$SANDBOX/.gaia/local/plans/bare/RUNNING"
   echo "scratch" > "$SANDBOX/.gaia/local/plans/bare/.work/x"
+  stub_usage_script
   run run_in_sandbox ".gaia/local/plans/bare"
   [ "$status" -eq 0 ]
-  assert_deleted "$SANDBOX/.gaia/local/plans/bare"
-  [ ! -e "$SANDBOX/.gaia/local/plans/archived" ]
+  [ -d "$SANDBOX/.gaia/local/plans/bare" ]
+  [ -f "$SANDBOX/.gaia/local/plans/bare/KICKOFF.md" ]
+  [ ! -e "$SANDBOX/usage-calls.log" ]
+  [ "$output" = "Kept .gaia/local/plans/bare: legacy plan folder with no usage ref; remove it by hand once its record is no longer needed" ]
 }
 
-# --- 5. Representation gate blocks: unrepresented cost.json -> retained -----
+# --- 5. Gate blocks: no close row -> kept with the recovery command ----------
 
-@test "representation gate blocks: unrepresented cost.json -> folder retained, not reduced" {
+@test "gate blocks: no close row for the plan -> folder kept, keep line names the ref and the recovery command" {
   seed_plan ".gaia/local/plans/PLAN-006"
-  write_cost_json "$SANDBOX/.gaia/local/plans/PLAN-006" 10 1 1 2
-  # No matching ledger row seeded: the section cannot be represented.
   seed_plans_ledger '{"id":"PLAN-006","allocated_at":"2026-01-01T00:00:00Z","source":"allocated","subject":"x","status":"allocated"}'
   run run_in_sandbox ".gaia/local/plans/PLAN-006"
   [ "$status" -eq 0 ]
   [ -d "$SANDBOX/.gaia/local/plans/PLAN-006" ]
-  [ -f "$SANDBOX/.gaia/local/plans/PLAN-006/cost.json" ]
-  grep -qF "Retained plan" <<<"$output"
+  [ -f "$SANDBOX/.gaia/local/plans/PLAN-006/PROGRESS.md" ]
+  [ "$output" = "Kept .gaia/local/plans/PLAN-006: no gaia-plan run recorded for plan:PLAN-006; outside a live gaia-plan run, record it: bash .gaia/scripts/usage.sh record plan:PLAN-006 --workflow gaia-plan --start <iso>" ]
 }
 
-# --- 6. Ledger stamp still applies even when the gate blocks the reduce -----
+@test "gate blocks: a gaia-spec close for the plan ref does not clear it" {
+  seed_plan ".gaia/local/plans/PLAN-006"
+  seed_close plan:PLAN-006 gaia-spec
+  run run_in_sandbox ".gaia/local/plans/PLAN-006"
+  [ "$status" -eq 0 ]
+  [ -f "$SANDBOX/.gaia/local/plans/PLAN-006/PROGRESS.md" ]
+  grep -qF "no gaia-plan run recorded for plan:PLAN-006" <<<"$output"
+}
 
-@test "PLAN-NNN slug: ledger stamp still applies even when the representation gate blocks the reduce" {
+@test "gate blocks: usage.jsonl missing -> folder kept, keep line names the ledger path" {
+  seed_plan ".gaia/local/plans/PLAN-006"
+  rm -f "$TELEMETRY/usage.jsonl"
+  run run_in_sandbox ".gaia/local/plans/PLAN-006"
+  [ "$status" -eq 0 ]
+  [ -f "$SANDBOX/.gaia/local/plans/PLAN-006/PROGRESS.md" ]
+  [ "$output" = "Kept .gaia/local/plans/PLAN-006: usage ledger missing or unreadable (.gaia/local/telemetry/usage.jsonl) for plan:PLAN-006; once it reads, outside a live gaia-plan run, record it: bash .gaia/scripts/usage.sh record plan:PLAN-006 --workflow gaia-plan --start <iso>" ]
+}
+
+@test "gate blocks: colocated plan with usage.jsonl missing -> kept, keep line names the spec ref" {
+  seed_plan ".gaia/local/specs/SPEC-007/plan"
+  echo "# SPEC-007" > "$SANDBOX/.gaia/local/specs/SPEC-007/SUMMARY.md"
+  rm -f "$TELEMETRY/usage.jsonl"
+  run run_in_sandbox ".gaia/local/specs/SPEC-007/plan"
+  [ "$status" -eq 0 ]
+  [ -d "$SANDBOX/.gaia/local/specs/SPEC-007/plan" ]
+  grep -qF "usage ledger missing or unreadable (.gaia/local/telemetry/usage.jsonl) for spec:SPEC-007" <<<"$output"
+}
+
+# --- 6. Ledger stamp still applies even when the gate blocks the reduce ------
+
+@test "PLAN-NNN slug: ledger stamp still applies even when the usage-ledger gate blocks the reduce" {
   seed_plan ".gaia/local/plans/PLAN-007"
-  write_cost_json "$SANDBOX/.gaia/local/plans/PLAN-007" 10 1 1 2
   seed_plans_ledger '{"id":"PLAN-007","allocated_at":"2026-01-01T00:00:00Z","source":"allocated","subject":"x","status":"allocated"}'
   run run_in_sandbox ".gaia/local/plans/PLAN-007"
   [ "$status" -eq 0 ]
   [ -d "$SANDBOX/.gaia/local/plans/PLAN-007" ]
   [ "$(plan_row_field PLAN-007 status)" = "merged" ]
   [ -n "$(plan_row_field PLAN-007 merged_at)" ]
-  grep -qF "Retained plan" <<<"$output"
+  grep -qF "Kept .gaia/local/plans/PLAN-007" <<<"$output"
 }
 
 # --- 7. Legacy free-form slug: no ledger-stamp attempt ----------------------
 
-@test "legacy free-form slug: no ledger-stamp attempt, represented cost -> deleted" {
+@test "legacy free-form slug: no ledger-stamp attempt, folder kept" {
   seed_plan ".gaia/local/plans/cache-consolidation"
-  write_cost_json "$SANDBOX/.gaia/local/plans/cache-consolidation" 4 0 0 0
-  seed_cost_row execute plan_slug cache-consolidation "" 4 0 0 0
   seed_plans_ledger '{"id":"PLAN-005","allocated_at":"2026-01-01T00:00:00Z","source":"allocated","subject":"x","status":"allocated"}'
   run run_in_sandbox ".gaia/local/plans/cache-consolidation"
   [ "$status" -eq 0 ]
-  assert_deleted "$SANDBOX/.gaia/local/plans/cache-consolidation"
+  [ -d "$SANDBOX/.gaia/local/plans/cache-consolidation" ]
   # Unrelated PLAN-005 row is untouched, proving no stray stamp fired.
   [ "$(plan_row_field PLAN-005 status)" = "allocated" ]
 }
@@ -313,8 +346,7 @@ EOF
 @test "spec-colocated plan: deletion never stamps any plans-ledger row" {
   seed_plan ".gaia/local/specs/SPEC-006/plan"
   echo "# SPEC-006" > "$SANDBOX/.gaia/local/specs/SPEC-006/SUMMARY.md"
-  write_cost_json "$SANDBOX/.gaia/local/specs/SPEC-006/plan" 2 0 0 0
-  seed_cost_row execute spec_id SPEC-006 "" 2 0 0 0
+  seed_close spec:SPEC-006 gaia-plan
   seed_plans_ledger '{"id":"PLAN-005","allocated_at":"2026-01-01T00:00:00Z","source":"allocated","subject":"x","status":"allocated"}'
   ledger_before="$(snapshot_file "$SANDBOX/.gaia/local/plans/ledger.json")"
   run run_in_sandbox ".gaia/local/specs/SPEC-006/plan"
@@ -327,8 +359,7 @@ EOF
 
 @test "PLAN-NNN with no matching ledger row: stamp is a no-op but reduce still proceeds" {
   seed_plan ".gaia/local/plans/PLAN-999"
-  write_cost_json "$SANDBOX/.gaia/local/plans/PLAN-999" 1 0 0 0
-  seed_cost_row execute plan_id PLAN-999 "" 1 0 0 0
+  seed_close plan:PLAN-999 gaia-plan
   seed_plans_ledger '{"id":"PLAN-001","allocated_at":"2026-01-01T00:00:00Z","source":"allocated","subject":"x","status":"allocated"}'
   run run_in_sandbox ".gaia/local/plans/PLAN-999"
   [ "$status" -eq 0 ]
@@ -344,14 +375,44 @@ EOF
   mkdir -p "$plan_directory/.work"
   echo "progress" > "$plan_directory/PROGRESS.md"
   : > "$plan_directory/RUNNING"
-  write_cost_json "$plan_directory" 3 0 0 0
-  seed_cost_row execute plan_id PLAN-010 "" 3 0 0 0
+  seed_close plan:PLAN-010 gaia-plan
   seed_plans_ledger '{"id":"PLAN-010","allocated_at":"2026-01-01T00:00:00Z","source":"allocated","subject":"x","status":"allocated"}'
   run run_in_sandbox ".gaia/local/plans/PLAN-010"
   [ "$status" -eq 0 ]
   [ -f "$plan_directory/PROGRESS.md" ]
   [ -f "$plan_directory/RUNNING" ]
   grep -qF "Retained plan (no consolidated SUMMARY.md yet)" <<<"$output"
+}
+
+# --- 9c. The gate reads the main checkout's ledger, not the cwd tree's -------
+
+@test "linked worktree: the ledger under the main checkout, reached through --main-root, clears the gate" {
+  local main_checkout worktree_directory
+  main_checkout="$(cd "$(mktemp -d "${BATS_TEST_TMPDIR}/main.XXXXXX")" && pwd -P)"
+  git -C "$main_checkout" init --quiet
+  git -C "$main_checkout" -c user.email=test@example.com -c user.name=Test -c commit.gpgsign=false \
+    commit --quiet --no-verify --allow-empty -m init
+  worktree_directory="$(cd "$(mktemp -d "${BATS_TEST_TMPDIR}/wt.XXXXXX")" && pwd -P)/linked"
+  git -C "$main_checkout" worktree add --quiet -b linked-branch "$worktree_directory"
+  SANDBOX="$worktree_directory"
+  install_scripts "$SANDBOX"
+  seed_plan ".gaia/local/plans/PLAN-040"
+  # The only usage ledger lives under the main checkout, outside the cwd tree.
+  seed_close_row "$main_checkout/.gaia/local/telemetry" plan:PLAN-040 gaia-plan
+  [ ! -e "$SANDBOX/.gaia/local/telemetry/usage.jsonl" ]
+
+  run run_in_sandbox ".gaia/local/plans/PLAN-040"
+  [ "$status" -eq 0 ]
+  grep -qF "Reduced plan folder to SUMMARY.md (kept for age-reap): .gaia/local/plans/PLAN-040" <<<"$output"
+  [ ! -e "$SANDBOX/.gaia/local/plans/PLAN-040/PROGRESS.md" ]
+
+  # A plan the main checkout's ledger does not record is kept: the answer
+  # comes from that ledger, not from a default.
+  seed_plan ".gaia/local/plans/PLAN-041"
+  run run_in_sandbox ".gaia/local/plans/PLAN-041"
+  [ "$status" -eq 0 ]
+  [ -f "$SANDBOX/.gaia/local/plans/PLAN-041/PROGRESS.md" ]
+  grep -qF "no gaia-plan run recorded for plan:PLAN-041" <<<"$output"
 }
 
 # --- 10. Refuse operating inside the archived/ tree -------------------------
@@ -390,13 +451,12 @@ EOF
 # --- 13. Absolute-under-repo normalizes -------------------------------------
 
 @test "absolute path under repo root normalizes to the same end-state" {
-  seed_plan ".gaia/local/plans/foo"
-  write_cost_json "$SANDBOX/.gaia/local/plans/foo" 2 0 0 1
-  seed_cost_row execute plan_slug foo "" 2 0 0 1
-  run run_in_sandbox "$SANDBOX/.gaia/local/plans/foo"
+  seed_plan ".gaia/local/plans/PLAN-030"
+  seed_close plan:PLAN-030 gaia-plan
+  run run_in_sandbox "$SANDBOX/.gaia/local/plans/PLAN-030"
   [ "$status" -eq 0 ]
-  assert_deleted "$SANDBOX/.gaia/local/plans/foo"
-  grep -qF "Deleted plan folder: .gaia/local/plans/foo" <<<"$output"
+  [ ! -e "$SANDBOX/.gaia/local/plans/PLAN-030/PROGRESS.md" ]
+  grep -qF "Reduced plan folder to SUMMARY.md (kept for age-reap): .gaia/local/plans/PLAN-030" <<<"$output"
 }
 
 # --- 14. Absolute-outside-repo refuses ----------------------------------------
@@ -453,16 +513,15 @@ EOF
   grep -qF "refusing" <<<"$output"
 }
 
-# --- 18. Well-formed slug with a single trailing slash still deletes correctly -----
+# --- 18. Well-formed slug with a single trailing slash still resolves ------------
 
-@test "trailing slash on a well-formed slug still deletes correctly" {
-  seed_plan ".gaia/local/plans/foo"
-  write_cost_json "$SANDBOX/.gaia/local/plans/foo" 2 0 0 1
-  seed_cost_row execute plan_slug foo "" 2 0 0 1
-  run run_in_sandbox ".gaia/local/plans/foo/"
+@test "trailing slash on a well-formed slug still resolves correctly" {
+  seed_plan ".gaia/local/plans/PLAN-031"
+  seed_close plan:PLAN-031 gaia-plan
+  run run_in_sandbox ".gaia/local/plans/PLAN-031/"
   [ "$status" -eq 0 ]
-  assert_deleted "$SANDBOX/.gaia/local/plans/foo"
-  grep -qF "Deleted plan folder: .gaia/local/plans/foo" <<<"$output"
+  [ ! -e "$SANDBOX/.gaia/local/plans/PLAN-031/PROGRESS.md" ]
+  grep -qF "Reduced plan folder to SUMMARY.md (kept for age-reap): .gaia/local/plans/PLAN-031" <<<"$output"
 }
 
 # --- 19. Refuse specs-arm path escape via ".." spec segment ------------------------

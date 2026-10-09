@@ -23,9 +23,6 @@ setup_file() {
 }
 
 setup() {
-  # Isolate the rates state and the price feed (token-rates-hermetic.bats).
-  export GAIA_RATES_STATE_DIRECTORY="$BATS_TEST_TMPDIR/rates-state"
-  export GAIA_RATES_FEED_DISABLE=1
   SCRIPTS="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   USAGE="$SCRIPTS/usage.sh"
   FLUSH="$SCRIPTS/usage-flush.sh"
@@ -35,7 +32,6 @@ setup() {
   WORKTREE="$TEMPORARY_DIRECTORY/wt"
   PROJECTS_DIRECTORY="$TEMPORARY_DIRECTORY/projects"
   TEL="$MAIN/.gaia/local/telemetry"
-  export GAIA_RATES_FEED_DISABLE=1 GAIA_RATES_STATE_DIRECTORY="$TEMPORARY_DIRECTORY/rates-state"
   unset CLAUDE_CODE_SESSION_ID GAIA_TALLY_PROJECTS_ROOT GITHUB_ACTIONS
   mkdir -p "$MAIN" "$MAIN/.gaia/local/research" "$PROJECTS_DIRECTORY/$(encode_project_path "$MAIN")"
   git -C "$MAIN" init -q -b main

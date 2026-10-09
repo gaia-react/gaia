@@ -42,9 +42,6 @@
 # every fixture is a real git repository with its files added.
 
 setup() {
-  # Isolate pricing from the developer's real rate table and the network.
-  export GAIA_RATES_STATE_DIRECTORY="$BATS_TEST_TMPDIR/rates-state"
-  export GAIA_RATES_FEED_DISABLE=1
   THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"
   LINTER="$REPO_ROOT/.gaia/scripts/lint-hook-cwd-relative-loads.sh"

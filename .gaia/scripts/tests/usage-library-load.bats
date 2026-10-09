@@ -21,7 +21,6 @@ setup() {
   MAIN="$TEMPORARY_DIRECTORY/main"
   mkdir -p "$MAIN/.gaia/local/telemetry"
   git -C "$MAIN" init -q -b main
-  export GAIA_RATES_FEED_DISABLE=1 GAIA_RATES_STATE_DIRECTORY="$BATS_TEST_TMPDIR/rates-state"
   unset CLAUDE_CODE_SESSION_ID
 }
 

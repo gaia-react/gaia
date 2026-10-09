@@ -1,28 +1,16 @@
 # shellcheck shell=bash
 # GAIA shared dollar-pricing lib (single-sourced).
-# Sourced by usage.sh, token-rollup.sh and token-tally.sh. Defines the
-# rate_window / priced_row jq definitions and the rate-table helpers. No side
-# effects at source time; defines functions + one jq-defs variable.
+# Sourced by usage.sh, which every readout and the record command run through.
+# Defines the rate_window / priced_row jq definitions and the rate-table
+# helpers. It sources no other file and has no side effect at source time.
 #
-# gaia_rates_load is the usage readout path. It reads the distributed
-# token-rates.json (beside this file) and overlays the optional
-# <main>/.gaia/local/telemetry/token-rates.override.json row by row: each
-# override .models[<id>] replaces that model's distributed row. It opens no
-# network connection and writes nothing.
-#
-# gaia_resolve_rate_table, gaia_hash16 and gaia_rate_table_id serve the tally
-# scripts (token-tally.sh, token-rollup.sh), which call them. This file also
-# sources token-rates-local-lib.sh and token-rates-feed-lib.sh from its own
-# directory for those scripts, silently when either is absent.
+# gaia_rates_load reads the distributed token-rates.json (beside this file) and
+# overlays the optional <main>/.gaia/local/telemetry/token-rates.override.json
+# row by row: each override .models[<id>] replaces that model's distributed
+# row. It opens no network connection and writes nothing, so a price change
+# reaches a project through a release or through its own override file.
 
-_gaia_pricing_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=/dev/null
-source "$_gaia_pricing_directory/token-rates-local-lib.sh" 2>/dev/null || true
-# shellcheck source=/dev/null
-source "$_gaia_pricing_directory/token-rates-feed-lib.sh" 2>/dev/null || true
-unset _gaia_pricing_directory
-
-# shellcheck disable=SC2034 # consumed by sourcing scripts (token-rollup.sh, token-tally.sh)
+# shellcheck disable=SC2034 # consumed by sourcing scripts
 GAIA_PRICING_JQ_DEFS="$(cat <<'JQDEFS'
     def rate_window($model; $date):
       ($rates.models[$model] // [])
@@ -63,21 +51,6 @@ GAIA_PRICING_JQ_DEFS="$(cat <<'JQDEFS'
 JQDEFS
 )"
 
-# Partial-update fallback only: used when gaia_rates_prepare is undefined (the
-# new libs are absent). It resolves via git rev-parse --show-toplevel because it
-# predates the local table; it is not the primary resolution path.
-gaia_resolve_rate_table() {
-  local override="${1:-}"
-  if [[ -n "$override" ]]; then
-    printf '%s' "$override"
-    return 0
-  fi
-  local toplevel
-  toplevel="$(git rev-parse --show-toplevel 2>/dev/null)"
-  [[ -z "$toplevel" ]] && return 1
-  printf '%s' "$toplevel/.gaia/scripts/token-rates.json"
-}
-
 gaia_load_rate_table() {
   local path="${1:-}"
   local contents
@@ -87,26 +60,6 @@ gaia_load_rate_table() {
     return 0
   fi
   return 1
-}
-
-gaia_hash16() {
-  local digest
-  if digest="$(shasum -a 256 2>/dev/null)"; then :;
-  elif digest="$(sha256sum 2>/dev/null)"; then :;
-  else return 1; fi
-  digest="${digest%% *}"
-  [[ -z "$digest" ]] && return 1
-  printf '%s' "${digest:0:16}"
-}
-
-# The identity of the card a row was priced under, as `sha256:<16-hex>`: sha256
-# over the raw bytes of the table that priced, truncated to 16 hex characters.
-gaia_rate_table_id() {
-  local path="$1" table_hash
-  [[ -f "$path" ]] || return 1
-  table_hash="$(gaia_hash16 <"$path")" || return 1
-  [[ -z "$table_hash" ]] && return 1
-  printf 'sha256:%s' "$table_hash"
 }
 
 # gaia_rates_override_status <main_root>: prints `none` (no override file),

@@ -48,8 +48,6 @@ EOF
     chmod +x "$TEMPORARY_DIRECTORY/bin/$tool_name"
   done
   export PATH="$TEMPORARY_DIRECTORY/bin:$PATH"
-  export GAIA_RATES_STATE_DIRECTORY="$BATS_TEST_TMPDIR/rates-state"
-  export GAIA_RATES_FEED_URL="file://$BATS_TEST_TMPDIR/absent-feed.json"
   unset CLAUDE_CODE_SESSION_ID GAIA_TALLY_PROJECTS_ROOT
 }
 

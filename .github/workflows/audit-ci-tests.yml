@@ -42,10 +42,6 @@ concurrency:
 # repository default. Each job below grants exactly what it needs.
 permissions: {}
 
-# Bats legs must never reach the rates feed.
-env:
-  GAIA_RATES_FEED_DISABLE: "1"
-
 jobs:
   # The fan-out matrix: one leg per bats shard, plus the sandbox conformance
   # tree, the INV-7 concurrency meter and the commitlint config suite as three
@@ -638,7 +634,7 @@ jobs:
       # preinstall.
       #
       # zsh backs four suites under .gaia/scripts/tests/ (audit-key-lib,
-      # main-only-lib, audit-window-lib, branch-name-lib), and those `skip`
+      # main-only-lib, usage-lib, branch-name-lib), and those `skip`
       # SILENTLY when it is absent, so its absence looks identical to a clean
       # tree rather than reporting red. That silent-skip hazard is the whole
       # reason the apt step below names the legs it runs on rather than being
