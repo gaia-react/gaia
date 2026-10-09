@@ -511,6 +511,19 @@ CASES
   [ "$status" -eq 2 ]
 }
 
+@test "a finding with an absent, empty or non-string member exits 3 before any gh call or outcome line" {
+  local filter
+  for filter in 'del(.member)' '.member = ""' '.member = 7' '.member = null'; do
+    reset_state
+    make_finding "$filter"
+    run_file
+    [ "$status" -eq 3 ] || { echo "$filter: status $status"; return 1; }
+    grep -q 'member' <<<"$output" || { echo "$filter: no member reason"; return 1; }
+    [ ! -e "$OUTCOMES" ] || { echo "$filter: outcome written"; return 1; }
+    [ ! -s "$STUB/log" ] || { echo "$filter: gh was called"; return 1; }
+  done
+}
+
 @test "the full filing path runs under the system bash (3.2 on macOS) with set -u" {
   [ -x /bin/bash ] || skip "no /bin/bash"
   run /bin/bash "$SCRIPT" file --finding "$FINDING" --outcome-file "$OUTCOMES" --repo owner/name

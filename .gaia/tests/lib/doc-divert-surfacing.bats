@@ -47,7 +47,7 @@ assert_pinned() {
 
 @test "UAT-038: the unit's report carries diverted_count and diverted_records and no finding detail" {
   assert_pinned "$AGENT" '`diverted_count` (integer), `diverted_records` (array of record paths)'
-  assert_pinned "$AGENT" 'The report carries counts and paths only and no finding detail: never a diverted finding'"'"'s key, class, path, title or reason.'
+  assert_pinned "$AGENT" 'The report carries no diverted finding detail (diverts render as a count and record paths only): never a diverted finding'"'"'s key, class, path, title or reason.'
   assert_pinned "$AGENT" 'A diverted finding appears nowhere outside the filing script'"'"'s local record'
 }
 

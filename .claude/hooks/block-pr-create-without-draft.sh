@@ -30,6 +30,9 @@
 #     only the shell knows;
 #   - a `--repo`/`-R` when `origin` cannot be read or parsed, since the own
 #     repository cannot be told from another one;
+#   - a non-draft create when `gh repo view --json visibility` answers exactly
+#     PRIVATE for the own repository, since GitHub refuses drafts there under
+#     some plans; an erroring probe or any other answer keeps the deny;
 #   - a `gh pr create` nested inside a command or process substitution, a
 #     subshell, or a compound-command body (`if`, `while`, `{ }`), which the
 #     top-level read does not enter;
@@ -154,9 +157,21 @@ BLOCKED: `gh pr create` for this repository must open a draft pull request.
 
 Run it again with the flag: `gh pr create --draft --title "<type>(<scope>): <summary>" --body-file <file> ...`.
 
-Reviewers are notified when a pull request is ready, and here that is when the audit posts its GAIA-Audit success status; the poster then marks the draft ready for review by itself, so never run `gh pr ready` ahead of the audit. A pull request into another repository is not covered: name it with `--repo <owner>/<name>`.
+Reviewers are notified when a pull request is ready, and here that is when the audit posts its GAIA-Audit success status; the poster then marks the draft ready for review by itself, so never run `gh pr ready` ahead of the audit. A pull request into another repository is not covered: name it with `--repo <owner>/<name>`. On a private repository where GitHub refuses draft pull requests, the non-draft form is allowed.
 EOF
   exit 2
+}
+
+# deny_unless_private [<owner/name>]: deny, except when the repository answers
+# exactly PRIVATE, where GitHub can refuse drafts under some plans and the
+# non-draft create is the only working form. No plan probe is cheap, so a probe
+# that errors or answers anything else keeps the deny. With no slug the probe
+# resolves the repository from the checkout, as `gh pr create` itself does.
+deny_unless_private() {
+  local visibility
+  visibility=$(cd "$repository_root" 2>/dev/null && gh repo view ${1:+"$1"} --json visibility --jq .visibility 2>/dev/null) || visibility=""
+  [ "$visibility" = PRIVATE ] && return 0
+  deny_without_draft
 }
 
 newline=$'\n'
@@ -177,7 +192,8 @@ while [ "$scan_guard" -lt 64 ] && [ "$offset" -lt "${#scan_text}" ]; do
     read_create_command
     if [ "$draft_used" = 0 ]; then
       if [ "$repository_given" = 0 ]; then
-        deny_without_draft
+        read_origin_repository
+        deny_unless_private "$origin_repository"
       fi
       case "$repository_value" in
         *'$'* | *'`'*) ;;
@@ -185,7 +201,7 @@ while [ "$scan_guard" -lt 64 ] && [ "$offset" -lt "${#scan_text}" ]; do
           read_origin_repository
           requested_repository=$(normalize_repository "$repository_value")
           if [ -n "$origin_repository" ] && [ "$requested_repository" = "$origin_repository" ]; then
-            deny_without_draft
+            deny_unless_private "$origin_repository"
           fi
           ;;
       esac

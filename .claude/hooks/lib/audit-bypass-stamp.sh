@@ -20,7 +20,8 @@
 #
 # Pull requests open as drafts, and a draft cannot be merged, so once the
 # status has posted this marks the pull request ready for review
-# (`gh pr ready <pr-number>`), strictly after the status. A flip that fails
+# (`gh pr ready <pr-number>`), strictly after the status, and only when the
+# pull request is a draft. A flip that fails
 # prints one stderr line naming the manual command and returns 1; the posted
 # status is never rolled back, and the caller ignores the return value.
 #
@@ -70,6 +71,15 @@ audit_post_bypass_status() {
   fi
 
   if [ -z "$failure" ]; then
+    # Only a draft needs the flip; a pull request opened ready (a private
+    # repository where GitHub refuses drafts) has none to make. An unreadable
+    # draft state falls through to the flip so a failure is reported.
+    local is_draft=''
+    is_draft=$(GH_NO_UPDATE_NOTIFIER=1 GH_PROMPT_DISABLED=1 \
+      gh pr view "$pr_number" --json isDraft --jq .isDraft 2>/dev/null </dev/null) || is_draft=''
+    if [ "$is_draft" = false ]; then
+      return 0
+    fi
     if ! GH_NO_UPDATE_NOTIFIER=1 GH_PROMPT_DISABLED=1 \
       gh pr ready "$pr_number" >/dev/null 2>&1 </dev/null; then
       printf 'GAIA-Audit bypass status posted, but the draft flip failed. Mark the pull request ready by hand: gh pr ready %s\n' \

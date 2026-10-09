@@ -264,6 +264,10 @@ jobs:
               # catch-all, so listing it here is redundant with that entry, kept
               # so this suite's own source stays named if the catch-all is ever
               # narrowed.
+              # The workflow-doctrine suite's pin-site scan reads the health
+              # taxonomy page for model pins, so an edit to that one file arms
+              # the legs whose suites scan it.
+              - '.gaia/cli/health/taxonomy.md'
               - 'wiki/decisions/Claude Integration Fitness.md'
               - '.claude/skills/**/*.md'
               - '.claude/commands/**/*.md'

@@ -47,7 +47,7 @@
 #
 #   Reads .gaia/VERSION, HEAD's ancestry, the local audit store's clearance
 #   and refusal records and (--member form) its re-run ledger, and (when
-#   GH_TOKEN + gh are available) the GitHub Commit Status API. A commit-message
+#   `gh`, GH_TOKEN and GITHUB_REPOSITORY are all available) the GitHub Commit Status API. A commit-message
 #   trailer on any commit is ignored.
 #
 # Output (stdout), argument-less form

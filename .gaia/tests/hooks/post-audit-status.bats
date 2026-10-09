@@ -177,8 +177,17 @@ case "$1" in
   pr)
     if [ "$2" = ready ]; then
       printf '%s\n' "$*" >> "$stub_directory/call-order"
+      [ ! -f "$stub_directory/ready-stderr" ] || cat "$stub_directory/ready-stderr" >&2
       exit "$(cat "$stub_directory/ready-rc" 2>/dev/null || printf 0)"
     fi
+    # The draft-state read before a success flip: true unless a case plants
+    # false, kept out of call-order so the flip order stays readable.
+    case " $* " in
+      *" isDraft "*)
+        cat "$stub_directory/is-draft" 2>/dev/null || printf 'true\n'
+        exit 0
+        ;;
+    esac
     pr_head="$(cat "$stub_directory/pr-head")"
     [ -n "$pr_head" ] || exit 1
     printf '%s\n' "$pr_head"
@@ -643,6 +652,54 @@ pr ready" ]
   [ "$status" -eq 0 ]
   [ "$(call_order)" = "post failure
 pr ready --undo" ]
+}
+
+@test "a success on a pull request that is not a draft posts the status and makes no flip" {
+  push_head_to_upstream
+  pushed_sha=$(git -C "$REPO" rev-parse HEAD)
+  install_gh_stub "$pushed_sha"
+  printf 'false\n' > "$BATS_TEST_TMPDIR/is-draft"
+  printf '1' > "$BATS_TEST_TMPDIR/ready-rc"
+  marker=$(write_marker code-audit-frontend)
+
+  cd "$REPO"
+  run "$HOOK_ABSOLUTE_PATH" "$marker"
+
+  [ "$status" -eq 0 ]
+  [ "$(call_order)" = "post success" ]
+}
+
+@test "a refusal whose undo GitHub rejects as unsupported drafts is not a failure" {
+  push_head_to_upstream
+  pushed_sha=$(git -C "$REPO" rev-parse HEAD)
+  install_gh_stub "$pushed_sha"
+  printf '1' > "$BATS_TEST_TMPDIR/ready-rc"
+  printf 'GraphQL: Draft pull requests are not supported in this repository. (convertPullRequestToDraft)\n' > "$BATS_TEST_TMPDIR/ready-stderr"
+  refusal=$(write_refusal code-audit-frontend)
+
+  cd "$REPO"
+  run "$HOOK_ABSOLUTE_PATH" "$refusal"
+
+  [ "$status" -eq 0 ]
+  [ "$(call_order)" = "post failure
+pr ready --undo" ]
+  grep -qF -- 'run it by hand' <<<"$output" && return 1
+  true
+}
+
+@test "an undo that fails for any other reason still exits non-zero" {
+  push_head_to_upstream
+  pushed_sha=$(git -C "$REPO" rev-parse HEAD)
+  install_gh_stub "$pushed_sha"
+  printf '1' > "$BATS_TEST_TMPDIR/ready-rc"
+  printf 'HTTP 502: Bad Gateway\n' > "$BATS_TEST_TMPDIR/ready-stderr"
+  refusal=$(write_refusal code-audit-frontend)
+
+  cd "$REPO"
+  run "$HOOK_ABSOLUTE_PATH" "$refusal"
+
+  [ "$status" -ne 0 ]
+  grep -qF -- 'run it by hand: gh pr ready --undo' <<<"$output"
 }
 
 @test "a declined post flips nothing" {

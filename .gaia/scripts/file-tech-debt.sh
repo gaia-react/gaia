@@ -459,6 +459,8 @@ cmd_file() {
   jq -e 'type == "object"' "$finding_file" >/dev/null 2>&1 || die_input "cannot read $finding_file as a JSON object"
   jq -e '(.path | type == "string" and . != "") and (.line | type == "number" and . == floor and . >= 0)' "$finding_file" >/dev/null 2>&1 \
     || die_input "$finding_file needs a non-empty string path and an integer line"
+  jq -e '.member | type == "string" and . != ""' "$finding_file" >/dev/null 2>&1 \
+    || die_input "$finding_file needs a non-empty string member"
 
   make_work_directory
   member="$(jq -r '.member // ""' "$finding_file")"

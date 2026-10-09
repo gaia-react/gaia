@@ -111,7 +111,9 @@
 #   draft: `gh pr ready` after a success, `gh pr ready --undo` after a failure
 #   (a refusal converts the pull request back to draft). The flip always comes
 #   second, so a reviewer is notified only after the status that justifies it
-#   exists. It targets the pull request of the current branch, the same one the
+#   exists. A success flips only a pull request that is a draft, and an undo
+#   GitHub refuses because the repository does not support drafts is not a
+#   failure: the refusal status already landed. It targets the pull request of the current branch, the same one the
 #   `gh pr view` below resolves the head sha from, and is skipped when that read
 #   found no pull request.
 #
@@ -543,9 +545,26 @@ if gh api "repos/${repo}/statuses/${head_sha}" \
       flip_undo="--undo"
       flip_manual="gh pr ready --undo"
     fi
-    if ! ( cd "$repo_root" && gh pr ready ${flip_undo:+"$flip_undo"} >/dev/null 2>&1 </dev/null ); then
-      emit_error "the GAIA-Audit ${post_state} status posted but the draft flip failed; run it by hand: ${flip_manual}"
-      exit 1
+    # A success flips only a draft: a pull request opened ready (a private
+    # repository where GitHub refuses drafts) has nothing to flip, and an
+    # unreadable draft state falls through to the flip so a failure is reported.
+    flip_needed=1
+    if [ "$post_state" != "failure" ]; then
+      pr_is_draft="$( cd "$repo_root" && gh pr view --json isDraft --jq .isDraft 2>/dev/null </dev/null || true )"
+      [ "$pr_is_draft" != "false" ] || flip_needed=0
+    fi
+    if [ "$flip_needed" = 1 ]; then
+      flip_output=""
+      if ! flip_output="$( cd "$repo_root" && gh pr ready ${flip_undo:+"$flip_undo"} 2>&1 </dev/null )"; then
+        # A refusal on a repository that does not support drafts has no draft
+        # to restore; its failure status already landed, so that is not a
+        # failed flip.
+        if [ "$post_state" = "failure" ] && grep -qiE 'draft.*(not supported|unsupported)|(not supported|unsupported).*draft' <<<"$flip_output"; then
+          exit 0
+        fi
+        emit_error "the GAIA-Audit ${post_state} status posted but the draft flip failed; run it by hand: ${flip_manual}"
+        exit 1
+      fi
     fi
   fi
   exit 0

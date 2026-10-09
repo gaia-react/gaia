@@ -37,9 +37,10 @@ assert_one_post() {
   grep -qF -- '-f state=success' <<<"$posts" || return 1
   grep -qF -- '-f context=GAIA-Audit' <<<"$posts" || return 1
   grep -qxF -- "api -X POST repos/test-owner/test-repo/statuses/${head} -f state=success -f context=GAIA-Audit -f description=$1" <<<"$posts" || return 1
-  # The status comes first and the draft flip is the last gh call: a reviewer is
-  # notified only after the status that justifies it.
-  [ "$(tail -n 2 "$MGF_GH_LOG")" = "${posts}
+  # The status comes first, then the draft-state read, and the draft flip is the
+  # last gh call: a reviewer is notified only after the status that justifies it.
+  [ "$(tail -n 3 "$MGF_GH_LOG")" = "${posts}
+pr view 12 --json isDraft --jq .isDraft
 pr ready 12" ] || { printf 'the POST is not followed by the ready flip as the last gh call:\n%s\n' "$(cat "$MGF_GH_LOG")" >&2; return 1; }
 }
 
@@ -218,6 +219,30 @@ moved_head_after_record() {
   assert_allowed_silently
   [ "$(mgf_post_count)" -eq 1 ]
   grep -qF -- 'gh pr ready 12' <<<"$stderr" || return 1
+}
+
+@test "a pull request that is not a draft is not flipped, and the status still posts" {
+  mgf_commit "wiki/page.md" "doc"
+  mgf_record 12 false "docs: page" "wiki/page.md"
+  printf 'false\n' > "$MGF_STUB_DIRECTORY/is-draft"
+
+  mgf_run_merge "gh pr merge 12 --squash"
+  assert_allowed_silently
+  [ "$(mgf_post_count)" -eq 1 ]
+  grep -qF -- 'pr view 12 --json isDraft' "$MGF_GH_LOG" || return 1
+  grep -qF -- 'pr ready' "$MGF_GH_LOG" && return 1
+  grep -qF -- 'draft flip' <<<"$stderr" && return 1
+  true
+}
+
+@test "an unreadable draft state still attempts the flip" {
+  mgf_commit "wiki/page.md" "doc"
+  mgf_record 12 false "docs: page" "wiki/page.md"
+  printf 'null\n' > "$MGF_STUB_DIRECTORY/is-draft"
+
+  mgf_run_merge "gh pr merge 12 --squash"
+  assert_allowed_silently
+  grep -qF -- 'pr ready 12' "$MGF_GH_LOG"
 }
 
 @test "a rejected POST flips nothing" {
