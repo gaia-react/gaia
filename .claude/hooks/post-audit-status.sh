@@ -73,7 +73,8 @@
 #   Order-independence rests on the DIGEST key. Markers are named for the
 #   member's own branch-own digest, not its commit sha, so a commit that leaves
 #   the branch's own patch unchanged (an empty commit, or a clean catch-up
-#   merge of the base) rotates no member's digest and does not orphan a
+#   merge of the base that edits nothing within three lines of a branch hunk)
+#   rotates no member's digest and does not orphan a
 #   sibling member's marker. Keyed to the commit, such a commit would
 #   invalidate every marker written before it, and the member that finished
 #   last would find the others' markers gone and decline forever. The POST

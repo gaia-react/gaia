@@ -23,7 +23,7 @@
 # artifact key) is in the frame so a marker earned on one branch never validates
 # another, even when two branches carry byte-identical or empty patches. A
 # catch-up merge of the base leaves the branch's own patch unchanged and so
-# rotates nothing; a base-side roster, classifier or machinery change rotates
+# rotates nothing, bar a base edit within three lines of a branch hunk; a base-side roster, classifier or machinery change rotates
 # exactly the members whose selection of the branch's paths it moved.
 #
 # NUL-safety is scoped to the hash input: the -z walk, pinned quoting, and

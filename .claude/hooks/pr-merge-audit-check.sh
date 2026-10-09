@@ -25,7 +25,8 @@
 # patch on a path a member owns rotates only that member's digest; one on a
 # gate-machinery path rotates every member's digest. Content the base branch
 # brought in through a clean catch-up merge is not part of the branch's patch
-# and rotates nothing.
+# and rotates nothing, bar a base edit within three lines of a branch hunk
+# on a covered path.
 #
 # The base is the one GitHub reports, never a local ref: the gate reads the PR's
 # base branch name from the PR record and that branch's current tip through
@@ -506,7 +507,7 @@ EOF
   if [ -n "$frontend_digest" ] && clearance_member_refused "$root" "$frontend_digest" code-audit-frontend; then
     frontend_refused=1
     refusal_note="
-A live refusal exists for this exact branch-own digest: $(clearance_refused_path "$root" "$frontend_digest" code-audit-frontend). A refusal always takes precedence over any earned marker for the same digest, and a bare re-spawn does NOT clear it: an ordinary earned write leaves the refusal in place, so re-running the agent against an unchanged, still-unaddressed patch refuses again. Clear it by resolving the finding with an edit to the branch's own patch on that member's paths (that rotates the digest, retiring this refusal); a fix that arrives only through a catch-up merge of the base branch does not rotate it. Or, when the operator acknowledges an Important with a stated reason and the digest does not move, re-spawn code-audit-frontend so it writes its earned marker with --supersede-refusal \"<reason>\", which removes its own refusal as an explicit, recorded act.
+A live refusal exists for this exact branch-own digest: $(clearance_refused_path "$root" "$frontend_digest" code-audit-frontend). A refusal always takes precedence over any earned marker for the same digest, and a bare re-spawn does NOT clear it: an ordinary earned write leaves the refusal in place, so re-running the agent against an unchanged, still-unaddressed patch refuses again. Clear it by resolving the finding with an edit to the branch's own patch on that member's paths (that rotates the digest, retiring this refusal); a fix that arrives only through a catch-up merge of the base branch does not rotate it, barring a base edit within three lines of a branch hunk on that member's paths. Or, when the operator acknowledges an Important with a stated reason and the digest does not move, re-spawn code-audit-frontend so it writes its earned marker with --supersede-refusal \"<reason>\", which removes its own refusal as an explicit, recorded act.
 "
   fi
 }
@@ -1448,7 +1449,7 @@ for the same digest, and an ordinary re-spawn does not clear it (a plain
 earned write leaves the refusal on disk). Resolve the finding with an edit to
 the branch's own patch on that member's paths, which rotates its digest and
 retires the refusal with it (a fix that arrives only through a catch-up merge of
-the base branch does not rotate it); or, when the operator acknowledges an
+the base branch does not rotate it unless the base edited within three lines of a branch hunk); or, when the operator acknowledges an
 Important with a stated reason and the digest does not move,
 re-spawn the member so it writes its earned marker with
 --supersede-refusal \"<reason>\", removing its own refusal as an explicit,

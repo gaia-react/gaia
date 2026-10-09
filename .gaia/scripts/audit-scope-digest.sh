@@ -24,7 +24,8 @@
 #              prints the 64-hex digest on stdout, exits 0. The digest is
 #              taken over the branch's own patch against the local base
 #              reference, so a clean catch-up merge of the base leaves it
-#              unchanged. A base tip absent locally (next step `git fetch
+#              unchanged (barring a base edit within three lines of a
+#              branch hunk). A base tip absent locally (next step `git fetch
 #              origin`) or more than one merge base with it (next step: merge
 #              the base branch) fails the capture on stderr. On an
 #              underivable digest or an unwritable scope file: prints nothing

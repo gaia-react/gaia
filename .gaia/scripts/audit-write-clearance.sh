@@ -116,7 +116,8 @@
 #   The member's digest covers the branch's own patch against the local base
 #   reference (`audit_branch_digests_local`), bound to the branch. Content the
 #   base brought in, by a clean catch-up merge, is not in it, so a catch-up
-#   rotates no marker and leaves a scope capture equal to the write-time digest;
+#   rotates no marker (barring a base edit within three lines of a branch
+#   hunk) and leaves a scope capture equal to the write-time digest;
 #   a change to the branch's own patch on the member's paths (including one made
 #   inside a merge commit) rotates it.
 #
