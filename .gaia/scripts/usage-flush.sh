@@ -306,7 +306,8 @@ _uf_load_metas() {
       meta_output="$meta_output$(jq -nr "$meta_filter" "$meta_file" 2>/dev/null)"$'\n' || true
     done
   }
-  UF_META_MAP="$UF_META_MAP$meta_output"
+  # $(...) strips the trailing newline, and the lookup anchors on a leading one.
+  UF_META_MAP="$UF_META_MAP$meta_output"$'\n'
 }
 _uf_agent_fields() {
   local transcript_file="$1" role="$2" file_name rest

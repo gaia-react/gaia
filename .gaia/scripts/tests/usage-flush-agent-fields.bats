@@ -169,6 +169,23 @@ race_a_close() {
   [ "$(wc -l <"$shim_directory/meta-reads" | tr -d ' ')" -eq 1 ]
 }
 
+@test "agent fields: a sweep over two sessions keeps every sidecar's type, so one session's metas never glue onto the next" {
+  install
+  local project_directory source_file
+  project_directory="$PROJECTS_DIRECTORY/$(encode_project_path "$ROOT")"
+  while IFS= read -r source_file; do
+    mkdir -p "$project_directory/s-af2/${source_file%/*}"
+    sed 's/s-af/s-af2/g' "$project_directory/s-af/$source_file" >"$project_directory/s-af2/$source_file"
+    case "$source_file" in *.jsonl) touch -t 202001010000 "$project_directory/s-af2/$source_file" ;; esac
+  done < <(cd "$project_directory/s-af" && find . -type f | sed 's|^\./||')
+  sed 's/s-af/s-af2/g' "$project_directory/s-af.jsonl" >"$project_directory/s-af2.jsonl"
+  touch -t 202001010000 "$project_directory/s-af2.jsonl"
+  run flush --sweep
+  [ "$status" -eq 0 ]
+  [ "$(segments | jq -c '[.[] | select(.agent_id) | {session_id, agent_type}] | group_by(.session_id) | map(map(.agent_type) | sort)')" = \
+    '[["Explore","code-audit-frontend","code-audit-frontend","general-purpose","unknown","unknown"],["Explore","code-audit-frontend","code-audit-frontend","general-purpose","unknown","unknown"]]' ]
+}
+
 # ---------- sidecar quiet window ----------
 
 @test "all-sidecars-finished: a sidecar written moments ago commits whole with the flag and is held back without it" {
