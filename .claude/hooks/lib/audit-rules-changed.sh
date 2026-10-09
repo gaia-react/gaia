@@ -50,6 +50,7 @@ AUDIT_GLOBAL_RULES_PATHS="$(cat <<'EOF'
 .claude/hooks/lib/audit-machinery.sh
 .claude/hooks/lib/audit-clearance.sh
 .claude/hooks/lib/audit-digest.sh
+.claude/hooks/lib/audit-branch-patch.sh
 .claude/hooks/lib/audit-rules-changed.sh
 .claude/hooks/lib/audit-base-provenance.sh
 # gaia-version.sh derives the version literal every producer stamps and every
