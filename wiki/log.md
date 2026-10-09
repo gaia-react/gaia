@@ -11,6 +11,30 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-10-09 d4a23fcf WORTHY - wiki pages updated in the commit itself; no further page drift: docs(wiki): point remix-i18next at pnpm-workspace.yaml for active overrides
+- 2026-10-09 b9eda938 SKIP - chore(deps): bump 9 packages, js-yaml 5 in CLI, drop obsolete overrides
+- 2026-10-09 b3278191 WORTHY - wiki pages updated in the commit itself; no further page drift: feat(audit): scope catch-up merges out of the audit gate
+- 2026-10-09 a7bf37b2 WORTHY - wiki pages updated in the commit itself; no further page drift: refactor(harness): make the usage ledger the only cost store
+- 2026-10-09 5c92cb04 WORTHY - wiki pages updated in the commit itself; no further page drift: feat(audit)!: audit gate v2 with one disposer, one repair path and one member protocol
+- 2026-10-09 a7bf1acc WORTHY - wiki pages updated in the commit itself; no further page drift: build: fold the GAIA CLI into the root pnpm workspace
+- 2026-10-09 25a3c864 WORTHY - wiki pages updated in the commit itself; no further page drift: refactor(cli): zero-touch bundles, one template tree, one process runner
+- 2026-10-09 137816bd WORTHY - wiki updated in the commit itself or no page-level change needed: fix(audit): edit only owned files, ask per file, verify a clean pass
+- 2026-10-09 4d8a9df9 WORTHY - wiki pages updated in the commit itself; no further page drift: refactor(harness)!: retire the hot cache, janitor drain hook, /gaia-handoff and /gaia-pickup
+- 2026-10-09 e2e6e930 WORTHY - wiki pages updated in the commit itself; no further page drift: refactor: slim the spec and plan pipeline
+- 2026-10-09 c1765d8f WORTHY - wiki pages updated in the commit itself; no further page drift: chore(harness): unify the model policy and slim the skill listing
+- 2026-10-09 7576c79c WORTHY - wiki updated in the commit itself or no page-level change needed: fix(harness): make six shipped statements true and narrow the gate skip
+- 2026-10-09 2273566e WORTHY - wiki pages updated in the commit itself; no further page drift: perf(hooks): cut per-Bash-call hook cost without weakening a guard
+- 2026-10-09 bc87407c SKIP - chore(tests): trim local and CI verification cost
+- 2026-10-09 8831f293 WORTHY - wiki updated in the commit itself or no page-level change needed: fix(fitness): heal only the project's own files, asking per file
+- 2026-10-09 3c6ce276 WORTHY - wiki updated in the commit itself or no page-level change needed: refactor(debt): script the debt dedup and clustering, split the gaia-debt playbook
+- 2026-10-09 8b0cb798 WORTHY - wiki updated in the commit itself or no page-level change needed: fix(audit): refuse filing an out-of-branch security finding on a non-private repo
+- 2026-10-09 5733ad92 WORTHY - wiki pages updated in the commit itself; no further page drift: feat(wiki): one-command /gaia-wiki with a broken-wikilink check
+- 2026-10-09 ab2cb02b WORTHY - wiki pages updated in the commit itself; no further page drift: feat(harness): pre-push and pre-dispatch verification for harness checks
+- 2026-10-09 b0882924 WORTHY - EnterWorktree rename line → wiki/concepts/Claude Hooks.md
+- 2026-10-09 7f2d7f31 WORTHY - wiki updated in the commit itself or no page-level change needed: fix(statusline): restale the wiki nudge when the state file advances
+- 2026-10-09 861a8a07 WORTHY - wiki updated in the commit itself or no page-level change needed: fix(wiki): repoint wikilinks when consolidate archives a page
+- 2026-10-09 e5034b49 WORTHY - wiki updated in the commit itself or no page-level change needed: fix(wiki): fix lint findings before the chain opens its PR
+- 2026-10-09 0f9e78be WORTHY - wiki pages updated in the commit itself; no further page drift: wiki: maintenance chain through 6b95479
 - 2026-10-08 ADDED: wiki/decisions/per-call-bash-hook-cost-cut.md (hook if gating, single-jq payload read, merged read guard)
 - 2026-10-07 341d2d24 SKIP - wiki pages updated in the PR itself, no further edit needed (touches wiki-heavy domain)
 - 2026-10-07 3d40fdb9 SKIP - chore: generic chore

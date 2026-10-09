@@ -62,7 +62,7 @@ The sourced libraries under `.claude/hooks/lib/` are deliberately absent. They a
 | `red-verify-commit-check.sh` | PreToolUse (Bash) | Denies `git commit` when a new-at-HEAD passing test has no matching failing run on record. |
 | `usage-capture.sh` | Stop, SessionStart (startup\|resume) | Launches the detached usage flusher and returns. |
 | `wiki-session-start.sh` | SessionStart (startup\|resume) | Runs `local-janitor.sh`, then prints the janitor's one-line base-catch-up report on SessionStart stdout. |
-| `workflow-doctrine-inject.sh` | PostToolUse (Bash, EnterWorktree), SessionStart (startup\|resume\|clear\|compact) | Injects the execution doctrine into a session on a non-default branch or in a linked worktree, once per branch key. |
+| `workflow-doctrine-inject.sh` | PostToolUse (Bash, EnterWorktree), SessionStart (startup\|resume\|clear\|compact) | Injects the execution doctrine into a session on a non-default branch or in a linked worktree, once per branch key. On EnterWorktree onto the harness's `worktree-<name>` spelling it also names the `git branch -m` rename to the canonical branch. |
 | `worthiness-presence-check.sh` | PreToolUse (Bash) | Denies `gh pr merge` when an emergent test the pull request changed carries no worthiness verdict. |
 
 ### Source-edit safeguards (Edit|Write|MultiEdit)
