@@ -125,7 +125,7 @@ catchup_add_origin() {
   _catchup_configure "$CATCHUP_ROOT" || return 1
   rm -rf "$CATCHUP_ORIGIN"
   git init -q --bare -b "$base_branch" "$CATCHUP_ORIGIN" || return 1
-  catchup_git remote remove origin >/dev/null 2>&1
+  catchup_git remote remove origin >/dev/null 2>&1 || true
   catchup_git remote add origin "$CATCHUP_ORIGIN" || return 1
   catchup_git push -q origin "refs/heads/$base_branch:refs/heads/$base_branch" 2>/dev/null || return 1
   catchup_git fetch -q origin || return 1

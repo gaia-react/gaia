@@ -37,10 +37,10 @@ The maintainer's copy of this page carries every root file. An adopter's copy ca
 | `audit-loop-record.sh` | yes | the PR Merge Workflow fix round | Writes the marker-delimited `## Audit rounds` section into a pull request body. |
 | `audit-loop-signals-lib.sh` | yes | sourced by `audit-loop-eval.sh` | The rubric signals and the unit and member gate decision functions; reads no file. |
 | `audit-loop-state-lib.sh` | yes | sourced | Reads, validates and writes the per-branch audit loop state, and parses the typed grant and accept lines. |
-| `audit-member-digest.sh` | yes | CI, audit hooks, agent definitions | Prints one Code Audit Team member's content digest, and exits non-zero printing nothing on any condition it cannot resolve. |
+| `audit-member-digest.sh` | yes | CI, audit hooks, agent definitions | Prints one Code Audit Team member's branch-own digest, and exits non-zero printing nothing on any condition it cannot resolve. |
 | `audit-noop-detect.sh` | yes | `.claude/rules/subagent-dispatch.md`, the audit fan-out surfaces | Decides whether a dispatched agent's report artifact is a real result or a silent no-op. |
 | `audit-resolve-scope.sh` | yes | every Code Audit Team agent definition | Resolves a member's review scope in one command: diff bases, changed-file lists, the dirty-in-scope check, and the scope digest. |
-| `audit-scope-digest.sh` | yes | agent definitions | Carries a member's own content digest between scope resolution and clearance write, the two Bash calls that must agree. `--release` drops a capture when a round ends without publishing a marker or refusal, so the next round recaptures fresh. |
+| `audit-scope-digest.sh` | yes | agent definitions | Carries a member's own branch-own digest between scope resolution and clearance write, the two Bash calls that must agree. `--release` drops a capture when a round ends without publishing a marker or refusal, so the next round recaptures fresh. |
 | `audit-write-clearance.sh` | yes | agent definitions, CI | The one writer for every Code Audit Team clearance marker. |
 | `audit-write-findings.sh` | yes | agent definitions | The one writer for a member's findings sidecar, the report of record the merge workflow reads. |
 

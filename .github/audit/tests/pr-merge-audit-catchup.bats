@@ -337,7 +337,10 @@ second_branch_from_base() {
   local previous_digest
   mgf_commit "frontend/app/x.ts" "export const x = 1"
   mgf_record 12 false "feat: x" "frontend/app/x.ts"
-  previous_digest="$(bash -c '. "$1/audit-digest.sh"; audit_member_digest "$2" code-audit-frontend' _ "$MGF_LIBRARY_DIRECTORY" "$REPO")"
+  # A digest of HEAD's whole content, the shape the marker key had before it was
+  # bound to the branch's own patch; the gate never recomputes it, it only has to
+  # fail to match the current one.
+  previous_digest="$({ printf 'previous-recipe\0'; git -C "$REPO" ls-tree -z -r HEAD; } | { shasum -a 256 2>/dev/null || sha256sum; } | awk '{ print $1 }')"
   [ -n "$previous_digest" ]
   [ "$previous_digest" != "$(mgf_member_digest code-audit-frontend)" ]
 

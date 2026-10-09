@@ -1,14 +1,15 @@
 #!/usr/bin/env bats
 # Tests for .claude/hooks/lib/audit-digest.sh, the single per-member
-# content-digest derive point, and its CLI entrypoint
+# branch-own-digest derive point, and its CLI entrypoint
 # .gaia/scripts/audit-member-digest.sh.
 #
-# A member's digest is a sha256 over exactly the files that member owns plus the
-# shared gate machinery (plus the in-scope-but-ownerless paths for the default
-# member), classified by the existing ownership classifier + machinery matcher,
-# never by git pathspec. The headline behavior: an out-of-glob-only commit
-# leaves every member's digest byte-identical, so its marker re-validates with no
-# re-audit. Every degradation resolves fail-closed (empty output, non-zero exit).
+# A member's digest is a sha256 over the branch-own identity of exactly the
+# paths of the branch's own patch that member owns plus the shared gate
+# machinery (plus the in-scope-but-ownerless paths for the default member),
+# classified by the existing ownership classifier + machinery matcher, never by
+# git pathspec. The headline behavior: an out-of-glob-only commit leaves every
+# member's digest byte-identical, so its marker re-validates with no re-audit.
+# Every degradation resolves fail-closed (empty output, non-zero exit).
 #
 # Fixtures seed the committed roster (git_init writes its auditors: block) and
 # probe a subset of it, deliberately rather than for want of coverage:
@@ -64,9 +65,12 @@ seed_repo() {
 }
 
 # digest_of <root> <member> [<git_reference>] -> 64-hex on stdout, non-zero on fail-closed.
+# The branch-own digest of the patch from the repository's first commit to the
+# reference, so each commit a test makes is the branch's own change.
 digest_of() {
-  local root="$1" member="$2" git_reference="${3:-HEAD}"
-  bash -c '. "$1"; audit_member_digest "$2" "$3" "$4"' _ "$DIGEST_LIBRARY" "$root" "$member" "$git_reference"
+  local root="$1" member="$2" git_reference="${3:-HEAD}" merge_base
+  merge_base="$(git -C "$root" rev-list --max-parents=0 HEAD | head -1)"
+  bash -c '. "$1"; audit_branch_member_digest "$2" "$3" "$4" "$5"' _ "$DIGEST_LIBRARY" "$root" "$member" "$merge_base" "$git_reference"
 }
 
 # Commit a one-line mutation to <path> and echo "<pre> <post>" (the shas before
@@ -81,55 +85,29 @@ mutate_commit() {
 }
 
 # ---------------------------------------------------------------------------
-# The recipe-version sentinel, pinned as a literal.
+# The previous recipe's sentinel feeds no digest and its functions are gone.
 #
-# Editing this string does not rotate a digest the way an ordinary machinery
-# edit does. It moves the whole audit key space at once: every clearance
-# marker and posted status already in the wild becomes
-# unfindable rather than stale, and there is no version field, no migration,
-# and no grace window that would let a reader tell the two apart. A typo, a
-# reflexive v1 -> v2 bump carried along by an unrelated edit, or a
-# search-and-replace that happens to catch the string would do that with the
-# whole suite still green, and the damage surfaces later as markers nobody
-# can find, with nothing pointing back at the edit.
-#
-# So the constant gets exactly one intentional edit path: change it and this
-# reds, saying what the change costs. The pin is at the hash-input site, not
-# anywhere in the file, because that is the occurrence that decides the key
-# space -- a lingering mention in this lib's own header comment must not keep
-# a moved sentinel looking pinned. The second assertion holds that site
-# singular, which is the "single derive point" this suite's header claims:
-# a digest computation copied within this lib would give the sentinel a
-# second feed that the first assertion alone would never have looked at.
-#
-# The singularity claim reaches this file and no further. A recipe copied
-# into a DIFFERENT file is outside both assertions, deliberately: what may
-# derive a digest is the ownership classifier's and the machinery matcher's
-# answer, and restating it here would be a second list nobody recounts.
-# `grep -oF | wc -l` rather than `grep -cF`, because -c counts matching
-# LINES: a duplicate appended to the existing line would read as one site.
+# The sentinel is assembled from two halves so no tracked file, this one
+# included, holds the literal for a search to find. The pin on the current
+# sentinel (one site, in the library) is further down.
 # ---------------------------------------------------------------------------
 
-@test "the recipe-version sentinel feeding the digest hash is gaia-audit-digest-v1" {
-  grep -qF -- "printf 'gaia-audit-digest-v1\0'" "$DIGEST_LIBRARY" || return 1
-  sites="$(grep -oF -- "printf 'gaia-audit-digest-v1\0'" "$DIGEST_LIBRARY" | wc -l | tr -d ' ')"
-  [ "$sites" -eq 1 ]
+@test "the previous recipe's sentinel feeds no digest input anywhere in the gate machinery" {
+  previous_sentinel="gaia-audit-digest-v""1"
+  matches="$(grep -rlF -- "$previous_sentinel" "$REPO_ROOT/.claude/hooks" "$REPO_ROOT/.gaia/scripts" "$REPO_ROOT/.github/audit" --include='*.sh' || true)"
+  [ -z "$matches" ] || { printf 'the previous sentinel is still present in:\n%s\n' "$matches" >&2; return 1; }
+  # The detector can see it: a file carrying the sentinel is found.
+  printf '%s\n' "$previous_sentinel" >"$BATS_TEST_TMPDIR/probe.sh"
+  [ -n "$(grep -rlF -- "$previous_sentinel" "$BATS_TEST_TMPDIR" --include='*.sh')" ]
 }
 
-# ---------------------------------------------------------------------------
-# audit_digests_all: one line per roster member, each a 64-hex digest.
-# ---------------------------------------------------------------------------
-
-@test "audit_digests_all emits every roster member with a 64-hex digest" {
-  ROOT="$BATS_TEST_TMPDIR/all"
-  mkdir -p "$ROOT"
-  seed_repo "$ROOT"
-  out="$(bash -c '. "$1"; audit_digests_all "$2"' _ "$DIGEST_LIBRARY" "$ROOT")"
-  for member_name in code-audit-frontend code-audit-maintainer-shell code-audit-maintainer-node; do
-    line_digest="$(grep -F "$member_name"$'\t' <<<"$out" | cut -f2)"
-    [ "${#line_digest}" -eq 64 ] || return 1
-    case "$line_digest" in *[!0-9a-f]*) return 1 ;; esac
-  done
+@test "the content-digest functions are no longer defined, so no caller can fall back to them" {
+  run bash -c '. "$1"; type audit_digests_all' _ "$DIGEST_LIBRARY"
+  [ "$status" -ne 0 ]
+  run bash -c '. "$1"; type audit_member_digest' _ "$DIGEST_LIBRARY"
+  [ "$status" -ne 0 ]
+  run bash -c '. "$1"; type audit_branch_member_digest' _ "$DIGEST_LIBRARY"
+  [ "$status" -eq 0 ]
 }
 
 # ---------------------------------------------------------------------------
@@ -284,11 +262,13 @@ mutate_commit() {
   mkdir -p "$R1/app" "$R2/app"
   git_init "$R1"
   git_init "$R2"
+  git -C "$R1" add -A && git -C "$R1" commit --quiet -m "base"
+  git -C "$R2" add -A && git -C "$R2" commit --quiet -m "base"
   # Identical content, path differs only by a space.
   echo "export const z = 3;" > "$R1/app/normal.ts"
   echo "export const z = 3;" > "$R2/app/with space.ts"
-  git -C "$R1" add -A && git -C "$R1" commit --quiet -m "seed"
-  git -C "$R2" add -A && git -C "$R2" commit --quiet -m "seed"
+  git -C "$R1" add -A && git -C "$R1" commit --quiet -m "branch"
+  git -C "$R2" add -A && git -C "$R2" commit --quiet -m "branch"
 
   d1="$(digest_of "$R1" code-audit-frontend)"
   d2="$(digest_of "$R2" code-audit-frontend)"
@@ -309,13 +289,16 @@ mutate_commit() {
   mkdir -p "$NEWLINE_REPOSITORY/app"
   git_init "$NEWLINE_REPOSITORY"
   printf 'export const z = 3;\n' > "$NEWLINE_REPOSITORY/app/x.ts"
-  # A tracked path literally containing a newline byte.
+  git -C "$NEWLINE_REPOSITORY" add -A
+  git -C "$NEWLINE_REPOSITORY" commit --quiet -m "base"
+  # A tracked path literally containing a newline byte, on the branch.
   bad="$(printf 'app/we\nird.ts')"
   printf 'export const w = 4;\n' > "$NEWLINE_REPOSITORY/$bad"
   git -C "$NEWLINE_REPOSITORY" add -A
-  git -C "$NEWLINE_REPOSITORY" commit --quiet -m "seed with newline path"
+  git -C "$NEWLINE_REPOSITORY" commit --quiet -m "branch with newline path"
 
-  run bash -c '. "$1"; audit_member_digest "$2" code-audit-frontend' _ "$DIGEST_LIBRARY" "$NEWLINE_REPOSITORY"
+  run bash -c '. "$1"; audit_branch_member_digest "$2" code-audit-frontend "$3"' _ "$DIGEST_LIBRARY" "$NEWLINE_REPOSITORY" \
+    "$(git -C "$NEWLINE_REPOSITORY" rev-list --max-parents=0 HEAD)"
   # Either it fails closed (preferred) -- never a bare/partial digest match.
   [ "$status" -ne 0 ]
   [ -z "$output" ]
@@ -331,21 +314,23 @@ mutate_commit() {
   ROOT="$BATS_TEST_TMPDIR/uat013mask"
   mkdir -p "$ROOT"
   seed_repo "$ROOT"
+  mutate_commit "$ROOT" "app/x.ts" >/dev/null
   run bash -c '
     sha256sum() { return 1; }
     shasum() { return 1; }
     . "$1"
-    audit_member_digest "$2" code-audit-frontend
-  ' _ "$DIGEST_LIBRARY" "$ROOT"
+    audit_branch_member_digest "$2" code-audit-frontend "$3"
+  ' _ "$DIGEST_LIBRARY" "$ROOT" "$(git -C "$ROOT" rev-list --max-parents=0 HEAD)"
   [ "$status" -ne 0 ]
   [ -z "$output" ]
 }
 
-@test "UAT-013: a failing git ls-tree (invalid ref) -> emit nothing, exit non-zero" {
+@test "UAT-013: a failing git listing (invalid target ref) -> emit nothing, exit non-zero" {
   ROOT="$BATS_TEST_TMPDIR/uat013ref"
   mkdir -p "$ROOT"
   seed_repo "$ROOT"
-  run bash -c '. "$1"; audit_member_digest "$2" code-audit-frontend "no-such-ref"' _ "$DIGEST_LIBRARY" "$ROOT"
+  run bash -c '. "$1"; audit_branch_member_digest "$2" code-audit-frontend "$3" "no-such-ref"' _ "$DIGEST_LIBRARY" "$ROOT" \
+    "$(git -C "$ROOT" rev-list --max-parents=0 HEAD)"
   [ "$status" -ne 0 ]
   [ -z "$output" ]
 }
@@ -356,7 +341,7 @@ mutate_commit() {
   # Seeded so the failure under test is the missing repository, not the
   # missing roster.
   seed_audit_roster "$ROOT"
-  run bash -c '. "$1"; audit_member_digest "$2" code-audit-frontend' _ "$DIGEST_LIBRARY" "$ROOT"
+  run bash -c '. "$1"; audit_branch_member_digest "$2" code-audit-frontend HEAD' _ "$DIGEST_LIBRARY" "$ROOT"
   [ "$status" -ne 0 ]
   [ -z "$output" ]
 }
@@ -571,7 +556,6 @@ v2_branch_work() {
   merge_base_before="$(catchup_git merge-base refs/remotes/origin/main HEAD)"
   before="$(v2_all "$merge_base_before")"
   [ -n "$before" ] || return 1
-  content_before="$(bash -c '. "$1/.claude/hooks/lib/audit-digest.sh"; audit_digests_all "$2"' _ "$CATCHUP_ROOT" "$CATCHUP_ROOT")"
   catchup_base_commit frontend/app/x.ts "$(catchup_lines 40 x 40=base-edit)" || return 1
   catchup_base_commit .gaia/cli/src/other.ts "$(catchup_lines 10 other 6=base-edit)" || return 1
   catchup_base_commit .gaia/scripts/audit-write-clearance.sh "$(catchup_lines 10 clearance 6=base-edit)" || return 1
@@ -581,10 +565,6 @@ v2_branch_work() {
   after="$(v2_all "$merge_base_after")"
   [ "$after" = "$before" ] || return 1
   [ "$(v2_local)" = "$before" ] || return 1
-  # The fixture does exercise what the content digest could not: the same
-  # catch-up rotated it.
-  content_after="$(bash -c '. "$1/.claude/hooks/lib/audit-digest.sh"; audit_digests_all "$2"' _ "$CATCHUP_ROOT" "$CATCHUP_ROOT")"
-  [ "$content_after" != "$content_before" ] || return 1
   true
 }
 
@@ -794,23 +774,6 @@ v2_base_edit_run() {
 @test "the same allowlist change on a prefix no branch path uses rotates nothing" {
   v2_base_edit_run "$BATS_TEST_TMPDIR/allowlist-remove-outside" "allowlist:wiki" || return 1
   v2_expect_rotated "$V2_BEFORE" "$V2_AFTER"
-}
-
-# ---------------------------------------------------------------------------
-# The branch-own digest is not the content digest, and never falls back to it.
-# ---------------------------------------------------------------------------
-
-@test "for the same checkout, the content digest and the branch-own digest of every member differ" {
-  v2_seed "$BATS_TEST_TMPDIR/versus" || return 1
-  v2_branch_work || return 1
-  branch_own="$(v2_local)"
-  content="$(bash -c '. "$1/.claude/hooks/lib/audit-digest.sh"; audit_digests_all "$2"' _ "$CATCHUP_ROOT" "$CATCHUP_ROOT")"
-  [ "$(v2_members "$content")" = "$(v2_members "$branch_own")" ] || return 1
-  while IFS= read -r line; do
-    member_name="${line%%$'\t'*}"
-    [ "${line#*$'\t'}" != "$(grep -F "$member_name"$'\t' <<<"$content" | cut -f2)" ] || return 1
-  done <<<"$branch_own"
-  true
 }
 
 # ---------------------------------------------------------------------------

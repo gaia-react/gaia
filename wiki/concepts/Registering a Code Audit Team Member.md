@@ -20,7 +20,7 @@ Write `.claude/agents/<name>.md` following the shape of the existing members: `n
 A maintainer-only member does not carry those three sections itself. It carries one **Report, gate handshake and findings sidecar** section that points at `.claude/hooks/lib/audit-member-protocol.md`, the protocol the two maintainer members share, and names any clean-pass condition it adds. That file is release-excluded, so an adopter-facing member keeps its own copy.
 <!-- gaia:maintainer-only:end -->
 
-The **Remit and self-skip** section also carries the scope-resolution obligation, byte-identical across every member definition: Capture your own content digest at scope resolution with `.gaia/scripts/audit-scope-digest.sh --capture`, and at marker-write time read that captured value back with `--read` and pass it as `--scope-digest`; never re-derive it in the writing call, and a rotation between the two means the review was superseded and you must be re-dispatched on the new HEAD.
+The **Remit and self-skip** section also carries the scope-resolution obligation, byte-identical across every member definition: Capture your own branch-own digest at scope resolution with `.gaia/scripts/audit-scope-digest.sh --capture`, and at marker-write time read that captured value back with `--read` and pass it as `--scope-digest`; never re-derive it in the writing call, and a rotation between the two means the review was superseded and you must be re-dispatched on the new HEAD.
 
 ### 2. Register in the roster
 
@@ -32,7 +32,7 @@ Run `bash .gaia/scripts/write-audit-remits.sh`. It reads `.gaia/audit-ci.yml` an
 
 ### 4. Wire into the machinery set
 
-Add the new agent file's path to `AUDIT_MACHINERY_PATHS` in `.claude/hooks/lib/audit-machinery.sh`. Every member's clearance marker keys to a content digest computed over the files it owns plus this machinery set; an agent file missing from the list rotates no digest when it changes, so a rewrite of the member's own instructions would merge unaudited by that member. `.gaia/scripts/verify-audit-roster.sh` asserts every roster member's agent file is listed.
+Add the new agent file's path to `AUDIT_MACHINERY_PATHS` in `.claude/hooks/lib/audit-machinery.sh`. Every member's clearance marker keys to a branch-own digest computed over the branch's own change to the files it owns plus this machinery set; an agent file missing from the list rotates no digest when it changes, so a rewrite of the member's own instructions would merge unaudited by that member. `.gaia/scripts/verify-audit-roster.sh` asserts every roster member's agent file is listed.
 
 ### 5. Add a finding_class bucket, if the member needs new classes
 
@@ -79,5 +79,5 @@ All four read live roster and machinery state, so a registration that only edits
 
 ## Pairs with
 
-- [[Code Audit Team]]: the roster mechanism, ownership classifier, machinery-digest keying, and AND-aggregation this page's steps plug into.
+- [[Code Audit Team]]: the roster mechanism, ownership classifier, branch-own digest keying, and AND-aggregation this page's steps plug into.
 - [[Policy-Memory Loop]]: what happens to a member's findings once they start recurring.

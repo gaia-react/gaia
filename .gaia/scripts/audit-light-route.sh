@@ -397,7 +397,7 @@ light_route_main() {
   [ "${#owners[@]}" -eq "$LIGHT_DELTA_COUNT" ] && [ "${#machinery[@]}" -eq "$LIGHT_DELTA_COUNT" ] \
     || _light_route_finish full unclassifiable-path
 
-  # The digest-input selection, exactly as audit_digests_all makes it, with
+  # The digest-input selection, exactly as the branch-own digest makes it, with
   # the special-row test on each selected row (either side of the mode pair).
   local owner is_machinery source_mode target_mode selected_is_machinery=() selected_owner=() special="false"
   index=0
