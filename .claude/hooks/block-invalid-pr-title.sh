@@ -10,7 +10,7 @@
 # the 100-character header limit applies to the title PLUS its ` (#N)` suffix.
 # Every other check Claude meets applies the limit to the bare text: the
 # commit-msg hook passes a 99-character subject, and the merge workflow
-# prescribes `gh pr create --title "<commit subject>"`. A title that cleared
+# prescribes `gh pr create --draft --title "<commit subject>"`. A title that cleared
 # every local check then failed CI after the PR was already open.
 #
 # WHAT IT RUNS. The same commitlint, against the same config, on the same
@@ -154,7 +154,7 @@ deny_fill() {
   cat >&2 <<'EOF'
 BLOCKED: `gh pr create --fill` without `--title` lets gh pick the title from commits or the branch name, and that title is never checked before CI's PR Conventions lint.
 
-Pass the title explicitly: `gh pr create --title "<type>(<scope>): <summary>" ...`. CI lints "<title> (#<number>)" against the 100-character header limit, so keep the title at least 8 characters under it.
+Pass the title explicitly: `gh pr create --draft --title "<type>(<scope>): <summary>" ...`. CI lints "<title> (#<number>)" against the 100-character header limit, so keep the title at least 8 characters under it.
 EOF
   exit 2
 }

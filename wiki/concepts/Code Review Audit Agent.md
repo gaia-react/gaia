@@ -10,7 +10,7 @@ tags: [concept, claude, agent, review]
 
 Defined in `.claude/agents/code-audit-frontend.md`. Opus-class holistic reviewer for comprehensive code review beyond what ESLint and TypeScript catch; it dispatches cheaper Sonnet specialist subagents for line-level rule compliance.
 
-`code-audit-frontend` is the default, adopter-facing member of the [[Code Audit Team]] roster: the config-driven `auditors:` block that maps file globs to auditor members, with a dispatch resolver and an AND-aggregator requiring every dispatched member's clearance before a merge unblocks. This page covers `code-audit-frontend`'s own review dimensions and disposition contract; see [[Code Audit Team]] for the roster mechanism and the maintainer-only members layered on top of it.
+`code-audit-frontend` is the default, adopter-facing member of the [[Code Audit Team]] roster: the config-driven `auditors:` block that maps file globs to auditor members, with a dispatch resolver and an AND-aggregator requiring every dispatched member's clearance before a merge unblocks. This page covers `code-audit-frontend`'s own review dimensions; it only reports, and the audit loop unit disposes and files its findings. See [[Code Audit Team]] for the roster mechanism and the maintainer-only members layered on top of it.
 
 Full spec: `.claude/agents/code-audit-frontend.md`.
 

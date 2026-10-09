@@ -8,7 +8,7 @@ Calling `/gaia-audit` is the intent to audit. The default researches, then gates
 
 **Stage 2 also files out-of-scope findings; the main conversation then publishes.** The run does the same full flow /update-deps and /gaia-debt do, one up-front decision (the gate, or the preview in those skills) and then it drives autonomously to merge. Two mechanical additions ride the finalizing path (gated Apply, 0-action auto-apply, and `--apply`), never the Decline path:
 
-1. **Stage 2 files every out-of-scope finding Stage 1 recorded as a `tech-debt` issue** (`## Dispose out-of-scope findings (Stage 2)`). It files, it does not fix, mirroring the code-audit-frontend disposition contract. This is why an out-of-scope problem the audit surfaces but cannot fix with its four action types gets a durable home instead of a Summary line no one reads once the run auto-merges.
+1. **Stage 2 files every out-of-scope finding Stage 1 recorded as a `tech-debt` issue** (`## Dispose out-of-scope findings (Stage 2)`). It files, it does not fix. This is why an out-of-scope problem the audit surfaces but cannot fix with its four action types gets a durable home instead of a Summary line no one reads once the run auto-merges.
 2. **After Stage 2 returns, the main conversation commits, opens a PR, and merges it** (`## Publish (commit / PR / merge)`), exactly as /update-deps Phase 8 and /gaia-debt's "Drive the PR to merge." The `gh pr merge` gate hooks fire in the invoking session, so the merge is driven from the main conversation, not the Stage 2 subagent. **Stage 2 never commits.** Publish auto-skips when Stage 2 reports an empty diff footprint (a memory-only or 0-action run changed no in-repo file).
 
 ### Path resolution (portable, no hardcoding)
@@ -517,8 +517,7 @@ bash .gaia/scripts/file-tech-debt.sh file --finding <finding.json> --outcome-fil
 
 Map the block's fields onto the finding JSON as follows; the mapping is the whole audit-specific part:
 
-- `member` is the literal `gaia-audit`; `finding_class` (or `holistic/unclassified`), `path`, `line`, `title`, `failure_mode`, `suggested_fix`, `footprint` and `audience` carry over by name; `difficulty` becomes `grade`; `severity` (`critical | important | suggestion`) becomes `issue_severity` (`Critical | Important | Suggestion`).
-- `security_sensitive` becomes the script's `security` field. The class never decides it: `holistic/unclassified` is the expected class for a knowledge or doc finding and is never a trigger, so set `security` from the block's flag alone.
+- `member` is the literal `gaia-audit`; `finding_class` (or `holistic/unclassified`), `path`, `line`, `title`, `failure_mode`, `suggested_fix`, `footprint` and `audience` carry over by name; `difficulty` becomes `grade`; `severity` (`critical | important | suggestion`) becomes `issue_severity` (`Critical | Important | Suggestion`); `security_sensitive` becomes `security`, set from the block's flag alone, since `holistic/unclassified` is the expected class for a doc finding and never a trigger.
 
 Record the filed, diverted and deduped counts (the script's stdout words: `filed <n>`, `diverted <count> <record-path>`, `absent`, `transient`, `failed <reason>`) for the final summary. `absent` and `transient` are never fatal: file what you can, note the rest, and let the main conversation publish regardless. A diverted finding is reported as a count and a record path only.
 
