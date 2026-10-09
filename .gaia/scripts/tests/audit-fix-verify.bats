@@ -18,7 +18,7 @@ make_repo() {
   git -C "$directory" config commit.gpgsign false
   printf '.gaia/local/\n' >"$directory/.gitignore"
   local file_name
-  for file_name in a.txt b.txt c.txt selfheal.txt "with space.txt" CHANGELOG.md; do
+  for file_name in a.txt b.txt c.txt stray.txt "with space.txt" CHANGELOG.md; do
     printf 'base %s\n' "$file_name" >"$directory/$file_name"
   done
   git -C "$directory" add -A
@@ -109,6 +109,21 @@ do_check() {
 
 edit() { printf 'fixer edit\n' >>"$REPO/$1"; }
 
+# prepare_with_dirty_record <path>: a baseline that records <path> as dirty
+# with its edited content. The real baseline subcommand refuses a dirty tree,
+# so this forges the record to keep the check's revert and further-edit
+# comparison proven against a baseline that carries a dirty entry.
+prepare_with_dirty_record() {
+  write_dispositions "$(default_entries)"
+  take_baseline
+  edit "$1"
+  local blob
+  blob="$(git -C "$REPO" hash-object -- "$1")"
+  jq --arg dirty_path "$1" --arg blob "$blob" '.dirty[$dirty_path] = $blob' "$BASELINE_FILE" >"$BASELINE_FILE.new"
+  mv "$BASELINE_FILE.new" "$BASELINE_FILE"
+  take_digests
+}
+
 assert_fail_kind() {
   local kind="$1" needle="${2:-}"
   [ "$status" -eq 1 ] || {
@@ -139,8 +154,7 @@ assert_fail_kind() {
   return 0
 }
 
-@test "clean pass: self-healed baseline, two declared fixer edits, one result per fix entry" {
-  edit selfheal.txt
+@test "clean pass: clean baseline, two declared fixer edits, one result per fix entry" {
   prepare
   edit a.txt
   edit b.txt
@@ -198,37 +212,34 @@ assert_fail_kind() {
   [ "$status" -eq 0 ]
 }
 
-@test "UAT-002d, UAT-023: reverting a baseline self-heal edit undeclared fails undeclared-revert naming the path" {
-  edit selfheal.txt
-  prepare
+@test "UAT-002d, UAT-023: reverting a path the baseline records dirty, undeclared, fails undeclared-revert naming the path" {
+  prepare_with_dirty_record stray.txt
   edit a.txt
   edit b.txt
-  printf 'base selfheal.txt\n' >"$REPO/selfheal.txt"
+  printf 'base stray.txt\n' >"$REPO/stray.txt"
   default_result >"$RESULT_FILE"
   do_check
-  assert_fail_kind undeclared-revert selfheal.txt
+  assert_fail_kind undeclared-revert stray.txt
 }
 
-@test "a baseline self-heal revert declared in reverted_paths passes" {
-  edit selfheal.txt
-  prepare
+@test "a revert of a baseline-dirty path declared in reverted_paths passes" {
+  prepare_with_dirty_record stray.txt
   edit a.txt
   edit b.txt
-  printf 'base selfheal.txt\n' >"$REPO/selfheal.txt"
-  default_result | jq '.reverted_paths = ["selfheal.txt"]' >"$RESULT_FILE"
+  printf 'base stray.txt\n' >"$REPO/stray.txt"
+  default_result | jq '.reverted_paths = ["stray.txt"]' >"$RESULT_FILE"
   do_check
   [ "$status" -eq 0 ]
 }
 
-@test "UAT-002e: a further undeclared edit to a self-healed path fails undeclared-path" {
-  edit selfheal.txt
-  prepare
+@test "UAT-002e: a further undeclared edit to a path the baseline records dirty fails undeclared-path" {
+  prepare_with_dirty_record stray.txt
   edit a.txt
   edit b.txt
-  edit selfheal.txt
+  edit stray.txt
   default_result >"$RESULT_FILE"
   do_check
-  assert_fail_kind undeclared-path selfheal.txt
+  assert_fail_kind undeclared-path stray.txt
 }
 
 @test "UAT-002f: HEAD moved by a commit fails head-moved" {
@@ -378,6 +389,19 @@ enforcement_case() {
   printf '%s' '{"schema":1,"round":1,"attempt":1,"results":[{"member":"m","finding_class":"c1","path":"a.txt","line":3,"disposition":"fixed","reason":"r","changed_paths":["a.txt"]}],"changed_paths":["a.txt"],"reverted_paths":[]}' >"$RESULT_FILE"
   do_check
   [ "$status" -eq 0 ]
+}
+
+@test "a divert entry passes the shape check and needs no fixer result" {
+  write_dispositions '[
+    {"member":"m","finding_class":"c1","path":"a.txt","line":3,"disposition":"fix"},
+    {"member":"m","finding_class":"c2","path":"b.txt","line":5,"disposition":"divert","reason":"security class from outside the branch"}]'
+  take_baseline
+  take_digests
+  edit a.txt
+  printf '%s' '{"schema":1,"round":1,"attempt":1,"results":[{"member":"m","finding_class":"c1","path":"a.txt","line":3,"disposition":"fixed","reason":"r","changed_paths":["a.txt"]}],"changed_paths":["a.txt"],"reverted_paths":[]}' >"$RESULT_FILE"
+  do_check
+  [ "$status" -eq 0 ] || { echo "status $status: $output"; return 1; }
+  grep -qF -- 'fix|accept-residual|waive-out-of-scope|file|divert' "$REAL_SCRIPT"
 }
 
 @test "the run-folder header drops the stale writer label and names the new shapes" {
@@ -574,12 +598,11 @@ enforcement_case() {
 }
 
 @test "COV-004: a baseline file edited after its digest fails bad-input" {
-  edit selfheal.txt
   prepare
   edit a.txt
   edit b.txt
   default_result >"$RESULT_FILE"
-  jq '.dirty = {}' "$BASELINE_FILE" >"$BASELINE_FILE.new"
+  jq '.dirty = {"a.txt": "deleted"}' "$BASELINE_FILE" >"$BASELINE_FILE.new"
   mv "$BASELINE_FILE.new" "$BASELINE_FILE"
   do_check
   assert_fail_kind bad-input "baseline file digest"
@@ -625,6 +648,47 @@ enforcement_case() {
       return 1
       ;;
   esac
+}
+
+@test "UAT-007: baseline over a modified tracked file exits 4, prints member-wave-dirty and a dirty line, writes nothing" {
+  edit a.txt
+  write_dispositions "$(default_entries)"
+  run bash "$SCRIPT" baseline --root "$REPO" --round 1 --out "$BASELINE_FILE"
+  [ "$status" -eq 4 ]
+  [ ! -e "$BASELINE_FILE" ]
+  [ ! -e "$RUN_FOLDER/verifier-bin-1" ]
+  printf '%s\n' "$output" | grep -qx 'member-wave-dirty'
+  printf '%s\n' "$output" | grep -qx 'dirty a.txt'
+}
+
+@test "UAT-007: baseline over an untracked non-ignored file exits 4 and names it" {
+  printf 'new\n' >"$REPO/fresh.txt"
+  run bash "$SCRIPT" baseline --root "$REPO" --round 1 --out "$BASELINE_FILE"
+  [ "$status" -eq 4 ]
+  [ ! -e "$BASELINE_FILE" ]
+  printf '%s\n' "$output" | grep -qx 'member-wave-dirty'
+  printf '%s\n' "$output" | grep -qx 'dirty fresh.txt'
+}
+
+@test "UAT-007: baseline names every dirty path, modified and untracked together" {
+  edit a.txt
+  edit "with space.txt"
+  printf 'new\n' >"$REPO/fresh.txt"
+  run bash "$SCRIPT" baseline --root "$REPO" --round 1 --out "$BASELINE_FILE"
+  [ "$status" -eq 4 ]
+  printf '%s\n' "$output" | grep -qx 'dirty a.txt'
+  printf '%s\n' "$output" | grep -qx 'dirty with space.txt'
+  printf '%s\n' "$output" | grep -qx 'dirty fresh.txt'
+}
+
+@test "UAT-007: baseline passes when the only new file is git-ignored" {
+  mkdir -p "$REPO/.gaia/local/audit"
+  printf 'x\n' >"$REPO/.gaia/local/audit/sidecar.json"
+  printf 'ignored.log\n' >>"$REPO/.git/info/exclude"
+  printf 'x\n' >"$REPO/ignored.log"
+  run bash "$SCRIPT" baseline --root "$REPO" --round 1 --out "$BASELINE_FILE"
+  [ "$status" -eq 0 ]
+  [ -e "$BASELINE_FILE" ]
 }
 
 @test "bad-input: the wrong round fails" {
@@ -693,11 +757,9 @@ enforcement_case() {
 }
 
 @test "paths with spaces are hashed and compared correctly" {
-  edit "with space.txt"
   write_dispositions '[{"member":"m","finding_class":"c1","path":"with space.txt","line":1,"disposition":"fix"}]'
   take_baseline
   take_digests
-  [ "$(jq -r '.dirty | keys[0]' "$BASELINE_FILE")" = "with space.txt" ]
   edit "with space.txt"
   printf '%s' '{"schema":1,"round":1,"attempt":1,"results":[{"member":"m","finding_class":"c1","path":"with space.txt","line":1,"disposition":"fixed","reason":"r","changed_paths":["with space.txt"]}],"changed_paths":["with space.txt"],"reverted_paths":[]}' >"$RESULT_FILE"
   do_check
@@ -748,22 +810,19 @@ enforcement_case() {
   [ "$status" -eq 0 ]
 }
 
-@test "drift: exit 0 on a tree equal to the baseline, self-heal edits included" {
-  edit selfheal.txt
-  printf 'u\n' >"$REPO/untracked.txt"
+@test "drift: exit 0 on a tree equal to the baseline" {
   take_baseline
   run bash "$SCRIPT" drift --root "$REPO" --baseline "$BASELINE_FILE"
   [ "$status" -eq 0 ]
 }
 
 @test "drift: exit 1 naming the path after a further edit" {
-  edit selfheal.txt
   take_baseline
-  edit selfheal.txt
+  edit stray.txt
   run bash "$SCRIPT" drift --root "$REPO" --baseline "$BASELINE_FILE"
   [ "$status" -eq 1 ]
   case "$output" in
-    *selfheal.txt*) ;;
+    *stray.txt*) ;;
     *)
       echo "$output"
       return 1

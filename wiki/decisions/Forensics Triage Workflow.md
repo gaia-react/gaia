@@ -148,7 +148,7 @@ The default-deny path policy and the no-cross-issue-learning posture are deliber
 
 The classifier runs on each issue independently. Manual maintainer corrections accumulate as a queue of human-corrected outcomes: re-labelled issues, manual closures, rejected draft PRs. When that queue exceeds fifty items across all classes, the data set is worth feeding back into the classifier as priors, batched-triage queues, or supervised retraining loops, work that warrants its own SPEC.
 
-Both signals are tracked by the maintainer health audit, which aggregates the reason-codes and flags threshold crossings.
+The maintainer reviews both signals by aggregating the reason-codes and watching for threshold crossings.
 
 ## Operator runbook
 

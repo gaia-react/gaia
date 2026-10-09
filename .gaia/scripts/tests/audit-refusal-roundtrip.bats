@@ -83,6 +83,13 @@ setup() {
   # notice. Every assertion below has to survive this being useless.
   RETURN_TEXT="$BATS_TEST_TMPDIR/return.txt"
   printf 'Agent is idle.\n' > "$RETURN_TEXT"
+
+  # The stamp the classifier's findings gate measures freshness against. Dated
+  # long before the fixture so every sidecar written below is newer than it
+  # without the suite sleeping on mtime resolution.
+  WAVE_STAMP="$BATS_TEST_TMPDIR/wave.stamp"
+  : > "$WAVE_STAMP"
+  touch -t 200001010000 "$WAVE_STAMP"
 }
 
 # stage_refusal: what a refusing member does, in the order its remit specifies.
@@ -212,7 +219,7 @@ JSON
 
 @test "3. the classifier never calls a refusal a no-op, even with the findings gate armed" {
   stage_refusal
-  run classify --findings "$SIDECAR"
+  run classify --findings-root "$ROOT" --findings-since "$WAVE_STAMP"
   [ "$status" -eq 0 ]
   [ "$output" = "refused" ]
 }
@@ -228,7 +235,7 @@ JSON
 JSON
   [ -f "$SIDECAR" ]
   [ -f "$REFUSAL" ] && return 1
-  run classify --findings "$SIDECAR"
+  run classify --findings-root "$ROOT" --findings-since "$WAVE_STAMP"
   [ "$status" -eq 1 ]
   [ "$output" = "noop" ]
 }
@@ -276,7 +283,7 @@ JSON
   # A finding open since round 1 says so, which is how an operator sees that
   # re-dispatching changed nothing.
   [ "$(jq -r '.remaining[0].first_seen_round' "$LEDGER")" = "1" ]
-  run classify --findings "$SIDECAR"
+  run classify --findings-root "$ROOT" --findings-since "$WAVE_STAMP"
   [ "$status" -eq 0 ]
   [ "$output" = "refused" ]
 }
@@ -293,7 +300,7 @@ JSON
   # refusal-first, so re-running until it passes buys nothing.
   [ -f "$MARKER" ]
   [ -f "$REFUSAL" ]
-  run classify --findings "$SIDECAR"
+  run classify --findings-root "$ROOT" --findings-since "$WAVE_STAMP"
   [ "$status" -eq 0 ]
   [ "$output" = "refused" ]
 }
@@ -314,7 +321,7 @@ JSON
   [ -f "$LEDGER" ] && return 1
   # Now, and only now, the dispatch classifies real: an earned marker plus its
   # report of record.
-  run classify --findings "$SIDECAR"
+  run classify --findings-root "$ROOT" --findings-since "$WAVE_STAMP"
   [ "$status" -eq 0 ]
   [ "$output" = "real" ]
 }

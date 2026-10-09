@@ -23,20 +23,6 @@
       ],
       "noMatch": [".playwright/x.ts", "playwright/x.spec.ts"]
     },
-    "selfHealRefuse": {
-      "match": [
-        ".npmrc",
-        ".env.example",
-        "package.json",
-        "tsconfig.json",
-        "vite.config.ts",
-        "gaia.package.json",
-        "app/a/tests/x.ts",
-        "app/x.stories.tsx",
-        ".claude/hooks/a.sh"
-      ],
-      "noMatch": ["app/routes.ts", "src/.npmrc", "app/x.ts"]
-    },
     "preCommitSource": {
       "match": ["app/x.ts", "test/a/b.ts"],
       "noMatch": ["package.json"]

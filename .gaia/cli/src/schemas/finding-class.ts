@@ -95,11 +95,12 @@ export type HolisticFindingClass = (typeof HOLISTIC_FINDING_CLASSES)[number];
  * `isValidFindingClass` rejects it and it is never a draftable candidate. The
  * tally layer (`compute-tally.ts`) routes it to the distinct `unclassified`
  * recurrence signal instead, never into `candidates[]`. It is **not** a
- * security signal: the audit's security screen keys on a finding's content
- * and severity, never on this constant, and treating it as a "classless,
+ * security signal: the filing screen keys on a finding's content and
+ * severity, never on this constant, and treating it as a "classless,
  * therefore assume the worst" trigger would divert every out-of-scope
- * finding on a public repo and file none of them. See the security-class
- * fail-safe in `.claude/agents/code-audit-frontend.md` (section B).
+ * finding on a public repo and file none of them. The fail-safe trigger is
+ * an absent or malformed `finding_class`, never `holistic/unclassified`. See
+ * the file-tech-debt skill (`.claude/skills/file-tech-debt/SKILL.md`).
  */
 export const OUT_OF_SCOPE_FALLBACK_FINDING_CLASS = 'holistic/unclassified';
 

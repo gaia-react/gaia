@@ -5,9 +5,6 @@
   "globs": {
     "tddUnitTests": {
       "empty": true
-    },
-    "selfHealRefuse": {
-      "empty": true
     }
   },
   "forPath": {

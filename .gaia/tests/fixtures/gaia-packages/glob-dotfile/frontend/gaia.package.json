@@ -17,9 +17,8 @@
       ".playwright/**/*.test.ts",
       ".playwright/**/*.test.tsx"
     ],
-    "selfHealRefuse": [".*", "a+b(c).ts"],
+    "doctorConfigs": [".*", "a+b(c).ts"],
     "preCommitSource": ["app/**", "test/**", ".storybook/**", ".playwright/**"],
-    "doctorConfigs": ["doctor.config.*", "react-doctor.config.*"],
     "dependencyManifests": ["package.json"]
   },
   "wiki": {

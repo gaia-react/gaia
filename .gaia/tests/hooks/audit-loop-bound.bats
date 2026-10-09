@@ -1353,6 +1353,9 @@ first_pinned_label() { state_field '.history.checkpoints | last | .question.ques
   dispatch
   deny_prefix "BLOCKED: audit dispositions"
   reason | grep -qF -- "violation: security-not-fix"
+  reason | grep -qF -- "Every finding needs a disposition" || return 1
+  reason | grep -qF -- "diverted" || return 1
+  reason | grep -qF -- "when the branch did not author it" && return 1
   cmp "$ALF_STATE" "$BATS_TEST_TMPDIR/before"
   unit_dispatch
   deny_prefix "BLOCKED: audit dispositions"
@@ -1432,7 +1435,7 @@ veto_rounds() {
   [ "$(state_field '.history.units // [] | length')" -eq 0 ]
 }
 
-@test "a window left by a unit that returned nesting-unavailable does not cover a main-thread or non-unit member over the line" {
+@test "a leftover unit file of any stop reason does not cover a main-thread or non-unit member over the line" {
   alf_sequence 6 5
   alf_state_edit '.history.units = [{unit: 1, start_round: 3, k: 3, through_round: 5, admitted_on: "context",
     after_checkpoint: 0, recorded_at: "2026-01-01T00:00:00Z", session_id: $session_id}]' --arg session_id "$SIDU"

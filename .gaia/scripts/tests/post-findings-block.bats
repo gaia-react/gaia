@@ -7,7 +7,7 @@
 # already emits).
 #
 # The read spans the whole fix loop, not one round: the base half of the key
-# advances one stamp per cleared audit round, so selecting on it posts only the
+# advances one commit per cleared audit round, so selecting on it posts only the
 # final round, which is clean by construction (gaia-react/gaia#1573). The suite
 # covers both directions of the widened glob -- every base for this branch is
 # read, and no other branch's is.
@@ -38,9 +38,9 @@ setup() {
   # slug; "main" has nothing to percent-encode, so the slug is the branch
   # name verbatim.
   AUDIT_KEY="${BASE}.main"
-  # Two later rounds' bases. The gate stamps a `GAIA-Audit:` trailer at the end
-  # of every cleared round and the resolver walks to the newest trailer-bearing
-  # ancestor, so one branch's sidecars legitimately land under several bases.
+  # Two later rounds' bases. The resolver walks to the newest ancestor carrying
+  # a `GAIA-Audit` status, so one branch's sidecars legitimately land under
+  # several bases.
   BASE_ROUND2="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
   BASE_ROUND3="cccccccccccccccccccccccccccccccccccccccc"
   GH_LOG="$SANDBOX/gh.log"
@@ -55,9 +55,13 @@ write_sidecar() {
 # write_sidecar_at <key> <member> <findings-json-array>: the same write under an
 # arbitrary key, for the multi-base and foreign-branch cases below. `<key>` is
 # the whole `<base-sha>.<branch-slug>` pair, so a test can vary either half.
+# An entry written without a `security` flag is recorded as security:false, the
+# only value the block publishes; a case that needs another value writes it.
 write_sidecar_at() {
   local key="$1" member="$2" findings="$3"
-  printf '{"schema":1,"member":"%s","findings":%s}\n' "$member" "$findings" \
+  jq -nc --arg member "$member" --argjson findings "$findings" \
+    '{schema: 1, member: $member,
+      findings: ($findings | map(if has("security") then . else . + {security: false} end))}' \
     > "$AUDIT_DIRECTORY/${key}.${member}.findings.json"
 }
 
@@ -239,7 +243,7 @@ extract_payload() {
 
 @test "UAT-034: multiple sidecars merge into exactly one posted block carrying every member's findings" {
   write_sidecar code-audit-frontend '[{"finding_class":"holistic/swallowed-error","severity":"warning","area_tags":["app/services"]}]'
-  write_sidecar code-audit-maintainer-shell '[{"finding_class":"holistic/secret-exposure","severity":"error","area_tags":[".gaia/scripts"]}]'
+  write_sidecar code-audit-maintainer-shell '[{"finding_class":"holistic/secret-exposure","severity":"warning","area_tags":[".gaia/scripts"]}]'
   stub_gh '[]'
   run run_script
   [ "$status" -eq 0 ]
@@ -485,15 +489,15 @@ extract_payload() {
 
 @test "sidecars written under several key bases on one branch all merge into one block" {
   # The key is `<base-sha>.<branch-slug>` and only the branch half is stable
-  # across a fix loop: each cleared round stamps a new `GAIA-Audit:` trailer,
-  # the resolver walks to it, and the next round's sidecar lands under a new
-  # base. Keying the glob to the ONE base resolved at merge time therefore
+  # across a fix loop: each cleared round's commit carries a `GAIA-Audit`
+  # status, the resolver walks to it, and the next round's sidecar lands under
+  # a new base. Keying the glob to the ONE base resolved at merge time therefore
   # posts only the final round -- which is clean by construction, because a
   # clean round is what let the PR merge at all.
   write_sidecar_at "$AUDIT_KEY" code-audit-frontend \
     '[{"finding_class":"holistic/swallowed-error","severity":"warning","area_tags":["app/services"]}]'
   write_sidecar_at "${BASE_ROUND2}.main" code-audit-maintainer-shell \
-    '[{"finding_class":"holistic/secret-exposure","severity":"error","area_tags":[".gaia/scripts"]}]'
+    '[{"finding_class":"holistic/secret-exposure","severity":"warning","area_tags":[".gaia/scripts"]}]'
   write_sidecar_at "${BASE_ROUND3}.main" code-audit-maintainer-shell '[]'
   stub_gh '[]'
   run run_script
@@ -520,7 +524,7 @@ extract_payload() {
   write_sidecar_at "$AUDIT_KEY" code-audit-maintainer-shell \
     '[{"finding_class":"holistic/swallowed-error","severity":"warning","area_tags":["a"]}]'
   write_sidecar_at "${BASE_ROUND2}.main" code-audit-maintainer-shell \
-    '[{"finding_class":"holistic/secret-exposure","severity":"error","area_tags":["b"]}]'
+    '[{"finding_class":"holistic/secret-exposure","severity":"warning","area_tags":["b"]}]'
   write_sidecar_at "${BASE_ROUND3}.main" code-audit-maintainer-shell '[]'
   stub_gh '[]'
   run run_script
@@ -533,7 +537,7 @@ extract_payload() {
   # sidecar cannot be shown to be a different member from another unnamed one,
   # and over-stating the count is the defect being repaired. Two nameless plus
   # one named reads as 2, where counting files would read 3.
-  printf '{"schema":1,"findings":[{"finding_class":"holistic/swallowed-error","severity":"warning","area_tags":["a"]}]}\n' \
+  printf '{"schema":1,"findings":[{"finding_class":"holistic/swallowed-error","severity":"warning","security":false,"area_tags":["a"]}]}\n' \
     > "$AUDIT_DIRECTORY/${AUDIT_KEY}.nameless-one.findings.json"
   printf '{"schema":1,"member":"","findings":[]}\n' \
     > "$AUDIT_DIRECTORY/${BASE_ROUND2}.main.nameless-two.findings.json"
@@ -552,9 +556,9 @@ extract_payload() {
   write_sidecar_at "$AUDIT_KEY" code-audit-frontend \
     '[{"finding_class":"holistic/swallowed-error","severity":"warning","area_tags":["app/services"]}]'
   write_sidecar_at "${BASE}.other-branch" code-audit-frontend \
-    '[{"finding_class":"holistic/foreign-tree","severity":"error","area_tags":["elsewhere"]}]'
+    '[{"finding_class":"holistic/foreign-tree","severity":"warning","area_tags":["elsewhere"]}]'
   write_sidecar_at "${BASE_ROUND2}.worktree-debt%2F42-slug" code-audit-maintainer-shell \
-    '[{"finding_class":"holistic/foreign-worktree","severity":"error","area_tags":["elsewhere"]}]'
+    '[{"finding_class":"holistic/foreign-worktree","severity":"warning","area_tags":["elsewhere"]}]'
   stub_gh '[]'
   run run_script
   [ "$status" -eq 0 ]
@@ -571,7 +575,7 @@ extract_payload() {
   # slug can carry a dot of its own and the anchor is unambiguous. Without the
   # leading dot, `main` would match `release-main` here.
   write_sidecar_at "${BASE}.release-main" code-audit-frontend \
-    '[{"finding_class":"holistic/suffix-collision","severity":"error","area_tags":["elsewhere"]}]'
+    '[{"finding_class":"holistic/suffix-collision","severity":"warning","area_tags":["elsewhere"]}]'
   stub_gh '[]'
   run run_script
   [ "$status" -eq 0 ]
@@ -607,7 +611,7 @@ write_sidecar_with_review_base() {
   local member="$1" findings="$2" review_base="$3"
   if [ -n "$review_base" ]; then
     jq -cn --arg member "$member" --argjson findings "$findings" --argjson review_base "$review_base" \
-      '{schema:1, member:$member, findings:$findings, review_base:$review_base}' \
+      '{schema:1, member:$member, findings:($findings | map(. + {security: false})), review_base:$review_base}' \
       > "$AUDIT_DIRECTORY/${AUDIT_KEY}.${member}.findings.json"
   else
     write_sidecar "$member" "$findings"
@@ -656,7 +660,7 @@ write_sidecar_with_review_base() {
 
 @test "a malformed review_base (string instead of object) is skipped, named on stderr, findings still merge" {
   member="code-audit-frontend"
-  findings='[{"finding_class":"holistic/swallowed-error","severity":"warning","area_tags":["app/services"]}]'
+  findings='[{"finding_class":"holistic/swallowed-error","severity":"warning","security":false,"area_tags":["app/services"]}]'
   jq -cn --arg member "$member" --argjson findings "$findings" \
     '{schema:1, member:$member, findings:$findings, review_base:"not-an-object"}' \
     > "$AUDIT_DIRECTORY/${AUDIT_KEY}.${member}.findings.json"
@@ -696,7 +700,7 @@ write_sidecar_with_review_base() {
 @test "a light review sidecar is skipped and only the full sidecar renders" {
   write_sidecar code-audit-frontend '[{"finding_class":"holistic/swallowed-error","severity":"warning","area_tags":["app/services"]}]'
   printf '{"schema":1,"member":"code-audit-frontend","review":"light","findings":%s}\n' \
-    '[{"finding_class":"holistic/light-only-marker","severity":"error","area_tags":["app/light"]}]' \
+    '[{"finding_class":"holistic/light-only-marker","severity":"warning","area_tags":["app/light"]}]' \
     > "$AUDIT_DIRECTORY/${AUDIT_KEY}.code-audit-frontend.light.findings.json"
   [ -f "$AUDIT_DIRECTORY/${AUDIT_KEY}.code-audit-frontend.light.findings.json" ]
   stub_gh '[]'
@@ -723,7 +727,7 @@ write_sidecar_with_review_base() {
 
 @test "entry_id and resolutions never reach the rendered block" {
   jq -cn '{schema:1, member:"code-audit-frontend",
-    findings:[{finding_class:"holistic/swallowed-error", severity:"warning", area_tags:["app/services"], entry_id:"r1-1"}],
+    findings:[{finding_class:"holistic/swallowed-error", severity:"warning", security:false, area_tags:["app/services"], entry_id:"r1-1"}],
     resolutions:[{entry_id:"r1-2", rationale:"fixed at HEAD"}]}' \
     > "$AUDIT_DIRECTORY/${AUDIT_KEY}.code-audit-frontend.findings.json"
   stub_gh '[]'
@@ -745,4 +749,57 @@ write_sidecar_with_review_base() {
   [ "$status" -eq 0 ]
   payload="$(extract_payload)"
   [ "$(jq -r '.review_bases[0].reason' <<<"$payload")" = "member-refusal" ]
+}
+
+# A published class, severity or directory tells a reader of a public repository
+# where an unfixed hole sits, so a security-class or Critical entry reaches the
+# comment only as a bare count.
+
+@test "a security-class entry and a Critical entry are withheld from the comment, counted only" {
+  # Written straight to disk: write_sidecar would record the unflagged entry as
+  # security:false, which is exactly the case under test.
+  printf '%s\n' '{"schema":1,"member":"code-audit-frontend","findings":[
+    {"finding_class":"holistic/swallowed-error","severity":"warning","security":false,"area_tags":["app/services"]},
+    {"finding_class":"holistic/secret-exposure","severity":"warning","security":true,"area_tags":["vault-directory"],"authored":false},
+    {"finding_class":"holistic/missing-flag","severity":"warning","area_tags":["unflagged-directory"],"authored":false},
+    {"finding_class":"holistic/injection-hole","severity":"error","security":false,"area_tags":["critical-directory"],"authored":false}
+  ]}' > "$AUDIT_DIRECTORY/${AUDIT_KEY}.code-audit-frontend.findings.json"
+  stub_gh '[]'
+  run run_script
+  [ "$status" -eq 0 ]
+  [ "$output" = "findings: posted 1 finding(s) from 1 member(s) to PR #42" ]
+  payload="$(extract_payload)"
+  [ "$(jq '.findings | length' <<<"$payload")" = "1" ]
+  [ "$(jq -r '.findings[0].finding_class' <<<"$payload")" = "holistic/swallowed-error" ]
+  grep -qF "3 finding(s) withheld (security-class or Critical)" "$SANDBOX/posted_body.txt" || return 1
+  grep -qF "secret-exposure" "$SANDBOX/posted_body.txt" && return 1
+  grep -qF "missing-flag" "$SANDBOX/posted_body.txt" && return 1
+  grep -qF "injection-hole" "$SANDBOX/posted_body.txt" && return 1
+  grep -qF "vault-directory" "$SANDBOX/posted_body.txt" && return 1
+  grep -qF "unflagged-directory" "$SANDBOX/posted_body.txt" && return 1
+  grep -qF "critical-directory" "$SANDBOX/posted_body.txt" && return 1
+  grep -qF '"error"' "$SANDBOX/posted_body.txt" && return 1
+  return 0
+}
+
+@test "a run whose every entry is withheld posts an empty findings array and the count" {
+  write_sidecar code-audit-frontend '[{"finding_class":"holistic/secret-exposure","severity":"error","security":true,"area_tags":["vault-directory"]}]'
+  stub_gh '[]'
+  run run_script
+  [ "$status" -eq 0 ]
+  [ "$output" = "findings: posted 0 finding(s) from 1 member(s) to PR #42" ]
+  payload="$(extract_payload)"
+  [ "$(jq -c '.findings' <<<"$payload")" = "[]" ]
+  grep -qF "1 finding(s) withheld (security-class or Critical)" "$SANDBOX/posted_body.txt" || return 1
+  grep -qF "secret-exposure" "$SANDBOX/posted_body.txt" && return 1
+  return 0
+}
+
+@test "a block with nothing withheld carries no count line" {
+  write_sidecar code-audit-frontend '[{"finding_class":"holistic/swallowed-error","severity":"warning","security":false,"area_tags":["app/services"]}]'
+  stub_gh '[]'
+  run run_script
+  [ "$status" -eq 0 ]
+  grep -qF "withheld" "$SANDBOX/posted_body.txt" && return 1
+  return 0
 }

@@ -54,29 +54,6 @@ export const BUILTIN_DESCRIPTOR = Object.freeze({
       '.playwright/**/*.test.tsx',
       'app/**/*.stories.tsx',
     ]),
-    selfHealRefuse: Object.freeze([
-      '.claude/**',
-      'CLAUDE.md',
-      'gaia.package.json',
-      'test/**',
-      '.playwright/**',
-      '.storybook/**',
-      'app/**/tests/**',
-      'app/**/*.test.ts',
-      'app/**/*.test.tsx',
-      'app/**/*.stories.tsx',
-      'package.json',
-      'tsconfig*.json',
-      '*.config.ts',
-      '*.config.mts',
-      '*.config.mjs',
-      '*.config.cjs',
-      '*.config.js',
-      'Dockerfile',
-      'Dockerfile.dockerignore',
-      'components.json',
-      '.*',
-    ]),
     preCommitSource: Object.freeze([
       'app/**',
       'test/**',
@@ -107,7 +84,6 @@ const GLOB_KEYS = [
   'tddUnitTests',
   'tddStrictCandidates',
   'emergentTests',
-  'selfHealRefuse',
   'preCommitSource',
   'doctorConfigs',
   'dependencyManifests',
@@ -289,10 +265,17 @@ export function loadPackages(repoRoot) {
     if (reason !== null) {
       return descriptorError(file, 'invalid', reason);
     }
+    // Only the known globs keys survive, so a key a descriptor still carries
+    // after the schema dropped it is ignored rather than passed along.
     packages.push({
       name: entry.name,
       path: entry.path,
-      descriptor: parsed.value,
+      descriptor: {
+        ...parsed.value,
+        globs: Object.fromEntries(
+          GLOB_KEYS.map((key) => [key, parsed.value.globs[key]])
+        ),
+      },
     });
   }
 

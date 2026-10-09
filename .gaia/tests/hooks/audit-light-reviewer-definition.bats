@@ -237,7 +237,10 @@ set_frontmatter_line() {
   git init -q "$scratch"
   git -C "$scratch" add -A
   git -C "$scratch" -c user.name=scratch -c user.email=scratch@example.invalid commit -q -m scratch
-  run bash "$scratch/.gaia/scripts/verify-audit-roster.sh" --root "$scratch"
+  # The whole-roster check runs on the real tree: a scratch tree of a few
+  # copied files leaves most roster globs matching no tracked file, which the
+  # check reports as zero-match rather than as an ownership problem.
+  run bash "$REPO_ROOT/.gaia/scripts/verify-audit-roster.sh" --root "$REPO_ROOT"
   [ "$status" -eq 0 ] || { printf '%s\n' "$output" >&2; return 1; }
   run bash "$scratch/.gaia/scripts/verify-audit-roster.sh" --root "$scratch" --emit-roster
   [ "$status" -eq 0 ]

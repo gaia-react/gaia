@@ -53,7 +53,6 @@ _GAIA_PKG_LIST=''
 _GAIA_PKG_ERE_tddUnitTests=''
 _GAIA_PKG_ERE_tddStrictCandidates=''
 _GAIA_PKG_ERE_emergentTests=''
-_GAIA_PKG_ERE_selfHealRefuse=''
 _GAIA_PKG_ERE_preCommitSource=''
 _GAIA_PKG_ERE_doctorConfigs=''
 _GAIA_PKG_ERE_dependencyManifests=''
@@ -91,29 +90,6 @@ _gaia_packages_builtin_descriptor() {
       ".playwright/**/*.test.ts",
       ".playwright/**/*.test.tsx",
       "app/**/*.stories.tsx"
-    ],
-    "selfHealRefuse": [
-      ".claude/**",
-      "CLAUDE.md",
-      "gaia.package.json",
-      "test/**",
-      ".playwright/**",
-      ".storybook/**",
-      "app/**/tests/**",
-      "app/**/*.test.ts",
-      "app/**/*.test.tsx",
-      "app/**/*.stories.tsx",
-      "package.json",
-      "tsconfig*.json",
-      "*.config.ts",
-      "*.config.mts",
-      "*.config.mjs",
-      "*.config.cjs",
-      "*.config.js",
-      "Dockerfile",
-      "Dockerfile.dockerignore",
-      "components.json",
-      ".*"
     ],
     "preCommitSource": ["app/**", "test/**", ".storybook/**", ".playwright/**"],
     "doctorConfigs": ["doctor.config.*", "react-doctor.config.*"],
@@ -178,7 +154,7 @@ _GAIA_PKG_DESCRIPTOR_PROGRAM='
     elif $d.name != $n then "name must be \"\($n)\""
     elif ($d.globs | type) != "object" then "globs must be an object"
     else
-      ([("tddUnitTests","tddStrictCandidates","emergentTests","selfHealRefuse","preCommitSource","doctorConfigs","dependencyManifests") as $k
+      ([("tddUnitTests","tddStrictCandidates","emergentTests","preCommitSource","doctorConfigs","dependencyManifests") as $k
         | select(($d.globs[$k] | cleanlist and length > 0) | not) | $k] | first) as $badglob
       | if $badglob != null then "globs.\($badglob) must be a non-empty array of non-empty strings without control characters"
         elif ($d.wiki | type) != "object" then "wiki must be an object"
@@ -214,7 +190,7 @@ _GAIA_PKG_COMPILE_PROGRAM='
     | gsub("\u0007"; "|");
   def joined($p): if $p == "." then . else $p + "/" + . end;
   . as $d
-  | ("tddUnitTests","tddStrictCandidates","emergentTests","selfHealRefuse","preCommitSource","doctorConfigs","dependencyManifests") as $k
+  | ("tddUnitTests","tddStrictCandidates","emergentTests","preCommitSource","doctorConfigs","dependencyManifests") as $k
   | $k + "\t" + ($d.globs[$k] | map(joined($p) | body) | join("|"))
 '
 
@@ -225,8 +201,7 @@ _gaia_packages_reset() {
   _GAIA_PKG_ERE_tddUnitTests=''
   _GAIA_PKG_ERE_tddStrictCandidates=''
   _GAIA_PKG_ERE_emergentTests=''
-  _GAIA_PKG_ERE_selfHealRefuse=''
-  _GAIA_PKG_ERE_preCommitSource=''
+    _GAIA_PKG_ERE_preCommitSource=''
   _GAIA_PKG_ERE_doctorConfigs=''
   _GAIA_PKG_ERE_dependencyManifests=''
 }
@@ -262,7 +237,6 @@ _gaia_packages_append_ere() {
     tddUnitTests) current="$_GAIA_PKG_ERE_tddUnitTests" ;;
     tddStrictCandidates) current="$_GAIA_PKG_ERE_tddStrictCandidates" ;;
     emergentTests) current="$_GAIA_PKG_ERE_emergentTests" ;;
-    selfHealRefuse) current="$_GAIA_PKG_ERE_selfHealRefuse" ;;
     preCommitSource) current="$_GAIA_PKG_ERE_preCommitSource" ;;
     doctorConfigs) current="$_GAIA_PKG_ERE_doctorConfigs" ;;
     dependencyManifests) current="$_GAIA_PKG_ERE_dependencyManifests" ;;
@@ -277,7 +251,6 @@ _gaia_packages_append_ere() {
     tddUnitTests) _GAIA_PKG_ERE_tddUnitTests="$current" ;;
     tddStrictCandidates) _GAIA_PKG_ERE_tddStrictCandidates="$current" ;;
     emergentTests) _GAIA_PKG_ERE_emergentTests="$current" ;;
-    selfHealRefuse) _GAIA_PKG_ERE_selfHealRefuse="$current" ;;
     preCommitSource) _GAIA_PKG_ERE_preCommitSource="$current" ;;
     doctorConfigs) _GAIA_PKG_ERE_doctorConfigs="$current" ;;
     dependencyManifests) _GAIA_PKG_ERE_dependencyManifests="$current" ;;
@@ -416,7 +389,6 @@ gaia_package_globs_ere() {
     tddUnitTests) body="$_GAIA_PKG_ERE_tddUnitTests" ;;
     tddStrictCandidates) body="$_GAIA_PKG_ERE_tddStrictCandidates" ;;
     emergentTests) body="$_GAIA_PKG_ERE_emergentTests" ;;
-    selfHealRefuse) body="$_GAIA_PKG_ERE_selfHealRefuse" ;;
     preCommitSource) body="$_GAIA_PKG_ERE_preCommitSource" ;;
     doctorConfigs) body="$_GAIA_PKG_ERE_doctorConfigs" ;;
     dependencyManifests) body="$_GAIA_PKG_ERE_dependencyManifests" ;;

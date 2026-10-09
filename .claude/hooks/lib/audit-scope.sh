@@ -184,7 +184,8 @@ _audit_scope_parse_auditors() {
         if (tolower(v) == "true") is_default = 1
         next
       }
-      # Any other member-level scalar key (scope, push_fixes, ...) ends globs.
+      # Any other member-level scalar key (audience, a retired key an older
+      # roster still carries, ...) ends globs and is otherwise ignored.
       if (raw ~ /^[[:space:]]+[A-Za-z_]+[[:space:]]*:/) { in_globs = 0; next }
       # A `- <value>` list item while inside globs is one glob.
       if (in_globs && raw ~ /^[[:space:]]*-[[:space:]]+/) {

@@ -62,15 +62,12 @@ CLAUDE.md
 EOF
 )"
 
-# light_route_main_reference <root>: the ref that bounds the walk, with the
-# base resolver's precedence: the declared base ref under Actions, then
-# origin/main, then main.
+# light_route_main_reference <root>: the ref that bounds the walk: origin/main,
+# then main. The answer is the same everywhere; no environment variable moves
+# it.
 light_route_main_reference() {
   local root="$1"
-  if [ "${GITHUB_ACTIONS:-}" = "true" ] && [ -n "${GITHUB_BASE_REF:-}" ] \
-    && git -C "$root" rev-parse --verify --quiet "origin/${GITHUB_BASE_REF}" >/dev/null 2>&1; then
-    printf 'origin/%s' "$GITHUB_BASE_REF"
-  elif git -C "$root" rev-parse --verify --quiet origin/main >/dev/null 2>&1; then
+  if git -C "$root" rev-parse --verify --quiet origin/main >/dev/null 2>&1; then
     printf 'origin/main'
   elif git -C "$root" rev-parse --verify --quiet main >/dev/null 2>&1; then
     printf 'main'
@@ -107,6 +104,88 @@ light_route_full_anchor_trees() {
     [ -n "$tree" ] && [ "$review" = "full" ] && [ "$recorded_version" = "$version" ] || continue
     printf '%s\n' "$tree"
   done
+}
+
+# light_route_refusal_trees <version>: reads clearance_scan refused lines on
+# stdin and prints the tree of every refusal recorded at <version>. A refusal
+# carries no `review` kind, so the version is the only filter.
+light_route_refusal_trees() {
+  local version="$1" tab line rest tree recorded_version
+  tab="$(printf '\t')"
+  while IFS= read -r line; do
+    tree="${line%%"$tab"*}"
+    rest="${line#*"$tab"}"
+    recorded_version="${rest%%"$tab"*}"
+    [ -n "$tree" ] && [ "$recorded_version" = "$version" ] || continue
+    printf '%s\n' "$tree"
+  done
+}
+
+# light_route_pre_ranges <root> <anchor> <head> <path>: the pre-image changed
+# line ranges of one path as a JSON array, from its -U0 hunks: the lines of
+# <anchor> the delta rewrote or removed. A pure insertion has no pre-image
+# lines; it is recorded as the two lines it sits between, so a finding cited on
+# either neighbour counts as touched. This is the coordinate system a refusal's
+# cited lines are in, because a refusal cites the tree it reviewed.
+light_route_pre_ranges() {
+  light_route_diff "$1" -U0 "$2" "$3" -- "$4" 2>/dev/null | awk '
+    /^@@ / {
+      field = $2; sub(/^-/, "", field)
+      count = 1
+      if (index(field, ",") > 0) { split(field, parts, ","); start = parts[1]; count = parts[2] } else { start = field }
+      if (count + 0 > 0) { out = out (out == "" ? "" : ",") "[" start "," (start + count - 1) "]" }
+      else { out = out (out == "" ? "" : ",") "[" start "," (start + 1) "]" }
+    }
+    END { print "[" out "]" }'
+}
+
+# light_route_refusal_checklist <root> <member> <refusal-tree> <branch-slug>:
+# the open findings of the member's refusal at <refusal-tree>, as a JSON array
+# of {key, path, line, severity, security, title} on stdout; returns 1 when the
+# checklist cannot be established. The refusal is linked to its findings the way
+# the clearance writer links them: the carry-forward ledger
+# (<audit>/<base>.<slug>.rerun.json) records the refusal's tree under
+# member_provenance and its remaining[] entries for the member carry the ids
+# (`key`); the findings sidecar at the same key
+# (<audit>/<base>.<slug>.<member>.findings.json) carries severity and security,
+# which the ledger drops. The two lists are rebuilt together every round, so
+# they must agree entry for entry on path and line; a disagreement, an empty
+# list, an unsafe key or path, or a non-integer line is unreadable, and the
+# caller routes an unreadable checklist Full.
+light_route_refusal_checklist() {
+  local root="$1" member="$2" refusal_tree="$3" slug="$4" audit_directory ledger key sidecar checklist
+  [ -n "$slug" ] || return 1
+  audit_directory="$root/.gaia/local/audit"
+  for ledger in "$audit_directory"/*."$slug".rerun.json; do
+    [ -f "$ledger" ] || continue
+    jq -e --arg member "$member" --arg tree "$refusal_tree" \
+      '(.member_provenance | type) == "object" and .member_provenance[$member].refusal_tree == $tree' "$ledger" >/dev/null 2>&1 || continue
+    key="${ledger%.rerun.json}"
+    sidecar="$key.$member.findings.json"
+    [ -f "$sidecar" ] || continue
+    checklist="$(jq -c -n --arg member "$member" --slurpfile ledger "$ledger" --slurpfile sidecar "$sidecar" '
+      def safe_text: type == "string" and length > 0 and (test("[\u0000-\u001f\u007f]") | not) and (contains("\\") | not);
+      ([$ledger[0].remaining[]? | objects | select(.member == $member)]) as $entries
+      | ($sidecar[0].findings) as $findings
+      | if ($findings | type) != "array" or ($entries | length) == 0 or ($entries | length) != ($findings | length)
+        then error("shape")
+        else [range(0; $entries | length) as $i
+          | $entries[$i] as $entry | $findings[$i] as $finding
+          | if ($entry.entry_id | type) == "string" and ($entry.entry_id | test("^[A-Za-z0-9._-]{1,64}$"))
+               and ($finding.path | safe_text) and $finding.path == $entry.path
+               and ($finding.line | type) == "number" and $finding.line == ($finding.line | floor)
+               and $finding.line >= 1 and $finding.line == $entry.line
+            then {key: $entry.entry_id, path: $finding.path, line: $finding.line,
+                  severity: ($finding.severity // null),
+                  security: ($finding | if has("security") then .security else null end),
+                  title: (($finding.title // "") | if type == "string" then gsub("[\u0000-\u001f\u007f]"; " ") | .[0:200] else "" end)}
+            else error("entry") end]
+        end' 2>/dev/null)" || continue
+    [ -n "$checklist" ] || continue
+    printf '%s\n' "$checklist"
+    return 0
+  done
+  return 1
 }
 
 # light_route_post_ranges <root> <anchor> <head> <path>: the post-image changed

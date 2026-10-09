@@ -119,7 +119,7 @@
 #   staleness tests (the accounting read's and the ledger write's prior-ledger
 #   test) compare against the key base, never against a differing --base: the
 #   resolver links a refusal to the ledger only when `.base_sha` equals that
-#   merge-base. Derivation is skipped when GITHUB_ACTIONS is `true`.
+#   merge-base.
 #
 # Open-finding accounting (every write; GATING; before publish)
 #   Each write, refused or earned (with or without --supersede-refusal), for a
@@ -142,8 +142,6 @@
 #   set. No severity gate: re-reporting an open Critical or Important on an
 #   earned write counts as accounted, exactly as on a refused write; whether an
 #   earned marker is warranted stays the member protocol's precondition.
-#   Skipped only when GITHUB_ACTIONS is `true` (CI never reads the ledger);
-#   `CI` alone does not skip it.
 #   - jq is REQUIRED: it builds the body, so every value is escaped by
 #     construction. Absent jq the writer fails closed rather than emitting a
 #     hand-assembled body. The gate's reader requires jq for the same reason.
@@ -652,8 +650,8 @@ fi
 # Audit key derivation and open-finding accounting (before anything publishes).
 #
 # The key is derived here rather than taken from --base because the resolver
-# links a refusal to the ledger by the merge-base it computes itself, and CI
-# and a member that dropped the flag pass no --base at all: a check keyed to
+# links a refusal to the ledger by the merge-base it computes itself, and a
+# member that dropped the flag passes no --base at all: a check keyed to
 # the flag would be skippable by omitting it.
 # -----------------------------------------------------------------------------
 
@@ -661,7 +659,7 @@ branch="$(git -C "$ROOT" branch --show-current 2>/dev/null || true)"
 
 key_base=""
 audit_key=""
-if [ "${GITHUB_ACTIONS:-}" != "true" ] && [ -n "$_write_clearance_resolver" ] \
+if [ -n "$_write_clearance_resolver" ] \
    && command -v gaia_audit_key >/dev/null 2>&1; then
   # The resolver reads its repository from the working directory, so it runs
   # from the checkout root; its stderr is a decision trace, not ours to print.
@@ -730,7 +728,7 @@ accounting_protocol_pointer="The accounting step is documented in '${_root_tople
 # gaia:maintainer-only:end
 
 review_coverage_digest=""
-if [ "${GITHUB_ACTIONS:-}" != "true" ] && [ -n "$audit_key" ]; then
+if [ -n "$audit_key" ]; then
   capture_file="${audit_directory}/${audit_key}.${MEMBER}.scope.json"
   capture_reason=""
   capture_digest=""
@@ -1139,26 +1137,15 @@ fi
 # repo root, and `gh` its repository and branch, from the ambient working
 # directory, so the call has to be anchored on the audited tree.
 #
-# Skipped in CI because that workflow posts one terminal status per run and owns
-# the context; a second writer racing it is a failure mode the local path does
-# not have. The window this closes is local-specific in the same way: the local
-# path posts once per dispatch wave, so a later wave's refusal can arrive behind
-# an earlier wave's success, which a single terminal CI post cannot do.
+# The window this closes: a wave posts once, so a later wave's refusal can
+# arrive behind an earlier wave's success, and the refusal must flip the status
+# to failure whatever the environment.
 # -----------------------------------------------------------------------------
 if [ "$PROVENANCE" = "refused" ]; then
-  if [ -n "${GITHUB_ACTIONS:-}" ] || [ -n "${CI:-}" ]; then
-    # Say so rather than skipping silently. A local shell that exports CI for
-    # unrelated reasons takes this arm, and then the incident this block exists
-    # to prevent arrives with no diagnostic at all: the refusal lands, no
-    # status is posted, and nothing says why. The direction is still safe, the
-    # local gate denies on the artifact alone.
-    error "note: compensating GAIA-Audit failure status skipped (CI environment); the refusal is on disk and the local merge gate still denies"
-  else
-    status_hook="${_root_toplevel}/.claude/hooks/post-audit-status.sh"
-    status_marker="${_root_toplevel}/.gaia/local/audit/${target##*/}"
-    if [ -x "$status_hook" ]; then
-      ( cd "$_root_toplevel" && bash "$status_hook" "$status_marker" ) >&2 || true
-    fi
+  status_hook="${_root_toplevel}/.claude/hooks/post-audit-status.sh"
+  status_marker="${_root_toplevel}/.gaia/local/audit/${target##*/}"
+  if [ -x "$status_hook" ]; then
+    ( cd "$_root_toplevel" && bash "$status_hook" "$status_marker" ) >&2 || true
   fi
 fi
 

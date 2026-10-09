@@ -139,7 +139,6 @@ const descriptor = (strict: string[]): string =>
       doctorConfigs: ['doctor.config.*'],
       emergentTests: ['app/**/*.test.ts'],
       preCommitSource: ['app/**'],
-      selfHealRefuse: ['.claude/**'],
       tddStrictCandidates: strict,
       tddUnitTests: ['app/**/*.test.ts'],
     },

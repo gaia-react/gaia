@@ -68,14 +68,14 @@
 #
 # gaia_registry_integrity_snapshot
 #   Prints, one per line in registry order, the .gaia/local-relative durable-
-#   state directories (integrity_snapshot the registry declares) the health-
-#   audit snapshots before and after each run: durable, leaf-authored content
+#   state directories (integrity_snapshot the registry declares) a caller
+#   snapshots before and after a run: durable, leaf-authored content
 #   a destructive script can wipe out unnoticed, deliberately excluding
 #   background-churned dirs (debt, telemetry, audit, cache, red-ledger).
-#   Derived from the registry, never hardcoded in the runbook. Prints nothing
+#   Derived from the registry, never hardcoded in a caller. Prints nothing
 #   and returns 1 when the registry cannot be read (see gaia_registry_path).
 #   FAIL-CLOSED CONSUMER CONTRACT: unlike gaia_registry_recognizes (which
-#   fails open by design), the health-audit uses this list as an integrity
+#   fails open by design), an integrity-snapshot caller uses this list as a
 #   TRIPWIRE -- a caller that reads an empty or failed result MUST REFUSE
 #   (stop before hand-back), never proceed with an empty snapshot. An empty
 #   snapshot would diff clean against itself and mask a real deletion, the

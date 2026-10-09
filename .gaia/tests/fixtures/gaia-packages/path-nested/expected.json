@@ -6,10 +6,6 @@
     "tddUnitTests": {
       "match": ["apps/web/app/x.test.ts", "apps/web/app/a/x.test.tsx"],
       "noMatch": ["app/x.test.ts", "apps/app/x.test.ts", "apps/web/x.test.ts"]
-    },
-    "selfHealRefuse": {
-      "match": ["apps/web/.npmrc"],
-      "noMatch": ["apps/web/a/.npmrc"]
     }
   },
   "forPath": {

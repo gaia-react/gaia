@@ -72,18 +72,18 @@ setup() {
     "$ROOT/.claude/agents/code-audit-github-workflows.md"
     "$ROOT/.claude/agents/code-audit-maintainer-node.md"
     "$ROOT/.claude/agents/code-audit-maintainer-shell.md"
-    # The maintainer members' shared protocol file, which carries their
+    # The shared member protocol file, which carries every member's
     # "## Findings sidecar" section in place of their own definitions.
     "$ROOT/.claude/hooks/lib/audit-member-protocol.md"
   )
-  # The frontend and github-workflows members and the protocol file carry the
-  # sidecar section; the maintainer definitions point at the protocol file.
+  # Only the protocol file carries the sidecar section; every member
+  # definition points at it.
   SIDECAR_FILES=(
-    "$ROOT/.claude/agents/code-audit-frontend.md"
-    "$ROOT/.claude/agents/code-audit-github-workflows.md"
     "$ROOT/.claude/hooks/lib/audit-member-protocol.md"
   )
   DELEGATE_FILES=(
+    "$ROOT/.claude/agents/code-audit-frontend.md"
+    "$ROOT/.claude/agents/code-audit-github-workflows.md"
     "$ROOT/.claude/agents/code-audit-maintainer-node.md"
     "$ROOT/.claude/agents/code-audit-maintainer-shell.md"
   )

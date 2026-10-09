@@ -228,7 +228,7 @@ else
   if [ -n "$existing" ]; then
     echo "PR #$existing already open for $branch, pushed the new commit to it."
   else
-    gh pr create --base main --head "$branch" \
+    gh pr create --draft --base main --head "$branch" \
       --title "chore(gaia): update to $LATEST_TAG" \
       --body "Pulls GAIA $LATEST_TAG into the project. Per-file outcomes are in the update summary above."
   fi

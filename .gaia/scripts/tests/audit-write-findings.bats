@@ -485,6 +485,48 @@ write_with_review_base() {
   done
 }
 
+# triage / triage_reason: the maintainer members' below-threshold mark. The
+# writer checks shape only; whether the mark is honored is the dispositions
+# check's call.
+
+@test "triage: true with a reason, and false without one, both write and are preserved" {
+  write "[$(complete_finding | jq -c '.triage = true | .triage_reason = "below threshold"'),$(complete_finding | jq -c '.triage = false')]" >/dev/null
+  [ "$(jq -c '[.findings[] | [.triage, .triage_reason]]' "$EXPECTED")" = '[[true,"below threshold"],[false,null]]' ]
+}
+
+@test "triage: a non-boolean exits 2 naming the offending index and writes nothing" {
+  local bad
+  for bad in '"true"' '1' 'null'; do
+    rm -f "$EXPECTED"
+    run write "[$(complete_finding),$(complete_finding | jq -c ".triage = $bad | .triage_reason = \"r\"")]"
+    [ "$status" -eq 2 ] || { echo "triage=$bad status $status: $output"; return 1; }
+    grep -qF "findings[1]: triage, when present, must be a boolean" <<<"$output" || { echo "$output"; return 1; }
+    [ ! -f "$EXPECTED" ] || return 1
+  done
+}
+
+@test "triage: true with a missing, empty, blank or non-string reason exits 2 and writes nothing" {
+  local reason_filter
+  for reason_filter in 'del(.triage_reason)' '.triage_reason = ""' '.triage_reason = "   "' '.triage_reason = 7'; do
+    rm -f "$EXPECTED"
+    run write "[$(complete_finding | jq -c ".triage = true | $reason_filter")]"
+    [ "$status" -eq 2 ] || { echo "$reason_filter status $status: $output"; return 1; }
+    grep -qF "findings[0]: triage_reason must be a non-empty string when triage is true" <<<"$output" || { echo "$output"; return 1; }
+    [ ! -f "$EXPECTED" ] || return 1
+  done
+}
+
+@test "triage_reason: a non-string without triage exits 2 naming the field" {
+  run write "[$(complete_finding | jq -c '.triage_reason = 3')]"
+  [ "$status" -eq 2 ] || return 1
+  grep -qF "findings[0]: triage_reason, when present, must be a string" <<<"$output"
+}
+
+@test "structural: the writer carries no environment arm" {
+  grep -nE 'GITHUB_ACTIONS|\$\{?CI\b' "$WRITER" && return 1
+  true
+}
+
 # --review light: a separate path and one additive body key, never a clobber of
 # the full round's sidecar.
 

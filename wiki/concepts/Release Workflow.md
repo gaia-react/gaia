@@ -111,7 +111,7 @@ A file's presence in the GAIA source tree (`gaia/.claude/commands/`, etc.) does 
 
 **How to apply:** Before recommending or executing the removal of any file from `gaia/`, check `.gaia/release-exclude` and the release pipeline first. If the file is already excluded from distribution, leave it alone; the boundary is working. Only act when the file is actually leaking through to end users.
 
-**Note:** `gaia/.claude/commands/health-audit.md` is a working maintainer tool already excluded from distribution by `.gaia/release-exclude`. Its presence in the source tree is not grounds for deletion. Check the exclusion list before removing any file.
+**Note:** `gaia/.claude/commands/gaia-release.md` is a working maintainer tool already excluded from distribution by `.gaia/release-exclude`. Its presence in the source tree is not grounds for deletion. Check the exclusion list before removing any file.
 
 ## See also
 

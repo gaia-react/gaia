@@ -6,8 +6,7 @@
 #   The audit reviews the diff from a "base" commit to HEAD. The base is the
 #   most recent ancestor of HEAD whose content is accounted for under the
 #   CURRENT agent version, in one of two ways:
-#     cleared  it passed a CLEAN audit, proven by a GAIA-Audit commit trailer
-#              (locally-stamped), a GAIA-Audit commit status (CI-stamped),
+#     cleared  it passed a CLEAN audit, proven by a GAIA-Audit commit status
 #              or, in the --member form, that member's own earned clearance.
 #     refused  --member form only: that member's own newest refusal, linked
 #              to the open-finding record it left in the re-run ledger. The
@@ -19,7 +18,7 @@
 #   Reviewing only <base>..HEAD is then far cheaper than re-reviewing the
 #   whole origin/main..HEAD diff on every push to an open PR.
 #
-#   That whole-team signal is stamped only when NO dispatched Code Audit
+#   That whole-team signal is posted only when NO dispatched Code Audit
 #   Team member is still pending, which is what makes it trustworthy and
 #   also what caps it: a member that cleared in a round where a sibling was
 #   pending cannot anchor on its own clearance. Naming a member with
@@ -29,7 +28,7 @@
 #   on it, never replaces it.
 #
 #   When no usable ancestor exists, first audit of a PR, every prior run
-#   cancelled or failed (those stamp nothing), a .gaia/VERSION bump
+#   cancelled or failed (those post nothing), a .gaia/VERSION bump
 #   invalidated older audits, or the version file is missing; the helper
 #   emits the main ref so the caller falls back to a full-scope review. A
 #   commit nobody reviewed carries no signal to anchor on, and a refusal
@@ -46,19 +45,15 @@
 #   the block it posts selects its sidecars on the branch, across every base. `--member <name>` is the per-member form; the Code Audit Team's
 #   agent definitions are the only call sites that can name a member.
 #
-#   Reads .gaia/VERSION, HEAD's ancestry, commit trailers, the local audit
-#   store's clearance and refusal records and (--member form, outside GitHub
-#   Actions) its re-run ledger, and (when GH_TOKEN + gh are available) the
-#   GitHub Commit Status API.
+#   Reads .gaia/VERSION, HEAD's ancestry, the local audit store's clearance
+#   and refusal records and (--member form) its re-run ledger, and (when
+#   `gh`, GH_TOKEN and GITHUB_REPOSITORY are all available) the GitHub Commit Status API. A commit-message
+#   trailer on any commit is ignored.
 #
 # Output (stdout), argument-less form
 #   Exactly ONE line, suitable for a `base...HEAD` diff:
 #     <40-hex-sha>: resolved incremental base (an audited PR ancestor)
-#     origin/<base-ref>: fallback: review the full PR diff, scoped to the
-#       branch the PR merges into (GITHUB_BASE_REF, read under Actions only,
-#       which sets it on every pull_request event)
-#     origin/main: the same fallback outside Actions, or when no base ref is
-#       declared
+#     origin/main: the fallback: review the full PR diff
 #     (or main when neither remote-tracking ref resolves)
 #
 # Output (stdout), --member form
@@ -93,7 +88,7 @@
 #     member-clearance    anchored on this member's own earned clearance
 #     member-refusal      anchored on this member's own refusal, linked to
 #                         the open-finding record it left in the ledger
-#     team-signal        anchored on the whole-team trailer/status floor
+#     team-signal        anchored on the whole-team status floor
 #     no-anchor           no usable anchor in range; full scope
 #     rules-reset-global  a global-rules path changed between anchor and HEAD
 #     rules-reset-member  this member's own agent definition changed
@@ -163,10 +158,9 @@
 #   `review: light` marker, and a marker whose body lacks the field, is never
 #   an anchor: it was written from a delta or before the field existed, and a
 #   later full review must start from the last full clearance. The tree rather than the commit
-#   sha is the matching field because the clean-round stamp amends HEAD,
-#   rewriting the sha a moments-old clearance recorded while preserving the
-#   tree; matching on the sha would lose the anchor on exactly the rounds
-#   that earned it. No member digest is ever recomputed at a candidate: the
+#   sha is the matching field because an amend or a rebase rewrites the sha a
+#   moments-old clearance recorded while preserving the tree; matching on the
+#   sha would lose the anchor on exactly the rounds that earned it. No member digest is ever recomputed at a candidate: the
 #   ownership classifier reads the working tree's roster rather than the
 #   candidate commit's, so a recomputed digest can name a value that never
 #   existed at that commit.
@@ -184,7 +178,7 @@
 #   Repairing either property is a human's decision, not this file's.
 #
 # Team-signal arm and review depth, --member form only
-#   The trailer and the status are light-blind by design: they attest that no
+#   The status is light-blind by design: it attests that no
 #   dispatched member is pending, not how deep any review was. So the --member
 #   form anchors on a whole-team signal S only when the local marker store
 #   shows no non-full marker among the in-range candidate trees, scanned
@@ -238,8 +232,7 @@
 #               this refusal's digest, its tree, and the current version; and
 #               it holds at least one open entry for this member.
 #   The ledger is read only through `jq --arg`, for presence and the
-#   provenance fields, and never under GitHub Actions (GITHUB_ACTIONS=true,
-#   and that variable alone), where the store is never present. Without jq or
+#   provenance fields. Without jq or
 #   the key library the link fails rather than degrading. Every reset below
 #   applies to a refusal anchor exactly as to a clearance anchor.
 #
@@ -252,13 +245,13 @@
 #   chained-trust assumption above, not on a proof: the clearance attests the
 #   content at its own tree, and the clearance writer made it account for
 #   every open entry the refusal left. The whole-team floor likewise still
-#   runs past a refusal: the trailer and the status are each stamped only
+#   runs past a refusal: the status is posted only
 #   when no dispatched member is pending, and a member holding a live refusal
 #   IS pending, so a whole-team signal newer than the refused commit is
 #   evidence that the refusal was already resolved (superseded by its author
-#   or retired by a digest rotation). That reasoning inherits the stamping
+#   or retired by a digest rotation). That reasoning inherits the posting
 #   hook's member-pending check, which sits inside a guard with no else arm
-#   and stamps anyway in a degraded environment; the floor is therefore
+#   and posts anyway in a degraded environment; the floor is therefore
 #   sound in the normal case and fail-open in a degraded one.
 #
 # Fail direction: an unloadable library resets to full scope
@@ -372,34 +365,12 @@ fi
 # -----------------------------------------------------------------------------
 
 resolve_main_reference() {
-  # The declared base ref comes first because it names the branch THIS pull
-  # request merges into, which the repository default does not whenever the
-  # pull request is stacked on another branch. Preferring the default there
-  # hands every consumer the base branch's entire divergence as if this pull
-  # request had introduced it, and a finding raised against that history is
-  # indistinguishable, in a member's output, from one against the pull
-  # request's own code.
-  #
-  # Read only under Actions, which is what makes the value trustworthy: there
-  # the event sets it, not whoever invoked the script. This resolver SCOPES a
-  # review, so a value resolving at or near HEAD empties the reviewed delta and
-  # a member then earns a clearance marker having read nothing, a false green
-  # no downstream check can catch because the gate trusts the marker rather
-  # than the scope. A check that can only WIDEN on a bad input may take the
-  # environment; one that decides how much gets read may not. The merge gate's
-  # bypasses reach the opposite conclusion from the same principle and read the
-  # pull request record instead, so neither posture transfers to the other.
-  #
-  # No `gh` fallback for the local case either: this resolver runs from hooks
-  # and agent bootstraps where gh may be absent or unauthenticated, and a base
-  # that resolves only sometimes is worse than one that is always the
-  # repository default, which is what a local run keeps.
-  if [ "${GITHUB_ACTIONS:-}" = "true" ] \
-    && [ -n "${GITHUB_BASE_REF:-}" ] \
-    && git -C "$repo_root" rev-parse --verify --quiet "origin/${GITHUB_BASE_REF}" >/dev/null 2>&1; then
-    printf 'origin/%s' "$GITHUB_BASE_REF"
-    return 0
-  fi
+  # No declared-base-ref arm and no `gh` fallback: this resolver SCOPES a
+  # review, so a base that resolves only sometimes, or one taken from the
+  # environment, could land at or near HEAD, empty the reviewed delta, and let
+  # a member earn a clearance marker having read nothing. It runs from hooks
+  # and agent bootstraps where gh may be absent, and a base that is always the
+  # repository default is the one every run can reproduce.
   if git -C "$repo_root" rev-parse --verify --quiet origin/main >/dev/null 2>&1; then
     printf 'origin/main'
     return 0
@@ -471,33 +442,8 @@ else
 fi
 
 # -----------------------------------------------------------------------------
-# Signal extractors (frozen regex + status shape for the GAIA-Audit trailer).
+# Signal extractor (the GAIA-Audit commit status shape).
 # -----------------------------------------------------------------------------
-
-# Trailer fields: version, frontend-digest (64-hex), tree (40-hex).
-trailer_regex='^GAIA-Audit:[[:space:]]+([^[:space:]]+)[[:space:]]+([0-9a-f]{64})[[:space:]]+([0-9a-f]{40})[[:space:]]*$'
-
-# trailer_version_for <sha> → echoes the (last) GAIA-Audit trailer version on
-# that commit's message, or empty. Reads from a temp file (not a pipe) so the
-# matched value survives in this shell (Bash 3.2 has no lastpipe). Only $1
-# (version) is read here; the base is gated by version match alone.
-trailer_version_for() {
-  local sha="$1" line matched_version="" temporary_file
-  temporary_file=$(mktemp -t gaia-audit-base.XXXXXX) || return 0
-  git -C "$repo_root" log -1 --format='%B' "$sha" 2>/dev/null \
-    | git -C "$repo_root" interpret-trailers --parse > "$temporary_file" 2>/dev/null || true
-  while IFS= read -r line; do
-    case "$line" in
-      GAIA-Audit:*) ;;
-      *) continue ;;
-    esac
-    if [[ "$line" =~ $trailer_regex ]]; then
-      matched_version="${BASH_REMATCH[1]}"
-    fi
-  done < "$temporary_file"
-  rm -f "$temporary_file"
-  printf '%s' "$matched_version"
-}
 
 # status_version_for <sha> → echoes the GAIA-Audit commit status version, or
 # empty. Only a state: success status counts; a non-success status (e.g. a
@@ -681,8 +627,8 @@ if [ "$member_arm" = "true" ] && [ -n "$refused_trees" ]; then
 fi
 
 # -----------------------------------------------------------------------------
-# Team-arm review-depth check, --member form only. The trailer and the status
-# are light-blind by design: they attest that every dispatched member holds a
+# Team-arm review-depth check, --member form only. The status
+# is light-blind by design: it attests that every dispatched member holds a
 # clearance, not how deep any review was, so only the local marker store can say
 # whether a signal stands on full reviews. The scan therefore covers EVERY
 # roster member's earned markers, not only the resolving member's.
@@ -807,14 +753,9 @@ for sha in $candidates; do
   # Only the first (newest) signal is the shared floor. Once it is found a
   # later signal is never read: the walk only continues for the member arm.
   if [ -z "$team_anchor" ]; then
-    trailer_version="$(trailer_version_for "$sha")"
-    if [ -n "$trailer_version" ] && [ "$trailer_version" = "$current_version" ]; then
+    status_version="$(status_version_for "$sha")"
+    if [ -n "$status_version" ] && [ "$status_version" = "$current_version" ]; then
       team_anchor="$sha"
-    else
-      status_version="$(status_version_for "$sha")"
-      if [ -n "$status_version" ] && [ "$status_version" = "$current_version" ]; then
-        team_anchor="$sha"
-      fi
     fi
 
     # Check (b): a member's earned full marker must record the signal's tree.
@@ -891,10 +832,6 @@ refusal_link_holds() {
   local key_base ledger_key ledger_path current_branch provenance_line
   local provenance_digest provenance_tree provenance_version digest_matched="false"
 
-  if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
-    link_failure_cause="the re-run ledger is never read under GitHub Actions"
-    return 1
-  fi
   if ! jq -n 'true' >/dev/null 2>&1; then
     link_failure_cause="jq is unavailable, so the re-run ledger cannot be read"
     return 1

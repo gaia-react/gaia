@@ -48,11 +48,16 @@
 #
 # Output (stdout), one KEY=value per line, in this order:
 #   AUDIT_ROOT FULL_BASE BASE_REF BASE_REASON KEY_REF ANCHOR_TREE BASE_SHA
-#   KEY_BASE AUDIT_KEY ELIG_BASE D_SCOPE, then one FULL_CHANGED=<path> per
+#   KEY_BASE AUDIT_KEY ELIG_BASE D_SCOPE DEFINITION, then one FULL_CHANGED=<path> per
 #   whole-PR path, one CHANGED=<path> per review-scope path, one
 #   ELIG_CHANGED=<path> per eligibility path, one
 #   DIRTY=<status line> per dirty in-scope entry, its path raw rather than
-#   quoted. An unresolved scalar prints with an empty value: AUDIT_KEY is empty
+#   quoted. DEFINITION is `unchanged` when the member's definition under the main
+#   checkout and under the working root are byte-identical (the session already
+#   holds the main checkout's copy in its system prompt), else
+#   `reread <root>/.claude/agents/<member>.md`; a missing main-checkout copy, an
+#   unresolvable main checkout or a compare error also prints `reread`. An
+#   unresolved scalar prints with an empty value: AUDIT_KEY is empty
 #   whenever KEY_BASE or the branch is undeterminable, a detached HEAD among
 #   them, and every artifact keyed on it is skipped fail-open. FULL_BASE is
 #   omitted under --skip-full-base; ELIG_BASE and both eligibility lists are
@@ -254,9 +259,7 @@ printf 'AUDIT_KEY=%s\n' "$AUDIT_KEY"
 eligibility_changed=()
 if [ "$eligibility" -eq 1 ]; then
   pr_branch=""
-  if [ "${GITHUB_ACTIONS:-}" = "true" ] && [ -n "${GITHUB_BASE_REF:-}" ]; then
-    pr_branch="$GITHUB_BASE_REF"
-  elif command -v gh >/dev/null 2>&1; then
+  if command -v gh >/dev/null 2>&1; then
     pr_branch="$( (cd "$root" && gh pr view --json baseRefName --jq '.baseRefName') 2>/dev/null || true)"
   fi
   eligibility_reference=""
@@ -329,6 +332,20 @@ capture_options=(--base-reason "$BASE_REASON")
 D_SCOPE="$("$root/.gaia/scripts/audit-scope-digest.sh" --capture "${capture_options[@]}" --root "$root" --member "$member" --base "$KEY_BASE")" || D_SCOPE=""
 [ -n "$D_SCOPE" ] || printf 'could not capture a scope digest; a gating member'"'"'s earned clearance write will refuse without one\n' >&2
 printf 'D_SCOPE=%s\n' "$D_SCOPE"
+
+# The session loaded the main checkout's copy of the definition, so a member
+# re-reads only when the working root's copy differs from it.
+definition_state="reread $root/.claude/agents/$member.md"
+if [ -f "$self_root/.gaia/scripts/main-root-lib.sh" ]; then
+  # shellcheck source=main-root-lib.sh
+  . "$self_root/.gaia/scripts/main-root-lib.sh"
+  main_checkout_root="$(gaia_resolve_main_root "$root" 2>/dev/null)" || main_checkout_root=""
+  if [ -n "$main_checkout_root" ] \
+    && cmp -s "$main_checkout_root/.claude/agents/$member.md" "$root/.claude/agents/$member.md"; then
+    definition_state="unchanged"
+  fi
+fi
+printf 'DEFINITION=%s\n' "$definition_state"
 
 for path in ${full_changed[@]+"${full_changed[@]}"}; do
   printf 'FULL_CHANGED=%s\n' "$path"

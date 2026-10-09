@@ -12,8 +12,9 @@ bats_require_minimum_version 1.5.0
 #
 #   argument-less   ONE stdout line: the most recent PR ancestor of HEAD that
 #                   passed a clean whole-team audit under the current
-#                   .gaia/VERSION (proven by a GAIA-Audit commit trailer or
-#                   commit status), or the main ref for a full-scope fallback.
+#                   .gaia/VERSION (proven by a GAIA-Audit commit status), or
+#                   the main ref for a full-scope fallback. A commit-message
+#                   trailer is not a signal and is ignored.
 #   --member <name> FOUR stdout lines: the per-member review base, the reason
 #                   token, the shared pull-request-wide base (byte-identical
 #                   to what the argument-less form prints on the same
@@ -21,7 +22,7 @@ bats_require_minimum_version 1.5.0
 #                   refusal that anchored the answer.
 #
 # The base is gated by VERSION MATCH ALONE on both anchor arms: the
-# trailer/status is the three-field C3 form
+# status is the three-field C3 form
 # ("<version> <frontend-digest> <tree>"), of which only the version (field 1)
 # is read here, and a per-member clearance is usable only when its recorded
 # version equals the current one. Once an anchor is found, the delta between
@@ -74,6 +75,11 @@ setup() {
 
   git -C "$SANDBOX" checkout --quiet -b feature
 
+  # Every test posts its whole-team signals through this one mock, so it is
+  # installed here in the parent shell: a fixture that posts a status from a
+  # command substitution could not export PATH or the token to the test.
+  install_gh_mock
+
   # Provision the predicate libs on disk (the resolver sources them from
   # "$repo_root/.claude/hooks/lib/"). NOT committed: they only have to be
   # loadable, never digest input (this script computes no digest). All five
@@ -97,12 +103,11 @@ setup() {
   mkdir -p "$SANDBOX/.gaia/scripts"
   cp "$REPO_ROOT/.gaia/scripts/audit-key-lib.sh" "$SANDBOX/.gaia/scripts/audit-key-lib.sh"
 
-  # Local and CI runs exercise one path: the refusal link reads the ledger only
-  # outside GitHub Actions, and the fallback ref reads GITHUB_BASE_REF only
-  # inside it. A test that needs either sets it itself.
+  # The resolver takes one path whatever the environment; the tests that prove
+  # that export these variables themselves.
   unset GITHUB_ACTIONS CI GITHUB_BASE_REF
 
-  # The trailer/status digest field (C3 field 2) is never compared by this
+  # The status digest field (C3 field 2) is never compared by this
   # script (only the version, field 1, gates the base), so every fixture
   # uses this fixed 64-hex placeholder rather than a recomputed real digest.
   DIGEST="$(printf '%064d' 0)"
@@ -215,28 +220,28 @@ commit_append() {
   git -C "$SANDBOX" commit --quiet -m "touch $path"
 }
 
-# Amend the given commit-ish (default HEAD) with one GAIA-Audit trailer.
-# Only HEAD can be amended cheaply; for older commits the tests amend at the
-# time the commit is HEAD, before stacking further commits.
+# Amend HEAD with one GAIA-Audit trailer. The resolver ignores trailers, so
+# only the cases proving that use it. Only HEAD can be amended cheaply.
 amend_head_with_trailer() {
   git -C "$SANDBOX" commit --amend --no-edit --no-verify \
     --trailer "$1" >/dev/null
 }
 
-# Stamp HEAD with a version-matching whole-team trailer and echo its sha: the
-# clean-round anchor most fixtures below build from. It also records a full
-# review at that tree, as a real clean round does; `stamp_anchor bare` stamps
-# the trailer alone, the shape CI and a fresh clone see.
-stamp_anchor() {
-  amend_head_with_trailer "GAIA-Audit: 1.2.3 ${DIGEST} $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')"
-  [ "${1:-}" = "bare" ] || support_signal_at HEAD
-  sha_of HEAD
+# Post a GAIA-Audit status for HEAD, "<version> <digest> <tree>": the signal the
+# whole-team arm anchors on. It appends to the gh mock's map, so HEAD keeps its
+# sha and several commits can each carry a status.
+status_at_head() {
+  printf '%s=%s\n' "$(sha_of HEAD)" "$1" >> "$MAP"
 }
 
-# Append a raw message to HEAD (for malformed-shape coverage where
-# `--trailer` would normalize the value).
-amend_head_with_raw_message() {
-  git -C "$SANDBOX" commit --amend --no-edit --no-verify -m "$1" >/dev/null
+# Give HEAD a version-matching whole-team status and echo its sha: the
+# clean-round anchor most fixtures below build from. It also records a full
+# review at that tree, as a real clean round does; `stamp_anchor bare` posts
+# the status alone, the shape CI and a fresh clone see.
+stamp_anchor() {
+  status_at_head "1.2.3 ${DIGEST} $(tree_of HEAD)"
+  [ "${1:-}" = "bare" ] || support_signal_at HEAD
+  sha_of HEAD
 }
 
 sha_of() {
@@ -426,72 +431,85 @@ set_origin_reference() {
   git -C "$SANDBOX" update-ref "refs/remotes/origin/$1" "$(git -C "$SANDBOX" rev-parse "$2")"
 }
 
-@test "the pull request's own base ref wins over the repository default" {
-  add_commit a
-  add_commit b
-  set_origin_reference main main
-  set_origin_reference release main
-  export GITHUB_ACTIONS=true GITHUB_BASE_REF=release
-  run --separate-stderr run_in_sandbox
-  [ "$status" -eq 0 ]
-  [ "$output" = "origin/release" ]
-}
-
 @test "no base ref declared → the repository default" {
   add_commit a
   add_commit b
   set_origin_reference main main
-  export GITHUB_ACTIONS=true
-  unset GITHUB_BASE_REF
   run --separate-stderr run_in_sandbox
   [ "$status" -eq 0 ]
   [ "$output" = "origin/main" ]
 }
 
-@test "a base ref naming no remote branch → the repository default" {
-  add_commit a
-  add_commit b
-  set_origin_reference main main
-  export GITHUB_ACTIONS=true GITHUB_BASE_REF=deleted-branch
-  run --separate-stderr run_in_sandbox
-  [ "$status" -eq 0 ]
-  [ "$output" = "origin/main" ]
-}
-
-# The base ref is read only where the event sets it. Outside Actions the
-# variable belongs to whoever invoked the script, and this resolver decides how
-# much of the tree a member reviews: a value resolving at or near HEAD would
-# empty the reviewed delta and let a member earn a clearance having read
-# nothing.
-@test "a base ref declared outside Actions is ignored" {
+# This resolver decides how much of the tree a member reviews: a base taken from
+# the environment that resolved at or near HEAD would empty the reviewed delta
+# and let a member earn a clearance having read nothing, so a declared base ref
+# is ignored whether or not the event variables claim to be Actions.
+@test "a declared base ref is ignored, with or without GITHUB_ACTIONS" {
   add_commit a
   add_commit b
   set_origin_reference main main
   set_origin_reference release main
-  unset GITHUB_ACTIONS
   export GITHUB_BASE_REF=release
+  unset GITHUB_ACTIONS
+  run --separate-stderr run_in_sandbox
+  [ "$status" -eq 0 ]
+  [ "$output" = "origin/main" ]
+  export GITHUB_ACTIONS=true
   run --separate-stderr run_in_sandbox
   [ "$status" -eq 0 ]
   [ "$output" = "origin/main" ]
 }
 
-@test "trailer on parent with matching version → parent SHA" {
+@test "stdout is identical with the CI variables exported and without them, in both forms" {
+  local plain with_ci
   add_commit a
-  amend_head_with_trailer "GAIA-Audit: 1.2.3 ${DIGEST} $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')"
-  base="$(sha_of HEAD)"
   add_commit b
+  set_origin_reference main main
+  set_origin_reference release main
   run --separate-stderr run_in_sandbox
-  [ "$status" -eq 0 ]
-  [ "$output" = "$base" ]
+  [ "$output" = "origin/main" ]
+  plain="$output"
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  plain="$plain|$output"
+  export CI=true GITHUB_ACTIONS=true GITHUB_BASE_REF=release
+  run --separate-stderr run_in_sandbox
+  with_ci="$output"
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  with_ci="$with_ci|$output"
+  [ -n "$plain" ]
+  [ "$plain" = "$with_ci" ]
 }
 
-@test "trailer on parent with version mismatch → main ref" {
+# A trailer is not a signal: a branch whose history carries one, and no status
+# or clearance for the current tree, resolves exactly as the same branch without.
+@test "a GAIA-Audit trailer on the parent is ignored: resolves as the branch without it" {
   add_commit a
-  amend_head_with_trailer "GAIA-Audit: 9.9.9 ${DIGEST} $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')"
   add_commit b
   run --separate-stderr run_in_sandbox
   [ "$status" -eq 0 ]
   [ "$output" = "main" ]
+  without_trailer_stderr="$stderr"
+
+  amend_head_with_trailer "GAIA-Audit: 1.2.3 ${DIGEST} $(tree_of HEAD)"
+  add_commit c
+  run --separate-stderr run_in_sandbox
+  [ "$status" -eq 0 ]
+  [ "$output" = "main" ]
+  [ "${stderr%%$'\n'*}" = "${without_trailer_stderr%%$'\n'*}" ]
+  grep -qF "reason=no-anchor" <<<"$stderr"
+}
+
+@test "a GAIA-Audit trailer is ignored in the member form too" {
+  add_commit a
+  amend_head_with_trailer "GAIA-Audit: 1.2.3 ${DIGEST} $(tree_of HEAD)"
+  support_signal_at HEAD
+  add_commit b
+
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  [ "$status" -eq 0 ]
+  [ "$(member_base)" = "main" ]
+  [ "$(member_reason)" = "no-anchor" ]
+  [ "$(member_shared_base)" = "main" ]
 }
 
 # -----------------------------------------------------------------------------
@@ -500,10 +518,10 @@ set_origin_reference() {
 
 @test "newest audited commit wins over an older audited commit" {
   add_commit a
-  amend_head_with_trailer "GAIA-Audit: 1.2.3 ${DIGEST} $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')"
+  status_at_head "1.2.3 ${DIGEST} $(tree_of HEAD)"
   older="$(sha_of HEAD)"
   add_commit b
-  amend_head_with_trailer "GAIA-Audit: 1.2.3 ${DIGEST} $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')"
+  status_at_head "1.2.3 ${DIGEST} $(tree_of HEAD)"
   newer="$(sha_of HEAD)"
   add_commit c
   run --separate-stderr run_in_sandbox
@@ -533,25 +551,26 @@ set_origin_reference() {
 }
 
 # -----------------------------------------------------------------------------
-# 7. Newest signal wins regardless of kind (trailer newer than status)
+# 7. A trailer newer than a status does not displace it
 # -----------------------------------------------------------------------------
 
-@test "newer trailer beats an older status" {
+@test "a newer trailer does not displace an older status" {
   add_commit a
   status_sha="$(sha_of HEAD)"
+  status_at_head "1.2.3 ${DIGEST} $(tree_of HEAD)"
   add_commit b
-  amend_head_with_trailer "GAIA-Audit: 1.2.3 ${DIGEST} $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')"
+  amend_head_with_trailer "GAIA-Audit: 1.2.3 ${DIGEST} $(tree_of HEAD)"
   trailer_sha="$(sha_of HEAD)"
   add_commit c
-  install_gh_mock "${status_sha}=1.2.3 ${DIGEST} $(git -C "$SANDBOX" rev-parse "${status_sha}^{tree}")"
   run --separate-stderr run_in_sandbox
   [ "$status" -eq 0 ]
-  [ "$output" = "$trailer_sha" ]
+  [ "$output" = "$status_sha" ]
+  [ "$output" != "$trailer_sha" ]
 }
 
 @test ".gaia/VERSION missing → main ref" {
   add_commit a
-  amend_head_with_trailer "GAIA-Audit: 1.2.3 ${DIGEST} $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')"
+  status_at_head "1.2.3 ${DIGEST} $(tree_of HEAD)"
   add_commit b
   rm "$SANDBOX/.gaia/VERSION"
   git -C "$SANDBOX" add -A
@@ -563,7 +582,7 @@ set_origin_reference() {
 
 @test ".gaia/VERSION empty → main ref" {
   add_commit a
-  amend_head_with_trailer "GAIA-Audit: 1.2.3 ${DIGEST} $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')"
+  status_at_head "1.2.3 ${DIGEST} $(tree_of HEAD)"
   add_commit b
   : > "$SANDBOX/.gaia/VERSION"
   git -C "$SANDBOX" add -A
@@ -573,9 +592,9 @@ set_origin_reference() {
   [ "$output" = "main" ]
 }
 
-@test "matching trailer on HEAD is not used as its own base" {
+@test "matching status on HEAD is not used as its own base" {
   add_commit a
-  amend_head_with_trailer "GAIA-Audit: 1.2.3 ${DIGEST} $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')"
+  status_at_head "1.2.3 ${DIGEST} $(tree_of HEAD)"
   run --separate-stderr run_in_sandbox
   [ "$status" -eq 0 ]
   [ "$output" = "main" ]
@@ -592,24 +611,13 @@ set_origin_reference() {
   [ "$output" = "main" ]
 }
 
-@test "malformed trailer (short digest) on parent is ignored → main ref" {
-  add_commit a
-  amend_head_with_raw_message "a
-
-GAIA-Audit: 1.2.3 abc123 $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')
-"
-  add_commit b
-  run --separate-stderr run_in_sandbox
-  [ "$status" -eq 0 ]
-  [ "$output" = "main" ]
-}
-
-@test "no GH_TOKEN → status path skipped, no trailer → main ref" {
+@test "no GH_TOKEN → status path skipped → main ref" {
   add_commit a
   base="$(sha_of HEAD)"
+  status_at_head "1.2.3 ${DIGEST} $(tree_of HEAD)"
   add_commit b
-  # A status exists in principle, but without GH_TOKEN the helper never
-  # queries it; with no trailer either, it falls back to main.
+  # A status exists, but without GH_TOKEN the helper never queries it, so it
+  # falls back to main.
   unset GH_TOKEN || true
   unset GITHUB_REPOSITORY || true
   run --separate-stderr run_in_sandbox
@@ -651,7 +659,7 @@ GAIA-Audit: 1.2.3 abc123 $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')
 
 @test "RT-006: a machinery change between the version-matching base and HEAD resets to full scope" {
   add_commit a
-  amend_head_with_trailer "GAIA-Audit: 1.2.3 ${DIGEST} $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')"
+  status_at_head "1.2.3 ${DIGEST} $(tree_of HEAD)"
   add_machinery_commit
 
   run --separate-stderr run_in_sandbox
@@ -667,7 +675,7 @@ GAIA-Audit: 1.2.3 abc123 $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')
 
 @test "RT-006: a non-machinery follow-up commit does not reset the base" {
   add_commit a
-  amend_head_with_trailer "GAIA-Audit: 1.2.3 ${DIGEST} $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')"
+  status_at_head "1.2.3 ${DIGEST} $(tree_of HEAD)"
   base="$(sha_of HEAD)"
   add_commit b
 
@@ -689,7 +697,7 @@ GAIA-Audit: 1.2.3 abc123 $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')
 
 @test "classifier/machinery libs unavailable resets to full scope" {
   add_commit a
-  amend_head_with_trailer "GAIA-Audit: 1.2.3 ${DIGEST} $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')"
+  status_at_head "1.2.3 ${DIGEST} $(tree_of HEAD)"
   base="$(sha_of HEAD)"
   add_machinery_commit
   rm -f "$SANDBOX/.claude/hooks/lib/audit-scope.sh" \
@@ -714,7 +722,7 @@ GAIA-Audit: 1.2.3 abc123 $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')
 
 @test "RT-006: a machinery change on a non-ASCII path resets to full scope" {
   add_commit a
-  amend_head_with_trailer "GAIA-Audit: 1.2.3 ${DIGEST} $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')"
+  status_at_head "1.2.3 ${DIGEST} $(tree_of HEAD)"
   add_non_ascii_machinery_commit
 
   run --separate-stderr run_in_sandbox
@@ -794,7 +802,7 @@ GAIA-Audit: 1.2.3 abc123 $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')
 # be masked by the first.
 # -----------------------------------------------------------------------------
 
-# Stamp an anchor, commit an append to <path>, and assert the member form reset
+# Post an anchor status, commit an append to <path>, and assert the member form reset
 # globally and named the path.
 assert_global_reset_for() {
   local path="$1" base
@@ -853,7 +861,7 @@ assert_global_reset_for() {
 @test "merely-shared machinery resets nobody in the member form" {
   add_commit a
   base="$(stamp_anchor)"
-  commit_append ".claude/hooks/lib/audit-selfheal-paths.sh"
+  commit_append ".claude/hooks/lib/cross-repo-refusal.sh"
   commit_append ".github/audit/resolve-check-base.sh"
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
@@ -894,11 +902,11 @@ assert_global_reset_for() {
 }
 
 # -----------------------------------------------------------------------------
-# Both signal arms drive the reset. Only the trailer arm was covered before, so
-# the status arm could have regressed with the suite green.
+# The status arm drives the reset, exercised through the mock that returns a
+# full statuses array, so the production state filter runs too.
 # -----------------------------------------------------------------------------
 
-@test "the reset fires on the commit-status arm exactly as on the trailer arm" {
+@test "the reset fires on the commit-status arm" {
   add_commit a
   base="$(sha_of HEAD)"
   base_tree="$(tree_of HEAD)"
@@ -915,7 +923,7 @@ assert_global_reset_for() {
   grep -qF ".claude/rules/quality-gate.md" <<<"$stderr"
 }
 
-@test "the status arm anchors the member form when no trailer exists" {
+@test "the status arm anchors the member form" {
   add_commit a
   base="$(sha_of HEAD)"
   base_tree="$(tree_of HEAD)"
@@ -1016,8 +1024,8 @@ assert_global_reset_for() {
 }
 
 # -----------------------------------------------------------------------------
-# The clean-round stamp amends HEAD, rewriting the sha a moments-old clearance
-# recorded while preserving the tree. Matching on the tree is what survives it.
+# An amend rewrites the sha a moments-old clearance recorded while preserving
+# the tree. Matching on the tree is what survives it.
 # -----------------------------------------------------------------------------
 
 @test "a clearance still anchors after an amend rewrites the commit sha" {
@@ -1335,12 +1343,12 @@ assert_refusal_fallback() {
   assert_refusal_fallback "no review-coverage proof"
 }
 
-@test "refusal link: the ledger is never read under GitHub Actions" {
+@test "refusal link: the ledger is read with GITHUB_ACTIONS and CI exported" {
   require_jq
   build_linked_refusal
-  export GITHUB_ACTIONS=true
+  export GITHUB_ACTIONS=true CI=true
   run --separate-stderr run_member "$DEFAULT_MEMBER"
-  assert_refusal_fallback "never read under GitHub Actions"
+  assert_refusal_anchor
 }
 
 @test "refusal link: CI=true outside GitHub Actions still reads the ledger" {
@@ -1595,8 +1603,8 @@ assert_refusal_fallback() {
 }
 
 # The whole-team floor is deliberately NOT disabled by a refusal, and this
-# probe pins that as decided rather than accidental. The trailer and the status
-# are each stamped only when no dispatched member is pending, and a member
+# probe pins that as decided rather than accidental. The status is
+# posted only when no dispatched member is pending, and a member
 # holding a live refusal IS pending, so a whole-team signal at or newer than
 # the refused commit is evidence the refusal was already resolved (superseded
 # by its author, or retired by a digest rotation).
@@ -1617,8 +1625,8 @@ assert_refusal_fallback() {
 
 # -----------------------------------------------------------------------------
 # Review depth. Only a marker carrying `review: full` anchors, in the member
-# arm and, through the store scan, in the team-signal arm: the trailer and the
-# status are light-blind, so the resolver itself refuses to anchor the team arm
+# arm and, through the store scan, in the team-signal arm: the
+# status is light-blind, so the resolver itself refuses to anchor the team arm
 # past a non-full clearance of ANY member, or where no full review is on record.
 # -----------------------------------------------------------------------------
 
@@ -1658,7 +1666,7 @@ assert_refusal_fallback() {
   [ "$(member_anchor_tree)" = "$full_tree" ]
 }
 
-@test "review depth: a trailer on a light-cleared commit does not anchor the team arm" {
+@test "review depth: a status on a light-cleared commit does not anchor the team arm" {
   require_jq
   add_commit a
   full_sha="$(sha_of HEAD)"
@@ -1678,7 +1686,7 @@ assert_refusal_fallback() {
   [ "$(member_shared_base)" = "$light_sha" ]
 }
 
-@test "review depth: the same trailer anchors when the clearance at it is full" {
+@test "review depth: the same status anchors when the clearance at it is full" {
   require_jq
   add_commit a
   write_clearance "$DEFAULT_MEMBER" earned "$(tree_of HEAD)" 1.2.3 full >/dev/null
@@ -2476,7 +2484,7 @@ assert_characterization_count() {
 @test "reason token: machinery-reset" {
   add_commit a
   stamp_anchor >/dev/null
-  commit_append ".claude/hooks/lib/audit-selfheal-paths.sh"
+  commit_append ".claude/hooks/lib/cross-repo-refusal.sh"
   run --separate-stderr run_in_sandbox
   [ "$status" -eq 0 ]
   grep -qF "reason=machinery-reset" <<<"$stderr"

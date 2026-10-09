@@ -88,6 +88,14 @@ case "$1 ${2-}" in
       cat "$stub_directory/pr-view-fails" >&2
       exit 1
     fi
+    # The draft-state read before a flip answers from is-draft (true unless a
+    # case plants false), apart from the record the other reads share.
+    case " $* " in
+      *" isDraft "*)
+        cat "$stub_directory/is-draft" 2>/dev/null || printf 'true\n'
+        exit 0
+        ;;
+    esac
     # A numbered read answers from numbered-record.json when a case planted
     # one, modelling a head that moved after the unnumbered record read.
     if [[ "${3-}" =~ ^[0-9]+$ ]] && [ -f "$stub_directory/numbered-record.json" ]; then
@@ -96,6 +104,12 @@ case "$1 ${2-}" in
     fi
     [ -f "$stub_directory/record.json" ] || { echo 'no pull requests found for branch "feature"' >&2; exit 1; }
     answer "$(cat "$stub_directory/record.json")"
+    exit 0
+    ;;
+  "pr ready")
+    # The draft flip after a posted status; a case plants ready-fails to make
+    # it refuse.
+    [ ! -f "$stub_directory/ready-fails" ] || exit 1
     exit 0
     ;;
   "api "*)

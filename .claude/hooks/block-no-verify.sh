@@ -23,10 +23,10 @@
 # text contained `commit` plus a `-n` flag tripped, even when `git` was not the
 # program being run.
 #
-# No carve-out is needed for GAIA's own legitimate --no-verify automation
-# (the audit-stamp trailer): it passes --no-verify inside its own script, and
-# this guard reads only the command the agent typed, never what an invoked
-# script runs, so it never sees the flag. Do not "fix" the missing carve-out, there is no bug.
+# No carve-out is needed for a GAIA script that passes --no-verify inside
+# itself: this guard reads only the command the agent typed, never what an
+# invoked script runs, so it never sees the flag. Do not "fix" the missing
+# carve-out, there is no bug.
 #
 # Residual fail-closed edge: a bypass token written literally INSIDE a commit
 # message (e.g. `git commit -m "use --no-verify"`) still over-blocks. That is

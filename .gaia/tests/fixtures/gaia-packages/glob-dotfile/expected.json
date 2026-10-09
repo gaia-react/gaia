@@ -3,7 +3,7 @@
   "source": "registry",
   "list": [["frontend", "frontend"]],
   "globs": {
-    "selfHealRefuse": {
+    "doctorConfigs": {
       "match": [
         "frontend/.npmrc",
         "frontend/.env.example",

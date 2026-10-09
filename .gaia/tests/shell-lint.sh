@@ -31,10 +31,12 @@
 # release tarball by the `.gaia/tests` entry in `.gaia/release-exclude`.
 #
 # Why a gate and not just the audit agent: the code-audit-maintainer-shell agent
-# already treats shellcheck as an authoritative oracle, but it is dispatched by a
-# model and is advisory-only, so nothing *enforces* a clean tree. Hand-applied
-# linting regresses silently. This is the deterministic backstop; the agent keeps
-# the lenses shellcheck cannot model (hook fail-open, stdin-JSON shape,
+# is model-dispatched, so nothing deterministic enforces a clean tree through
+# it. Hand-applied linting regresses silently. This is the deterministic
+# backstop: `verify-harness.sh branch` runs it before the first member
+# dispatch and `verify-harness.sh round` runs it in every audit round, so a
+# member is dispatched on a tree that already passed it. The agent keeps the
+# lenses shellcheck cannot model (hook fail-open, stdin-JSON shape,
 # `jq -n` injection safety).
 #
 # Two severity floors over three discovery passes, because the file types carry
@@ -485,7 +487,7 @@ run_guard() {
 # empty-array abort -- a bare "${arr[@]}" over an EMPTY array aborts under
 # `set -u`, exiting a hook before it can emit its deny JSON. Running it here
 # means every shell-lint caller -- plan per-phase gates, the
-# code-audit-maintainer-shell oracle, CI shell-lint.yml, and manual runs --
+# verify-harness.sh (branch and round), CI shell-lint.yml, and manual runs --
 # enforces the class locally, not only the Audit CI Tests job. Run from
 # the repo root so its cwd-relative .claude/hooks/*.sh scan resolves.
 echo "--> lint-hook-array-guard (bash-3.2 empty-array class under set -u)"

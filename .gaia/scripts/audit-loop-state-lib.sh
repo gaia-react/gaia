@@ -550,7 +550,7 @@ _gaia_loop_disposed() {
   k=1
   while [ "$k" -lt "$3" ]; do
     if [ -f "$run/dispositions-$k.json" ]; then
-      round_disposed="$(jq -c '[.entries[] | select(.disposition == "accept-residual" or .disposition == "waive-out-of-scope" or .disposition == "file")
+      round_disposed="$(jq -c '[.entries[] | select(.disposition == "accept-residual" or .disposition == "waive-out-of-scope" or .disposition == "file" or .disposition == "divert")
         | [.member, .finding_class, .path, .line]]' <"$run/dispositions-$k.json" 2>/dev/null)" || round_disposed=""
       [ -n "$round_disposed" ] && accumulated="$(jq -n -c --argjson accumulated "$accumulated" --argjson round_disposed "$round_disposed" '$accumulated + $round_disposed')"
     fi

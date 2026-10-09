@@ -8,7 +8,7 @@ Calling `/gaia-audit` is the intent to audit. The default researches, then gates
 
 **Stage 2 also files out-of-scope findings; the main conversation then publishes.** The run does the same full flow /update-deps and /gaia-debt do, one up-front decision (the gate, or the preview in those skills) and then it drives autonomously to merge. Two mechanical additions ride the finalizing path (gated Apply, 0-action auto-apply, and `--apply`), never the Decline path:
 
-1. **Stage 2 files every out-of-scope finding Stage 1 recorded as a `tech-debt` issue** (`## Dispose out-of-scope findings (Stage 2)`). It files, it does not fix, mirroring the code-audit-frontend disposition contract. This is why an out-of-scope problem the audit surfaces but cannot fix with its four action types gets a durable home instead of a Summary line no one reads once the run auto-merges.
+1. **Stage 2 files every out-of-scope finding Stage 1 recorded as a `tech-debt` issue** (`## Dispose out-of-scope findings (Stage 2)`). It files, it does not fix. This is why an out-of-scope problem the audit surfaces but cannot fix with its four action types gets a durable home instead of a Summary line no one reads once the run auto-merges.
 2. **After Stage 2 returns, the main conversation commits, opens a PR, and merges it** (`## Publish (commit / PR / merge)`), exactly as /update-deps Phase 8 and /gaia-debt's "Drive the PR to merge." The `gh pr merge` gate hooks fire in the invoking session, so the merge is driven from the main conversation, not the Stage 2 subagent. **Stage 2 never commits.** Publish auto-skips when Stage 2 reports an empty diff footprint (a memory-only or 0-action run changed no in-repo file).
 
 ### Path resolution (portable, no hardcoding)
@@ -341,7 +341,7 @@ One fenced YAML block per finding:
   suggested_fix: {one line, e.g. "run /gaia-wiki" for wiki-internal redundancy, a page-vs-page conflict, a dead repo path, or a broken wikilink, or a specific rewrite}
   footprint: {narrow | wide, narrow when the fix is a single logical unit confined to one file with no cross-module ripple, else wide}
   difficulty: {easy | medium | hard, graded against the rubric in .claude/skills/file-tech-debt/SKILL.md, assigned at filing time, not by a later pass}
-  security_sensitive: {true only if the finding's CONTENT reads as a security concern or is secret-shaped, else false; see the divergence note in "## Dispose out-of-scope findings"}
+  security_sensitive: {true only if the finding's CONTENT reads as a security concern or is secret-shaped, else false; the filing script's `security` field takes this value, see "### Dispose out-of-scope findings (Stage 2)"}
   ```
 <!-- gaia:maintainer-only:start -->
 
@@ -507,19 +507,19 @@ This verification is the single authority for the report's terminal `status`: af
 
 ### Dispose out-of-scope findings (Stage 2)
 
-After applying the in-scope actions, file every finding in the report's `## Out-of-scope findings` section as a `tech-debt` issue. This is the audit's equivalent of the code-audit-frontend disposition contract: **you file, you never fix**, and never edit the working tree for one. If that report section reads `None.`, skip this step entirely.
+After applying the in-scope actions, file every finding in the report's `## Out-of-scope findings` section as a `tech-debt` issue: **you file, you never fix**, and never edit the working tree for one. If that report section reads `None.`, skip this step entirely.
 
-Follow `.claude/agents/code-audit-frontend.md` section **C** (backend probe: definitive-absent → file nothing, note it, continue; transient → note and continue) for the backend probe. Follow the **file-tech-debt** skill (`.claude/skills/file-tech-debt/SKILL.md`) for building the dedup key, the dedup query, creating with `--body-file`, the idempotent labels, and the `file:line` + failure-mode + suggested-fix body, and for touching the debt-count sentinel (`mkdir -p .gaia/local/debt && : > .gaia/local/debt/refresh-requested`). Reuse that procedure verbatim, do not re-derive it. **Skip E.7** (recording the disposition against the marker, which applies only to the agent's own clearance flow).
+Filing goes through `.gaia/scripts/file-tech-debt.sh` and nothing else; the file-tech-debt skill (`.claude/skills/file-tech-debt/SKILL.md`, section 0) owns the security screen, the issue-backend check, the dedup, the labels and the divert. For each finding, write one finding JSON to a scratch file under `.gaia/local/audit/` and run, with one outcome file for the whole run:
 
-Two audit-specific rules override the agent's defaults; do NOT "fix" them back to the agent's shape:
+```bash
+bash .gaia/scripts/file-tech-debt.sh file --finding <finding.json> --outcome-file .gaia/local/audit/filing-outcomes-<unique>.jsonl
+```
 
-- **Screen on `security_sensitive`, never on the class.** A finding is security-class **only** when its block's `security_sensitive: true` (its content reads as a security concern or is secret-shaped), never merely because it carries `holistic/unclassified`, which is the expected class for an audit finding (knowledge/doc hygiene maps to no seeded class by construction). This is the agent's own rule rather than an audit-specific carve-out: `.claude/agents/code-audit-frontend.md` section B screens on content and severity and excludes the fallback class as a trigger, precisely because a class-keyed screen would divert every finding and file nothing on a public repo. Screen on the flag, then apply the agent's **section D** visibility gate (PUBLIC/INTERNAL → divert, never a public issue; confirmed PRIVATE → file through E).
-- **Build the dedup key from the block's own fields:** `<!-- gaia-debt-key: v1 class=<finding_class> path=<path> line=<line> -->` from the block's `finding_class` (or `holistic/unclassified`), `path`, and `line`. Dedup per the file-tech-debt skill's dedup procedure (open + declined-closed + keyless `path:line` fallback) so a repeated audit never re-files a standing wiki-internal problem. Map `severity` → the `severity:<tier>` label, map `difficulty` → the `difficulty:<grade>` label, and map the block's `footprint` → the `footprint:<class>` label. Run the skill's blocking pre-file metadata check (`.gaia/scripts/check-debt-issue-metadata.sh --pre-file`) on the assembled label set and body before creating, and do not file on a finding.
-<!-- gaia:maintainer-only:start -->
-  Maintainer repository only: also map the block's `audience` field → the `audience:<side>` label.
-<!-- gaia:maintainer-only:end -->
+Map the block's fields onto the finding JSON as follows; the mapping is the whole audit-specific part:
 
-Record the filed / diverted / deduped counts for the final summary. A backend-absent or transient `gh` failure is never fatal: file what you can, note the rest, and let the main conversation publish regardless.
+- `member` is the literal `gaia-audit`; `finding_class` (or `holistic/unclassified`), `path`, `line`, `title`, `failure_mode`, `suggested_fix`, `footprint` and `audience` carry over by name; `difficulty` becomes `grade`; `severity` (`critical | important | suggestion`) becomes `issue_severity` (`Critical | Important | Suggestion`); `security_sensitive` becomes `security`, set from the block's flag alone, since `holistic/unclassified` is the expected class for a doc finding and never a trigger.
+
+Record the filed, diverted and deduped counts (the script's stdout words: `filed <n>`, `diverted <count> <record-path>`, `absent`, `transient`, `failed <reason>`) for the final summary. `absent` and `transient` are never fatal: file what you can, note the rest, and let the main conversation publish regardless. A diverted finding is reported as a count and a record path only.
 
 ### Post-flight
 
@@ -591,13 +591,13 @@ Otherwise the working tree carries the applied `wiki/` / `.claude/` / `CLAUDE.md
    git commit -F <commit-message-file>
    ```
 
-   Subject: `chore(audit): <concise summary of what was pruned / shrunk / promoted>`. The diff is expected to touch only out-of-scope surfaces (`wiki/`, `.claude/`, root `CLAUDE.md`), in which case the PR clears the merge gate through the PR Merge Workflow's **out-of-scope bypass** with no `code-audit-frontend` marker. Do not assume it. Before `gh pr merge`, run
+   Subject: `chore(audit): <concise summary of what was pruned / shrunk / promoted>`. The diff is expected to touch only out-of-scope surfaces (`wiki/`, `.claude/`, root `CLAUDE.md`), in which case the PR clears the merge gate through the **out-of-scope bypass** (`wiki/concepts/Audit Gate Reference.md`, `#### Signals`) with no `code-audit-frontend` marker. Do not assume it. Before `gh pr merge`, run
 
    ```bash
    bash .gaia/scripts/resolve-audit-members.sh
    ```
 
-   Empty output confirms the bypass applies and no marker is owed (this also covers the rare case of an audit edit to a nested `CLAUDE.md` under an in-scope path such as `frontend/app/`, which would otherwise silently defeat the bypass). If it names any member, spawn each member it names and complete the marker handshake in `wiki/concepts/PR Merge Workflow.md` like any in-scope PR; once that page's `#### Posting the status last` conditions hold, post the status yourself, `bash .claude/hooks/post-audit-status.sh <path to a current member marker>`, before `gh pr merge`. Run the Quality Gate first **only** if the applied diff touched a gate-affecting file (`.ts|tsx|js|jsx|mjs|cjs|css` or gate config); a docs-only audit diff has nothing for it to check.
+   Empty output confirms the bypass applies and no marker is owed (this also covers the rare case of an audit edit to a nested `CLAUDE.md` under an in-scope path such as `frontend/app/`, which would otherwise silently defeat the bypass). If it names any member, dispatch the `audit-loop-unit` agent per `wiki/concepts/PR Merge Workflow.md` `## Dispatch the audit loop unit` like any in-scope PR (a one-round, no-fix audit costs the unit nothing extra), then post the status per `#### Posting the status last` before `gh pr merge`. Run the Quality Gate first **only** if the applied diff touched a gate-affecting file (`.ts|tsx|js|jsx|mjs|cjs|css` or gate config); a docs-only audit diff has nothing for it to check.
    <!-- gaia:maintainer-only:start -->
 
    Then clear the **CHANGELOG gate** per `wiki/concepts/PR Merge Workflow.md`: decide whether the change warrants a `## [Unreleased]` entry (pure pruning / consolidation is usually an internal, no-entry change; a rule or concept-page behavior change is worthy) and, if so, land it on the branch before merging (HEAD moves, so any bypass/marker must still cover the new HEAD). Scrubbed from adopter bundles.
@@ -607,7 +607,7 @@ Otherwise the working tree carries the applied `wiki/` / `.claude/` / `CLAUDE.md
 
    ```bash
    git push -u origin <branch-name>
-   gh pr create --title "<commit subject>" --body-file <report-summary-file>
+   gh pr create --draft --title "<commit subject>" --body-file <report-summary-file>
    gh pr merge <N> --squash --delete-branch --auto
    ```
 

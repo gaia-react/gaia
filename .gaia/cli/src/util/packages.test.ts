@@ -20,9 +20,11 @@ import path from 'node:path';
 import {
   CORPUS_DIRECTORY,
   corpusDisagreements,
+  LEFTOVER_KEY_CASE,
   listCorpusCases,
   materializeCase,
   readExpected,
+  retiredGlobsKey,
 } from './gaia-packages-corpus-fixture.js';
 import type {CorpusReader} from './gaia-packages-corpus-fixture.js';
 import {writeFrontendRegistry} from './package-fixture.js';
@@ -97,6 +99,17 @@ describe('corpus conformance', () => {
         READER
       )
     ).toEqual(['for_path [frontend/app/x.ts]: want [ios], got [frontend]']);
+  });
+});
+
+describe('a retired globs key', () => {
+  test('a descriptor still carrying it loads and the key is absent from the output', () => {
+    const retiredKey = retiredGlobsKey();
+    const result = loadPackages(rootFor(LEFTOVER_KEY_CASE));
+
+    expect(retiredKey).not.toBe('');
+    expect(result.ok).toBe(true);
+    expect(JSON.stringify(result)).not.toContain(retiredKey);
   });
 });
 

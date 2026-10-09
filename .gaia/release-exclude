@@ -14,9 +14,7 @@
 # /gaia-release cuts releases of the GAIA template itself; adopters never
 # release GAIA. The release-notes skill translates GAIA's CHANGELOG into
 # public release notes for the marketing site, a release-time maintainer
-# task, so it ships nowhere just like /gaia-release. /health-audit is the
-# maintainer-only autonomous audit + auto-heal loop (runbook lives under
-# .gaia/cli/health/, already excluded wholesale via category 10). Other
+# task, so it ships nowhere just like /gaia-release. Other
 # /gaia-* commands (plan, audit) are adopter-useful and
 # must NOT be added here. The two code-audit-maintainer-* agents are
 # the Code Audit Team's maintainer-only members (framework shell + framework
@@ -25,7 +23,6 @@
 # ship-or-withhold audit over newly-shipping files; it drives the
 # maintainer-only release CLI and has no meaning on an adopter clone.
 .claude/commands/gaia-release.md
-.claude/commands/health-audit.md
 .claude/skills/release-notes
 .claude/agents/code-audit-maintainer-shell.md
 .claude/agents/code-audit-maintainer-node.md
@@ -116,8 +113,6 @@
 .gaia/scripts/bats-suites-for-change.sh
 # Appends light-review routing events to a local log and tallies it. Adopters record nothing, and the tally reads a log only the maintainer repo ever writes, so an adopter clone would carry a script nothing invokes. Its shipped callers sit inside maintainer-only blocks the bundle-time scrub removes.
 .gaia/scripts/audit-light-telemetry.sh
-# Shared report, handshake and sidecar protocol read only by the two maintainer-only code-audit-maintainer-* members, which this category already withholds
-.claude/hooks/lib/audit-member-protocol.md
 # Deterministic lint over GAIA's own framework shell; every runner (shell-lint.sh and its sibling bats suite) is release-excluded, so an adopter clone would carry a check nothing invokes.
 .gaia/scripts/lint-hook-array-guard.sh
 # Invariant check over the audit agent definitions; its only runner is its own release-excluded bats suite, so an adopter clone would carry a check nothing invokes.
@@ -297,11 +292,10 @@ frontend/.playwright/e2e/react-perf-smoke.spec.ts
 .github/workflows/shell-lint.yml
 .github/forensics
 
-# --- 10. Maintainer-only health-audit infrastructure ---
-# `.gaia/cli/health/` holds the audit taxonomy, run state, and (post-#97)
-# the orchestrator's per-cycle outputs. Only maintainers run health audits
-# against the GAIA template; adopters audit their own app via the standard
-# `code-review-audit` agent.
+# --- 10. Maintainer-only distribution-boundary taxonomy ---
+# `.gaia/cli/health/` holds the distribution-boundary taxonomy the release
+# scrub names. Only maintainers audit the GAIA template's own boundary;
+# adopters audit their own app via the standard `code-audit-frontend` agent.
 .gaia/cli/health
 
 # --- 11. Maintainer-only project governance ---

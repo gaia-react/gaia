@@ -33,12 +33,14 @@ const PRODUCER_SCRIPT = path.join(
 const SEEDED_FINDING = {
   area_tags: ['app/routes'],
   finding_class: 'holistic/hardcoded-string',
+  security: false,
   severity: 'suggestion',
 };
 
 const CLASSLESS_FINDING = {
   area_tags: ['app/services'],
   finding_class: 'holistic/unclassified',
+  security: false,
   severity: 'warning',
 };
 
@@ -98,6 +100,7 @@ exit 0
 type RawFinding = {
   area_tags: string[];
   finding_class: string;
+  security?: boolean;
   severity: string;
 };
 
@@ -242,11 +245,13 @@ describe('producer seam: sidecar -> post-findings-block.sh -> parseFindingsBlock
         {
           area_tags: ['app/routes'],
           finding_class: 'holistic/hardcoded-string',
+          security: false,
           severity: 'Critical',
         },
         {
           area_tags: ['app/routes'],
           finding_class: 'holistic/non-null-assertion',
+          security: false,
           severity: 'warning',
         },
       ],

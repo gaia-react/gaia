@@ -313,7 +313,7 @@ Only after gate-2 confirmation may you proceed to step 9.
 
 ### 9. Save to .gaia/local/specs/SPEC-NNN/SPEC.md
 
-Create the SPEC folder in the main checkout, then write the confirmed draft to its canonical inner file (using the `spec_id` allocated in step 3). The SPEC folder is main-anchored state (state registry `specs-main`), so a session inside a linked worktree writes the artifact where the ledger row (written to main by the anchored ledger libraries) indexes it. Resolve once here, guarded per the Operational-primitives contract, and reuse `SPEC_FOLDER` for every path this step builds; the read-back and the cost sidecar below both use it rather than re-resolving:
+Create the SPEC folder in the main checkout, then write the confirmed draft to its canonical inner file (using the `spec_id` allocated in step 3). The SPEC folder is main-anchored state (state registry `specs-main`), so a session inside a linked worktree writes the artifact where the ledger row (written to main by the anchored ledger libraries) indexes it. Resolve once here, guarded per the Operational-primitives contract, and reuse `SPEC_FOLDER` for every path this step builds; the read-back below uses it rather than re-resolving:
 
 ```bash
 MAIN_ROOT="$(bash .gaia/scripts/main-root-lib.sh)"

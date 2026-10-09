@@ -15,8 +15,8 @@
 # Scoping the check to the review list rather than the whole tree is
 # load-bearing in both directions. It is wide enough, because that list is
 # exactly the set the member reads and certifies. And it is narrow enough that a
-# sibling member self-healing in a different remit, which is legitimate and
-# expected under concurrent dispatch, cannot refuse this member's pass.
+# dirty file in a different remit, left by the operator or a sibling's work under
+# concurrent dispatch, cannot refuse this member's pass.
 #
 # The suite holds the posture in two halves. The check itself is code, so it is
 # driven BEHAVIOURALLY: each member's own resolver invocation, lifted out of its

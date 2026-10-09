@@ -290,6 +290,20 @@ assert_refused() {
   cmp -s "$state_file" "$state_file.orig" || { echo "$1: file changed"; return 1; }
 }
 
+@test "disposed set: every non-fix disposition of an earlier round counts, divert included, and neither fix nor the current round does" {
+  local disposed
+  alf_branch feat/disposed
+  alf_dispositions 1 '[
+    {"member":"m","finding_class":"c","path":"a","line":1,"disposition":"accept-residual","reason":"r"},
+    {"member":"m","finding_class":"c","path":"a","line":2,"disposition":"waive-out-of-scope","basis":"triage-threshold","reason":"r"},
+    {"member":"m","finding_class":"c","path":"a","line":3,"disposition":"file","reason":"r"},
+    {"member":"m","finding_class":"c","path":"a","line":4,"disposition":"divert","reason":"r"},
+    {"member":"m","finding_class":"c","path":"a","line":5,"disposition":"fix","reason":""}]'
+  alf_dispositions 2 '[{"member":"m","finding_class":"c","path":"a","line":6,"disposition":"divert","reason":"r"}]'
+  disposed="$(_gaia_loop_disposed "$ALF_ROOT" "$ALF_NORMALIZED_BRANCH" 2)"
+  [ "$(jq -c '[.[] | .[3]] | sort' <<<"$disposed")" = '[1,2,3,4]' ] || { echo "$disposed"; return 1; }
+}
+
 @test "schema: a state with every new optional field reads and writes" {
   local state_file="$BATS_TEST_TMPDIR/s.json"
   full_state >"$state_file"

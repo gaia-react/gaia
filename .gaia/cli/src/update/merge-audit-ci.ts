@@ -153,10 +153,11 @@ const asRecord = (value: unknown): Record<string, unknown> =>
 
 /**
  * Parse a YAML `auditors:` list into a name → member-config map. Each
- * member's whole mapping (`globs`, `audience`, `push_fixes`, `default`) is
- * compared and applied as a single unit: `name` is the map key, the rest of the
- * item is the value. A per-glob merge would let an adopter's roster end up
- * with a glob set neither side ever authored. Malformed entries (no `name`,
+ * member's whole mapping (`globs`, `audience`, `default`, and any other key it
+ * carries) is compared and applied as a single unit: `name` is the map key, the
+ * rest of the item is the value. A per-glob merge would let an adopter's roster
+ * end up with a glob set neither side ever authored, and a per-key merge would
+ * let a key upstream dropped survive in the adopter's mapping. Malformed entries (no `name`,
  * or a `name` that is not a string) are skipped; a malformed roster must not crash the update.
  */
 type RosterMember = Record<string, unknown>;
