@@ -16,8 +16,8 @@
 #   2. marker absent                        -> decline "marker absent"
 #   3. present non-writer-produced marker   -> decline "marker not a valid clearance"
 #   4. un-pushed tree-changing work         -> decline "audited tree not on pushed head"
-#   5. un-pushed content-preserving stamp   -> decline "stamp not pushed", in both
-#      of the stamp's shapes (empty commit on the pushed path, amend of a pushed
+#   5. un-pushed content-preserving commit  -> decline "stamp not pushed", in both
+#      shapes (empty commit on the pushed path, message amend of a pushed
 #      commit), neither of which the tree guard can see
 #   6. local HEAD == pushed PR head         -> posts, targeting the pushed head
 #   7. no PR and no upstream                -> head_sha falls back to local HEAD, so
@@ -30,11 +30,11 @@
 #      well-formedness key the success arm uses, and the pushed-head guards
 #      apply to the failure state too
 #
-# Case 5 is the regression this suite exists to pin. The GAIA-Audit trailer
-# stamp is content-preserving by design, so a stamp commit that exists only
-# locally leaves local HEAD's tree byte-identical to the pushed head's tree and
-# the tree guard is blind to it. Posting there lands the success status on the
-# pre-stamp head; pushing the stamp afterwards advances the PR head and strands
+# Case 5 is the regression this suite exists to pin. A content-preserving
+# commit that exists only locally leaves local HEAD's tree byte-identical to
+# the pushed head's tree and the tree guard is blind to it. Posting there lands
+# the success status on the older head; pushing the commit afterwards advances
+# the PR head and strands
 # the status on a sha no reader checks, so a required GAIA-Audit check waits
 # forever. The sha guard is the deterministic backstop under the audit members'
 # push-then-post ordering.
@@ -106,7 +106,7 @@ push_head_to_upstream() {
 }
 
 # Helper: the real audit_member_digest, sourced fresh in a subshell (mirroring
-# audit-stamp-trailer.bats), so a fixture marker carries the SAME digest the
+# the other hook suites), so a fixture marker carries the SAME digest the
 # hook itself derives rather than a hardcoded one.
 digest_of() {
   local root="$1" member="$2" reference="${3:-HEAD}"
@@ -175,6 +175,19 @@ EOF
 case "$1" in
   auth) exit 0 ;;
   pr)
+    if [ "$2" = ready ]; then
+      printf '%s\n' "$*" >> "$stub_directory/call-order"
+      [ ! -f "$stub_directory/ready-stderr" ] || cat "$stub_directory/ready-stderr" >&2
+      exit "$(cat "$stub_directory/ready-rc" 2>/dev/null || printf 0)"
+    fi
+    # The draft-state read before a success flip: true unless a case plants
+    # false, kept out of call-order so the flip order stays readable.
+    case " $* " in
+      *" isDraft "*)
+        cat "$stub_directory/is-draft" 2>/dev/null || printf 'true\n'
+        exit 0
+        ;;
+    esac
     pr_head="$(cat "$stub_directory/pr-head")"
     [ -n "$pr_head" ] || exit 1
     printf '%s\n' "$pr_head"
@@ -183,6 +196,7 @@ case "$1" in
   repo) printf 'gaia-react/gaia\n'; exit 0 ;;
   api)
     printf '%s\n' "$*" >> "$stub_directory/api-calls"
+    printf '%s\n' "$*" >> "$stub_directory/call-order"
     exit "$(cat "$stub_directory/api-rc")"
     ;;
   *) exit 0 ;;
@@ -192,21 +206,19 @@ EOF
   export PATH="$STUB_BINARY_DIRECTORY:$PATH"
 }
 
-# Mirror the empty-commit stamp shape: HEAD advances, every blob stays
+# An empty commit: HEAD advances, every blob stays
 # byte-identical, so the audited tree is still the pushed head's tree.
-stamp_empty_commit() {
+empty_commit() {
   git -C "$REPO" commit --quiet --allow-empty -m "chore: code review audit passed"
 }
 
-# Mirror the amend stamp shape on an already-pushed commit: the trailer joins
-# HEAD's message, HEAD's sha rotates, the tree is untouched.
-stamp_amend() {
-  local message digest tree
+# A message amend of an already-pushed commit: HEAD's sha rotates, the tree is
+# untouched.
+amend_message() {
+  local message
   message="$(git -C "$REPO" log -1 --format='%B')"
-  digest="$(digest_of "$REPO" code-audit-frontend)"
-  tree="$(git -C "$REPO" rev-parse 'HEAD^{tree}')"
   git -C "$REPO" commit --quiet --amend -m "${message}
-GAIA-Audit: 1.2.3 ${digest} ${tree}"
+amended locally"
 }
 
 # Assert no POST reached the API (the fail-safe half of every decline arm).
@@ -294,13 +306,13 @@ assert_no_post() {
   assert_no_post
 }
 
-@test "un-pushed empty-commit stamp: declines stamp not pushed (tree guard is blind to it)" {
+@test "un-pushed empty commit: declines stamp not pushed (tree guard is blind to it)" {
   push_head_to_upstream
   pushed_sha=$(git -C "$REPO" rev-parse HEAD)
   install_gh_stub "$pushed_sha"
 
   marker=$(write_marker code-audit-frontend)
-  stamp_empty_commit
+  empty_commit
 
   # The fixture's discriminating property: the tree guard passes (identical
   # trees) while the shas differ, which is exactly the arm under test.
@@ -315,13 +327,13 @@ assert_no_post() {
   assert_no_post
 }
 
-@test "un-pushed amend stamp on a pushed commit: declines stamp not pushed" {
+@test "un-pushed message amend on a pushed commit: declines stamp not pushed" {
   push_head_to_upstream
   pushed_sha=$(git -C "$REPO" rev-parse HEAD)
   install_gh_stub "$pushed_sha"
 
   marker=$(write_marker code-audit-frontend)
-  stamp_amend
+  amend_message
 
   [ "$(git -C "$REPO" rev-parse 'HEAD^{tree}')" = "$(git -C "$REPO" rev-parse "${pushed_sha}^{tree}")" ]
   [ "$(git -C "$REPO" rev-parse HEAD)" != "$pushed_sha" ]
@@ -359,6 +371,22 @@ assert_no_post() {
   grep -qF -- "state=success" "$API_CALLS" || return 1
   grep -qF -- "context=GAIA-Audit" "$API_CALLS" || return 1
   grep -qF -- "description=1.2.3 ${digest} ${tree}" "$API_CALLS" || return 1
+}
+
+@test "posting the status creates and amends no commit: HEAD is the same sha afterwards" {
+  push_head_to_upstream
+  pushed_sha=$(git -C "$REPO" rev-parse HEAD)
+  install_gh_stub "$pushed_sha"
+  marker=$(write_marker code-audit-frontend)
+  count_before=$(git -C "$REPO" rev-list --count HEAD)
+
+  cd "$REPO"
+  run "$HOOK_ABSOLUTE_PATH" "$marker"
+
+  [ "$status" -eq 0 ]
+  grep -qF "status: posted GAIA-Audit success" <<<"$output" || return 1
+  [ "$(git -C "$REPO" rev-parse HEAD)" = "$pushed_sha" ]
+  [ "$(git -C "$REPO" rev-list --count HEAD)" = "$count_before" ]
 }
 
 @test "no PR and no upstream: head_sha falls back to local HEAD, so the sha guard does not fire" {
@@ -586,4 +614,146 @@ assert_no_post() {
   [ "$status" -eq 0 ]
   [ "$output" = "status: declined: clearance reader unavailable" ]
   assert_no_post || return 1
+}
+
+# -----------------------------------------------------------------------------
+# Draft flip: the status posts first, the pull request is flipped second
+# -----------------------------------------------------------------------------
+
+# The stub's call log in order, each status POST reduced to `post <state>`; the
+# flip is `pr ready` (or `pr ready --undo`).
+call_order() {
+  sed -e 's/^api .*state=\([a-z]*\).*$/post \1/' "$BATS_TEST_TMPDIR/call-order"
+}
+
+@test "a success posts the status first and then marks the pull request ready" {
+  push_head_to_upstream
+  pushed_sha=$(git -C "$REPO" rev-parse HEAD)
+  install_gh_stub "$pushed_sha"
+  marker=$(write_marker code-audit-frontend)
+
+  cd "$REPO"
+  run "$HOOK_ABSOLUTE_PATH" "$marker"
+
+  [ "$status" -eq 0 ]
+  [ "$(call_order)" = "post success
+pr ready" ]
+}
+
+@test "a refusal posts failure first and then converts the pull request back to draft" {
+  push_head_to_upstream
+  pushed_sha=$(git -C "$REPO" rev-parse HEAD)
+  install_gh_stub "$pushed_sha"
+  refusal=$(write_refusal code-audit-frontend)
+
+  cd "$REPO"
+  run "$HOOK_ABSOLUTE_PATH" "$refusal"
+
+  [ "$status" -eq 0 ]
+  [ "$(call_order)" = "post failure
+pr ready --undo" ]
+}
+
+@test "a success on a pull request that is not a draft posts the status and makes no flip" {
+  push_head_to_upstream
+  pushed_sha=$(git -C "$REPO" rev-parse HEAD)
+  install_gh_stub "$pushed_sha"
+  printf 'false\n' > "$BATS_TEST_TMPDIR/is-draft"
+  printf '1' > "$BATS_TEST_TMPDIR/ready-rc"
+  marker=$(write_marker code-audit-frontend)
+
+  cd "$REPO"
+  run "$HOOK_ABSOLUTE_PATH" "$marker"
+
+  [ "$status" -eq 0 ]
+  [ "$(call_order)" = "post success" ]
+}
+
+@test "a refusal whose undo GitHub rejects as unsupported drafts is not a failure" {
+  push_head_to_upstream
+  pushed_sha=$(git -C "$REPO" rev-parse HEAD)
+  install_gh_stub "$pushed_sha"
+  printf '1' > "$BATS_TEST_TMPDIR/ready-rc"
+  printf 'GraphQL: Draft pull requests are not supported in this repository. (convertPullRequestToDraft)\n' > "$BATS_TEST_TMPDIR/ready-stderr"
+  refusal=$(write_refusal code-audit-frontend)
+
+  cd "$REPO"
+  run "$HOOK_ABSOLUTE_PATH" "$refusal"
+
+  [ "$status" -eq 0 ]
+  [ "$(call_order)" = "post failure
+pr ready --undo" ]
+  grep -qF -- 'run it by hand' <<<"$output" && return 1
+  true
+}
+
+@test "an undo that fails for any other reason still exits non-zero" {
+  push_head_to_upstream
+  pushed_sha=$(git -C "$REPO" rev-parse HEAD)
+  install_gh_stub "$pushed_sha"
+  printf '1' > "$BATS_TEST_TMPDIR/ready-rc"
+  printf 'HTTP 502: Bad Gateway\n' > "$BATS_TEST_TMPDIR/ready-stderr"
+  refusal=$(write_refusal code-audit-frontend)
+
+  cd "$REPO"
+  run "$HOOK_ABSOLUTE_PATH" "$refusal"
+
+  [ "$status" -ne 0 ]
+  grep -qF -- 'run it by hand: gh pr ready --undo' <<<"$output"
+}
+
+@test "a declined post flips nothing" {
+  push_head_to_upstream
+  install_gh_stub "$(git -C "$REPO" rev-parse HEAD)"
+  empty_commit
+  marker=$(write_marker code-audit-frontend)
+
+  cd "$REPO"
+  run "$HOOK_ABSOLUTE_PATH" "$marker"
+
+  [ "$status" -eq 0 ]
+  [ ! -s "$BATS_TEST_TMPDIR/call-order" ]
+}
+
+@test "no pull request resolved: the status posts and there is no flip to make" {
+  install_gh_stub ""
+  marker=$(write_marker code-audit-frontend)
+
+  cd "$REPO"
+  run "$HOOK_ABSOLUTE_PATH" "$marker"
+
+  [ "$status" -eq 0 ]
+  [ "$(call_order)" = "post success" ]
+}
+
+@test "a failed ready flip after a success exits non-zero naming the manual command, and the status stays posted" {
+  push_head_to_upstream
+  pushed_sha=$(git -C "$REPO" rev-parse HEAD)
+  install_gh_stub "$pushed_sha"
+  printf '1' > "$BATS_TEST_TMPDIR/ready-rc"
+  marker=$(write_marker code-audit-frontend)
+  short=$(git -C "$REPO" rev-parse --short "$pushed_sha")
+
+  cd "$REPO"
+  run "$HOOK_ABSOLUTE_PATH" "$marker"
+
+  [ "$status" -ne 0 ]
+  grep -qF -- "status: posted GAIA-Audit success ${short}" <<<"$output" || return 1
+  grep -qF -- 'run it by hand: gh pr ready' <<<"$output" || return 1
+  grep -qF -- "state=success" "$API_CALLS" || return 1
+}
+
+@test "a failed undo flip after a refusal exits non-zero naming the manual undo command" {
+  push_head_to_upstream
+  pushed_sha=$(git -C "$REPO" rev-parse HEAD)
+  install_gh_stub "$pushed_sha"
+  printf '1' > "$BATS_TEST_TMPDIR/ready-rc"
+  refusal=$(write_refusal code-audit-frontend)
+
+  cd "$REPO"
+  run "$HOOK_ABSOLUTE_PATH" "$refusal"
+
+  [ "$status" -ne 0 ]
+  grep -qF -- 'run it by hand: gh pr ready --undo' <<<"$output" || return 1
+  grep -qF -- "state=failure" "$API_CALLS" || return 1
 }

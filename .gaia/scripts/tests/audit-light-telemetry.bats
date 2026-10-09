@@ -407,3 +407,139 @@ prepare_light_miss() {
   run_outcome --verdict clear
   [ "$(tally_value light_misses)" = "0" ]
 }
+
+# ---------------------------------------------------------------------------
+# tally: the kill-rule figures
+# ---------------------------------------------------------------------------
+
+# log_event <route|outcome> <branch> <member> <reason-or-verdict>: one fixture
+# event line.
+log_event() {
+  mkdir -p "$TELEMETRY_DIRECTORY"
+  case "$1" in
+    route)
+      jq -n -c --arg branch "$2" --arg member "$3" --arg reason "$4" \
+        '{event: "route", branch: $branch, member: $member, digest: "d", tree: "t",
+          route: (if $reason == "light-eligible" or $reason == "refusal-anchored" then "light" else "full" end),
+          reason: $reason}' >> "$LOG"
+      ;;
+    outcome)
+      jq -n -c --arg branch "$2" --arg member "$3" --arg verdict "$4" \
+        '{event: "light_outcome", branch: $branch, member: $member, digest: "d", verdict: $verdict}' >> "$LOG"
+      ;;
+  esac
+}
+
+FRONTEND_MEMBER="code-audit-frontend"
+SHELL_MEMBER="code-audit-maintainer-shell"
+
+# write_kill_log: three branches that touched the frontend member's remit, in
+# log order b1 b2 b3, and a fourth (b4) that only the shell member touched.
+# Window 3, eligible 4, cleared 2; the frontend and the shell member each hold
+# two eligible re-audits and one clear.
+write_kill_log() {
+  log_event route b1 "$FRONTEND_MEMBER" light-eligible
+  log_event outcome b1 "$FRONTEND_MEMBER" clear
+  log_event route b2 "$FRONTEND_MEMBER" no-full-clearance
+  log_event route b2 "$SHELL_MEMBER" refusal-anchored
+  log_event outcome b2 "$SHELL_MEMBER" clear
+  log_event route b3 "$FRONTEND_MEMBER" over-cap
+  log_event route b3 "$SHELL_MEMBER" over-cap
+  log_event outcome b3 "$SHELL_MEMBER" escalate
+  log_event route b4 "$SHELL_MEMBER" light-eligible
+}
+
+@test "tally on an absent log prints the kill-rule figures as zero" {
+  run bash "$SCRIPT" tally --root "$ROOT"
+  [ "$status" -eq 0 ]
+  grep -qxF 'window_prs: 0' <<<"$output"
+  grep -qxF 'eligible_reaudits: 0' <<<"$output"
+  grep -qxF 'light_cleared: 0' <<<"$output"
+  grep -qxF 'light_cleared_rate: n/a' <<<"$output"
+}
+
+@test "tally prints the window PR count, the eligible re-audit count and the light-cleared count over the fixture log" {
+  write_kill_log
+  [ "$(tally_value window_prs)" = "3" ]
+  [ "$(tally_value eligible_reaudits)" = "4" ]
+  [ "$(tally_value light_cleared)" = "2" ]
+  [ "$(tally_value light_cleared_rate)" = "0.50" ]
+}
+
+@test "tally prints the eligible and light-cleared counts per member" {
+  write_kill_log
+  [ "$(tally_value "eligible_reaudits[$FRONTEND_MEMBER]")" = "2" ]
+  [ "$(tally_value "light_cleared[$FRONTEND_MEMBER]")" = "1" ]
+  [ "$(tally_value "eligible_reaudits[$SHELL_MEMBER]")" = "2" ]
+  [ "$(tally_value "light_cleared[$SHELL_MEMBER]")" = "1" ]
+}
+
+# Each figure below is driven by a fixture that differs from write_kill_log by
+# one event, so a tally that printed a constant or the wrong count fails.
+@test "the window PR count changes with a branch that touches the frontend remit, and with nothing else" {
+  write_kill_log
+  log_event route b5 "$FRONTEND_MEMBER" not-opted-in
+  [ "$(tally_value window_prs)" = "4" ]
+  [ "$(tally_value eligible_reaudits)" = "4" ]
+  [ "$(tally_value light_cleared)" = "2" ]
+}
+
+@test "a branch only another member touched is outside the window" {
+  write_kill_log
+  log_event route b6 "$SHELL_MEMBER" over-cap
+  log_event outcome b6 "$SHELL_MEMBER" clear
+  [ "$(tally_value window_prs)" = "3" ]
+  [ "$(tally_value eligible_reaudits)" = "4" ]
+  [ "$(tally_value light_cleared)" = "2" ]
+}
+
+@test "the eligible re-audit count changes with one more eligible route event, and with an excluded reason it does not" {
+  write_kill_log
+  log_event route b1 "$SHELL_MEMBER" hard-full
+  [ "$(tally_value eligible_reaudits)" = "5" ]
+  [ "$(tally_value "eligible_reaudits[$SHELL_MEMBER]")" = "3" ]
+  [ "$(tally_value light_cleared)" = "2" ]
+  [ "$(tally_value window_prs)" = "3" ]
+  log_event route b1 "$SHELL_MEMBER" not-opted-in
+  log_event route b1 "$SHELL_MEMBER" no-full-clearance
+  [ "$(tally_value eligible_reaudits)" = "5" ]
+}
+
+@test "the light-cleared count changes with one more clear and not with an escalate" {
+  write_kill_log
+  log_event outcome b3 "$FRONTEND_MEMBER" clear
+  [ "$(tally_value light_cleared)" = "3" ]
+  [ "$(tally_value "light_cleared[$FRONTEND_MEMBER]")" = "2" ]
+  [ "$(tally_value eligible_reaudits)" = "4" ]
+  log_event outcome b3 "$FRONTEND_MEMBER" escalate
+  [ "$(tally_value light_cleared)" = "3" ]
+}
+
+@test "the window keeps the most recent branches that touched the frontend remit" {
+  write_kill_log
+  [ "$(tally_value window_prs --window 1)" = "1" ]
+  [ "$(tally_value eligible_reaudits --window 1)" = "2" ]
+  [ "$(tally_value light_cleared --window 1)" = "0" ]
+  [ "$(tally_value window_prs --window 2)" = "2" ]
+  [ "$(tally_value light_cleared --window 2)" = "1" ]
+}
+
+@test "tally rejects a window that is not a positive integer" {
+  run bash "$SCRIPT" tally --root "$ROOT" --window 0
+  [ "$status" -eq 2 ]
+  run bash "$SCRIPT" tally --root "$ROOT" --window many
+  [ "$status" -eq 2 ]
+}
+
+@test "a scratch copy that counts excluded reasons as eligible fails the fixture the eligible figure is read from" {
+  write_kill_log
+  log_event route b1 "$SHELL_MEMBER" not-opted-in
+  [ "$(tally_value eligible_reaudits)" = "4" ]
+  scratch="$BATS_TEST_TMPDIR/scratch-kill"
+  mkdir -p "$scratch"
+  cp "$SCRIPT" "$REPO_ROOT/.gaia/scripts/main-root-lib.sh" "$REPO_ROOT/.gaia/scripts/audit-key-lib.sh" "$scratch/"
+  sed 's/select(\.event == "route" and ((\.reason \/\/ "") | excluded_reason | not))/select(.event == "route")/' "$SCRIPT" > "$scratch/audit-light-telemetry.sh"
+  cmp -s "$SCRIPT" "$scratch/audit-light-telemetry.sh" && return 1
+  broken="$(bash "$scratch/audit-light-telemetry.sh" tally --root "$ROOT" | awk -F': ' '$1 == "eligible_reaudits" { print $2 }')"
+  [ "$broken" = "6" ]
+}

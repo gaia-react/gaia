@@ -304,13 +304,11 @@ auditors:
     globs:
       - "app/**"
     audience: adopter
-    push_fixes: true
     default: true
   - name: code-audit-claimant
     globs:
       - "app/special/**"
     audience: adopter
-    push_fixes: false
 YAML
 
   ROOT_DEFAULT_LAST=$(mktemp -d -t audit-scope-order-b-XXXXXX)
@@ -321,12 +319,10 @@ auditors:
     globs:
       - "app/special/**"
     audience: adopter
-    push_fixes: false
   - name: code-audit-example
     globs:
       - "app/**"
     audience: adopter
-    push_fixes: true
     default: true
 YAML
 
@@ -768,13 +764,11 @@ LIGHT_ROSTER_WITH_KEYS='auditors:
       # a comment between items never ends the list
       - "*.config.ts"
     audience: adopter
-    push_fixes: true
     default: true
   - name: code-audit-plain
     globs:
       - "plain/**"
-    audience: adopter
-    push_fixes: false'
+    audience: adopter'
 
 @test "audit_roster_light_config: opted member yields true, the cap, and one HARDFULL line per item in order" {
   local fixture

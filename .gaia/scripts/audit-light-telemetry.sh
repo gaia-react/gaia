@@ -12,7 +12,7 @@
 #                                          --verdict clear|escalate|failed
 #                                          [--tokens <n>] [--duration-ms <n>]
 #   audit-light-telemetry.sh member-result --root <r> --member <m>
-#   audit-light-telemetry.sh tally         [--root <r>] [--baseline-tokens <n>]
+#   audit-light-telemetry.sh tally         [--root <r>] [--baseline-tokens <n>] [--window <n>]
 #
 # Log: <main>/.gaia/local/telemetry/audit-light-routing.jsonl, <main> from
 # main-root-lib.sh.
@@ -38,6 +38,20 @@
 # emits an event but is excluded for robustness. `rotations` still counts every
 # route event, so the two lines differ by exactly the excluded reasons.
 #
+# The kill-rule figures. Light routing stays only while it clears enough of the
+# re-audits it could have: `tally` prints, over the most recent `--window`
+# (default 30) pull requests that touched code-audit-frontend's remit, the
+# window PR count, the eligible re-audit count and the light-cleared count,
+# overall and per member. A pull request is a branch in the log, because the
+# log records no merge; it is in the window when the log holds any event for
+# code-audit-frontend on that branch, and the window is the branches whose last
+# such event is newest. An eligible re-audit is a route event with a reason
+# other than the four excluded above, so a member that never opted in
+# contributes none and the overall figure is the sum across opted-in members. A
+# light-cleared re-audit is a light_outcome event with verdict clear. The
+# decision rule that reads these figures lives in the Code Audit Team decision
+# page, not here.
+#
 # Light misses are best-effort: a finding from a full member counts as a miss
 # when an earlier light clear for the same branch and member covered the
 # finding's path, and the finding's line falls inside that route's post-image
@@ -51,6 +65,8 @@ self_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || se
 repo_directory="$self_directory/../.."
 
 DEFAULT_BASELINE_TOKENS=3300000
+# The pull-request window the kill rule is judged over.
+DEFAULT_WINDOW_PRS=30
 MAINTAINER_RULE_RELATIVE_PATH=".claude/rules/maintainers/harness-triage-threshold.md"
 LOG_RELATIVE_PATH=".gaia/local/telemetry/audit-light-routing.jsonl"
 
@@ -59,7 +75,7 @@ usage() {
 usage: audit-light-telemetry.sh route         --root <r> --record <route-record-path>
        audit-light-telemetry.sh outcome       --root <r> --member <m> --digest <d> --tree <t> --verdict clear|escalate|failed [--tokens <n>] [--duration-ms <n>]
        audit-light-telemetry.sh member-result --root <r> --member <m>
-       audit-light-telemetry.sh tally         [--root <r>] [--baseline-tokens <n>]
+       audit-light-telemetry.sh tally         [--root <r>] [--baseline-tokens <n>] [--window <n>]
 EOF
 }
 
@@ -100,6 +116,7 @@ verdict=""
 tokens=""
 duration_milliseconds=""
 baseline_tokens="$DEFAULT_BASELINE_TOKENS"
+window_prs="$DEFAULT_WINDOW_PRS"
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --root)
@@ -136,6 +153,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --baseline-tokens)
       baseline_tokens="${2:-}"
+      shift 2 2>/dev/null || shift
+      ;;
+    --window)
+      window_prs="${2:-}"
       shift 2 2>/dev/null || shift
       ;;
     *)
@@ -196,6 +217,10 @@ run_tally() {
   command -v jq >/dev/null 2>&1 || {
     printf 'audit-light-telemetry: jq is required for tally\n' >&2
     exit 1
+  }
+  is_non_negative_integer "$window_prs" && [ "$window_prs" -gt 0 ] || {
+    printf 'audit-light-telemetry: --window must be a positive integer\n' >&2
+    exit 2
   }
   main="$(resolve_main_root "${root:-$PWD}")" || main=""
   log=""
@@ -276,6 +301,47 @@ EOF
   else
     printf 'light_vs_baseline: n/a\n'
   fi
+
+  local kill_figures="" eligible_count=0 cleared_count=0 figure_line
+  if [ -n "$log" ] && [ -f "$log" ]; then
+    kill_figures="$(jq -R -c 'fromjson? // empty' "$log" 2>/dev/null | jq -s -r --argjson window "$window_prs" '
+      def excluded_reason: . == "no-full-clearance" or . == "not-opted-in" or . == "no-version" or . == "degraded";
+      . as $events
+      | ([range(0; $events | length) as $i | $events[$i]
+          | select(.member == "code-audit-frontend" and ((.branch // "") != ""))
+          | {branch: .branch, position: $i}]
+         | group_by(.branch)
+         | map({branch: .[0].branch, last: (map(.position) | max)})
+         | sort_by(.last)
+         | .[-$window:]
+         | map(.branch)) as $branches
+      | [$events[] | select((.branch // "") as $branch | any($branches[]; . == $branch))] as $windowed
+      | [$windowed[] | select(.event == "route" and ((.reason // "") | excluded_reason | not))] as $eligible
+      | [$windowed[] | select(.event == "light_outcome" and .verdict == "clear")] as $cleared
+      | "window_prs: \($branches | length)",
+        "eligible_reaudits: \($eligible | length)",
+        "light_cleared: \($cleared | length)",
+        ([($eligible[].member), ($cleared[].member)] | unique[] as $member
+         | "eligible_reaudits[\($member)]: \([$eligible[] | select(.member == $member)] | length)",
+           "light_cleared[\($member)]: \([$cleared[] | select(.member == $member)] | length)")' 2>/dev/null)" || kill_figures=""
+    [ -n "$kill_figures" ] || {
+      printf 'audit-light-telemetry: cannot read %s\n' "$log" >&2
+      exit 1
+    }
+    eligible_count="$(printf '%s\n' "$kill_figures" | sed -n 's/^eligible_reaudits: //p')"
+    cleared_count="$(printf '%s\n' "$kill_figures" | sed -n 's/^light_cleared: //p')"
+  fi
+  if [ -z "$kill_figures" ]; then
+    printf 'window_prs: 0\neligible_reaudits: 0\nlight_cleared: 0\n'
+  else
+    printf '%s\n' "$kill_figures" | while IFS= read -r figure_line; do
+      printf '%s\n' "$figure_line"
+      case "$figure_line" in
+        light_cleared:*) printf 'light_cleared_rate: %s\n' "$(format_ratio "$cleared_count" "$eligible_count")" ;;
+      esac
+    done
+  fi
+  [ -n "$kill_figures" ] || printf 'light_cleared_rate: n/a\n'
   exit 0
 }
 

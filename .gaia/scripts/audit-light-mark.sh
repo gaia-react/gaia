@@ -30,10 +30,20 @@
 #   5. a fresh router run (--check): recheck-full
 #   6. the no-op classification of the reply: verdict-noop
 #   7. the reply against the record: verdict-malformed, verdict-mismatch,
-#      escalate
-#   8. a refusal for this digest: refusal-present
-#   9. the light sidecar: sidecar-failed
-#  10. the marker through the writer: write-failed
+#      escalate, and on a refusal-anchored record verdict-incomplete
+#   8. a refusal-anchored record's checklist against git: checklist-unchanged
+#   9. a refusal for this digest: refusal-present
+#  10. the light sidecar (and, on a refusal-anchored record, the full sidecar
+#      that accounts for the checklist): sidecar-failed
+#  11. the marker through the writer: write-failed
+#
+# A refusal-anchored record carries the refusal's open findings as `checklist`.
+# The reply must list every checklist key in `resolved` (a missing key is
+# verdict-incomplete, a key the record does not hold is verdict-mismatch), and
+# step 8 does not take the list on trust: each finding's cited line must lie in
+# a pre-image range the delta since the refusal rewrote or removed, in a path
+# the reviewer was shown. A reply that resolves a finding the delta never
+# touched is refused, whatever the reviewer wrote.
 #
 # The persisted reply is the record of what the reviewer said and survives
 # every outcome after step 2. Every outcome after step 3 appends one line to
@@ -135,6 +145,9 @@ light_mark_main() {
   . "$library_directory/audit-clearance.sh" 2>/dev/null
   command -v clearance_member_refused >/dev/null 2>&1 || _light_mark_degraded
   # shellcheck source=/dev/null
+  . "$library_directory/audit-light-route-lib.sh" 2>/dev/null
+  command -v light_route_pre_ranges >/dev/null 2>&1 || _light_mark_degraded
+  # shellcheck source=/dev/null
   . "$(dirname "${BASH_SOURCE[0]}")/audit-key-lib.sh" 2>/dev/null
   branch_slug="$(gaia_branch_slug "$root" 2>/dev/null)" || branch_slug=""
 
@@ -196,22 +209,52 @@ light_mark_main() {
         elif ($verdict.member != $route.member or $verdict.digest != $route.digest or $verdict.tree != $route.tree) then "mismatch"
         elif (([$verdict.files[].path] | sort) != ([$route.files[].path] | sort)) then "mismatch"
         elif ($verdict.verdict == "escalate" or any($verdict.files[]; .verdict == "escalate")) then "escalate"
-        else "ok"
+        elif $route.reason != "refusal-anchored" then "ok"
+        else
+          ([($route.checklist // [])[].key]) as $open
+          | if ($verdict | has("resolved") | not) then "incomplete"
+            elif ($verdict.resolved | type) != "array" or ([$verdict.resolved[] | type == "string"] | all | not) then "malformed"
+            elif ($open | length) == 0 then "mismatch"
+            elif (any($verdict.resolved[]; . as $key | $open | index($key) | not)) then "mismatch"
+            elif (any($open[]; . as $key | $verdict.resolved | index($key) | not)) then "incomplete"
+            else "ok"
+            end
         end
       end' "$verdict_path" 2>/dev/null)" || classification="malformed"
   case "$classification" in
     ok) ;;
     mismatch) _light_mark_full verdict-mismatch ;;
+    incomplete) _light_mark_full verdict-incomplete ;;
     escalate) _light_mark_full escalate escalate ;;
     *) _light_mark_full verdict-malformed ;;
   esac
 
-  # Step 8: a light clearance never supersedes or sits beside a refusal.
+  # Step 8: the checklist against the delta itself, from git, not from the
+  # reviewer. A finding whose cited line the delta never touched cannot have
+  # been resolved by it.
+  if [ "$(jq -r '.reason' "$record_path" 2>/dev/null)" = "refusal-anchored" ]; then
+    local anchor_sha checklist_row checklist_path checklist_line shown_paths ranges touched
+    anchor_sha="$(jq -r '.anchor_sha // ""' "$record_path" 2>/dev/null)" || anchor_sha=""
+    [ -n "$anchor_sha" ] || _light_mark_full checklist-unchanged
+    shown_paths="$(jq -r '.files[].path' "$record_path" 2>/dev/null)" || shown_paths=""
+    while IFS= read -r checklist_row; do
+      [ -n "$checklist_row" ] || continue
+      checklist_path="${checklist_row%%$'\t'*}"
+      checklist_line="${checklist_row#*$'\t'}"
+      grep -qxF -- "$checklist_path" <<<"$shown_paths" || _light_mark_full checklist-unchanged
+      ranges="$(light_route_pre_ranges "$root" "$anchor_sha" HEAD "$checklist_path")" || _light_mark_full checklist-unchanged
+      touched="$(jq -n -r --argjson ranges "$ranges" --argjson line "$checklist_line" \
+        'any($ranges[]; .[0] <= $line and $line <= .[1])' 2>/dev/null)" || touched=""
+      [ "$touched" = "true" ] || _light_mark_full checklist-unchanged
+    done < <(jq -r '(.checklist // [])[] | [.path, (.line | tostring)] | join("\t")' "$record_path" 2>/dev/null)
+  fi
+
+  # Step 9: a light clearance never supersedes or sits beside a refusal.
   if clearance_member_refused "$root" "$digest" "$member"; then
     _light_mark_full refusal-present
   fi
 
-  # Step 9: the light sidecar, keyed by the shared base exactly as members key
+  # Step 10: the light sidecar, keyed by the shared base exactly as members key
   # theirs. The argument-less resolver prints that shared base as its single
   # stdout line and scans no clearance store, so the per-member form's store
   # walk is never paid here. The resolver has no --root flag and reads its
@@ -238,10 +281,33 @@ light_mark_main() {
     _light_mark_full sidecar-failed
   fi
 
-  # Step 10: the marker. The writer re-derives the digest and tree and refuses
+  # The clearance writer will not retire a refusal's open ledger entries until
+  # the member's full findings sidecar accounts for each one, and the light
+  # sidecar above is a different file it never reads. A refusal-anchored clear
+  # therefore records the resolutions in the full sidecar, the same clean-pass
+  # record a member writes, and only here, after every check has passed.
+  local resolutions_recorded=""
+  if [ "$(jq -r '.reason' "$record_path" 2>/dev/null)" = "refusal-anchored" ]; then
+    local resolutions_file="$light_directory/.resolutions.$$"
+    jq -c '[(.checklist // [])[] | {entry_id: .key, rationale: "resolved by the delta since the refusal; the light reviewer confirmed it and the cited lines changed"}]' \
+      "$record_path" >"$resolutions_file" 2>/dev/null || { rm -f "$resolutions_file"; _light_mark_full sidecar-failed; }
+    printf '[]' | bash "$root/.gaia/scripts/audit-write-findings.sh" --root "$root" --member "$member" \
+      --base "$shared_base" --findings - --resolutions "$resolutions_file" >/dev/null 2>&1 \
+      || { rm -f "$resolutions_file"; _light_mark_full sidecar-failed; }
+    rm -f "$resolutions_file"
+    resolutions_recorded="true"
+  fi
+
+  # Step 11: the marker. The writer re-derives the digest and tree and refuses
   # a record that no longer matches.
+  # A refusal-anchored clear also passes the shared base, which arms the
+  # writer's ledger update: the resolved entries leave remaining[] for
+  # fixed_last_round instead of briefing a repair that already happened.
+  local -a base_arguments=()
+  [ -z "$resolutions_recorded" ] || base_arguments=(--base "$shared_base")
   bash "$root/.gaia/scripts/audit-write-clearance.sh" --root "$root" --member "$member" --provenance earned \
-    --review light --route-record "$record_path" --scope-digest "$record_digest" >/dev/null 2>&1 \
+    --review light --route-record "$record_path" --scope-digest "$record_digest" \
+    ${base_arguments[@]+"${base_arguments[@]}"} >/dev/null 2>&1 \
     || _light_mark_full write-failed
 
   _light_mark_record_outcome clear

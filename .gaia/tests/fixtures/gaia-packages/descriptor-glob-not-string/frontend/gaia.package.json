@@ -10,28 +10,6 @@
       "app/components/**/*.ts"
     ],
     "emergentTests": ["a", 1],
-    "selfHealRefuse": [
-      ".claude/**",
-      "CLAUDE.md",
-      "gaia.package.json",
-      "test/**",
-      ".playwright/**",
-      ".storybook/**",
-      "app/**/tests/**",
-      "app/**/*.test.ts",
-      "app/**/*.test.tsx",
-      "app/**/*.stories.tsx",
-      "package.json",
-      "tsconfig*.json",
-      "*.config.ts",
-      "*.config.mts",
-      "*.config.mjs",
-      "*.config.cjs",
-      "*.config.js",
-      "Dockerfile",
-      "Dockerfile.dockerignore",
-      ".*"
-    ],
     "preCommitSource": ["app/**", "test/**", ".storybook/**", ".playwright/**"],
     "doctorConfigs": ["doctor.config.*", "react-doctor.config.*"],
     "dependencyManifests": ["package.json"]

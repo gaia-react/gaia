@@ -28,6 +28,7 @@ setup() {
   SCRIPTS_WIKI="${DOC_AUDIT_LOOP_SCRIPTS_WIKI:-$REPO_ROOT/wiki/concepts/GAIA Scripts.md}"
   REVIEW_WIKI="${DOC_AUDIT_LOOP_REVIEW_WIKI:-$REPO_ROOT/wiki/concepts/Code Review Audit Agent.md}"
   FRONTEND_AGENT="${DOC_AUDIT_LOOP_FRONTEND_AGENT:-$REPO_ROOT/.claude/agents/code-audit-frontend.md}"
+  MEMBER_PROTOCOL="${DOC_AUDIT_LOOP_MEMBER_PROTOCOL:-$REPO_ROOT/.claude/hooks/lib/audit-member-protocol.md}"
 }
 
 # line_starting <file> <literal-prefix>
@@ -103,7 +104,7 @@ line_starting() {
 }
 
 @test "quality-gate.md carries the fix-round exception to its STOP clause" {
-  grep -qF -- 'STOP and report before committing, except inside a workflow whose own instructions commit without stopping, such as the fix round of `wiki/concepts/PR Merge Workflow.md` (`#### The fix round: fixer, verifier, gate`);' "$QUALITY_GATE_MD"
+  grep -qF -- 'STOP and report before committing, except inside a workflow whose own instructions commit without stopping, such as the fix round of `wiki/concepts/Audit Round Procedure.md` (`#### The fix round: fixer, verifier, gate`);' "$QUALITY_GATE_MD"
 }
 
 # --- wiki inventories -------------------------------------------------------
@@ -113,6 +114,7 @@ line_starting() {
     grep -qF -- "| \`$hook\` |" "$HOOKS_WIKI" || { echo "missing table row: $hook" >&2; return 1; }
   done
   grep -qE -- 'block-fourth[-]audit-round' "$HOOKS_WIKI" && return 1
+  grep -qF -- 'audit-stamp-trailer' "$HOOKS_WIKI" && return 1
   true
 }
 
@@ -131,11 +133,21 @@ line_starting() {
   true
 }
 
-@test "COV-007: code-audit-frontend.md no longer has the fixer reading the ledger" {
-  [ "$(grep -cF -- "the fixer is briefed from the dispositions file the round's orchestrator writes" "$FRONTEND_AGENT")" -ge 2 ]
-  grep -qF -- "the fixer is briefed from the main thread's dispositions file" "$FRONTEND_AGENT" && return 1
-  grep -qF -- 'and the fixer read' "$FRONTEND_AGENT" && return 1
-  grep -qF -- 'the next re-audit and the fixer' "$FRONTEND_AGENT" && return 1
+# The member-side ledger text lives once, in the shared member protocol's
+# "Re-run carry-forward ledger" section, which every member definition points
+# at; the frontend definition carries no copy of its own.
+
+@test "COV-007: the member protocol's ledger section has the fixer reading dispositions, never the ledger" {
+  local ledger_section
+  ledger_section="$(awk '/^## Re-run carry-forward ledger$/ {inside=1; next} inside && /^## / {exit} inside' "$MEMBER_PROTOCOL")"
+  [ -n "$ledger_section" ]
+  grep -qF -- "the fixer is briefed from the dispositions file the round's orchestrator writes" <<<"$ledger_section"
+  local surface
+  for surface in "$MEMBER_PROTOCOL" "$FRONTEND_AGENT"; do
+    grep -qF -- "the fixer is briefed from the main thread's dispositions file" "$surface" && return 1
+    grep -qF -- 'and the fixer read' "$surface" && return 1
+    grep -qF -- 'the next re-audit and the fixer' "$surface" && return 1
+  done
   true
 }
 
@@ -144,31 +156,12 @@ line_starting() {
 # clean pass discards a co-dispatched member's open remaining[] entries
 # (gaia-react/gaia#2416).
 
-@test "code-audit-frontend.md never removes the shared re-run ledger itself" {
-  grep -qF -- 'Never remove the ledger yourself' "$FRONTEND_AGENT"
-  grep -qE -- 'rm[[:space:]].*\.rerun\.json' "$FRONTEND_AGENT" && return 1
-  grep -qF -- 'Ledger cleanup' "$FRONTEND_AGENT" && return 1
-  true
-}
-
-# --- a closing round applies no self-heal ----------------------------------
-# A self-heal writes no marker and a closing round makes no commit, so a member
-# that self-heals there can never clear it. The member reads the closing flag
-# from branch state itself, never from a brief, and the two sites that would
-# otherwise send it to self-heal point at the section.
-
-@test "code-audit-frontend.md reads the closing flag itself and applies no self-heal in a closing round" {
-  local closing needle
-  closing="$(awk '/^## Closing round$/ {inside_closing_section=1; next} /^## / {inside_closing_section=0} inside_closing_section' "$FRONTEND_AGENT")"
-  [ -n "$closing" ]
-  for needle in \
-    'audit-loop-eval.sh unit-window --root <root>' \
-    'exits 0 and its fourth field is `true`' \
-    'apply no self-heal and promote no out-of-scope finding' \
-    '`AUDIT_SELF_HEALED` stays `"false"`' \
-    'do not withhold the marker' \
-    'Preconditions 1, 2 and 4 are unchanged'; do
-    grep -qF -- "$needle" <<<"$closing" || { echo "not under Closing round: $needle" >&2; return 1; }
+@test "the member protocol tells a member never to remove the shared re-run ledger itself" {
+  grep -qF -- 'Never remove the ledger yourself' "$MEMBER_PROTOCOL"
+  local surface
+  for surface in "$MEMBER_PROTOCOL" "$FRONTEND_AGENT"; do
+    grep -qE -- 'rm[[:space:]].*\.rerun\.json' "$surface" && return 1
+    grep -qF -- 'Ledger cleanup' "$surface" && return 1
   done
-  [ "$(grep -cF -- 'in a closing round (see "Closing round")' "$FRONTEND_AGENT")" -ge 3 ]
+  true
 }

@@ -838,7 +838,6 @@ write_literal_descriptor() {
     "tddUnitTests": ["app/**/*.test.ts"],
     "tddStrictCandidates": ["app/utils/**"],
     "emergentTests": ["app/**/*.test.tsx"],
-    "selfHealRefuse": ["test/**"],
     "preCommitSource": ["app/**"],
     "doctorConfigs": ["doctor.config.*"],
     "dependencyManifests": ["package.json"]

@@ -5,11 +5,9 @@
 # the ending is what drifted.
 #
 # The shape of the defect this guards: the terminal action is restated on
-# several prose surfaces, and two of them state a DIFFERENT ending on purpose:
+# several prose surfaces, and one of them states a DIFFERENT ending on purpose:
 # the pre-merge audit gate (stop and surface, never inline fallback, because a
-# Code Audit Team member's clearance marker is that member's own attestation)
-# and the maintainer-only health-audit runbook (escalate `leaf-no-op`, because
-# its Orchestrator never audits in its own context).
+# Code Audit Team member's clearance marker is that member's own attestation).
 # An undeclared deliberate exception is worse than drift: the safe-looking
 # reading of an unexplained difference is that the agreeing sites are right and
 # the odd one is stale, and acting on that turns a fail-closed merge gate into
@@ -42,7 +40,7 @@
 # Honest limit: this pins what the surfaces SAY, never what an orchestrator
 # does when a member no-ops twice. There is no oracle for the second thing, and
 # the class this defect belongs to (a claim in prose about behaviour living in
-# another file) is why `wiki/concepts/PR Merge Workflow.md`'s fix loop carries a
+# another file) is why `wiki/concepts/Audit Round Procedure.md`'s fix loop carries a
 # sweep-by-the-claim procedure rather than a check.
 #
 # Assertion style: .claude/rules/bats-assertions.md.
@@ -59,14 +57,12 @@ setup() {
   # The owner of the general terminal action.
   OWNER_RELATIVE_PATH='wiki/concepts/Code Review Audit Agent.md'
   # The one surface that departs from it, deliberately.
-  GATE_RELATIVE_PATH='wiki/concepts/PR Merge Workflow.md'
-  # The maintainer-only health audit departs too, escalating rather than
-  # stopping at a merge gate, for its own reason: its Orchestrator never audits.
-  HEALTH_RELATIVE_PATH='.gaia/cli/health/runbook.md'
+  GATE_RELATIVE_PATH='wiki/concepts/Audit Round Procedure.md'
+  # The runbook states the same stop for the unit file the main thread reads.
+  RUNBOOK_RELATIVE_PATH='wiki/concepts/PR Merge Workflow.md'
 
   OWNER="$ROOT/$OWNER_RELATIVE_PATH"
   GATE="$ROOT/$GATE_RELATIVE_PATH"
-  HEALTH="$ROOT/$HEALTH_RELATIVE_PATH"
 
   # Every surface expected to state a terminal action. The roster test
   # reconciles this against the tree in both directions.
@@ -75,9 +71,9 @@ setup() {
     '.claude/skills/gaia/references/plan/decomposition-audit.md'
     '.claude/skills/gaia/references/spec/audit.md'
     '.claude/skills/gaia/references/spec/lens-dispatch.md'
-    '.gaia/cli/health/runbook.md'
     '.claude/rules/subagent-dispatch.md'
     'wiki/concepts/Code Review Audit Agent.md'
+    'wiki/concepts/Audit Round Procedure.md'
     'wiki/concepts/PR Merge Workflow.md'
   )
 
@@ -199,11 +195,11 @@ terminal_segments() {
   }
 }
 
-@test "every roster surface but the two declared departures ends inline, in the terminal statement itself" {
+@test "every roster surface but the declared departure ends inline, in the terminal statement itself" {
   local relative_path lines
   for relative_path in "${ROSTER[@]}"; do
     [ "$relative_path" = "$GATE_RELATIVE_PATH" ] && continue
-    [ "$relative_path" = "$HEALTH_RELATIVE_PATH" ] && continue
+    [ "$relative_path" = "$RUNBOOK_RELATIVE_PATH" ] && continue
     lines="$(terminal_segments "$ROOT/$relative_path")"
     [ -n "$lines" ] || { echo "no terminal statement read in ${relative_path}" >&2; return 1; }
     # Per statement, not per file: a file whose ending drifted at one of
@@ -239,24 +235,6 @@ terminal_segments() {
   grep -qF -- 'stop and surface to the operator' "$GATE"
 }
 
-@test "the health-audit runbook's terminal statement escalates and does not fall back inline" {
-  local lines
-  lines="$(terminal_segments "$HEALTH")"
-  [ -n "$lines" ] || { echo "no terminal statement read in ${HEALTH_RELATIVE_PATH}" >&2; return 1; }
-  printf '%s\n' "$lines" | grep -qi -- 'inline' && {
-    echo "${HEALTH_RELATIVE_PATH}'s terminal statement names an inline ending, which puts the Orchestrator's own context into the grade:" >&2
-    printf '%s\n' "$lines" | grep -i -- 'inline' >&2
-    return 1
-  }
-  printf '%s\n' "$lines" | grep -qF -- 'leaf-no-op'
-}
-
-@test "the health-audit runbook declares its departure as deliberate and names the reason" {
-  grep -qF -- 'departs from the general inline ending deliberately' "$HEALTH"
-  grep -qF -- 'never audits, adjudicates, or fixes in its own context' "$HEALTH"
-  grep -qF -- "$OWNER_RELATIVE_PATH" "$HEALTH"
-}
-
 # --- The declaration: one owner, admitted exceptions ------------------------
 
 @test "the owner page states the general terminal action and claims ownership of it" {
@@ -267,15 +245,10 @@ terminal_segments() {
 
 @test "the owner page admits the merge gate's exception and states its reason" {
   grep -qF -- 'One surface departs from that ending, on purpose' "$OWNER"
-  grep -qF -- '[[PR Merge Workflow]]' "$OWNER"
+  grep -qF -- '[[Audit Round Procedure]]' "$OWNER"
   # The reason, not merely the fact. Without it a reader cannot tell a
   # deliberate exception from an unmaintained one, which is the whole defect.
   grep -qF -- "own attestation" "$OWNER"
-}
-
-@test "the owner page admits the health audit's departure and states its reason" {
-  grep -qF -- "$HEALTH_RELATIVE_PATH" "$OWNER"
-  grep -qF -- 'never audits in its own context' "$OWNER"
 }
 
 @test "the owner page no longer asserts a uniform ending across every surface" {
@@ -284,6 +257,14 @@ terminal_segments() {
     return 1
   }
   return 0
+}
+
+@test "the runbook's terminal statement stops for the human and does not fall back inline" {
+  local lines
+  lines="$(terminal_segments "$ROOT/$RUNBOOK_RELATIVE_PATH")"
+  [ -n "$lines" ] || { echo "no terminal statement read in $RUNBOOK_RELATIVE_PATH" >&2; return 1; }
+  printf '%s\n' "$lines" | grep -qi -- 'inline' && return 1
+  printf '%s\n' "$lines" | grep -qF -- 'for the human'
 }
 
 @test "the merge gate declares its departure as deliberate and names the owner" {

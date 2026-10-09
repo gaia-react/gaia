@@ -31,7 +31,6 @@ setup() {
 .claude/hooks/lib/audit-base-provenance.sh
 .claude/hooks/lib/audit-clearance.sh
 .claude/hooks/lib/audit-digest.sh
-.claude/hooks/lib/audit-selfheal-paths.sh
 .claude/hooks/lib/gaia-version.sh
 .claude/hooks/lib/audit-bypass-stamp.sh
 .claude/hooks/lib/cross-repo-refusal.sh
@@ -42,7 +41,6 @@ setup() {
 .gaia/scripts/audit-noop-detect.sh
 .claude/hooks/pr-merge-audit-check.sh
 .claude/hooks/post-audit-status.sh
-.claude/hooks/audit-stamp-trailer.sh
 .github/audit/resolve-audit-base.sh
 .claude/agents/code-audit-frontend.md
 .claude/agents/code-audit-maintainer-shell.md

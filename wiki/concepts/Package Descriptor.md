@@ -13,7 +13,7 @@ GAIA is a monorepo: the harness (`.claude/`, `.gaia/`, `.githooks/`, `.github/`,
 ## The two files
 
 - **Registry, `.gaia/packages.json`.** A list of `{name, path}` entries, one per package. When the file is absent, the harness uses a built-in default that registers `frontend` at `frontend/`.
-- **Descriptor, `<package path>/gaia.package.json`.** Names the package and holds its glob lists: which files are unit tests, which are strict TDD candidates, which tests are emergent, what a self-healing audit member must not edit, which sources trigger the pre-commit gate, and where the package's dependency manifests and doctor config sit. It also carries the `wiki` path lists the wiki tooling reads. Globs are package-relative.
+- **Descriptor, `<package path>/gaia.package.json`.** Names the package and holds its glob lists: which files are unit tests, which are strict TDD candidates, which tests are emergent, which sources trigger the pre-commit gate, and where the package's dependency manifests and doctor config sit. It also carries the `wiki` path lists the wiki tooling reads. Globs are package-relative.
 
 The schema lives in the readers and the shipped `frontend/gaia.package.json` is the worked example; read those rather than a list here.
 
@@ -25,7 +25,7 @@ Three implementations of one contract, each pinned to the same shared conformanc
 - Node, `.gaia/scripts/lib/gaia-packages.mjs`, for the TDD helpers.
 - TypeScript, in the CLI source, for the CLI (scaffolds, wiki tooling, settings sync).
 
-Consumers include the TDD classifier ([[Determinism Classifier]]), the RED gate ([[TDD RED Verification]]), the worthiness gate ([[Worthiness Presence Gate]]), the audit self-heal refusal set ([[Registering a Code Audit Team Member]]), the pre-commit plan ([[Pre-commit Hooks]]), and the wiki dead-path scan.
+Consumers include the TDD classifier ([[Determinism Classifier]]), the RED gate ([[TDD RED Verification]]), the worthiness gate ([[Worthiness Presence Gate]]), the pre-commit plan ([[Pre-commit Hooks]]), and the wiki dead-path scan.
 
 ## Fail-closed rule
 

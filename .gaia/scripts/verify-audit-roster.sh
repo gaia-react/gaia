@@ -63,6 +63,14 @@
 #      `<prefix>/**`, or a wildcard-free path the classifier's own matcher
 #      (audit_glob_matches) places inside an owned glob. Any other shape is
 #      reported as undecidable, never passed.
+#   5. Zero-match globs. Every remit glob and every `unowned:` glob matches at
+#      least one tracked file, unless it sits on the allowlist inside this
+#      script. A roster comment never exempts a glob. Runs with the coverage
+#      invariant and is skipped with it.
+#
+# A retired member-level key left in an adopter's roster is an ordinary scalar
+# to both readers here: they end the `globs:` list on it and read nothing from
+# it, so a roster that still carries one verifies the same as one without.
 #
 # THE BOUNDED DIALECT a glob must fit to be classified. The classifier compiles
 # three constructs (glob_to_regex, in the roster module sourced below):
@@ -1026,6 +1034,77 @@ if [ -n "$coverage_universe" ]; then
         ;;
     esac
   done < <(printf '%s\n' "$coverage_records")
+
+  # --- Invariant: every remit glob and every `unowned:` glob matches a file ---
+  #
+  # A glob that matches no tracked file either describes a surface that no
+  # longer exists (dead text that reads as coverage) or is a typo that never
+  # reaches the path it was written for. The exceptions are the allowlist
+  # below and nothing else: a roster comment exempts nothing, because the
+  # roster is the file being checked. Each allowlist entry is a deliberate
+  # extension-family spelling (one glob per JS/TS config extension, the YAML
+  # `.yaml` twin of `.yml`) that matches no file today and must keep matching
+  # one the day it appears. Matching reuses the classifier's own glob compiler
+  # so this check never holds a second opinion about what a glob reaches.
+  #
+  # The marker pair below stays at column 0, like the pair above: the
+  # allowlist reader strips comment lines, and the scrub removes the block.
+  zero_match_allowlist="$(sed -e '/^#/d' <<'ALLOWLIST'
+frontend/*.config.mts
+frontend/*.config.cjs
+frontend/*.config.js
+*.config.ts
+*.config.mts
+*.config.cjs
+*.config.js
+.github/workflows/*.yaml
+.github/actions/**/*.yaml
+# gaia:maintainer-only:start
+.gaia/cli/src/**/*.snap
+.gaia/cli/*.config.mts
+.gaia/cli/*.config.cjs
+.gaia/cli/*.config.js
+# gaia:maintainer-only:end
+ALLOWLIST
+)"
+
+  zero_match_records="$(
+    {
+      printf '%s\n' "$zero_match_allowlist" | awk 'NF { printf "A\t%s\n", $0 }'
+      printf '%s\n' "$raw_records" | awk -F'\t' '$1 == "RAW" { printf "G\tremit of %s\t%s\n", $2, $3 }'
+      printf '%s\n' "$unowned_records" | awk -F'\t' '$1 == "UNOWNED" { printf "G\tunowned list\t%s\n", $2 }'
+      printf '%s\n' "$coverage_universe" | awk '{ printf "P\t%s\n", $0 }'
+    } | awk -F'\t' "$_AUDIT_SCOPE_GLOB_AWK"'
+      $1 == "A" { allowed[$2] = 1; next }
+      $1 == "G" { glob_count++; glob_source[glob_count] = $2; glob_text[glob_count] = $3; glob_pattern[glob_count] = glob_to_regex($3); next }
+      $1 == "P" {
+        for (i = 1; i <= glob_count; i++) if (!matched[i] && $2 ~ glob_pattern[i]) matched[i] = 1
+        next
+      }
+      END {
+        for (i = 1; i <= glob_count; i++)
+          if (!matched[i] && !(glob_text[i] in allowed)) printf "ZEROMATCH\t%s\t%s\n", glob_source[i], glob_text[i]
+      }
+    '
+  )"
+
+  while IFS=$'\t' read -r kind first_field second_field; do
+    case "$kind" in
+      ZEROMATCH)
+        findings=$((findings + 1))
+        printf 'verify-audit-roster: FAIL zero-match-glob\n'
+        printf '  where:   %s\n' "$first_field"
+        printf '  glob:    %s\n' "$second_field"
+        printf '  roster:  %s\n' "$config"
+        printf '  This glob matches no tracked file, so it either names a surface\n'
+        printf '  that no longer exists or never reached the path it was written\n'
+        printf '  for. Delete it, or correct it. A deliberate extension-family\n'
+        printf '  spelling belongs on the allowlist inside this script; a roster\n'
+        printf '  comment exempts nothing.\n'
+        printf '\n'
+        ;;
+    esac
+  done < <(printf '%s\n' "$zero_match_records")
 fi
 
 if [ "$findings" -gt 0 ]; then

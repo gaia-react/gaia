@@ -14,7 +14,7 @@
 # The consolidated findings block is no longer one of the consumers that key
 # agreement protects. `post-findings-block.sh` selects on the branch half
 # alone, across every base, because the base half legitimately advances one
-# stamp per cleared round (gaia-react/gaia#1573); probe 2 below now asserts
+# commit per cleared round (gaia-react/gaia#1573); probe 2 below now asserts
 # that widened read rather than the narrow one. The ledger is what still binds
 # co-dispatched members to one KEY_BASE, and it binds them within a round,
 # which is exactly the scope this suite drives.
@@ -24,7 +24,7 @@
 # .gaia/scripts/audit-resolve-scope.sh by one fenced command line; the suite
 # extracts that line, substitutes the fixture's path for `<root>` exactly as a
 # member types the working root in, runs it against a scratch repo carrying a
-# stamped clean round, and reads the KEY=value lines it prints. A member whose
+# clean round, and reads the KEY=value lines it prints. A member whose
 # command drifts (wrong member name, missing or extra flag, a private
 # derivation beside it) reds here. The default member's eligibility set comes
 # out of that same command, under its `--eligibility` flag, so it is driven the
@@ -272,17 +272,18 @@ commit_file() {
 }
 
 # stamp_clean_round <repo>: the content-preserving empty commit a clean audit
-# round lands, carrying the GAIA-Audit trailer resolve-audit-base.sh anchors
-# on. The digest and tree fields only have to satisfy the frozen trailer
-# regex's 64-hex / 40-hex shape; the resolver compares the version alone. A
-# printf-built digest rather than a hashed one keeps this off `shasum`, whose
-# flags differ between BSD and GNU (.claude/rules/bats-assertions.md), and
-# matches how .github/audit/tests/resolve-audit-base.bats builds its own.
-# Content-preserving matters beyond the trailer test itself: a per-member
-# anchor matches on the TREE a clearance recorded, and the stamp must not move
-# it out from under a clearance written just before the stamp lands.
+# round lands, plus the GAIA-Audit success status resolve-audit-base.sh anchors
+# on, served by a `gh` mock on PATH. The digest and tree fields only have to
+# satisfy the three-field description shape; the resolver compares the version
+# alone. A printf-built digest rather than a hashed one keeps this off
+# `shasum`, whose flags differ between BSD and GNU
+# (.claude/rules/bats-assertions.md). Call it directly, never inside a command
+# substitution: the mock's PATH and token exports must reach the test shell.
+# Content-preserving matters beyond the status itself: a per-member anchor
+# matches on the TREE a clearance recorded, and the empty commit must not move
+# it out from under a clearance written just before it lands.
 stamp_clean_round() {
-  local repo="$1" digest tree
+  local repo="$1" digest tree status_directory
   digest="$(printf '%064d' 0)"
   tree="$(git -C "$repo" rev-parse 'HEAD^{tree}')"
   # The team-signal arm anchors only when some member holds an earned
@@ -291,9 +292,30 @@ stamp_clean_round() {
   mkdir -p "$repo/.gaia/local/audit"
   printf '{"version":"2.0.0","schema":4,"member":"code-audit-maintainer-node","provenance":"earned","review":"full","digest":"%s","tree":"%s","sha":"x"}\n' \
     "$tree" "$tree" > "$repo/.gaia/local/audit/${tree}.code-audit-maintainer-node.ok"
-  git -C "$repo" commit -q --allow-empty -m "audit: stamp
+  git -C "$repo" commit -q --allow-empty -m "audit: clean round"
 
-GAIA-Audit: 2.0.0 ${digest} ${tree}"
+  status_directory="$BATS_TEST_TMPDIR/status-mock"
+  mkdir -p "$status_directory"
+  printf '%s=2.0.0 %s %s\n' "$(git -C "$repo" rev-parse HEAD)" "$digest" "$tree" \
+    >> "$status_directory/map"
+  if [ ! -x "$status_directory/gh" ]; then
+    cat > "$status_directory/gh" <<'MOCK'
+#!/usr/bin/env bash
+# Answers `gh api repos/<repo>/commits/<sha>/statuses --jq ...` with the
+# description mapped to the sha named in argv, or null when none is mapped.
+map_file="$(dirname "$0")/map"
+while IFS= read -r line; do
+  case "$*" in
+    *"${line%%=*}"*) printf '%s\n' "${line#*=}"; exit 0 ;;
+  esac
+done < "$map_file"
+printf 'null\n'
+MOCK
+    chmod +x "$status_directory/gh"
+    export PATH="$status_directory:$PATH"
+    export GH_TOKEN="fake-token"
+    export GITHUB_REPOSITORY="gaia-react/gaia"
+  fi
 }
 
 # --- snippet execution -------------------------------------------------------
@@ -646,11 +668,11 @@ owners_of() {
   local writer_key
   writer_key="$(audit_key_for code-audit-maintainer-shell "$repo")"
   [ -n "$writer_key" ]
-  printf '{"schema":1,"member":"code-audit-maintainer-shell","findings":[{"finding_class":"shell/unquoted-expansion","severity":"error","area_tags":["shell"],"path":".gaia/scripts/x.sh","line":7,"title":"t","failure_mode":"f","verified_by":"v","suggested_fix":"s"}]}\n' \
+  printf '{"schema":1,"member":"code-audit-maintainer-shell","findings":[{"finding_class":"shell/unquoted-expansion","severity":"warning","security":false,"area_tags":["shell"],"path":".gaia/scripts/x.sh","line":7,"title":"t","failure_mode":"f","verified_by":"v","suggested_fix":"s"}]}\n' \
     > "$repo/.gaia/local/audit/${writer_key}.code-audit-maintainer-shell.findings.json"
 
   # A round that cleared BEFORE the one above, keyed to the base that round
-  # resolved: the fork point, which the stamp has since superseded. This is
+  # resolved: the fork point, which the clean round has since superseded. This is
   # the sidecar a reader keyed to the merge-time base could never see, and the
   # one whose findings the tally most wants, because a finding fixed during
   # the loop is a finding worth hardening against.
@@ -660,7 +682,7 @@ owners_of() {
   # derives its own base, and the whole point here is an explicit earlier one.
   earlier_key="$( . "$repo/.gaia/scripts/audit-key-lib.sh" && gaia_audit_key "$earlier_base" "$repo" )"
   [ -n "$earlier_key" ]
-  printf '{"schema":1,"member":"code-audit-frontend","findings":[{"finding_class":"holistic/swallowed-error","severity":"warning","area_tags":["app"],"path":"app/a.txt","line":1,"title":"t","failure_mode":"f","verified_by":"v","suggested_fix":"s"}]}\n' \
+  printf '{"schema":1,"member":"code-audit-frontend","findings":[{"finding_class":"holistic/swallowed-error","severity":"warning","security":false,"area_tags":["app"],"path":"app/a.txt","line":1,"title":"t","failure_mode":"f","verified_by":"v","suggested_fix":"s"}]}\n' \
     > "$repo/.gaia/local/audit/${earlier_key}.code-audit-frontend.findings.json"
   [ "$earlier_base" = "${writer_key%%.*}" ] && return 1
 
@@ -738,7 +760,7 @@ STUB
 # remit (that is what makes its increment empty) and an owned path inside it.
 # `.claude/hooks/lib/audit-clearance.sh`, which some of these members used
 # for this purpose before, is now a GLOBAL RULE (it resets every member's
-# per-member base), so `.claude/hooks/lib/audit-selfheal-paths.sh` replaces it.
+# per-member base), so `.claude/hooks/lib/cross-repo-refusal.sh` replaces it.
 # That file is NOT ownerless: `audit_owner_for_path` resolves it to
 # code-audit-maintainer-shell. It is outside the remit of every member probed
 # with it, and inside the remit of the one member that is not, which is why the
@@ -824,9 +846,9 @@ probe_deadlock() {
   probe_deadlock code-audit-maintainer-shell \
     ".claude/rules/fixture-rule.md" ".github/audit/fixture-note.md"
   probe_deadlock code-audit-github-workflows \
-    ".github/workflows/fixture-ci.yml" ".claude/hooks/lib/audit-selfheal-paths.sh"
+    ".github/workflows/fixture-ci.yml" ".claude/hooks/lib/cross-repo-refusal.sh"
   probe_deadlock code-audit-maintainer-node \
-    ".gaia/cli/src/fixture.ts" ".claude/hooks/lib/audit-selfheal-paths.sh"
+    ".gaia/cli/src/fixture.ts" ".claude/hooks/lib/cross-repo-refusal.sh"
 }
 
 @test "deadlock: each specialist's self-skip prose is wired to the whole-PR list" {
@@ -1123,9 +1145,8 @@ make_stacked_repo() {
 
   repo="$(make_stacked_repo elig-stacked)"
 
-  # GITHUB_BASE_REF is set by the pull_request event under Actions.
-  export GITHUB_ACTIONS=true
-  export GITHUB_BASE_REF=release
+  # The pull request's own record names the branch it merges into.
+  install_pr_view_mock release
 
   eligibility_changed="$(evaluate_eligibility code-audit-frontend "$repo" ELIG_CHANGED)" || {
     echo "the default member's resolver command failed to resolve an eligibility set" >&2
@@ -1174,8 +1195,7 @@ make_stacked_repo() {
   # the same rule the merge gate's own derivation applies: a bare local branch
   # of the same name could sit on this pull request's commits and narrow the
   # answer to nothing.
-  export GITHUB_ACTIONS=true
-  export GITHUB_BASE_REF=no-such-branch
+  install_pr_view_mock no-such-branch
 
   expected="$(git -C "$repo" diff --name-only -z "$(git -C "$repo" merge-base HEAD origin/main)...HEAD" | tr '\0' '\n')"
   eligibility_changed="$(evaluate_eligibility code-audit-frontend "$repo" ELIG_CHANGED)" || {
@@ -1194,9 +1214,9 @@ make_stacked_repo() {
 }
 
 # install_pr_view_mock <base-ref>: a `gh` on PATH whose `pr view` answers with
-# <base-ref> and whose every other subcommand is a silent success. The write
-# side reaches the pull-request record only when Actions has supplied nothing,
-# which is why the two ambient variables are cleared alongside it.
+# <base-ref> and whose every other subcommand is a silent success. The two
+# ambient variables are cleared alongside it so no environment value can stand
+# in for the record.
 install_pr_view_mock() {
   local bin="$BATS_TEST_TMPDIR/gh-bin"
   mkdir -p "$bin"
@@ -1216,7 +1236,7 @@ EOF
   unset GITHUB_ACTIONS GITHUB_BASE_REF
 }
 
-@test "the write side takes the base from the pull request's own record when Actions declares none" {
+@test "the write side takes the base from the pull request's own record" {
   local repo eligibility_changed
 
   repo="$(make_stacked_repo elig-record)"
@@ -1252,12 +1272,8 @@ EOF
 @test "the write side resolves correctly under a shadowing local branch named origin/main that sits AHEAD of the remote-tracking ref (DP-002, ahead)" {
   local repo eligibility_changed
 
-  # The non-Actions arm here is the one this test exercises. Under Actions
-  # the job exports GITHUB_BASE_REF for the whole run, the write side's
-  # derivation resolves its base from that instead of from origin/<default>,
-  # and the shadowing branch this test exists to exercise is never consulted.
-  # That is a real environment difference, not a flake: the same test passes
-  # locally and fails on CI without this.
+  # Cleared so no ambient value can stand in for the default-branch rung this
+  # test exercises.
   unset GITHUB_ACTIONS GITHUB_BASE_REF
 
   repo="$(make_repo dp002-divergence)"
@@ -1288,9 +1304,9 @@ EOF
 @test "the write side resolves correctly under a shadowing local branch named origin/main that sits BEHIND the remote-tracking ref (DP-002, behind)" {
   local repo eligibility_changed
 
-  # The non-Actions, no-record arm is the only one that consults the
-  # default-branch rung, so clear both ambient variables and stand in a `gh`
-  # whose `pr view` answers nothing: the audit-before-`gh pr create` shape.
+  # The no-record arm is the only one that consults the default-branch rung, so
+  # clear both ambient variables and stand in a `gh` whose `pr view` answers
+  # nothing: the audit-before-`gh pr create` shape.
   unset GITHUB_ACTIONS GITHUB_BASE_REF
   install_pr_view_mock ""
 

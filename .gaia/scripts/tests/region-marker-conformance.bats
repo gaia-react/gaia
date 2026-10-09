@@ -56,7 +56,6 @@ auditors:
       - "fixture/a/**"
       - "fixture/b/**"
     audience: adopter
-    push_fixes: true
     default: true
 YAML
   printf '%s\n' "$body" > "$sandbox_directory/.claude/agents/code-audit-fixture.md"

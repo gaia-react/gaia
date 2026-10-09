@@ -459,7 +459,7 @@ describe('computeTally', () => {
     });
   });
 
-  test('Directive #4: a recorded recurring class counts regardless of self-heal (the tally has no self-heal notion)', () => {
+  test('a recorded recurring class counts whether or not a later PR fixed it (the tally has no found-and-fixed notion)', () => {
     // The tally only sees whatever findings were recorded in the block for
     // each PR; it has no concept of "found-and-healed". A class recorded as
     // recurring produces a candidate even though the tally cannot know (and

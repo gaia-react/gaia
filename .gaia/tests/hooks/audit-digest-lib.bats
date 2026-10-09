@@ -84,7 +84,7 @@ mutate_commit() {
 #
 # Editing this string does not rotate a digest the way an ordinary machinery
 # edit does. It moves the whole audit key space at once: every clearance
-# marker, stamped trailer, and posted status already in the wild becomes
+# marker and posted status already in the wild becomes
 # unfindable rather than stale, and there is no version field, no migration,
 # and no grace window that would let a reader tell the two apart. A typo, a
 # reflexive v1 -> v2 bump carried along by an unrelated edit, or a

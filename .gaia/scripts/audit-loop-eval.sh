@@ -99,8 +99,10 @@
 #   gaia_loop_decide_member, in a unit: used >= 10 denies `cap` first unless
 #   the latest unit runs past round 10 (an answer admitted it there); then
 #   the latest unit's through_round must reach s, else `deny window`; then a
-#   denying signal unanswered denies as in step 2; else `allow`. Inline (no
-#   unit, nesting unavailable): gaia_loop_decide_unit with k = 1.
+#   denying signal unanswered denies as in step 2; else `allow`. A member
+#   dispatched outside a unit is judged by gaia_loop_decide_unit with k = 1, a
+#   fail-safe bound on a stray direct dispatch, not a supported way to run
+#   the loop.
 #   A window can start off a 3-round boundary after a unit stops early;
 #   nothing here assumes alignment.
 #
@@ -165,7 +167,7 @@
 # merge base that cannot be computed, counts as authored (fail closed: more
 # counted, never fewer). A(r) = authored entries minus identity keys
 # (member, finding_class, path, line) disposed accept-residual,
-# waive-out-of-scope or file in any dispositions-<k>.json with k < r, except
+# waive-out-of-scope, file or divert in any dispositions-<k>.json with k < r, except
 # a key listed in <RUN_FOLDER>/vetoes.json with effective_from_round <= r,
 # which stays counted whatever was disposed. An absent vetoes.json vetoes
 # nothing; an unreadable one fails the evaluation, since dropping a veto
@@ -399,7 +401,9 @@ _gaia_loop_raw_findings() {
       # security:false finding would read true.
       member_entries="$(jq -c --arg member "$member" '.findings | if type == "array" then map({member: $member, finding_class, path, line, severity,
         security: (if (.security | type) == "boolean" then .security else true end),
-        cross_remit: (.cross_remit == true)}) else error("no findings") end' <"$newest" 2>/dev/null)" || member_entries=""
+        cross_remit: (.cross_remit == true)}
+        + (if .triage == true then {triage: true, triage_reason: (if (.triage_reason | type) == "string" then .triage_reason else "" end)} else {} end))
+        else error("no findings") end' <"$newest" 2>/dev/null)" || member_entries=""
     fi
     if [ -n "$member_entries" ]; then
       entries="$(jq -n -c --argjson existing "$entries" --argjson additional "$member_entries" '$existing + $additional')"
@@ -412,7 +416,9 @@ _gaia_loop_raw_findings() {
 
 # gaia_loop_findings <main-root> <state-json> <r>: F(r) as
 # {"round","entries":[...],"missing_members":[...]}, each entry
-# {member, finding_class, path, line, severity, security, cross_remit, authored}.
+# {member, finding_class, path, line, severity, security, cross_remit, authored},
+# plus triage and triage_reason on an entry whose sidecar marks it triage:true
+# (the dispositions check decides whether the mark is honored).
 gaia_loop_findings() {
   local findings authorship
   findings="$(_gaia_loop_raw_findings "$1" "$2" "$3")" || return 2

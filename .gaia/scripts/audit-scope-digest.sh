@@ -39,9 +39,11 @@
 #              captured.
 #   --release  Removes this member's stored capture and exits 0, or exits 0
 #              when none is stored. On a capture that cannot be removed:
-#              a diagnostic on stderr, exits non-zero. The self-heal exit of
-#              a member's round calls this; see the SPENT-capture block below
-#              for why that round cannot be seen to end any other way.
+#              a diagnostic on stderr, exits non-zero. A round that ends
+#              without publishing a conclusion calls this (the clearance
+#              writer's forfeiture recovery names it); see the SPENT-capture
+#              block below for why such a round cannot be seen to end any
+#              other way.
 #
 # Scope file: <root>/.gaia/local/audit/<audit-key>.<member>.scope.json, where
 # <audit-key> is `gaia_audit_key "<key-base>" "<root>"`
@@ -118,12 +120,13 @@ usage: audit-scope-digest.sh --capture [--recapture] [--base-reason <token>] [--
        audit-scope-digest.sh --release --root <path> --member <name> --base <key-base>
 
   --release    remove this member's stored capture, so the next round recaptures
-               fresh. For a round that self-healed and so ends publishing
-               nothing while the repair commit rotates the digest.
+               fresh. For a round that ends publishing nothing while a repair
+               commit rotates the digest.
   --recapture  valid only with --capture; replace an existing capture for this
                audit key and member instead of returning it unchanged. For a
                caller that legitimately changed the content its review ends on
-               (CI's self-heal commit), never to refresh a stale-looking value.
+               (a repair that moved the content its review ends on), never to
+               refresh a stale-looking value.
   --base-reason      valid only with --capture; the resolver's reason token for
                      the round, stored in the capture.
   --base-overridden  valid only with --capture; marks the round's review base as
@@ -294,13 +297,12 @@ fi
 # genuinely ends on different content than it started on.
 # The one exception, and the reason the idempotence above is scoped to a REVIEW
 # rather than to the audit key alone. The key's base advances only when a CLEAN
-# round stamps a trailer, so a round that REFUSES leaves the next round
+# round posts a GAIA-Audit status, so a round that REFUSES leaves the next round
 # resolving the same key. Without this, that next round reads the refused
 # round's capture, the repair that answered the refusal has rotated the member
 # digest, and the earned write refuses `review scope superseded` -- forever, on
-# every re-dispatch, with `--recapture` (named nowhere but the CI self-heal
-# prompt) as the only escape. The AND-aggregator then holds GAIA-Audit shut
-# with no in-band recovery.
+# every re-dispatch, with `--recapture` as the only escape. The AND-aggregator
+# then holds GAIA-Audit shut with no in-band recovery.
 #
 # A stored capture is SPENT once its own member has PUBLISHED a conclusion keyed
 # to it -- a marker or a refusal. That one term separates the two cases this
@@ -310,8 +312,8 @@ fi
 #   review still running              -> nothing published   -> keep
 #
 # THE PARTITION ABOVE IS NOT EXHAUSTIVE, and the third case is why the writer
-# has a release arm. A round that ENDS WITHOUT PUBLISHING ANYTHING -- a
-# self-heal, the dirty-tree withhold, a superseded forfeiture, a crash -- is
+# has a release arm. A round that ENDS WITHOUT PUBLISHING ANYTHING -- the
+# dirty-tree withhold, a superseded forfeiture, a crash -- is
 # byte-for-byte indistinguishable here from a running review, so it lands in the
 # keep arm and its capture survives it. That capture is stale the moment the
 # operator commits, and a stale capture makes the next round's earned write
@@ -323,13 +325,11 @@ fi
 # that refusal exits. The cost is the one forfeited round, not every round after
 # it.
 #
-# A self-heal is the common case and does not pay that round. The member knows
-# it self-healed and that the orchestrator's repair commit will rotate its
-# digest, so it releases its own capture with --release on the way out, and the
-# post-repair round recaptures fresh and clears on its first try. Releasing is safe
-# there for the reason it is unsafe after a forfeiture: a self-healed round
-# writes no marker, so no fresh capture it could take afterwards attests
-# anything.
+# A member that knows its round ended without publishing, and that the repair
+# commit will rotate its digest, releases its own capture with --release on the
+# way out, and the post-repair round recaptures fresh and clears on its first
+# try. Releasing is safe there for the reason it is unsafe after a forfeiture: a
+# round that wrote no marker leaves no fresh capture that could attest anything.
 #
 # Keeping the second is what preserves the guarantee this arm was written for:
 # the fence a member re-runs on every handshake call must not overwrite the

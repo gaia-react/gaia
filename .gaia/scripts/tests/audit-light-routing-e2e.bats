@@ -136,6 +136,35 @@ escalate_through_light() {
   assert_gate_allows
 }
 
+@test "a refused branch repaired by a small delta clears light against the refusal's findings, and the merge gate allows it" {
+  lsb_init
+  lsb_commit_lines frontend/app/notes.md 5 line
+  lsb_refuse_with_findings "$FRONTEND" "[$(lsb_finding frontend/app/notes.md 2 warning false)]"
+  assert_gate_denies
+  lsb_commit_lines frontend/app/notes.md 5 fixed
+  assert_gate_denies
+  lsb_route "$FRONTEND"
+  expect_line "$(printf 'light\trefusal-anchored')"
+  grep -qxF 'open_findings: 1' "$(route_input_path)"
+  clear_through_light
+  expect_line "light-cleared"
+  [ "$(jq -r '[.provenance, .review] | join(" ")' "$(marker_path)")" = "earned light" ]
+  assert_gate_allows
+}
+
+@test "the same repair with the cited line left as it was is refused and the merge gate keeps denying" {
+  lsb_init
+  lsb_commit_lines frontend/app/notes.md 5 line
+  lsb_refuse_with_findings "$FRONTEND" "[$(lsb_finding frontend/app/notes.md 2 warning false)]"
+  lsb_commit frontend/app/notes.md "$(printf 'line 1\nline 2\nline 3\nline 4\nchanged 5')"
+  lsb_route "$FRONTEND"
+  expect_line "$(printf 'light\trefusal-anchored')"
+  clear_through_light
+  expect_full checklist-unchanged
+  assert_no_marker
+  assert_gate_denies
+}
+
 @test "an escalate reply leaves no marker for the current digest and the merge gate denies" {
   prepare_light
   escalate_through_light

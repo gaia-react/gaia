@@ -199,7 +199,24 @@ check_case() {
   [ "$status" -eq 2 ]
   [[ "$GAIA_PACKAGES_ERROR" =~ ^gaia-packages:\ .*\.gaia/packages\.json\ is\ malformed.*Next\ step:\  ]]
   # The answers are empty, not stale.
-  [ -z "$(gaia_package_globs_ere selfHealRefuse)" ]
+  [ -z "$(gaia_package_globs_ere tddUnitTests)" ]
+}
+
+@test "a descriptor that still carries a retired globs key loads clean and the key answers nothing" {
+  . "$LIBRARY"
+  local retired_key status=0 key_status=0
+  # The retired key is whatever the leftover fixture carries beyond a current descriptor.
+  retired_key="$(comm -13 \
+    <(jq -r '.globs | keys[]' "$CORPUS/path-frontend/frontend/gaia.package.json" | sort) \
+    <(jq -r '.globs | keys[]' "$CORPUS/descriptor-leftover-selfheal-key/frontend/gaia.package.json" | sort))"
+  [ -n "$retired_key" ]
+  materialize "$CORPUS/descriptor-leftover-selfheal-key" "$BATS_TEST_TMPDIR/r"
+  gaia_packages_load "$BATS_TEST_TMPDIR/r" || status=$?
+  [ "$status" -eq 0 ]
+  [ -z "$GAIA_PACKAGES_ERROR" ]
+  [ -n "$(gaia_package_globs_ere tddUnitTests)" ]
+  gaia_package_globs_ere "$retired_key" >/dev/null 2>&1 || key_status=$?
+  [ "$key_status" -eq 1 ]
 }
 
 @test "missing descriptor: load returns 3 naming the descriptor path, never 0" {

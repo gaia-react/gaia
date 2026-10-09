@@ -8,7 +8,7 @@ tags: [concept, claude, review]
 
 # Audit Disposition and Debt Fix
 
-Every finding the [[Code Review Audit Agent]] surfaces carries a **forced disposition** before its marker clears. In-scope findings keep their existing handling (a self-heal commit or an escalation that blocks the marker). Out-of-scope findings, debt in code the PR did not change but the audit opened anyway within its review radius, route out of the gating Critical/Important/Suggestions sections into a separate disposition: a same-run repair through the self-heal path when the finding qualifies for in-flight-fix promotion (below), a deduped, severity-labeled `tech-debt` GitHub issue, a recorded waive (not filed) when the finding's path is gate machinery or a file the pull request already changes and the finding itself clears both disqualifiers, a diverted security surface, or a backend-absent waive. The `/gaia-debt` skill then fixes the filed backlog one fix unit at a time, a unit being a single issue or a user-approved related batch, and a statusline segment surfaces the open count.
+Every finding the [[Code Review Audit Agent]] surfaces carries a **forced disposition** before its marker clears, and one actor disposes: the audit loop unit ([[PR Merge Workflow]]), never the member that reported it. In-scope findings keep their existing handling (the round's fixer repairs, or an escalation that blocks the marker). Out-of-scope findings, debt in code the PR did not change but the audit opened anyway within its review radius, route out of the gating Critical/Important/Suggestions sections into a separate disposition: a deduped, severity-labeled `tech-debt` GitHub issue, a recorded waive (not filed) when the finding's path is gate machinery or a file the pull request already changes and the finding itself clears both disqualifiers, a diverted security surface, or a backend-absent record. The `/gaia-debt` skill then fixes the filed backlog one fix unit at a time, a unit being a single issue or a user-approved related batch, and a statusline segment surfaces the open count.
 
 The system **fails open**. A definitively-absent issue backend makes the whole feature inert. A transient backend failure never silently drops a finding and never blocks the merge. The single intended block is a genuinely-missing disposition on a present, writable backend.
 
@@ -18,14 +18,10 @@ A finding sorts on two axes: **scope** (in-scope vs out-of-scope) and **resoluti
 
 | | auto-safe | needs-human |
 |---|---|---|
-| **in-scope** | self-heal commit in the working tree | escalation; blocks the marker until the operator resolves it |
-| **out-of-scope** | repaired in-flight when it qualifies for promotion (below); recorded `machinery_waived` (not filed) when it is non-security and its path is gate machinery or a file the pull request already changes and the finding itself clears both disqualifiers; otherwise filed as a `tech-debt` issue (non-security); or a backend-absent waive | diverted security surface (never a public channel); `/gaia-debt` fixes the filed backlog |
+| **in-scope** | fixed by the round's fixer and verified | escalation; blocks the marker until the operator resolves it |
+| **out-of-scope** | recorded `waive-out-of-scope` (not filed) when it is non-security and its path is gate machinery or a file the pull request already changes and the finding itself clears both disqualifiers; otherwise filed as a `tech-debt` issue (non-security); or a backend-absent record | diverted security surface (never a public channel); `/gaia-debt` fixes the filed backlog |
 
-For most out-of-scope findings the audit never edits the reviewed PR's working tree: it files, it does not fix, since auto-fixing debt the PR did not touch would breach surgical-changes. The one exception is in-flight-fix promotion.
-
-### In-flight-fix promotion
-
-A non-security, in-remit, narrow-footprint out-of-scope finding in a changed TS/TSX file, inside the self-heal repair boundary, is repaired through the existing self-heal path in the same run instead of filed: it rides that path's edit guard, marker-withhold, digest-rotation re-dispatch, and fixed-round recording, with no separate disposition machinery. A finding outside that boundary, security-class, or not prompt-shaped, still files normally, and a filed finding runs a best-effort per-bucket classification, seeding a `finding_class` the debt-drain clustering rule groups on.
+The audit never edits the reviewed PR's working tree for an out-of-scope finding: it files, it does not fix, since repairing debt the PR did not touch would breach surgical-changes. A filed finding runs a best-effort per-bucket classification, seeding a `finding_class` the debt-drain clustering rule groups on.
 
 ## Scope classification
 
@@ -42,9 +38,9 @@ For each out-of-scope finding the audit classifies security first (below), then,
 
 ### Out-of-scope waive
 
-An out-of-scope finding whose path is the **gate machinery itself**, or a file the **pull request already changes**, regenerates its own backlog when filed: the next PR that touches the same machinery, or the same file, has its audit re-surface the identical finding, a regeneration loop the `filed` disposition cannot escape. The `machinery_waived` disposition breaks that loop: it records the finding without filing it, so a PR does not seed the backlog with debt about a path it just touched.
+An out-of-scope finding whose path is the **gate machinery itself**, or a file the **pull request already changes**, regenerates its own backlog when filed: the next PR that touches the same machinery, or the same file, has its audit re-surface the identical finding, a regeneration loop the `filed` disposition cannot escape. The `waive-out-of-scope` disposition breaks that loop: it records the finding without filing it, so a PR does not seed the backlog with debt about a path it just touched.
 
-The disposition is restricted by a deterministic **path eligibility test**, and by two disqualifiers no gate checks, so it cannot become a universal escape hatch. A finding is `machinery_waived`-eligible only when it is non-security (the security screen runs first, and a security-class finding diverts, never waives) **and** its dedup-key `path` is in the **union** of two sets:
+The disposition is restricted by a deterministic **path eligibility test**, and by two disqualifiers no gate checks, so it cannot become a universal escape hatch. A finding is waive-eligible only when it is non-security (the security screen runs first, and a security-class finding diverts, never waives) **and** its dedup-key `path` is in the **union** of two sets:
 
 - a **gate-machinery path**, the self-referential set `audit_path_is_machinery` defines (`.claude/hooks/lib/audit-machinery.sh`), the files whose bytes change what a member reviews, who reviews it, where a clearance lands, or whether a clearance is believed;
 - a file the **pull request under judgment already changes**: its whole-pull-request fork point against the branch the pull request merges into, unfiltered by file type, resolved against the **acting** tree that holds HEAD rather than the main checkout that holds the marker store, so a merge driven from a linked worktree evaluates its own diff.
@@ -57,9 +53,9 @@ Two disqualifiers narrow what may be waived inside that eligible set, and neithe
 
 Either path term alone is sufficient, and a gate-machinery finding satisfies the path condition whether or not the pull request touches it. An empty eligibility set disengages the waive rather than opening it, and a finding satisfying neither term files or diverts as usual. Comparison is **exact whole-string equality** against repo-relative POSIX paths, never a prefix, suffix, basename, or substring match; the changed-file enumeration is NUL-delimited so a legitimately quoted path never reads as an offender. A dedup key the path extractor cannot parse is itself an offender, failing closed.
 
-A machinery-waived finding is recorded as a `machinery_waived` disposition and listed in the PR body under the heading `## Out-of-scope machinery findings (recorded, not filed)`, its dedup key written there in the wrapped `<!-- gaia-debt-key: … -->` form (`.claude/skills/file-tech-debt/SKILL.md`). The PR body is the durable, human-readable record of what was waived. The disposition enum value `machinery_waived` carries no field for the changed-files term; the union lives entirely in how the eligibility test reads the existing `path=`.
+A waived finding is recorded as a `waive-out-of-scope` disposition (basis `cross-remit`) and listed in the PR body under the heading `## Out-of-scope machinery findings (recorded, not filed)`, its dedup key written there in the wrapped `<!-- gaia-debt-key: … -->` form (`.claude/skills/file-tech-debt/SKILL.md`). The PR body is the durable, human-readable record of what was waived. The disposition carries no field for the changed-files term; the union lives entirely in how the eligibility test reads the existing `path=`.
 
-An **accepted residual** is a distinct disposition from a machinery waive: a waive covers an out-of-scope finding on an eligible path, while an accepted residual is an in-scope Suggestion or finding the operator defers rather than fixing in this pull request, in the member's own remit ([[PR Merge Workflow#Applying the audit's own Suggestions: digest economics]]). It is recorded under the heading `## Accepted residuals (recorded, not fixed)` in the pull request body and nowhere else: no dependence on any gitignored `.gaia/local` store.
+An **accepted residual** is a distinct disposition from a machinery waive: a waive covers an out-of-scope finding on an eligible path, while an accepted residual is an in-scope Suggestion or finding the operator defers rather than fixing in this pull request, in the member's own remit ([[Audit Round Procedure#Applying the audit's own Suggestions: digest economics]]). It is recorded under the heading `## Accepted residuals (recorded, not fixed)` in the pull request body and nowhere else: no dependence on any gitignored `.gaia/local` store.
 
 Eligibility is partly **author-controlled**: touching a file at all makes that file's non-security out-of-scope findings waivable, so the eligibility test bounds **where** a waive may be recorded, not **which** findings may be waived. Three walls stand on that second question, all of them agent judgment and none of them gate-checked: the non-security screen, and the two disqualifiers above.
 
@@ -79,7 +75,7 @@ On the GAIA maintainer repository the issue carries one more, exactly one `audie
 
 A deterministic check reads that metadata back before the issue is created, and the filing does not proceed on a finding. It verifies the label vocabulary and counts, the dedup key's shape, and that no label belonging to a later lifecycle stage (the drain's claim and park labels) has been applied by a filing. It runs offline, so it needs neither network nor `gh`. What it deliberately cannot check is whether a grade was applied honestly: whether a fix carries a design decision is a judgment about code, so the mechanical half of the rules is enforced and the rubric half stays a filer's obligation. The same check has advisory modes that audit one already-filed issue or sweep the whole open backlog, and those relabel nothing: repairing an existing issue is a decision per issue.
 
-The `file-tech-debt` skill (`.claude/skills/file-tech-debt/SKILL.md`) is the source of truth for the filing mechanics: key construction, the `--body-file` invocation, idempotent labels, the metadata check, the body schema, and the sentinel touch.
+The audit loop unit files through `.gaia/scripts/file-tech-debt.sh`, which screens for security, probes the backend, dedups, files and verifies the filing in that order, and appends one outcome line per finding. The `file-tech-debt` skill (`.claude/skills/file-tech-debt/SKILL.md`) is the source of truth for the filing mechanics: key construction, the `--body-file` invocation, idempotent labels, the metadata check, the body schema, and the sentinel touch.
 
 ### Idempotent dedup
 
@@ -106,32 +102,31 @@ The authoritative `finding_class` vocabulary (`HOLISTIC_FINDING_CLASSES`, `RULE_
 Because "any Critical" and "security-shaped content" are both security-class triggers, an out-of-scope **Critical** or a finding whose content reads as a security concern is security-class and routes through the visibility gate before any public filing. `gh repo view --json visibility` returns `PUBLIC | PRIVATE | INTERNAL`, re-read immediately before each security-relevant write (a repo can flip); any non-confirmed-`PRIVATE` state diverts.
 
 - security-class on **PUBLIC or INTERNAL** → **divert**, never a public or internal issue:
-  - **local run**: a redacted operator surface at `.gaia/local/audit/security/<HEAD-sha>.md` (gitignored) plus a count-only pointer (no detail) in the report. The operator is surfaced to and the flow waits; nothing is auto-drafted or auto-disclosed.
+  - a local record at `.gaia/local/audit/security/<hash-of-the-dedup-key>.md` (gitignored) that never leaves the machine, plus a count-only pointer (no detail) in the unit report. The record is written whatever the backend probe answers, and no write verb runs for a diverted finding. The human is told the count before the status posts and the merge then proceeds without stopping; nothing is auto-drafted or auto-disclosed. The disposition is `divert`, valid only for a security-class finding the branch did not author.
 - security-class on **confirmed PRIVATE** → file as a normal private `tech-debt` issue, fully dedupable and fixable.
 
 A security-class finding's detail never reaches a public or internal issue or the PR comment; a diverted finding contributes only to counts on those surfaces. A diverting finding that maps to no seeded class still builds its dedup key with the fallback class, so the operator surface and any future dedup stay well-formed; the fallback is what the key is built with, never what makes the finding divert. Either disposition (`filed` or `diverted`) lets the marker write, so the never-public guarantee never deadlocks the merge.
 
 ## The disposition gate and the marker
 
-The disposition gate is the **fourth marker precondition**, alongside the three existing ones (no in-scope Critical, every in-scope Important addressed, every in-scope Suggestion auto-fixed or escalated), which are now scoped to in-scope findings. Before writing the marker the audit re-queries open `tech-debt` issues for each out-of-scope key and confirms each `filed` entry still resolves to an open issue carrying the key.
+The disposition gate is the **fourth marker precondition**, alongside the three existing ones (no in-scope Critical, every in-scope Important addressed, every in-scope Suggestion auto-fixed or escalated), which are now scoped to in-scope findings. It is enforced by the unit, not by a member: `audit-dispositions-check.sh check` refuses a finding with no disposition (whoever authored it), and `check-outcomes` reconciles the round's `filing-outcomes-<r>.jsonl` against every `file` and `divert` entry.
 
-The audit decides a disposition for each out-of-scope finding at its marker-decision point; filed `tech-debt` issues and the PR-body headings carry the durable record, never a local file. Each disposition entry carries the dedup key's inner content (the `v1 class=… path=… line=…` text without the `<!-- gaia-debt-key: … -->` wrapper), its severity, `security_class`, and a `disposition`:
+The unit decides a disposition for each finding in the round's `dispositions-<r>.json`; filed `tech-debt` issues and the PR-body headings carry the durable record. The dispositions are `fix`, `accept-residual`, `waive-out-of-scope`, `file` and `divert`. The filing script records one outcome per `file` or `divert` entry:
 
-- `filed`: an open `tech-debt` issue carries the key (`issue_number` set).
-- `diverted`: security-class diverted; no public issue.
-- `waived`: backend definitively absent; the finding reverts to prose only.
-- `machinery_waived`: a non-security out-of-scope finding whose path is gate machinery or a file the pull request already changes and the finding itself clears both disqualifiers; recorded and listed in the PR body, not filed.
-- `pending` with `pending_reason: "transient"`: a transient `gh` failure; the finding is surfaced and retained for the next idempotent run.
-- `pending` with `pending_reason: "definitive"`: a definitive filing failure on a present, writable backend; the disposition is genuinely missing.
+- `filed`: an open `tech-debt` issue carries the key, verified by a re-query after creation, or a dedup match resolved to an existing issue.
+- `diverted`: security-class diverted; no public issue, a local record only.
+- `absent`: the backend is definitively absent; the finding is listed under `## Not filed (no issue backend)`.
+- `transient`: a transient `gh` failure; the finding is retained under the run folder's `filing-retry/` and filed again every later round, and the PR body carries a pending count.
+- `failed`: a definitive filing failure on a present, writable backend; the finding has no disposition on record.
 
-The marker writes when every entry is `filed`, `diverted`, `waived`, `machinery_waived`, or `pending(transient)`. It is withheld **only** on `pending(definitive)`, the one intended block: the operator resolves the filing failure and re-invokes before the marker clears. Backend-absent, transient, diversion-failure, and machinery-waive cases all fail open and never block the merge.
+Only `failed` (or a `file` or `divert` entry with no outcome line) fails `check-outcomes` and stops the unit `dispositions-check-failed`, the one intended block: the operator resolves the filing failure and re-invokes. Backend-absent, transient, diversion and waive cases all fail open and never block the merge.
 
 ### Backend probe (three outcomes)
 
-The audit probes the issue backend once at the start of the disposition flow:
+The filing script probes the issue backend before any non-security filing:
 
-- **Definitive-absent** → waive: file nothing, the gate waives, out-of-scope findings revert to prose, the marker writes. Triggers: repo unresolvable, `gh` unauthenticated, Issues disabled (`gh repo view --json hasIssuesEnabled` false or a structurally-failing issue-list probe, never `gh repo view` resolution alone), or the viewer lacks write permission.
-- **Transient/ambiguous** → do not waive, do not drop: timeout, rate-limit, 5xx. Surface the finding and retain it for the next run; dedup makes the retry safe. Never block the merge.
+- **Definitive-absent** → file nothing and record `absent`: the finding reverts to a not-filed line in the PR body and the marker writes. Triggers: repo unresolvable, `gh` unauthenticated, Issues disabled (`gh repo view --json hasIssuesEnabled` false or a structurally-failing issue-list probe, never `gh repo view` resolution alone), or the viewer lacks write permission.
+- **Transient/ambiguous** → do not drop: timeout, rate-limit, 5xx. Record `transient`, retain the finding for the next round's retry pass; dedup makes the retry safe. Never block the merge.
 - **Present** → proceed with dedup, filing, or divert.
 
 ### Sibling: the re-run carry-forward ledger

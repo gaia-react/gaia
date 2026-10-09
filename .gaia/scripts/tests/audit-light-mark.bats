@@ -476,12 +476,10 @@ light_sidecar_files() {
 @test "a same-digest refusal prints full refusal-present and is left untouched" {
   prepare_light
   clear_reply_to_file
-  local refusal before anchor_tree
-  # A refusal on the anchor's own tree is older than the delta, so the router
-  # still routes light and only this script's own check can see it.
-  anchor_tree="$(jq -r .anchor_tree "$(record_path)")"
-  [ -n "$anchor_tree" ]
-  refusal="$(lsb_marker_json "$FRONTEND" refused "" "$anchor_tree" "$(awk 'NF { print; exit }' "$LSB_ROOT/.gaia/VERSION" | tr -d '[:space:]')" "$(lsb_member_digest "$FRONTEND")")"
+  local refusal before
+  # A refusal whose tree is no commit in the walk range is invisible to the
+  # router, so only this script's own check can see it.
+  refusal="$(lsb_marker_json "$FRONTEND" refused "" "0000000000000000000000000000000000000001" "$(awk 'NF { print; exit }' "$LSB_ROOT/.gaia/VERSION" | tr -d '[:space:]')" "$(lsb_member_digest "$FRONTEND")")"
   [ -f "$refusal" ]
   before="$(cksum <"$refusal")"
   lsb_mark "$FRONTEND" "$REPLY_FILE"
@@ -489,6 +487,143 @@ light_sidecar_files() {
   assert_no_marker
   [ -f "$refusal" ]
   [ "$(cksum <"$refusal")" = "$before" ]
+}
+
+# --- refusal-anchored checklist ---------------------------------------------
+
+# prepare_refusal_anchored <content-after-the-refusal-file-or-empty>: five owned
+# lines refused with a warning on line 2 and a suggestion on line 4, then the
+# repair (every line rewritten, or the given file body), routed light.
+prepare_refusal_anchored() {
+  lsb_init
+  lsb_commit_lines frontend/app/notes.md 5 line
+  lsb_refuse_with_findings "$FRONTEND" "[$(lsb_finding frontend/app/notes.md 2 warning false),$(lsb_finding frontend/app/notes.md 4 suggestion false)]"
+  if [ -n "${1:-}" ]; then
+    lsb_commit frontend/app/notes.md "$1"
+  else
+    lsb_commit_lines frontend/app/notes.md 5 fixed
+  fi
+  lsb_route "$FRONTEND"
+  [ "$output" = "$(printf 'light\trefusal-anchored')" ] || { printf 'router: %s\n' "$output" >&2; return 1; }
+}
+
+@test "a reply resolving every open finding over a delta that changes every cited line clears light" {
+  prepare_refusal_anchored
+  clear_reply_to_file
+  [ "$(jq -c .resolved "$REPLY_FILE")" = '["r1-1","r1-2"]' ]
+  lsb_mark "$FRONTEND" "$REPLY_FILE"
+  expect_line "light-cleared"
+  [ "$(jq -r '[.provenance, .review, .tree] | join(" ")' "$(marker_path)")" = "earned light $LSB_TREE" ]
+}
+
+@test "a refusal-anchored clear accounts for the open findings in the full sidecar and retires the ledger entries" {
+  prepare_refusal_anchored
+  clear_reply_to_file
+  lsb_mark "$FRONTEND" "$REPLY_FILE"
+  expect_line "light-cleared"
+  local sidecar ledger
+  sidecar="$(full_sidecar_files)"
+  [ -f "$sidecar" ]
+  [ "$(jq -c '[(.findings | length), [.resolutions[].entry_id]]' "$sidecar")" = '[0,["r1-1","r1-2"]]' ]
+  ledger="$(find "$(audit_directory)" -maxdepth 1 -name '*.rerun.json')"
+  [ -z "$ledger" ] || { printf 'ledger left behind: %s\n' "$ledger" >&2; return 1; }
+}
+
+@test "a reply whose resolved list omits an open finding prints full verdict-incomplete" {
+  prepare_refusal_anchored
+  clear_reply_to_file
+  reply_edit '.resolved = ["r1-1"]'
+  lsb_mark "$FRONTEND" "$REPLY_FILE"
+  expect_full verdict-incomplete
+  assert_no_marker
+}
+
+@test "a reply with no resolved list at all prints full verdict-incomplete" {
+  prepare_refusal_anchored
+  clear_reply_to_file
+  reply_edit 'del(.resolved)'
+  lsb_mark "$FRONTEND" "$REPLY_FILE"
+  expect_full verdict-incomplete
+  assert_no_marker
+}
+
+@test "a resolved list naming a key the checklist does not hold prints full verdict-mismatch" {
+  prepare_refusal_anchored
+  clear_reply_to_file
+  reply_edit '.resolved = ["r1-1","r1-2","r9-9"]'
+  lsb_mark "$FRONTEND" "$REPLY_FILE"
+  expect_full verdict-mismatch
+  assert_no_marker
+}
+
+@test "a resolved value that is not a list of strings prints full verdict-malformed" {
+  prepare_refusal_anchored
+  clear_reply_to_file
+  reply_edit '.resolved = "r1-1"'
+  lsb_mark "$FRONTEND" "$REPLY_FILE"
+  expect_full verdict-malformed
+  assert_no_marker
+  reply_edit '.resolved = ["r1-1", 2]'
+  lsb_mark "$FRONTEND" "$REPLY_FILE"
+  expect_full verdict-malformed
+  assert_no_marker
+}
+
+@test "an escalating reply on a refusal-anchored route still prints full escalate" {
+  prepare_refusal_anchored
+  lsb_escalate_reply "$FRONTEND" >"$REPLY_FILE"
+  lsb_mark "$FRONTEND" "$REPLY_FILE"
+  expect_full escalate
+  assert_no_marker
+}
+
+@test "a forged all-resolved reply over a cited line the delta never touched prints full checklist-unchanged" {
+  prepare_refusal_anchored "$(printf 'line 1\nfixed 2\nline 3\nline 4\nline 5')"
+  clear_reply_to_file
+  [ "$(jq -c .resolved "$REPLY_FILE")" = '["r1-1","r1-2"]' ]
+  lsb_mark "$FRONTEND" "$REPLY_FILE"
+  expect_full checklist-unchanged
+  assert_no_marker
+}
+
+@test "the checklist-unchanged refusal is what blocks the forged reply: a scratch mark script without it clears" {
+  prepare_refusal_anchored "$(printf 'line 1\nfixed 2\nline 3\nline 4\nline 5')"
+  clear_reply_to_file
+  local script="$LSB_ROOT/.gaia/scripts/audit-light-mark.sh"
+  # shellcheck disable=SC2016
+  grep -qF '[ "$touched" = "true" ] || _light_mark_full checklist-unchanged' "$script"
+  # shellcheck disable=SC2016
+  sed 's/\[ "\$touched" = "true" \] || _light_mark_full checklist-unchanged/:/' "$script" >"$script.mutant"
+  grep -qF '[ "$touched" = "true" ]' "$script.mutant" && return 1
+  run bash "$script.mutant" --root "$LSB_ROOT" --member "$FRONTEND" --verdict - <"$REPLY_FILE"
+  expect_line "light-cleared"
+  [ -f "$(marker_path)" ]
+}
+
+@test "a pure insertion beside each cited line counts as touching it" {
+  prepare_refusal_anchored "$(printf 'line 1
+line 2
+inserted a
+line 3
+line 4
+inserted b
+line 5')"
+  clear_reply_to_file
+  lsb_mark "$FRONTEND" "$REPLY_FILE"
+  expect_line "light-cleared"
+}
+
+@test "a pure insertion beside only one cited line leaves the other unchanged" {
+  prepare_refusal_anchored "$(printf 'line 1
+line 2
+inserted a
+line 3
+line 4
+line 5')"
+  clear_reply_to_file
+  lsb_mark "$FRONTEND" "$REPLY_FILE"
+  expect_full checklist-unchanged
+  assert_no_marker
 }
 
 # --- telemetry and ledger ---------------------------------------------------

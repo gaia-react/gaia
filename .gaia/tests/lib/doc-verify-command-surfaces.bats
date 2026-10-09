@@ -1,14 +1,14 @@
 #!/usr/bin/env bats
 # Pins for the three shipped surfaces that tell the maintainer how to verify
-# their own work: the merge workflow wiki page, the pr-merge rule and the
-# audit-loop-unit agent. Each must name the one verification command (branch
+# their own work: the merge runbook, the audit round procedure, the pr-merge
+# rule and the audit-loop-unit agent. Each must name the one verification command (branch
 # mode before the first dispatch, round mode per audit round) inside its
 # maintainer-only blocks, never as separate shell-lint, selector and bats5
 # steps, and never outside a block (the release leak check refuses a mention of
 # a release-excluded path in shipped text).
 #
-# GAIA_VERIFY_SURFACE_WIKI, GAIA_VERIFY_SURFACE_RULE and
-# GAIA_VERIFY_SURFACE_AGENT override the surface paths so a scratch copy can be
+# GAIA_VERIFY_SURFACE_WIKI (the runbook), GAIA_VERIFY_SURFACE_ROUNDS (the round
+# procedure), GAIA_VERIFY_SURFACE_RULE and GAIA_VERIFY_SURFACE_AGENT override the surface paths so a scratch copy can be
 # driven through the same predicates; each defaults to the real file. Every
 # presence and absence check has a red twin run against such a copy.
 #
@@ -20,6 +20,7 @@
 setup() {
   ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   WIKI="${GAIA_VERIFY_SURFACE_WIKI:-$ROOT/wiki/concepts/PR Merge Workflow.md}"
+  ROUNDS="${GAIA_VERIFY_SURFACE_ROUNDS:-$ROOT/wiki/concepts/Audit Round Procedure.md}"
   RULE="${GAIA_VERIFY_SURFACE_RULE:-$ROOT/.claude/rules/pr-merge.md}"
   AGENT="${GAIA_VERIFY_SURFACE_AGENT:-$ROOT/.claude/agents/audit-loop-unit.md}"
 }
@@ -106,14 +107,15 @@ assert_block_pinned() {
   assert_block_pinned "$RULE" 'bash .gaia/tests/verify-harness.sh branch' rule-without-branch.md
 }
 
-@test "all three surfaces name round mode inside their maintainer-only blocks" {
-  assert_block_pinned "$WIKI" 'verify-harness.sh round' wiki-without-round.md
+@test "the round procedure, rule and agent name round mode inside their maintainer-only blocks" {
+  assert_block_pinned "$ROUNDS" 'verify-harness.sh round' rounds-without-round.md
   assert_block_pinned "$RULE" 'verify-harness.sh round' rule-without-round.md
   assert_block_pinned "$AGENT" 'verify-harness.sh round' agent-without-round.md
 }
 
 @test "no surface lists shell-lint, the selector and bats5 as separate steps in a block" {
   separate_steps_listed "$WIKI" && return 1
+  separate_steps_listed "$ROUNDS" && return 1
   separate_steps_listed "$RULE" && return 1
   separate_steps_listed "$AGENT" && return 1
   true
@@ -121,7 +123,7 @@ assert_block_pinned() {
 
 @test "separate-steps red twin: restoring the old steps inside a block makes the predicate fire" {
   local copy
-  for surface in "$WIKI" "$RULE" "$AGENT"; do
+  for surface in "$WIKI" "$ROUNDS" "$RULE" "$AGENT"; do
     copy="$(scratch_with_old_step "$surface" old-step.md)"
     separate_steps_listed "$copy" || { echo "red twin did not fail for $surface" >&2; return 1; }
   done
@@ -130,6 +132,7 @@ assert_block_pinned() {
 
 @test "every line naming the runner sits inside a maintainer-only block" {
   runner_outside_block "$WIKI" && return 1
+  runner_outside_block "$ROUNDS" && return 1
   runner_outside_block "$RULE" && return 1
   runner_outside_block "$AGENT" && return 1
   true
@@ -137,7 +140,7 @@ assert_block_pinned() {
 
 @test "outside-block red twin: a runner mention outside a block makes the predicate fire" {
   local copy
-  for surface in "$WIKI" "$RULE" "$AGENT"; do
+  for surface in "$WIKI" "$ROUNDS" "$RULE" "$AGENT"; do
     copy="$(scratch_with_outside_mention "$surface" outside.md)"
     runner_outside_block "$copy" || { echo "red twin did not fail for $surface" >&2; return 1; }
   done
@@ -158,7 +161,7 @@ assert_block_pinned() {
   assert_block_pinned "$AGENT" 'BLOCKED: audit verify' agent-without-deny.md
 }
 
-@test "round-mode timeout is a failed verification, never a pass, on the wiki and the agent" {
-  assert_block_pinned "$WIKI" 'never a pass' wiki-without-timeout.md
+@test "round-mode timeout is a failed verification, never a pass, on the round procedure and the agent" {
+  assert_block_pinned "$ROUNDS" 'never a pass' rounds-without-timeout.md
   assert_block_pinned "$AGENT" 'never a pass' agent-without-timeout.md
 }

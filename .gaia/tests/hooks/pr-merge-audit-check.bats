@@ -376,11 +376,10 @@ EOF
   chmod +x "$STUB_BINARY_DIRECTORY/gh"
 }
 
-# Stamp a matching GAIA-Audit trailer on HEAD, the way audit-stamp-trailer.sh
-# does: an empty commit whose message carries
-# "GAIA-Audit: <version> <frontend-digest> <tree>". The digest is content-keyed,
-# so the empty commit this adds does not invalidate the digest it just stamped.
-# The tree field is data only and the gate never compares it.
+# Put a well-formed GAIA-Audit trailer on HEAD: an empty commit whose message
+# carries "GAIA-Audit: <version> <frontend-digest> <tree>" for the current
+# frontend digest. The gate no longer reads trailers, so this fixture exists to
+# prove a trailer clears nothing.
 stamp_trailer() {
   local digest tree
   digest="$(member_digest_for code-audit-frontend)"
@@ -656,11 +655,10 @@ assert_not_in_set() {
 
 # The regression digest keying exists for. Every dispatched member audits its
 # own owned-plus-machinery content and writes its marker; code-audit-frontend
-# then stamps the GAIA-Audit trailer, which lands as an EMPTY commit -- HEAD
-# advances, every blob stays byte-identical. A member's digest is a sha256
-# over blob shas, so it does not rotate either, and no sibling member's marker
-# is orphaned by the stamp.
-@test "AND-aggregator: every member's marker survives the trailer stamp's empty commit (digest is content-keyed)" {
+# then an EMPTY commit lands -- HEAD advances, every blob stays
+# byte-identical. A member's digest is a sha256 over blob shas, so it does not
+# rotate either, and no sibling member's marker is orphaned by the commit.
+@test "AND-aggregator: every member's marker survives a content-preserving empty commit (digest is content-keyed)" {
   commit_files "frontend/app/a.ts" "export const a = 1" ".gaia/scripts/x.sh" "echo x"
   write_marker "code-audit-frontend"
   write_marker "code-audit-maintainer-shell"
@@ -755,6 +753,21 @@ assert_not_in_set() {
   grep -qF "code-audit-frontend: PENDING" <<< "$output" || return 1
   grep -qF "code-audit-maintainer-shell: PENDING" <<< "$output" || return 1
   grep -qF "code-audit-maintainer-node: PENDING" <<< "$output" || return 1
+}
+
+@test "UAT-021: the pending-members deny routes through the audit loop unit and the local-sync note names the wait script" {
+  commit_files "frontend/app/a.ts" "export const a = 1" ".gaia/scripts/x.sh" "echo x" ".gaia/cli/src/foo.ts" "export const foo = 1"
+  commit_files ".gaia/scripts/audit-write-clearance.sh" "# machinery touch"
+
+  run_merge_hook
+  [ "$status" -eq 0 ]
+  grep -qF '"permissionDecision": "deny"' <<< "$output" || return 1
+  grep -qF "code-audit-frontend: PENDING" <<< "$output" || return 1
+  grep -qF "audit-loop-unit agent" <<< "$output" || return 1
+  grep -qF "pr-wait-merge.sh --pr <N>" <<< "$output" || return 1
+  grep -qF "spawn each PENDING member" <<< "$output" && return 1
+  grep -qF "gh pr view <N> --json state" <<< "$output" && return 1
+  true
 }
 
 # ---------------------------------------------------------------------------
@@ -1045,8 +1058,8 @@ assert_not_in_set() {
 #               content being merged is the worktree's HEAD, not main's.
 #
 # Every clearance writer keys on the acting tree (the agent definitions pass
-# `--root "$(git rev-parse --show-toplevel)"`, and resolve-audit-members.sh and
-# audit-stamp-trailer.sh derive the same way). Digesting main's HEAD in the
+# `--root "$(git rev-parse --show-toplevel)"`, and resolve-audit-members.sh
+# derives the same way). Digesting main's HEAD in the
 # gate would compare a marker against content nobody is merging: no marker
 # could ever match, and the deny message's own remedy ("re-spawn the agents")
 # rewrites the same non-matching marker forever.
@@ -1971,8 +1984,8 @@ rge 30 --squash'
 # --- Clearance binding: the merge names the pull request the clearance is for
 #
 # A clearance signal proves a property of THIS CHECKOUT's content: a member's
-# own content-digest marker, a GAIA-Audit trailer on HEAD, a GAIA-Audit commit
-# status on HEAD's sha. None of them reads the pull-request reference the gated
+# own content-digest marker and a GAIA-Audit commit
+# status on HEAD's sha. Neither of them reads the pull-request reference the gated
 # `gh pr merge` carries, so on a branch whose dispatched members have all
 # cleared, `gh pr merge <other-number>` used to be permitted and merged a pull
 # request nothing here audited (gaia-react/gaia#1544). The three record-based
@@ -2013,24 +2026,21 @@ rge 30 --squash'
   assert_allowed_by_json
 }
 
-@test "clearance: a GAIA-Audit trailer denies a merge naming a pull request other than the record's" {
+# A trailer on HEAD is not a clearance signal. With a well-formed trailer for the
+# current digest and no marker, status or clearance, the gate denies with its
+# ordinary no-signal text, which names no trailer.
+@test "clearance: a GAIA-Audit trailer on HEAD alone denies a merge, even naming the record's own number" {
   install_gh_stub
   commit_files "frontend/app/x.ts" "export const x = 1"
   stamp_trailer
+  [ -n "$(git -C "$REPO" log -1 --format=%B | git -C "$REPO" interpret-trailers --parse | grep '^GAIA-Audit:')" ]
 
-  run_merge_hook "gh pr merge 999 --squash"
-  assert_denied_by_json
-}
-
-@test "clearance: a GAIA-Audit trailer still clears a merge naming the record's own number" {
-  install_gh_stub
-  commit_files "frontend/app/x.ts" "export const x = 1"
-  stamp_trailer
-
-  # Proves the trailer arm is reached at all, so the deny above is the binding
-  # and not a trailer fixture that never cleared anything.
   run_merge_hook "gh pr merge 30 --squash"
-  assert_allowed_by_json
+  assert_denied_by_json
+  grep -qi 'trailer' <<<"$output" && return 1
+  grep -qF "pr-wait-merge.sh --pr <N>" <<<"$output" || return 1
+  grep -qF "gh pr view <N> --json state" <<<"$output" && return 1
+  return 0
 }
 
 @test "clearance: a GAIA-Audit CI status denies a merge naming a pull request other than the record's" {

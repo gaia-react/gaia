@@ -243,7 +243,7 @@ setup() {
 # legacy/hand-written body, and no marker all fall through to the text arm,
 # which on text carrying neither a backticked path:line token nor
 # "Remaining in-scope:" is noop. The text arm classifies on the content alone,
-# whether or not a sidecar request (--findings / the resolve pair) was passed.
+# whether or not a sidecar request (the resolve pair) was passed.
 
 # _noop_digest: a fixed, deterministic 64-hex string (the new-scheme filename
 # key shape), built with printf repetition rather than hand-counted so it can
@@ -328,9 +328,13 @@ _noop_write_clearance() {
   # a refusing member returns the identical empty hand, and that loop is the
   # failure this arm exists to end.
   _noop_write_clearance "$BATS_TEST_TMPDIR/${digest}.refused" "$digest" refused
+  root="$BATS_TEST_TMPDIR/refused-no-sidecar"
+  _noop_resolve_repo "$root"
+  stamp="$BATS_TEST_TMPDIR/refused-no-sidecar.stamp"
+  : > "$stamp"
   run "$SCRIPT" --shape audit-team-member --path "$FIXTURES_DIRECTORY/shared/reminder-echo.txt" \
     --marker "$BATS_TEST_TMPDIR/${digest}.ok" \
-    --findings "$BATS_TEST_TMPDIR/absent.findings.json"
+    --findings-root "$root" --findings-since "$stamp"
   [ "$status" -eq 0 ]
   [ "$output" = "refused" ]
 }
@@ -400,78 +404,79 @@ _noop_write_clearance() {
   [ "$after" = "0" ]
 }
 
-# audit-team-member --findings: LOST-REPORT detection.
+# audit-team-member --findings-root/--findings-since: LOST-REPORT detection.
 #
 # A member that completes, writes a valid earned marker, and whose report never
 # reaches the orchestrator is otherwise indistinguishable from a clean pass:
 # marker-presence alone classifies the dispatch REAL, suppresses the one-shot
 # retry, and leaves a green gate with zero visible findings. The findings
-# sidecar is the member's durable report of record, so when the caller names
-# it, the marker short-circuit requires BOTH; the text-alone arm classifies on
-# the content alone either way. Omitting --findings preserves the marker-only
-# short-circuit and the text-alone arm for a run whose base or branch did not
-# resolve, which writes no sidecar at all.
+# sidecar is the member's durable report of record, so when the caller passes
+# the resolve pair, the marker short-circuit requires BOTH; the text-alone arm
+# classifies on the content alone either way. Omitting the pair preserves the
+# marker-only short-circuit and the text-alone arm for a run whose base or
+# branch did not resolve, which writes no sidecar at all.
 
-# _noop_write_findings <path> [json]: a member's findings sidecar. Defaults to
-# the clean-pass shape, an EMPTY findings array, which is a real record.
-_noop_write_findings() {
-  local path="$1" body="${2:-}"
-  if [ -z "$body" ]; then
-    body='{"schema":1,"member":"code-audit-frontend","findings":[]}'
-  fi
-  printf '%s\n' "$body" > "$path"
-}
-
-@test "audit-team-member: EARNED marker + present findings sidecar is REAL" {
+@test "audit-team-member: passing the retired --findings flag is a usage error naming its replacement" {
   digest="$(_noop_digest)"
   marker="$BATS_TEST_TMPDIR/${digest}.ok"
   findings="$BATS_TEST_TMPDIR/base.code-audit-frontend.findings.json"
   _noop_write_clearance "$marker" "$digest" earned
-  _noop_write_findings "$findings"
+  printf '%s\n' '{"schema":1,"member":"code-audit-frontend","findings":[]}' > "$findings"
   run "$SCRIPT" --shape audit-team-member --path "$FIXTURES_DIRECTORY/shared/reminder-echo.txt" \
     --marker "$marker" --findings "$findings"
-  [ "$status" -eq 0 ]
-  [ "$output" = "real" ]
+  [ "$status" -eq 2 ]
+  assert_contains "--findings-root"
+  assert_contains "--findings-since"
+}
+
+@test "usage error: --findings is rejected for every shape, naming --findings-root" {
+  local shape
+  for shape in cra-specialist cra-refuter agent-report-file; do
+    run "$SCRIPT" --shape "$shape" --path "$FIXTURES_DIRECTORY/shared/reminder-echo.txt" \
+      --findings "$BATS_TEST_TMPDIR/anything.findings.json"
+    [ "$status" -eq 2 ] || return 1
+    assert_contains "--findings-root" || return 1
+  done
+  return 0
 }
 
 @test "audit-team-member: a sidecar carrying entry_id and resolutions is still REAL" {
+  root="$BATS_TEST_TMPDIR/resolve-extra-fields"
+  _noop_resolve_repo "$root"
   digest="$(_noop_digest)"
-  marker="$BATS_TEST_TMPDIR/${digest}.ok"
-  findings="$BATS_TEST_TMPDIR/base.code-audit-frontend.findings.json"
-  _noop_write_clearance "$marker" "$digest" earned
-  _noop_write_findings "$findings" '{"schema":1,"member":"code-audit-frontend","findings":[{"finding_class":"holistic/swallowed-error","severity":"warning","path":"a.sh","line":3,"entry_id":"r1-1","area_tags":["."]}],"resolutions":[{"entry_id":"r1-2","rationale":"fixed at HEAD"}]}'
+  _noop_resolve_marker "$root" "$digest" code-audit-frontend
+  stamp="$BATS_TEST_TMPDIR/resolve-extra-fields.stamp"
+  : > "$stamp"
+  sleep 1
+  _noop_resolve_sidecar_at "$root" 1212121212121212121212121212121212121212 \
+    'debt%2F1537-example' code-audit-frontend \
+    '{"schema":1,"member":"code-audit-frontend","findings":[{"finding_class":"holistic/swallowed-error","severity":"warning","path":"a.sh","line":3,"entry_id":"r1-1","area_tags":["."]}],"resolutions":[{"entry_id":"r1-2","rationale":"fixed at HEAD"}]}'
   run "$SCRIPT" --shape audit-team-member --path "$FIXTURES_DIRECTORY/shared/reminder-echo.txt" \
-    --marker "$marker" --findings "$findings"
+    --marker "$root/.gaia/local/audit/${digest}.code-audit-frontend.ok" \
+    --findings-root "$root" --findings-since "$stamp"
   [ "$status" -eq 0 ]
   [ "$output" = "real" ]
 }
 
-@test "audit-team-member: LOST REPORT, EARNED marker + ABSENT findings sidecar is NO-OP" {
-  digest="$(_noop_digest)"
-  marker="$BATS_TEST_TMPDIR/${digest}.ok"
-  _noop_write_clearance "$marker" "$digest" earned
-  # The marker is valid and the return carries no finding token: exactly the
-  # shape of a member whose report was lost in transit.
-  run "$SCRIPT" --shape audit-team-member --path "$FIXTURES_DIRECTORY/shared/reminder-echo.txt" \
-    --marker "$marker" --findings "$BATS_TEST_TMPDIR/never-written.findings.json"
-  [ "$status" -eq 1 ]
-  [ "$output" = "noop" ]
-}
-
 @test "audit-team-member: EARNED marker + malformed findings sidecar is NO-OP" {
+  root="$BATS_TEST_TMPDIR/resolve-malformed"
+  _noop_resolve_repo "$root"
   digest="$(_noop_digest)"
-  marker="$BATS_TEST_TMPDIR/${digest}.ok"
-  findings="$BATS_TEST_TMPDIR/malformed.findings.json"
-  _noop_write_clearance "$marker" "$digest" earned
+  _noop_resolve_marker "$root" "$digest" code-audit-frontend
+  stamp="$BATS_TEST_TMPDIR/resolve-malformed.stamp"
+  : > "$stamp"
+  sleep 1
   # Present but not a findings record: `.findings` is not an array.
-  _noop_write_findings "$findings" '{"schema":1,"member":"code-audit-frontend"}'
+  _noop_resolve_sidecar_at "$root" 1313131313131313131313131313131313131313 \
+    'debt%2F1537-example' code-audit-frontend '{"schema":1,"member":"code-audit-frontend"}'
   run "$SCRIPT" --shape audit-team-member --path "$FIXTURES_DIRECTORY/shared/reminder-echo.txt" \
-    --marker "$marker" --findings "$findings"
+    --marker "$root/.gaia/local/audit/${digest}.code-audit-frontend.ok" \
+    --findings-root "$root" --findings-since "$stamp"
   [ "$status" -eq 1 ]
   [ "$output" = "noop" ]
 }
 
-@test "audit-team-member: BACK-COMPAT, omitting --findings keeps the marker-only short-circuit" {
+@test "audit-team-member: BACK-COMPAT, omitting the resolve pair keeps the marker-only short-circuit" {
   digest="$(_noop_digest)"
   marker="$BATS_TEST_TMPDIR/${digest}.ok"
   _noop_write_clearance "$marker" "$digest" earned
@@ -480,96 +485,94 @@ _noop_write_findings() {
   [ "$output" = "real" ]
 }
 
-@test "audit-team-member: a findings sidecar attributed to ANOTHER member is NO-OP" {
-  # The orchestrator hand-builds one sidecar path per dispatched member, and
-  # those paths differ only by the member infix. A shape-only check would let
-  # member A's sidecar vouch for member B's lost report, which is the very
-  # failure this gate closes, so the predicate binds to the audited member.
+@test "audit-team-member: a findings sidecar with no member attribution is NO-OP" {
+  # The wrong-member case is pinned by the identity test below; a sidecar that
+  # carries no attribution at all is equally unacceptable, so the member bind
+  # cannot be satisfied by the field's absence.
+  root="$BATS_TEST_TMPDIR/resolve-unattributed"
+  _noop_resolve_repo "$root"
   digest="$(_noop_digest)"
-  marker="$BATS_TEST_TMPDIR/${digest}.code-audit-maintainer-shell.ok"
-  findings="$BATS_TEST_TMPDIR/base.mismatched.findings.json"
-  printf '{"version":"1.6.1","schema":3,"member":"code-audit-maintainer-shell","provenance":"earned","digest":"%s","tree":"deadbeefdeadbeefdeadbeefdeadbeefdeadbeef","sha":"deadbeef","audited_at":"2026-01-01T00:00:00Z","sidecar":false}\n' \
-    "$digest" > "$marker"
-
-  # A sibling member's sidecar must not satisfy the shell member's gate.
-  _noop_write_findings "$findings" '{"schema":1,"member":"code-audit-frontend","findings":[]}'
+  _noop_resolve_marker "$root" "$digest" code-audit-maintainer-shell
+  stamp="$BATS_TEST_TMPDIR/resolve-unattributed.stamp"
+  : > "$stamp"
+  sleep 1
+  _noop_resolve_sidecar_at "$root" 1414141414141414141414141414141414141414 \
+    'debt%2F1537-example' code-audit-maintainer-shell '{"schema":1,"findings":[]}'
   run "$SCRIPT" --shape audit-team-member --path "$FIXTURES_DIRECTORY/shared/reminder-echo.txt" \
-    --marker "$marker" --findings "$findings"
+    --marker "$root/.gaia/local/audit/${digest}.code-audit-maintainer-shell.ok" \
+    --findings-root "$root" --findings-since "$stamp"
   [ "$status" -eq 1 ]
   [ "$output" = "noop" ]
-
-  # A sidecar carrying no member attribution at all is equally unacceptable.
-  _noop_write_findings "$findings" '{"schema":1,"findings":[]}'
-  run "$SCRIPT" --shape audit-team-member --path "$FIXTURES_DIRECTORY/shared/reminder-echo.txt" \
-    --marker "$marker" --findings "$findings"
-  [ "$status" -eq 1 ]
-  [ "$output" = "noop" ]
-
-  # The correctly-attributed sidecar still passes: no false negative.
-  _noop_write_findings "$findings" '{"schema":1,"member":"code-audit-maintainer-shell","findings":[]}'
-  run "$SCRIPT" --shape audit-team-member --path "$FIXTURES_DIRECTORY/shared/reminder-echo.txt" \
-    --marker "$marker" --findings "$findings"
-  [ "$status" -eq 0 ]
-  [ "$output" = "real" ]
 }
 
 @test "audit-team-member: jq absent, the findings gate degrades to existence, not to blanket acceptance" {
+  root="$BATS_TEST_TMPDIR/resolve-jqless"
+  _noop_resolve_repo "$root"
   digest="$(_noop_digest)"
-  marker="$BATS_TEST_TMPDIR/${digest}.ok"
-  findings="$BATS_TEST_TMPDIR/jqless.code-audit-frontend.findings.json"
-  _noop_write_clearance "$marker" "$digest" earned
-  _noop_write_findings "$findings"
+  _noop_resolve_marker "$root" "$digest" code-audit-frontend
+  marker="$root/.gaia/local/audit/${digest}.code-audit-frontend.ok"
+  stamp="$BATS_TEST_TMPDIR/resolve-jqless.stamp"
+  : > "$stamp"
 
   # Shim PATH rather than an empty one: the script's `#!/usr/bin/env bash`
   # shebang and its basename/cat/grep calls all resolve through PATH, so
   # emptying it fails the run at exec time (127) and tests nothing. Name
-  # exactly what the script needs and deliberately leave jq out.
-  shim="$(path_allowlist bash basename cat grep dirname)"
+  # exactly what the script needs and deliberately leave jq out. The resolve
+  # arm reads the branch through the VCS binary, so it is named too.
+  shim="$(path_allowlist bash basename cat grep dirname git)"
   if PATH="$shim" command -v jq >/dev/null 2>&1; then
     skip "jq still resolvable through the shim PATH"
   fi
 
-  # Present sidecar: the marker arm's own jq-absent degradation applies.
-  run env PATH="$shim" "$SCRIPT" --shape audit-team-member \
-    --path "$FIXTURES_DIRECTORY/shared/reminder-echo.txt" --marker "$marker" --findings "$findings"
-  [ "$status" -eq 0 ] || return 1
-  [ "$output" = "real" ] || return 1
-
-  # ABSENT sidecar must still be a lost report even with no jq to parse it:
-  # the degradation is to existence, never to skipping the gate.
+  # ABSENT sidecar must be a lost report even with no jq to parse it: the
+  # degradation is to existence, never to skipping the gate.
   run env PATH="$shim" "$SCRIPT" --shape audit-team-member \
     --path "$FIXTURES_DIRECTORY/shared/reminder-echo.txt" --marker "$marker" \
-    --findings "$BATS_TEST_TMPDIR/never-written-jqless.findings.json"
+    --findings-root "$root" --findings-since "$stamp"
   [ "$status" -eq 1 ]
   [ "$output" = "noop" ]
+
+  # Present sidecar: the marker arm's own jq-absent degradation applies.
+  sleep 1
+  _noop_resolve_sidecar_at "$root" 1616161616161616161616161616161616161616 \
+    'debt%2F1537-example' code-audit-frontend
+  run env PATH="$shim" "$SCRIPT" --shape audit-team-member \
+    --path "$FIXTURES_DIRECTORY/shared/reminder-echo.txt" --marker "$marker" \
+    --findings-root "$root" --findings-since "$stamp"
+  [ "$status" -eq 0 ] || return 1
+  [ "$output" = "real" ] || return 1
 }
 
-@test "audit-team-member: absent marker + present findings sidecar needs the return text as its second witness" {
-  findings="$BATS_TEST_TMPDIR/orphan.code-audit-frontend.findings.json"
-  _noop_write_findings "$findings"
+@test "audit-team-member: absent marker + fresh findings sidecar needs the return text as its second witness" {
+  root="$BATS_TEST_TMPDIR/resolve-orphan"
+  _noop_resolve_repo "$root"
+  stamp="$BATS_TEST_TMPDIR/resolve-orphan.stamp"
+  : > "$stamp"
+  sleep 1
+  _noop_resolve_sidecar_at "$root" 1515151515151515151515151515151515151515 \
+    'debt%2F1537-example' code-audit-frontend
   # A sidecar cannot stand in for the marker: token-free text is still NO-OP.
   run "$SCRIPT" --shape audit-team-member --path "$FIXTURES_DIRECTORY/shared/reminder-echo.txt" \
-    --marker "$BATS_TEST_TMPDIR/does-not-exist.ok" --findings "$findings"
+    --marker "$BATS_TEST_TMPDIR/does-not-exist.ok" \
+    --findings-root "$root" --findings-since "$stamp"
   [ "$status" -eq 1 ]
   [ "$output" = "noop" ]
 
   # ...and a real finding token in the return still classifies REAL.
   run "$SCRIPT" --shape audit-team-member --path "$FIXTURES_DIRECTORY/audit-team-member/finding-block.txt" \
-    --marker "$BATS_TEST_TMPDIR/does-not-exist.ok" --findings "$findings"
+    --marker "$BATS_TEST_TMPDIR/does-not-exist.ok" \
+    --findings-root "$root" --findings-since "$stamp"
   [ "$status" -eq 0 ]
   [ "$output" = "real" ]
 }
 
-# audit-team-member --findings-root/--findings-since: the RESOLVE arm of the
-# same lost-report gate.
-#
-# The named-path arm above requires the caller to know where the sidecar will
-# land. It cannot: the key's base half is the shared pull-request-wide base,
-# which advances one stamp per cleared round, so a path computed once is absent
-# from the second round on and the gate reads a healthy round as a lost report.
-# These tests pin the two properties that make resolution a replacement rather
-# than a relaxation: it finds a sidecar under a base no caller could have named,
-# and it still refuses a sidecar that is not THIS round's.
+# The resolve arm's mechanics. The caller cannot name the sidecar's path: the
+# key's base half is the shared pull-request-wide base, which advances one
+# stamp per cleared round, so a path computed once is absent from the second
+# round on and the gate would read a healthy round as a lost report. These
+# tests pin the two properties that make resolution sound: it finds a sidecar
+# under a base no caller could have named, and it still refuses a sidecar that
+# is not THIS round's.
 #
 # _noop_resolve_repo: a git tree on a branch whose slug needs percent-encoding
 # (the `/` is the case that would silently straddle a key boundary unencoded),
@@ -697,7 +700,7 @@ _noop_resolve_marker() {
   [ "$output" = "noop" ]
 
   # Right filename, wrong attribution inside: the `.member` check still binds
-  # identity after resolution, exactly as it does on the named-path arm.
+  # identity after resolution.
   _noop_resolve_sidecar_at "$root" 5555555555555555555555555555555555555555 \
     'debt%2F1537-example' code-audit-maintainer-shell \
     '{"schema":1,"member":"code-audit-maintainer-node","findings":[]}'
@@ -829,19 +832,9 @@ _noop_resolve_marker() {
   marker="$root/.gaia/local/audit/${digest}.code-audit-maintainer-shell.ok"
   stamp="$BATS_TEST_TMPDIR/resolve-usage.stamp"
   : > "$stamp"
-  named="$BATS_TEST_TMPDIR/resolve-usage.findings.json"
-  _noop_write_findings "$named"
 
   # Each of these degrades the gate rather than erroring if it is let through,
   # so every one fails closed at argument time.
-  run "$SCRIPT" --shape audit-team-member --marker "$marker" \
-    --findings "$named" --findings-root "$root" --findings-since "$stamp"
-  [ "$status" -eq 2 ]
-
-  run "$SCRIPT" --shape audit-team-member --marker "$marker" \
-    --findings "$named" --findings-since "$stamp"
-  [ "$status" -eq 2 ]
-
   run "$SCRIPT" --shape audit-team-member --marker "$marker" --findings-root "$root"
   [ "$status" -eq 2 ]
 
@@ -862,18 +855,18 @@ _noop_resolve_marker() {
 # (a backticked path:line token, or the terse LOCAL preamble), regardless of
 # whether a marker or a findings sidecar exists. The lost-report gate lives
 # entirely in the earned-marker short-circuit above: when the caller names
-# the sidecar (--findings, or the resolve pair), that short-circuit needs a
+# the sidecar (the resolve pair), that short-circuit needs a
 # fresh member-bound sidecar alongside the earned marker; omitting it keeps
 # the marker-only short-circuit. Either way, a report-shaped return still
 # classifies real on its own.
 
 @test "audit-team-member: a fresh own sidecar plus a terse return is REAL with no marker" {
-  # A self-healed pass or a DIRTY= withhold writes the sidecar but no marker
-  # and no .refused; the return text classifies real on its own.
-  root="$BATS_TEST_TMPDIR/self-heal-terse"
+  # A DIRTY= withhold writes the sidecar but no marker and no .refused; the
+  # return text classifies real on its own.
+  root="$BATS_TEST_TMPDIR/withhold-terse"
   _noop_resolve_repo "$root"
   digest="$(_noop_digest)"
-  stamp="$BATS_TEST_TMPDIR/self-heal-terse.stamp"
+  stamp="$BATS_TEST_TMPDIR/withhold-terse.stamp"
   : > "$stamp"
   sleep 1
   _noop_resolve_sidecar_at "$root" 3333333333333333333333333333333333333333 \
@@ -887,10 +880,10 @@ _noop_resolve_marker() {
 }
 
 @test "audit-team-member: a fresh own sidecar plus a finding block is REAL with no marker" {
-  root="$BATS_TEST_TMPDIR/self-heal-block"
+  root="$BATS_TEST_TMPDIR/withhold-block"
   _noop_resolve_repo "$root"
   digest="$(_noop_digest)"
-  stamp="$BATS_TEST_TMPDIR/self-heal-block.stamp"
+  stamp="$BATS_TEST_TMPDIR/withhold-block.stamp"
   : > "$stamp"
   sleep 1
   _noop_resolve_sidecar_at "$root" 4444444444444444444444444444444444444444 \
@@ -931,8 +924,7 @@ _noop_resolve_marker() {
   fi
 
   run env PATH="$shim" "$SCRIPT" --shape audit-team-member \
-    --path "$FIXTURES_DIRECTORY/audit-team-member/finding-block.txt" --marker "$marker" \
-    --findings "$BATS_TEST_TMPDIR/never-written-jqless.findings.json"
+    --path "$FIXTURES_DIRECTORY/audit-team-member/finding-block.txt" --marker "$marker"
   [ "$status" -eq 0 ]
   [ "$output" = "real" ]
 }

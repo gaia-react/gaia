@@ -730,7 +730,7 @@ pin_site_entries_live_ok() {
 
 @test "pin sites red twins: a dropped entry and a stale entry each fail" {
   # shellcheck disable=SC2016 # the backticks are literal markdown
-  sed 's|`wiki/concepts/PR Merge Workflow\.md`|the merge workflow page|' "$WIKI" >"$TEMPORARY_DIRECTORY/wiki-nopin.md"
+  sed 's|`wiki/concepts/Audit Round Procedure\.md`|the round procedure page|' "$WIKI" >"$TEMPORARY_DIRECTORY/wiki-nopin.md"
   if cmp -s "$WIKI" "$TEMPORARY_DIRECTORY/wiki-nopin.md"; then return 1; fi
   if pin_sites_covered_ok "$REPO_ROOT" "$TEMPORARY_DIRECTORY/wiki-nopin.md"; then return 1; fi
   awk '{ print } $0 == "### Pin sites" { print ""; print "- Gone: `.claude/skills/does-not-exist/SKILL.md`." }' "$WIKI" >"$TEMPORARY_DIRECTORY/wiki-stale.md"

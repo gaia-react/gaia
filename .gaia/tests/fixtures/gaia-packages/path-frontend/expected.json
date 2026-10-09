@@ -14,14 +14,6 @@
     "emergentTests": {
       "match": ["frontend/.playwright/x.spec.ts"],
       "noMatch": [".playwright/x.spec.ts"]
-    },
-    "selfHealRefuse": {
-      "match": [
-        "frontend/.npmrc",
-        "frontend/package.json",
-        "frontend/gaia.package.json"
-      ],
-      "noMatch": ["package.json", ".npmrc", "frontend/a/.npmrc"]
     }
   },
   "forPath": {

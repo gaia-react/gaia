@@ -23,7 +23,7 @@ setup() {
   SHELL_MD="$REPO_ROOT/.claude/agents/code-audit-maintainer-shell.md"
   NODE_MD="$REPO_ROOT/.claude/agents/code-audit-maintainer-node.md"
   WORKFLOWS_MD="$REPO_ROOT/.claude/agents/code-audit-github-workflows.md"
-  # The maintainer members' shared handshake; both maintainer definitions point here.
+  # The shared member handshake; every member definition points here.
   PROTOCOL_MD="$REPO_ROOT/.claude/hooks/lib/audit-member-protocol.md"
 }
 
@@ -79,38 +79,35 @@ assert_predicate_retry_fallback() {
 }
 
 @test "wiring: code-audit-frontend.md adversarial-refuter dispatch site" {
-  content="$(section_between "$FRONTEND_MD" '^## Finding Proof Gate' '^## Scope classification')"
+  # Bounded by the next H2, whatever it is named, so the site's own anchors
+  # must sit inside the gate section rather than anywhere later in the file.
+  content="$(section_between "$FRONTEND_MD" '^## Finding Proof Gate' '^## ')"
   assert_section_nonempty "code-audit-frontend.md Finding Proof Gate" "$content"
   assert_predicate_retry_fallback "$content"
 }
 
-# 6. Shared clearance writer: every handshake surface (the frontend member's
-#    and github-workflows definitions, and the maintainer members' shared
-#    protocol file) invokes the ONE shared writer, both maintainer definitions
-#    point at that protocol file,
-#    and NONE still carries the inline marker `printf`
-#    or the `[ ! -f "$marker" ]` idempotence guard. This negative assertion is
-#    load-bearing: a missed producer keeps writing a legacy-bodied marker that
-#    every existence-only consumer honors, so the gate passes and the only
-#    symptom is a member that silently never carries forward.
+# 6. Shared clearance writer: the one handshake surface, the shared member
+#    protocol file, invokes the ONE shared writer, every member definition
+#    points at that protocol file, and NONE still carries the inline marker
+#    `printf` or the `[ ! -f "$marker" ]` idempotence guard. This negative
+#    assertion is load-bearing: a missed producer keeps writing a
+#    legacy-bodied marker that every existence-only consumer honors, so the
+#    gate passes and the only symptom is a member that silently never carries
+#    forward.
 
 @test "clearance writer: the handshake surfaces invoke the shared writer, none keeps the inline printf or the [ ! -f marker ] guard" {
   local markdown_file
-  # The frontend and github-workflows members carry their own handshake; the
-  # maintainer members carry theirs in the shared protocol file.
-  for markdown_file in "$FRONTEND_MD" "$WORKFLOWS_MD" "$PROTOCOL_MD"; do
-    # Positive: invokes the one shared writer.
-    grep -qF -- ".gaia/scripts/audit-write-clearance.sh" "$markdown_file" || return 1
-  done
+  # Every member carries its handshake in the shared protocol file.
+  grep -qF -- ".gaia/scripts/audit-write-clearance.sh" "$PROTOCOL_MD" || return 1
   for markdown_file in "$FRONTEND_MD" "$PROTOCOL_MD" "$SHELL_MD" "$NODE_MD" "$WORKFLOWS_MD"; do
     # Negative: no inline marker printf (the bad case is a present match).
     grep -qF -- 'printf '\''{"sha"' "$markdown_file" && return 1
     # Negative: no idempotence guard (the bad case is a present match).
     grep -qF -- '[ ! -f "$marker" ]' "$markdown_file" && return 1
   done
-  # Each maintainer member reaches the writer only through the protocol file,
-  # so a definition that drops the pointer has no marker command at all.
-  for markdown_file in "$SHELL_MD" "$NODE_MD"; do
+  # Each member reaches the writer only through the protocol file, so a
+  # definition that drops the pointer has no marker command at all.
+  for markdown_file in "$FRONTEND_MD" "$WORKFLOWS_MD" "$SHELL_MD" "$NODE_MD"; do
     grep -qF -- ".claude/hooks/lib/audit-member-protocol.md" "$markdown_file" || return 1
   done
   return 0

@@ -918,6 +918,100 @@ YAML
   return 0
 }
 
+# --- Zero-match globs ----------------------------------------------------------
+#
+# Every remit glob and every `unowned:` glob matches at least one tracked file,
+# unless the allowlist inside the script names it. The fixtures below start from
+# a tracked root where every glob matches, so each failure is the one glob the
+# test adds.
+
+@test "zero-match: a roster where every glob matches a tracked file passes" {
+  local fixture_directory="$BATS_TEST_TMPDIR/zero-ok"
+  tracked_roster '.claude/**' '.gaia/**' 'docs/**' | scaffold_tracked_root "$fixture_directory" \
+    app/a.ts lib/b.ts docs/orphan.md
+  run_root "$fixture_directory"
+  [ "$status" -eq 0 ]
+  assert_contains "roster clean"
+}
+
+@test "zero-match: an unowned: glob matching no tracked file fails, naming the glob" {
+  local fixture_directory="$BATS_TEST_TMPDIR/zero-unowned"
+  tracked_roster '.claude/**' '.gaia/**' 'docs/**' 'retired-dir/**' | scaffold_tracked_root "$fixture_directory" \
+    app/a.ts lib/b.ts docs/orphan.md
+  run_root "$fixture_directory"
+  [ "$status" -eq 1 ]
+  assert_contains "zero-match-glob"
+  assert_contains "retired-dir/**"
+  assert_contains "unowned list"
+}
+
+@test "zero-match: a remit glob matching no tracked file fails, naming the glob and member" {
+  local fixture_directory="$BATS_TEST_TMPDIR/zero-remit"
+  tracked_roster '.claude/**' '.gaia/**' 'docs/**' | scaffold_tracked_root "$fixture_directory" \
+    app/a.ts docs/orphan.md
+  run_root "$fixture_directory"
+  [ "$status" -eq 1 ]
+  assert_contains "zero-match-glob"
+  assert_contains "lib/**"
+  assert_contains "remit of code-audit-alpha"
+  grep -qF "app/**" <<<"$output" && return 1
+  true
+}
+
+@test "zero-match: a glob on the script's allowlist passes with no matching file" {
+  local fixture_directory="$BATS_TEST_TMPDIR/zero-allowlisted"
+  tracked_roster '.claude/**' '.gaia/**' 'docs/**' '*.config.ts' | scaffold_tracked_root "$fixture_directory" \
+    app/a.ts lib/b.ts docs/orphan.md
+  run_root "$fixture_directory"
+  [ "$status" -eq 0 ]
+  assert_contains "roster clean"
+}
+
+@test "zero-match: a roster comment naming the glob exempts nothing" {
+  local fixture_directory="$BATS_TEST_TMPDIR/zero-comment"
+  {
+    tracked_roster '.claude/**' '.gaia/**' 'docs/**' 'retired-dir/**'
+    printf '  # retired-dir/** is deliberately empty: the allowlist is not this file.\n'
+  } | scaffold_tracked_root "$fixture_directory" app/a.ts lib/b.ts docs/orphan.md
+  run_root "$fixture_directory"
+  [ "$status" -eq 1 ]
+  assert_contains "zero-match-glob"
+  assert_contains "retired-dir/**"
+}
+
+@test "zero-match: the stripped script keeps the shipped allowlist and names no maintainer path" {
+  local stripped="$BATS_TEST_TMPDIR/stripped-zero.sh"
+  strip_maintainer_only "$SCRIPT" > "$stripped"
+  grep -qF -- '.github/workflows/*.yaml' "$stripped"
+  grep -qF -- '.gaia/cli' "$stripped" && return 1
+  true
+}
+
+@test "zero-match: the committed roster has no unowned: glob for a retired instructions tree" {
+  grep -qF -- 'instructions/**' "$REPO_ROOT/.gaia/audit-ci.yml" && return 1
+  true
+}
+
+# --- Retired push_fixes key ---------------------------------------------------
+
+@test "push_fixes: a roster still carrying the key verifies the same as one without it" {
+  local with_key="$BATS_TEST_TMPDIR/pf-with"
+  local without_key="$BATS_TEST_TMPDIR/pf-without"
+  local with_output without_output
+  tracked_roster '.claude/**' '.gaia/**' | awk '/^    default: true$/ { print "    push_fixes: true" } { print }' |
+    scaffold_tracked_root "$with_key" app/a.ts lib/b.ts
+  tracked_roster '.claude/**' '.gaia/**' | scaffold_tracked_root "$without_key" app/a.ts lib/b.ts
+  # The key is really in the fixture, so the equality below is not vacuous.
+  grep -qF 'push_fixes: true' "$with_key/.gaia/audit-ci.yml"
+  run_root "$with_key"
+  [ "$status" -eq 0 ]
+  assert_contains "roster clean"
+  with_output="$(bash "$SCRIPT" --emit-roster --root "$with_key" --config "$with_key/.gaia/audit-ci.yml")"
+  without_output="$(bash "$SCRIPT" --emit-roster --root "$without_key" --config "$without_key/.gaia/audit-ci.yml")"
+  [ -n "$with_output" ]
+  [ "$with_output" = "$without_output" ]
+}
+
 # --- Light-review keys --------------------------------------------------------
 #
 # Fixture: one default member owning `app/**` and `cfg/*.ts`, carrying the three
@@ -1069,10 +1163,72 @@ light_root() {
         case "$owned" in
           *"/**") case "$glob" in "${owned%\*\*}"*) found=1 ;; esac ;;
         esac
+        # A wildcard-free hard-Full path is one concrete file: the classifier's
+        # own matcher decides whether an owned glob contains it, as the
+        # verifier does.
+        case "$glob" in
+          *'*'*) ;;
+          *) ( . "$REPO_ROOT/.claude/hooks/lib/audit-scope.sh"; audit_glob_matches "$owned" "$glob" ) && found=1 ;;
+        esac
       done <<<"$owned_globs"
       [ "$found" -eq 1 ] || { echo "$member: hard-Full glob not owned: $glob" >&2; return 1; }
     done <<<"$hard_full_globs"
   done
   [ -n "$opted_members" ] || { echo "no member opts in: the roster no longer exercises light review" >&2; return 1; }
   [ "$checked" -gt 0 ]
+}
+
+# --- Maintainer members' light keys on the committed roster -------------------
+
+# roster_with_node_hard_full <path-to-write> <glob>: the committed roster with
+# one more `light_hard_full` item under code-audit-maintainer-node.
+roster_with_node_hard_full() {
+  awk -v glob="$2" '
+    /^  - name: code-audit-maintainer-node$/ { in_node = 1 }
+    { print }
+    in_node && /^    light_hard_full:$/ { printf "      - \"%s\"\n", glob; in_node = 0 }
+  ' "$REPO_ROOT/.gaia/audit-ci.yml" >"$1"
+  cmp -s "$REPO_ROOT/.gaia/audit-ci.yml" "$1" && return 1
+  true
+}
+
+@test "light keys: both maintainer members opt in with a numeric cap and a hard-Full set the verifier accepts" {
+  local member config_lines
+  for member in code-audit-maintainer-shell code-audit-maintainer-node; do
+    config_lines="$(
+      . "$REPO_ROOT/.claude/hooks/lib/audit-scope.sh"
+      audit_roster_light_config "$REPO_ROOT" "$member"
+    )"
+    case "$config_lines" in
+      true"$(printf '\t')"[0-9]*) ;;
+      *) echo "$member: light config is not 'true <cap>': $(printf '%s' "$config_lines" | head -n 1)" >&2; return 1 ;;
+    esac
+    [ "$(printf '%s\n' "$config_lines" | awk -F'\t' '$1 == "HARDFULL" { count++ } END { print count + 0 }')" -gt 0 ] || { echo "$member has no hard-Full globs" >&2; return 1; }
+  done
+  run bash "$SCRIPT" --root "$REPO_ROOT"
+  [ "$status" -eq 0 ]
+  assert_contains "roster clean"
+}
+
+@test "light keys: a hard-Full item moved outside the node member's globs is rejected, and a verifier without the inside-globs check accepts it" {
+  local moved="$BATS_TEST_TMPDIR/roster-moved.yml" scratch="$BATS_TEST_TMPDIR/no-inside-check"
+  roster_with_node_hard_full "$moved" ".claude/hooks/pr-merge-audit-check.sh"
+  run bash "$SCRIPT" --root "$REPO_ROOT" --config "$moved"
+  [ "$status" -eq 1 ]
+  assert_contains "light-hard-full-glob-uncovered"
+  assert_contains "code-audit-maintainer-node"
+  assert_contains ".claude/hooks/pr-merge-audit-check.sh"
+  # The unmoved roster is clean, so the rejection is the ownership check and
+  # nothing else.
+  run bash "$SCRIPT" --root "$REPO_ROOT"
+  [ "$status" -eq 0 ]
+  # Scratch copy with the literal-path coverage test forced to pass: the moved
+  # roster is then accepted.
+  mkdir -p "$scratch/.gaia/scripts" "$scratch/.claude/hooks/lib"
+  sed 's/light_literal_covered=0$/light_literal_covered=1/' "$SCRIPT" >"$scratch/.gaia/scripts/verify-audit-roster.sh"
+  cmp -s "$SCRIPT" "$scratch/.gaia/scripts/verify-audit-roster.sh" && return 1
+  cp "$REPO_ROOT/.claude/hooks/lib/audit-scope.sh" "$scratch/.claude/hooks/lib/audit-scope.sh"
+  run bash "$scratch/.gaia/scripts/verify-audit-roster.sh" --root "$REPO_ROOT" --config "$moved"
+  [ "$status" -eq 0 ] || { printf '%s\n' "$output" >&2; return 1; }
+  assert_contains "roster clean"
 }

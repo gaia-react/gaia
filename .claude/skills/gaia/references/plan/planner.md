@@ -164,24 +164,7 @@ Then write the following files directly to `{PLAN_DIR}/`:
 
           bash .gaia/scripts/resolve-audit-members.sh
 
-      It prints one member (agent) name per line, deduped and sorted. That output is the spawn set. Contract: `wiki/concepts/PR Merge Workflow.md`.
-
-      - **One or more names** → spawn each named member, in parallel from a single tool-call message. Do not wait for the merge deny-hook to name them; that round-trip is friction:
-
-        Immediately before this dispatch wave fires, capture the expected tree fresh: `git -C <RESOLVED_ROOT> rev-parse HEAD^{tree}`. Recapture it before every dispatch wave: a member re-spawned on a later round moves HEAD (a self-heal is a real content edit, and a repair round's own commit moves it too), so reusing a stale value would fail a later wave's self-check against a tree it is correctly reviewing.
-
-            Task(
-              subagent_type="<member-name>",
-              prompt="Working root: <RESOLVED_ROOT>, the absolute path of the checkout under review; the orchestrator substitutes the value it resolved from the isolation reference at dispatch time. Run your definition's root fence with AUDIT_ROOT=<RESOLVED_ROOT> ahead of it, then type <RESOLVED_ROOT> wherever a command in your definition writes <root>, never carrying it in a shell variable. Expected HEAD tree: <EXPECTED_TREE>, the tree captured immediately before this dispatch wave.
-              SPEC path: {SPEC_PATH}
-              UAT routing: {PLAN_DIR}/README.md
-              MANDATORY FIRST ACTION, before any review: run `git -C <RESOLVED_ROOT> rev-parse HEAD^{tree}` and compare it to <EXPECTED_TREE>. If that command errors (missing path, git unavailable) OR the value does not match exactly, STOP, do not review, do not write a marker, and return only the mismatch or error as your entire output.
-              Only on an exact match, review all changes in <RESOLVED_ROOT>'s current branch compared to main, scoping every git command to `git -C <RESOLVED_ROOT>`. Identify security vulnerabilities, performance issues, code smells, anti-patterns, and refactoring opportunities."
-            )
-
-        The `SPEC path:` and `UAT routing:` lines are for a spec-derived plan, absolute and main-anchored: both files live in gitignored main-only folders a worktree cannot see, and `code-audit-frontend` keys its rendered-spec check on them. A spec-less plan's prompt omits both lines.
-
-      - **No names** → spawn `code-audit-frontend`, fail-closed. Never treat an empty or unanswerable result as "nothing owed"; an in-scope file no member owns also owes `code-audit-frontend`.
+      It prints one member (agent) name per line, deduped and sorted. Dispatch the `audit-loop-unit` agent per `wiki/concepts/PR Merge Workflow.md` `## Dispatch the audit loop unit`: the unit runs the named members, and `code-audit-frontend` fail-closed when the output is empty or an in-scope file no member owns. Post the status per `#### Posting the status last` before `gh pr merge`.
 
       Skip a spawn for a member already cleared for HEAD: its marker exists, or (for the default member) one of the bypass signals in the marker-handshake table already applies to this PR. The spawn set names who *can* be required, not who is still outstanding.
 
@@ -217,7 +200,7 @@ Then write the following files directly to `{PLAN_DIR}/`:
       Category: <flow | success criteria | error-handling branch | asserted side effect | precondition | post-state>
       Needed change: <one or two sentences>
       ```
-    - **Orchestrator-owned git flow.** After each phase that produces changes (and only once the quality gate is clean), the orchestrator stages, commits with a Conventional Commits subject (`wiki/decisions/Naming Conventions.md`; enforced by the `commit-msg` hook), and pushes. **Before staging, it checks each task's completion**: compare the files the task's `task-*.md` declares with the files actually changed (`git -C <RESOLVED_ROOT> status --porcelain`). A declared file left untouched, or a `### Deviations from plan` or forward-looking note in the sub-agent's return, means reading that task's diff against its acceptance criteria before committing; the quality gate passes on valid but unfinished code, so it cannot catch this. A miss the sub-agent's notes do not explain is a sub-agent failure under Stop conditions below. The orchestrator opens the PR after the first phase's commit lands on the remote (using `gh pr create`) and updates it with subsequent commits. Never commit a broken state.
+    - **Orchestrator-owned git flow.** After each phase that produces changes (and only once the quality gate is clean), the orchestrator stages, commits with a Conventional Commits subject (`wiki/decisions/Naming Conventions.md`; enforced by the `commit-msg` hook), and pushes. **Before staging, it checks each task's completion**: compare the files the task's `task-*.md` declares with the files actually changed (`git -C <RESOLVED_ROOT> status --porcelain`). A declared file left untouched, or a `### Deviations from plan` or forward-looking note in the sub-agent's return, means reading that task's diff against its acceptance criteria before committing; the quality gate passes on valid but unfinished code, so it cannot catch this. A miss the sub-agent's notes do not explain is a sub-agent failure under Stop conditions below. The orchestrator opens the PR after the first phase's commit lands on the remote (using `gh pr create --draft`) and updates it with subsequent commits. Never commit a broken state.
     - **Phase findings ledger (`{PLAN_DIR}/PROGRESS.md`).** Append-only file the orchestrator maintains across the run, so sub-agent observations survive context compression, written per the tool-choice contract in the pre-flight isolation bullet above. After each phase, the orchestrator appends a `## Phase N, <title>` block whose first content line is `Commit: <short-sha>`, the machine-readable anchor `.gaia/scripts/plan-resume-point.sh` reads, followed by the merged `Notes for orchestrator` content from every sub-agent in that phase. A phase with no sub-agent notes writes `_No notes._`. **This file (`.claude/skills/gaia/references/plan/planner.md`) is the single source of truth for this block format**; any other doc or reference page that describes the ledger points here rather than restating the literal `Commit:` line. Example:
 
       ```

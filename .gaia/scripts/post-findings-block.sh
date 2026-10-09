@@ -28,19 +28,15 @@
 #
 #   The sidecar key is `<base-sha>.<branch-slug>` (gaia_audit_key,
 #   audit-key-lib.sh) and only the branch half is stable across a fix loop.
-#   The gate stamps a `GAIA-Audit:` trailer on a `chore: code review audit
-#   passed` commit at the end of a cleared round on an un-pushed or detached
-#   HEAD (a round that clears on an already-pushed attached HEAD posts a
-#   status instead and makes no commit), and .github/audit/resolve-audit-base.sh
-#   walks to the newest trailer-bearing ancestor of HEAD, so the shared base
-#   advances by roughly one stamp per cleared round that makes one (a rebase
-#   onto main and a machinery-reset move it too). One branch therefore writes
-#   its sidecars under SEVERAL bases, one per round that stamps, and that
-#   partitioning is deliberate: it is the durable record of what each
-#   trailer-stamping round found, so this script widens the read rather than
-#   stabilizing the key. A round that clears without stamping (an
-#   already-pushed attached HEAD) advances no base, so it overwrites the
-#   prior round's sidecar for the same member rather than adding a new one.
+#   .github/audit/resolve-audit-base.sh walks to the newest ancestor of HEAD
+#   that carries a `GAIA-Audit` success status, so the shared base advances by
+#   roughly one commit per cleared round that posts one (a rebase onto main
+#   and a machinery-reset move it too). One branch therefore writes its
+#   sidecars under SEVERAL bases, one per round that advances it, and that
+#   partitioning is deliberate: it is the durable record of what each such
+#   round found, so this script widens the read rather than stabilizing the
+#   key. A round that clears without advancing the base overwrites the prior
+#   round's sidecar for the same member rather than adding a new one.
 #
 #   Keying this glob to one base is what starved the block before: the base a
 #   caller could resolve at merge time is the newest one, whose round is clean
@@ -104,7 +100,7 @@
 # Projection to the block (load-bearing)
 #   The sidecar is the member's full report of record: it carries the file,
 #   line, defect, verification, and recommended repair a fix needs. The PR
-#   comment block does NOT. Each finding is projected to exactly
+#   comment block does NOT. Each published finding is projected to exactly
 #   finding_class / severity / area_tags on the way out, for two reasons. The
 #   block's contract is frozen at those three keys (parse-findings-block.ts
 #   reads only them, and the recurrence tally counts distinct PRs per
@@ -116,6 +112,15 @@
 #   finding is not always safe. Extending the sidecar therefore never widens
 #   what this script publishes.
 #
+#   Withheld entries (load-bearing). A published class, severity or directory
+#   is itself a disclosure: it tells a reader of a public repository where an
+#   unfixed hole sits. So an entry whose `security` is anything but the
+#   boolean false (an absent or malformed flag reads as security-class,
+#   failing closed), or whose severity is `error`, is not projected at all.
+#   It contributes only to one bare count line after the block, `<n>
+#   finding(s) withheld (security-class or Critical)`, which names no class,
+#   severity or area tag.
+#
 # Rendered block shape (frozen, matches parse-findings-block.ts)
 #   <!-- gaia-harden:findings:start -->
 #   <!--
@@ -124,6 +129,7 @@
 #                     "anchor_tree":"..."}]}
 #   -->
 #   <!-- gaia-harden:findings:end -->
+#   <n> finding(s) withheld (security-class or Critical)     (only when n > 0)
 #
 #   review_bases is ALWAYS present, possibly []. One entry per valid sidecar
 #   carrying a well-formed `review_base` (audit-write-findings.sh), built from
@@ -357,12 +363,20 @@ fi
 #    when what happened is "the merge broke", which is the one wrong answer
 #    here, so a merge failure declines exactly as the render failure below
 #    does. Its stderr is captured rather than discarded for the same reason.
-if ! merged_findings="$(jq -s '[.[] | .findings[]? | {finding_class, severity, area_tags}]' ${valid_files[@]+"${valid_files[@]}"} 2>&1)"; then
+#    The withheld test is one jq definition shared by the publish and count
+#    passes, so an entry is in exactly one of them.
+withheld_predicate='def withheld: (.security != false) or (.severity == "error");'
+if ! merged_findings="$(jq -s "$withheld_predicate"' [.[] | .findings[]? | select(withheld | not) | {finding_class, severity, area_tags}]' ${valid_files[@]+"${valid_files[@]}"} 2>&1)"; then
   emit_error "cannot merge the findings sidecars: $merged_findings"
   emit_decline "post failed"
   exit 0
 fi
 finding_count="$(printf '%s' "$merged_findings" | jq 'length' 2>/dev/null || echo 0)"
+if ! withheld_count="$(jq -s "$withheld_predicate"' [.[] | .findings[]? | select(withheld)] | length' ${valid_files[@]+"${valid_files[@]}"} 2>&1)"; then
+  emit_error "cannot count the withheld findings: $withheld_count"
+  emit_decline "post failed"
+  exit 0
+fi
 
 # The member count is DISTINCT `.member` values, not the sidecar file count.
 # The two agreed while the glob selected one base, because a member writes one
@@ -405,6 +419,9 @@ trap 'rm -f "$body_file"' EXIT
   printf '%s\n' "$payload"
   printf '%s\n' '-->'
   printf '<!-- gaia-harden:findings:end -->\n'
+  if [ "$withheld_count" -gt 0 ] 2>/dev/null; then
+    printf '%s finding(s) withheld (security-class or Critical)\n' "$withheld_count"
+  fi
 } > "$body_file"
 
 # -----------------------------------------------------------------------------

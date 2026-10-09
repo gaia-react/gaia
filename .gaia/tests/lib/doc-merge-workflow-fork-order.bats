@@ -20,7 +20,7 @@
 #
 # The checker is a function over a file, so the mutation tests below drive the
 # same function against scratch copies of the page and prove it can fail:
-# the check moved below the member-resolver fence, a head checkout inserted
+# the check moved below the audit-loop-eval fence, a head checkout inserted
 # above it, and the check absent altogether.
 #
 # Assertion style: .claude/rules/bats-assertions.md. `.gaia/tests/` is
@@ -109,19 +109,19 @@ order_violations() {
   [ -z "$output" ]
 }
 
-@test "the guard reads real gated lines: it sees the member resolver, the checkout and the cleanup" {
+@test "the guard reads real gated lines: it sees the checkpoint brief script, the status poster and the cleanup" {
   gated="$(gated_lines "$PAGE")"
-  grep -qF 'resolve-audit-members.sh' <<<"$gated" || return 1
+  grep -qF 'audit-loop-eval.sh brief' <<<"$gated" || return 1
   grep -qF 'git checkout main' <<<"$gated" || return 1
-  grep -qF 'audit-noop-detect.sh' <<<"$gated" || return 1
+  grep -qF 'post-audit-status.sh' <<<"$gated" || return 1
   # The check sits in a shell fence, not only in prose.
   [ -n "$(first_fork_check_line "$PAGE")" ]
 }
 
-@test "the guard fails when the fork check is moved below the first resolve-audit-members.sh fence" {
+@test "the guard fails when the fork check is moved below the first audit-loop-eval.sh fence" {
   scratch="${BATS_TEST_TMPDIR}/moved-below.md"
   fork_block="$(fence_block_of "$PAGE" isCrossRepository)"
-  resolver_block="$(fence_block_of "$PAGE" resolve-audit-members.sh)"
+  resolver_block="$(fence_block_of "$PAGE" audit-loop-eval.sh)"
   [ -n "$fork_block" ] || return 1
   [ -n "$resolver_block" ] || return 1
   fork_start="${fork_block% *}"
@@ -139,7 +139,7 @@ order_violations() {
   run order_violations "$scratch"
   [ "$status" -eq 1 ] || return 1
   grep -qF 'precedes the fork check' <<<"$output" || return 1
-  grep -qF 'resolve-audit-members.sh' <<<"$output"
+  grep -qF 'audit-loop-eval.sh' <<<"$output"
 }
 
 @test "the guard fails when a gh pr checkout line sits above the fork check" {

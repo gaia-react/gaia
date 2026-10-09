@@ -34,7 +34,7 @@ setup() {
 }
 
 @test "a merely-shared machinery path is not matched by audit_path_is_global_rule" {
-  run audit_path_is_global_rule ".claude/hooks/lib/audit-selfheal-paths.sh"
+  run audit_path_is_global_rule ".claude/hooks/lib/cross-repo-refusal.sh"
   [ "$status" -ne 0 ]
 
   run audit_path_is_global_rule ".github/audit/resolve-check-base.sh"
@@ -97,7 +97,7 @@ setup() {
 
 @test "audit_rules_reset_for returns 1 on a delta of only merely-shared machinery" {
   run audit_rules_reset_for "code-audit-frontend" <<'EOF'
-.claude/hooks/lib/audit-selfheal-paths.sh
+.claude/hooks/lib/cross-repo-refusal.sh
 .gaia/scripts/audit-write-findings.sh
 EOF
   [ "$status" -ne 0 ]
@@ -170,5 +170,43 @@ EOF
   run audit_path_is_global_rule ".claude/hooks/lib/audit-light-route-lib.sh.bak"
   [ "$status" -ne 0 ]
   run audit_path_is_global_rule ".claude/agents/audit-light-reviewer.md.orig"
+  [ "$status" -ne 0 ]
+}
+
+# The shared member protocol is not a member's own definition, so the member
+# tier never reaches it. Only the global tier makes a change to it reset every
+# member's anchor, and only machinery membership makes it rotate digests.
+
+@test "the member protocol is a global rule and is also machinery" {
+  . "$REPO_ROOT/.claude/hooks/lib/audit-machinery.sh"
+  audit_path_is_global_rule ".claude/hooks/lib/audit-member-protocol.md" || return 1
+  audit_path_is_machinery ".claude/hooks/lib/audit-member-protocol.md" || return 1
+  run audit_path_is_member_rule ".claude/hooks/lib/audit-member-protocol.md" "code-audit-frontend"
+  [ "$status" -ne 0 ]
+}
+
+@test "a change to the member protocol resets every member's anchor in the global tier" {
+  local member
+  for member in code-audit-frontend code-audit-github-workflows code-audit-maintainer-shell code-audit-maintainer-node; do
+    run audit_rules_reset_for "$member" <<<".claude/hooks/lib/audit-member-protocol.md"
+    [ "$status" -eq 0 ]
+    [ "$output" = "$(printf 'global\t.claude/hooks/lib/audit-member-protocol.md')" ]
+  done
+  run audit_rules_reset_for "" <<<".claude/hooks/lib/audit-member-protocol.md"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(printf 'global\t.claude/hooks/lib/audit-member-protocol.md')" ]
+}
+
+@test "the member-protocol cases can fail: a library without the protocol line answers not-global" {
+  local mutant="$BATS_TEST_TMPDIR/rules-without-protocol.sh"
+  grep -vF ".claude/hooks/lib/audit-member-protocol.md" "$RULES_LIBRARY" > "$mutant"
+  # The mutant really dropped the entry, so the red answers below are the
+  # tier mapping's, not an unreadable file's.
+  grep -qF "AUDIT_GLOBAL_RULES_PATHS" "$mutant"
+  # shellcheck source=/dev/null
+  . "$mutant"
+  run audit_path_is_global_rule ".claude/hooks/lib/audit-member-protocol.md"
+  [ "$status" -ne 0 ]
+  run audit_rules_reset_for "code-audit-frontend" <<<".claude/hooks/lib/audit-member-protocol.md"
   [ "$status" -ne 0 ]
 }

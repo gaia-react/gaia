@@ -28,7 +28,7 @@ The contract lives at the repo root and the commands run per package. Steps 3 to
 7. **Dev smoke test**: `bash .gaia/scripts/dev-smoke.sh`: exit 0 means the route answered HTTP 200 and the server it started is stopped. It starts `pnpm -C frontend dev` on this tree's dev port, requests `/` (`--path` names another route), and stops only the server it started. Do not start or stop the dev server by hand for this step: a pattern kill (`pkill -f vite`, `kill $(lsof -ti:<port>)`) also stops other sessions' and other worktrees' servers. When the script refuses because the port is already in use, ask the user before stopping the holder; its header documents the exit codes.
 8. `pnpm build` (`pnpm -C frontend build`): confirms production build.
 9. **Fix all warnings before reporting**: never hand off with known warnings.
-10. **Stop and report**: wait for user approval, except inside a workflow whose own instructions commit without stopping: the PR Merge Workflow's fix round ([[PR Merge Workflow#The fix round: fixer, verifier, gate]]), `/gaia-debt`, and a `/gaia-plan` orchestrator's phase commits.
+10. **Stop and report**: wait for user approval, except inside a workflow whose own instructions commit without stopping: the audit fix round ([[Audit Round Procedure#The fix round: fixer, verifier, gate]]), `/gaia-debt`, and a `/gaia-plan` orchestrator's phase commits.
 
 | Step          | Result |
 | ------------- | ------ |

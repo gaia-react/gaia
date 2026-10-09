@@ -45,7 +45,11 @@ make_repo() {
     "$REPO_ROOT/.gaia/scripts/audit-scope-digest.sh" \
     "$REPO_ROOT/.gaia/scripts/audit-key-lib.sh" \
     "$REPO_ROOT/.gaia/scripts/audit-member-digest.sh" \
+    "$REPO_ROOT/.gaia/scripts/main-root-lib.sh" \
     "$repository_directory/.gaia/scripts/"
+  mkdir -p "$repository_directory/.claude/agents"
+  printf 'definition body\n' > "$repository_directory/.claude/agents/code-audit-maintainer-shell.md"
+  printf 'definition body\n' > "$repository_directory/.claude/agents/code-audit-frontend.md"
   chmod +x "$repository_directory/.gaia/scripts/audit-resolve-scope.sh" "$repository_directory/.gaia/scripts/audit-scope-digest.sh"
   cp "$REPO_ROOT/.github/audit/resolve-audit-base.sh" "$repository_directory/.github/audit/"
   chmod +x "$repository_directory/.github/audit/resolve-audit-base.sh"
@@ -150,7 +154,7 @@ value_of() {
   run --separate-stderr "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-maintainer-shell --root "$repo"
   [ "$status" -eq 0 ]
   keys="$(printf '%s\n' "$output" | sed -n 's/=.*//p' | awk '!seen[$0]++' | tr '\n' ' ')"
-  [ "$keys" = "AUDIT_ROOT FULL_BASE BASE_REF BASE_REASON KEY_REF ANCHOR_TREE BASE_SHA KEY_BASE AUDIT_KEY D_SCOPE FULL_CHANGED CHANGED " ]
+  [ "$keys" = "AUDIT_ROOT FULL_BASE BASE_REF BASE_REASON KEY_REF ANCHOR_TREE BASE_SHA KEY_BASE AUDIT_KEY D_SCOPE DEFINITION FULL_CHANGED CHANGED " ]
   [ "$(value_of "$output" FULL_BASE)" = "$full_base" ]
   [ "$(value_of "$output" AUDIT_KEY)" = "$full_base.feat" ]
   [ "$(value_of "$output" BASE_SHA)" = "$full_base" ]
@@ -521,7 +525,7 @@ SHIM
     --skip-full-base --eligibility --review-path '*.ts'
   [ "$status" -eq 0 ]
   keys="$(printf '%s\n' "$output" | sed -n 's/=.*//p' | awk '!seen[$0]++' | tr '\n' ' ')"
-  [ "$keys" = "AUDIT_ROOT BASE_REF BASE_REASON KEY_REF ANCHOR_TREE BASE_SHA KEY_BASE AUDIT_KEY ELIG_BASE D_SCOPE CHANGED ELIG_CHANGED " ]
+  [ "$keys" = "AUDIT_ROOT BASE_REF BASE_REASON KEY_REF ANCHOR_TREE BASE_SHA KEY_BASE AUDIT_KEY ELIG_BASE D_SCOPE DEFINITION CHANGED ELIG_CHANGED " ]
   [ "$(value_of "$output" ELIG_BASE)" = "$(git -C "$repo" merge-base HEAD main)" ]
   printf '%s\n' "$output" | grep -qxF 'ELIG_CHANGED=app/a.ts'
   printf '%s\n' "$output" | grep -qxF 'ELIG_CHANGED=scripts/c.sh'
@@ -541,7 +545,7 @@ SHIM
   [ ! -s "$log" ]
 }
 
-@test "--eligibility takes the base from the pull request's own record when Actions declares none" {
+@test "--eligibility takes the base from the pull request's own record" {
   local repo shim log
   repo="$(stacked_repo elig-record)"
   shim="$BATS_TEST_TMPDIR/gh-record"
@@ -556,20 +560,13 @@ SHIM
   [ "$(printf '%s\n' "$output" | grep -cxF 'ELIG_CHANGED=app/base-only.ts')" -eq 0 ]
 }
 
-@test "--eligibility reads GITHUB_BASE_REF under Actions" {
-  local repo
-  repo="$(stacked_repo elig-actions)"
-  run --separate-stderr env GITHUB_ACTIONS=true GITHUB_BASE_REF=release \
-    "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-frontend --root "$repo" --skip-full-base --eligibility
-  [ "$status" -eq 0 ]
-  [ "$(value_of "$output" ELIG_BASE)" = "$(git -C "$repo" rev-parse release)" ]
-  [ "$(printf '%s\n' "$output" | grep -cxF 'ELIG_CHANGED=app/base-only.ts')" -eq 0 ]
-}
-
 @test "--eligibility falls back to the advertised default when the declared base has no remote-tracking ref" {
-  local repo
+  local repo shim log
   repo="$(stacked_repo elig-unverifiable)"
-  run --separate-stderr env GITHUB_ACTIONS=true GITHUB_BASE_REF=no-such-branch \
+  shim="$BATS_TEST_TMPDIR/gh-unverifiable"
+  log="$BATS_TEST_TMPDIR/gh-unverifiable.log"
+  gh_shim "$shim" no-such-branch "$log"
+  run --separate-stderr env PATH="$shim:$PATH" \
     "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-frontend --root "$repo" --skip-full-base --eligibility
   [ "$status" -eq 0 ]
   [ "$(value_of "$output" ELIG_BASE)" = "$(git -C "$repo" merge-base HEAD origin/main)" ]
@@ -609,4 +606,69 @@ SHIM
   [ "$status" -eq 0 ]
   printf '%s\n' "$output" | grep -qxF 'ELIG_BASE='
   grep -qF -- 'could not list the eligibility set' <<<"$stderr"
+}
+
+# ---------- definition line -----------------------------------------------------
+
+# linked_worktree <repo> <name>: a linked worktree of <repo> on a new branch,
+# printed by its physical path.
+linked_worktree() {
+  local repo="$1" name="$2" worktree_directory="$BATS_TEST_TMPDIR/$2"
+  git -C "$repo" worktree add -q -b "$name" "$worktree_directory"
+  printf '%s' "$(cd "$worktree_directory" && pwd -P)"
+}
+
+@test "DEFINITION prints right after D_SCOPE and is unchanged when the main checkout's copy is byte-identical" {
+  local repo worktree
+  repo="$(make_repo definition-same)"
+  worktree="$(linked_worktree "$repo" definition-same-wt)"
+  run --separate-stderr "$worktree/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-maintainer-shell --root "$worktree" --skip-full-base
+  [ "$status" -eq 0 ]
+  [ "$(value_of "$output" DEFINITION)" = "unchanged" ]
+  [ "$(printf '%s\n' "$output" | grep -n '^DEFINITION=' | head -1 | cut -d: -f1)" -eq "$(( $(printf '%s\n' "$output" | grep -n '^D_SCOPE=' | head -1 | cut -d: -f1) + 1 ))" ]
+}
+
+@test "DEFINITION names the working root's copy to re-read when it differs from the main checkout's" {
+  local repo worktree
+  repo="$(make_repo definition-differs)"
+  worktree="$(linked_worktree "$repo" definition-differs-wt)"
+  printf 'an edit made on this branch\n' >> "$worktree/.claude/agents/code-audit-maintainer-shell.md"
+  run --separate-stderr "$worktree/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-maintainer-shell --root "$worktree" --skip-full-base
+  [ "$status" -eq 0 ]
+  [ "$(value_of "$output" DEFINITION)" = "reread $worktree/.claude/agents/code-audit-maintainer-shell.md" ]
+}
+
+@test "DEFINITION is reread when the main checkout holds no copy of the definition" {
+  local repo worktree
+  repo="$(make_repo definition-absent)"
+  worktree="$(linked_worktree "$repo" definition-absent-wt)"
+  rm "$repo/.claude/agents/code-audit-maintainer-shell.md"
+  run --separate-stderr "$worktree/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-maintainer-shell --root "$worktree" --skip-full-base
+  [ "$status" -eq 0 ]
+  [ "$(value_of "$output" DEFINITION)" = "reread $worktree/.claude/agents/code-audit-maintainer-shell.md" ]
+}
+
+@test "DEFINITION is reread when the main checkout cannot be resolved" {
+  local repo
+  repo="$(make_repo definition-unresolvable)"
+  rm -r "$repo/.git"
+  run --separate-stderr "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-maintainer-shell --root "$repo" --skip-full-base
+  [ "$(value_of "$output" DEFINITION)" = "reread $repo/.claude/agents/code-audit-maintainer-shell.md" ]
+}
+
+# ---------- one path whatever the environment ----------------------------------
+
+@test "stdout is identical with the CI variables exported and without them" {
+  local repo plain with_ci
+  repo="$(stacked_repo no-ci-arm)"
+  run --separate-stderr env -u GITHUB_ACTIONS -u CI -u GITHUB_BASE_REF PATH="$BATS_TEST_TMPDIR/no-gh:$PATH" \
+    "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-frontend --root "$repo" --eligibility
+  [ "$status" -eq 0 ]
+  plain="$output"
+  run --separate-stderr env CI=true GITHUB_ACTIONS=true GITHUB_BASE_REF=release PATH="$BATS_TEST_TMPDIR/no-gh:$PATH" \
+    "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-frontend --root "$repo" --eligibility
+  [ "$status" -eq 0 ]
+  with_ci="$output"
+  [ -n "$plain" ]
+  [ "$plain" = "$with_ci" ]
 }

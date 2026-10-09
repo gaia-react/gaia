@@ -632,11 +632,11 @@ rotate_machinery() {
   return 0
 }
 
-# The self-heal release. A self-healed round ends having published nothing, so
-# the spent test cannot see it end, and the orchestrator's repair commit rotates
-# the member digest before the next dispatch. Without --release that next round
-# inherits the stale capture and forfeits, and only the round after it clears.
-# The member knows it self-healed, so it releases its own capture on the way out.
+# The release. A round that ends having published nothing cannot be seen to end
+# by the spent test, and a repair commit rotates the member digest before the
+# next dispatch. Without --release that next round inherits the stale capture and
+# forfeits, and only the round after it clears. The member releases its own
+# capture on the way out.
 
 @test "--release removes this member's stored capture and exits 0" {
   "$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "$BASE" >/dev/null
@@ -679,11 +679,11 @@ rotate_machinery() {
   printf '%s\n' "$output" | grep -qF -- "--recapture is valid only with --capture"
 }
 
-@test "END TO END: a self-healed round that releases lets the next round clear on its first try" {
+@test "END TO END: a round that publishes nothing and releases lets the next round clear on its first try" {
   writer="$THIS_DIRECTORY/../audit-write-clearance.sh"
   [ -x "$writer" ] || skip "audit-write-clearance.sh not executable"
 
-  # --- round 1: captures, self-heals, publishes nothing, releases ---
+  # --- round 1: captures, publishes nothing, releases ---
   captured="$("$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "$BASE")"
   "$SCRIPT" --release --root "$ROOT" --member "$MEMBER" --base "$BASE"
   [ -z "$(find "$ROOT/.gaia/local/audit" -name '*.ok' -o -name '*.refused' 2>/dev/null)" ]

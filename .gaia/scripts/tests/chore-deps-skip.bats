@@ -323,7 +323,6 @@ write_package() {
     "tddUnitTests": ["app/**/*.test.ts"],
     "tddStrictCandidates": ["app/utils/**"],
     "emergentTests": ["app/components/**/*.test.ts"],
-    "selfHealRefuse": ["CLAUDE.md"],
     "preCommitSource": ["app/**"],
     "doctorConfigs": ["doctor.config.*"],
     "dependencyManifests": ["package.json"]

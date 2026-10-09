@@ -18153,7 +18153,6 @@ var GLOB_KEYS = [
   "tddUnitTests",
   "tddStrictCandidates",
   "emergentTests",
-  "selfHealRefuse",
   "preCommitSource",
   "doctorConfigs",
   "dependencyManifests"
@@ -18172,7 +18171,6 @@ var descriptorSchema = (expectedName) => external_exports.object({
     doctorConfigs: globList,
     emergentTests: globList,
     preCommitSource: globList,
-    selfHealRefuse: globList,
     tddStrictCandidates: globList,
     tddUnitTests: globList
   }),
@@ -18203,29 +18201,6 @@ var BUILTIN_DESCRIPTOR = {
       "app/**/*.stories.tsx"
     ],
     preCommitSource: ["app/**", "test/**", ".storybook/**", ".playwright/**"],
-    selfHealRefuse: [
-      ".claude/**",
-      "CLAUDE.md",
-      "gaia.package.json",
-      "test/**",
-      ".playwright/**",
-      ".storybook/**",
-      "app/**/tests/**",
-      "app/**/*.test.ts",
-      "app/**/*.test.tsx",
-      "app/**/*.stories.tsx",
-      "package.json",
-      "tsconfig*.json",
-      "*.config.ts",
-      "*.config.mts",
-      "*.config.mjs",
-      "*.config.cjs",
-      "*.config.js",
-      "Dockerfile",
-      "Dockerfile.dockerignore",
-      "components.json",
-      ".*"
-    ],
     tddStrictCandidates: [
       "app/utils/**",
       "app/services/**",
@@ -35300,45 +35275,42 @@ var readPullRequestRecord = (options) => {
   return record2.success ? { record: record2.data } : { reason: "the pull request record is malformed" };
 };
 var postOutOfScopeStamp = (options) => {
-  const { cwd, prefix, runner } = options;
+  const { branch, cwd, prefix, runner } = options;
   const refusePost = (reason) => {
     process.stderr.write(
       `${prefix}: GAIA-Audit out-of-scope stamp not posted: ${reason}; run the PR Merge Workflow on this pull request
 `
     );
+    return "not-posted";
   };
   const read = readPullRequestRecord(options);
   if ("reason" in read) {
-    refusePost(read.reason);
-    return;
+    return refusePost(read.reason);
   }
   const { record: record2 } = read;
   const head = runner("git", ["rev-parse", "HEAD"], { cwd });
   const headSha2 = commandSucceeded(head) ? safeOutput2(head.stdout).trim() : "";
   if (headSha2 === "") {
-    refusePost("could not resolve the head commit");
-    return;
+    return refusePost("could not resolve the head commit");
   }
   if (record2.headRefOid !== headSha2) {
-    refusePost("the pull request head is not the commit this checkout holds");
-    return;
+    return refusePost(
+      "the pull request head is not the commit this checkout holds"
+    );
   }
   if (record2.files.length === 0 || record2.files.some((file2) => !file2.path.startsWith("wiki/"))) {
-    refusePost("the pull request changes paths outside wiki/");
-    return;
+    return refusePost("the pull request changes paths outside wiki/");
   }
   if (record2.baseRefName.startsWith("-")) {
-    refusePost("the pull request base name is not a branch name");
-    return;
+    return refusePost("the pull request base name is not a branch name");
   }
   const fetchBase = runner("git", ["fetch", "origin", record2.baseRefName], {
     cwd
   });
   if (!commandSucceeded(fetchBase)) {
-    refusePost(
+    return refusePost(
       `could not fetch origin/${record2.baseRefName} (${failureDetail(fetchBase)})`
     );
-    return;
   }
   const members = runner(
     "bash",
@@ -35352,17 +35324,15 @@ var postOutOfScopeStamp = (options) => {
     { cwd }
   );
   if (!commandSucceeded(members)) {
-    refusePost(
+    return refusePost(
       `resolve-audit-members.sh could not answer (${failureDetail(members)})`
     );
-    return;
   }
   const dispatched = safeOutput2(members.stdout).split("\n").map((line) => line.trim()).filter((line) => line.length > 0);
   if (dispatched.length > 0) {
-    refusePost(
+    return refusePost(
       `the Code Audit Team dispatches ${dispatched.join(", ")} for this diff`
     );
-    return;
   }
   const post = runner(
     "gh",
@@ -35381,8 +35351,25 @@ var postOutOfScopeStamp = (options) => {
     { cwd }
   );
   if (!commandSucceeded(post)) {
-    refusePost(`the status POST failed (${failureDetail(post)})`);
+    return refusePost(`the status POST failed (${failureDetail(post)})`);
   }
+  const draftState = runner(
+    "gh",
+    ["pr", "view", branch, "--json", "isDraft", "--jq", ".isDraft"],
+    { cwd }
+  );
+  if (commandSucceeded(draftState) && safeOutput2(draftState.stdout).trim() === "false") {
+    return "ready";
+  }
+  const ready = runner("gh", ["pr", "ready", branch], { cwd });
+  if (!commandSucceeded(ready)) {
+    process.stderr.write(
+      `${prefix}: GAIA-Audit status posted but the draft flip failed (${failureDetail(ready)}); run: gh pr ready ${branch}
+`
+    );
+    return "flip-failed";
+  }
+  return "ready";
 };
 var finalizeMerge = (options) => {
   const { base, branch, cwd, prefix, runner } = options;
@@ -35657,39 +35644,77 @@ var emitWikiTally = (options, artifact) => {
   } catch {
   }
 };
+var DRAFT_UNSUPPORTED = /draft.*(not supported|unsupported)|(not supported|unsupported).*draft/i;
+var openPullRequest = (options) => {
+  const { prBody, prTitle, repoRoot, runner } = options;
+  const createArgs = (draft) => [
+    "pr",
+    "create",
+    ...draft ? ["--draft"] : [],
+    "--title",
+    prTitle,
+    "--body",
+    prBody
+  ];
+  const visibility = runner(
+    "gh",
+    ["repo", "view", "--json", "visibility", "--jq", ".visibility"],
+    { cwd: repoRoot }
+  );
+  const isPrivate = stepOk(visibility) && safeOutput3(visibility.stdout).trim() === "PRIVATE";
+  const args = createArgs(!isPrivate);
+  const result = runner("gh", args, { cwd: repoRoot });
+  if (stepOk(result) || isPrivate || !DRAFT_UNSUPPORTED.test(safeOutput3(result.stderr))) {
+    return { args, result };
+  }
+  const readyArgs = createArgs(false);
+  return { args: readyArgs, result: runner("gh", readyArgs, { cwd: repoRoot }) };
+};
 var queueAutoMerge = (options) => {
   const { branch, prBody, prTitle, repoRoot, runner } = options;
   const autoMergeStep = {
     args: ["pr", "merge", "--squash", "--auto", "--delete-branch"],
     command: "gh"
   };
+  const createStep = { args: ["pr", "create"], command: "gh" };
   const remoteSequence = [
     { args: ["push", "-u", "origin", branch], command: "git" },
-    {
-      args: ["pr", "create", "--title", prTitle, "--body", prBody],
-      command: "gh"
-    },
+    createStep,
     autoMergeStep
   ];
   let artifact;
   for (const step of remoteSequence) {
     if (step === autoMergeStep) {
-      postOutOfScopeStamp({
+      const stamp = postOutOfScopeStamp({
         branch,
         cwd: repoRoot,
         prefix: "chain finish",
         runner
       });
+      if (stamp === "flip-failed") {
+        process.stderr.write(
+          `chain finish: ${branch} stays an open draft PR and auto-merge is not queued
+`
+        );
+        return { artifact, failureCode: EXIT_CODES.UNKNOWN_SUBCOMMAND };
+      }
     }
-    const result = runner(step.command, step.args, { cwd: repoRoot });
-    if (!stepOk(result)) {
+    const outcome = step === createStep ? openPullRequest({ prBody, prTitle, repoRoot, runner }) : {
+      args: step.args,
+      result: runner(step.command, step.args, { cwd: repoRoot })
+    };
+    if (!stepOk(outcome.result)) {
       return {
         artifact,
-        failureCode: passthroughFailure2(result, step.command, step.args)
+        failureCode: passthroughFailure2(
+          outcome.result,
+          step.command,
+          outcome.args
+        )
       };
     }
-    if (step.command === "gh" && step.args[1] === "create") {
-      artifact = parsePrUrl(safeOutput3(result.stdout));
+    if (step === createStep) {
+      artifact = parsePrUrl(safeOutput3(outcome.result.stdout));
     }
   }
   return { artifact };

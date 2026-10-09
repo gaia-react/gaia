@@ -5,9 +5,29 @@ description: Files a new tech-debt GitHub issue for an out-of-scope code-review 
 
 # File a tech-debt issue
 
-This skill is the single source of truth for turning one out-of-scope finding (a real problem spotted while reviewing something else, and therefore not fixed in place) into a durable, deduplicated GitHub issue. It covers building the key, checking for a prior match, filing when there is none, and nudging the debt-count display to refresh. It does not decide *which* findings are out-of-scope, does not classify security-sensitivity, and does not fix anything, it only files.
+This skill is the single source of truth for turning one out-of-scope finding (a real problem spotted while reviewing something else, and therefore not fixed in place) into a durable, deduplicated GitHub issue. It covers building the key, checking for a prior match, filing when there is none, and nudging the debt-count display to refresh. It does not decide *which* findings are out-of-scope, does not fix anything, and takes the caller's word on whether a finding is security-sensitive (section 0), it only files.
 
 **Callers own their own bookkeeping around this recipe.** Some callers record their own disposition-ledger entry and gate their own downstream state on it after filing succeeds; others file and stop. That bookkeeping is caller-specific and lives in the caller, not here. Follow the steps below exactly as written; do not invent a bookkeeping record, a completion flag, or a run-tracking step of your own on top of them, that would duplicate (or fight with) whatever the caller already does.
+
+Contents: 0. Run the filing script; 1. Build the dedup key; 2. Check for an existing match (dedup); 3. Idempotency: skip if a match exists; 4. Otherwise, file the issue; 5. Issue body schema; 6. Labels; 7. Difficulty grade; 8. Touch the debt-count staleness sentinel.
+
+## 0. Run the filing script
+
+Every caller files through the script and never runs `gh issue create` itself:
+
+```bash
+bash .gaia/scripts/file-tech-debt.sh file --finding <finding.json> --outcome-file <outcome.jsonl> [--repo <owner/name>] [--disposition file|divert]
+```
+
+Execute it; do not read it for the mechanics. Its header owns the finding JSON, the outcome line, the stdout words and the exit codes. Steps 1 to 8 below are the reference the script implements, for a caller that needs to understand a filing or a label rather than reproduce one.
+
+The caller owns one judgment: the finding's boolean `security` flag, true when the content reads as an exploitable weakness (missing authentication or authorization, injection, secret exposure, SSRF, path traversal, unsafe deserialization, crypto misuse). Everything else is mechanical and fails safe toward diverting:
+
+- **Security first.** A security-class finding (flag true, absent or non-boolean; severity `error` or `Critical`; secret-shaped text; an absent or malformed `finding_class`) never reaches a public or internal issue. It files only when repository visibility reads exactly `PRIVATE` before the probe and again immediately before the first write. Any other answer, including a failed read, writes a redacted record under `.gaia/local/audit/security/` and reports a count and that path, nothing more. `holistic/unclassified` is a valid class and never a trigger.
+- **Backend probe.** `absent` (no repository, unauthenticated, Issues disabled, no write permission) files nothing and records outcome `absent`. `transient` (timeout, rate limit, 5xx) files nothing, records outcome `transient`, and keeps the finding in a retry directory beside the outcome file for the next round. `present` goes on to dedup and filing.
+- **Verify after filing.** The script re-queries open issues for the wrapped key and records `failed` when the new issue is not found.
+
+Honest limits: an issue filed while the repository is PRIVATE becomes public if its visibility later flips, and a caller that sets `security` to false on a real weakness defeats the flag, which is why the severity and content triggers sit beside it.
 
 ## 1. Build the dedup key
 
@@ -46,7 +66,7 @@ If step 2 found a matching open issue, or a declined-closed one, stop, do not fi
 
 ## 4. Otherwise, file the issue
 
-If no match exists:
+If no match exists (the script performs this step; the commands below are its reference, not a second route to `gh issue create`):
 
 1. Create the labels idempotently first (step 6), a pre-existing label is not an error.
 2. Build the full issue body (step 5) in a gitignored body-file, not inline. Give the file a per-run-unique name under `.gaia/local/audit/` (for example `.gaia/local/audit/issue-body-<something-unique>.md`). The name must be unique because the create-and-cleanup sub-step below deletes it: two runs sharing one fixed name (CI plus a local run, the same pair sub-step 3 below guards against) would race, and one run's cleanup would delete the other's in-flight body out from under it.
@@ -106,7 +126,7 @@ The `footprint:<class>` flag is on both forms because it is not optional the way
 On the GAIA maintainer repository every filing carries one more label, `audience:<side>` (step 6). It rides in both `--labels` strings above and on both `gh issue create` forms as `--label audience:<side>`, immediately after `severity:<tier>`. Like the footprint class it is not optional the way the grade is: a filing that has not read the cited code still knows which side of the adopter/maintainer split its cited path sits on.
 <!-- gaia:maintainer-only:end -->
 
-**Never** pass `--body <argv>` here. An inline `--body` string puts the finding (and anything sensitive quoted inside it) on the command line, which a verbose or full-output CI run echoes into the public Actions log. Always route the body through `--body-file` (or stdin); the body must never reach argv.
+**Never** pass `--body <argv>` here. An inline `--body` string puts the finding (and anything sensitive quoted inside it) on the command line, where verbose tooling echoes it and process listings show it. Always route the body through `--body-file` (or stdin); the body must never reach argv.
 
 Then, as its own tool call, spelling the path literally:
 
@@ -218,7 +238,7 @@ done
 
 ## 7. Difficulty grade
 
-A filing grades, carrying exactly one `difficulty:` label, when the cited code is read at filing time (a reviewer or an audit agent surfaces the defect and you open the code to file it, as with a review follow-up), so the grade is the rubric below applied to real code rather than guessed from a description. Every filed issue already carries a concrete `file:line` and failure mode (step 5 makes both mandatory), so the discriminator is not those but whether the code behind them was read here. A filing that has not read the cited code omits the label rather than guess one. Two routes always read the code and so always grade: `.claude/agents/code-audit-frontend.md`'s non-security disposition pipeline and the tech-debt filing block in `.claude/skills/gaia/references/audit.md`. This section is the single source of truth for the permitted values and for choosing between them; a grading filing never grades against a private reading of a grade's name.
+A filing grades, carrying exactly one `difficulty:` label, when the cited code is read at filing time (a reviewer or an audit agent surfaces the defect and you open the code to file it, as with a review follow-up), so the grade is the rubric below applied to real code rather than guessed from a description. Every filed issue already carries a concrete `file:line` and failure mode (step 5 makes both mandatory), so the discriminator is not those but whether the code behind them was read here. A filing that has not read the cited code omits the label rather than guess one. Two routes always read the code and so always grade: the audit loop unit's non-security disposition (`.gaia/scripts/audit-dispositions-check.sh` gates it, `.gaia/scripts/file-tech-debt.sh` files) and the tech-debt filing block in `.claude/skills/gaia/references/audit.md`. This section is the single source of truth for the permitted values and for choosing between them; a grading filing never grades against a private reading of a grade's name.
 
 Grade the difficulty of **the fix**, never the model, agent, or tooling that would perform it.
 
@@ -235,12 +255,9 @@ Difficulty adds the dimension the footprint class does not capture. `footprint:`
 Worked boundary, easy versus medium. A swallowed error the issue text says to rethrow is `difficulty:easy`: the issue determines the change. The same swallowed error, where the issue says only that it must not be swallowed and leaves the choice between rethrowing, logging and continuing, and surfacing to the caller, is `difficulty:medium`: the choice is real, and the sibling call sites settle it.
 
 - **When a filing omits the grade.** A filing omits the label whenever the cited code was not read at filing time, rather than guessing a grade from a description: a direct human invocation that files from a relayed summary or hand-off without reopening the cited code has no rubric-applied grade to give; and the orchestrator's cross-remit disposition has not read the finding against this rubric. A human invocation that *does* read the cited code as it files grades instead (above); it is not forced ungraded merely for arriving by the human path. An issue carrying no grade is normal: it orders, clusters, and drains exactly as a graded one does; in a named batch's budget it scores as medium. That guarantee is what keeps a mixed adopter state safe, since every file this feature touches resolves independently on update: a new copy of this recipe running against an old `debt.md` files grades that nothing yet reads, and a new `debt.md` running against old agents reads a backlog where nothing is graded. Both states are reachable and both benign.
-  <!-- gaia:maintainer-only:start -->
-  The `/health-audit` comprehensive runbook's human-gated filing offer omits it too: it files from an operator's yes on a written report rather than from freshly-read code.
-  <!-- gaia:maintainer-only:end -->
 - **Argv constraint.** The value written to the `difficulty:<grade>` label must be one of the three literals above, byte-for-byte, before it reaches any `gh` argv. Argv exposure is minimal here, the token is fixed-vocabulary, which is why the `--body-file` mandate in step 4 is not implicated, but a model-produced string interpolated into a command whose argv can surface in a public log earns the one-clause constraint anyway.
-- **Disclosure.** The three grade values are fixed and carry no information about the finding: they do not discriminate a security-class finding from any other, so a difficulty grade leaks nothing about security-sensitivity no matter who applies it or where the issue lands. Machine filing never reaches a public repo for a security-class finding, the agent's security-class divert path intercepts it first.
-- **Where the grade comes from.** This file defines the rubric; it does not apply it. The two external grading routes named at the top of this section, the frontend audit agent and `audit.md`, read it and write the label; an edit to the value set or the rubric must reach both. The human-invocation grading applies this section's rubric in place, so it needs no separate propagation.
+- **Disclosure.** The three grade values are fixed and carry no information about the finding: they do not discriminate a security-class finding from any other, so a difficulty grade leaks nothing about security-sensitivity no matter who applies it or where the issue lands. Machine filing never reaches a public repo for a security-class finding, the script's security screen intercepts it first.
+- **Where the grade comes from.** This file defines the rubric; it does not apply it. The two external grading routes named at the top of this section, the audit loop unit and `audit.md`, read it and write the label; an edit to the value set or the rubric must reach both. The human-invocation grading applies this section's rubric in place, so it needs no separate propagation.
 
 ## 8. Touch the debt-count staleness sentinel
 

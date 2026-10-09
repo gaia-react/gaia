@@ -73,6 +73,28 @@ export const readExpected = (caseName: string): CorpusExpected =>
     readFileSync(path.join(CORPUS_DIRECTORY, caseName, 'expected.json'), 'utf8')
   ) as CorpusExpected;
 
+/** The corpus case whose descriptor carries a globs key the schema no longer defines. */
+export const LEFTOVER_KEY_CASE = 'descriptor-leftover-selfheal-key';
+
+const globKeysOf = (caseName: string): string[] =>
+  Object.keys(
+    (
+      JSON.parse(
+        readFileSync(
+          path.join(CORPUS_DIRECTORY, caseName, 'frontend/gaia.package.json'),
+          'utf8'
+        )
+      ) as {globs: Record<string, unknown>}
+    ).globs
+  );
+
+/** The globs key the leftover case carries beyond a current descriptor's. */
+export const retiredGlobsKey = (): string => {
+  const current = new Set(globKeysOf('path-frontend'));
+
+  return globKeysOf(LEFTOVER_KEY_CASE).find((key) => !current.has(key)) ?? '';
+};
+
 /** Copy a case into `destination` as a repo root, without its oracle. */
 export const materializeCase = (
   caseName: string,

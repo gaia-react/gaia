@@ -142,7 +142,9 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Test Runner]]
 - [[Pre-commit Hooks]]
 - [[Git Workflow]]
-- [[PR Merge Workflow]]
+- [[PR Merge Workflow]]: the main-thread merge runbook: fork-PR refusal, pre-dispatch verification, dispatching the audit loop unit, the branch checkpoint, the status post, the merge and the post-merge cleanup.
+- [[Audit Round Procedure]]: the audit loop unit's only procedure source: member dispatch, light routing, the fix round, dispositions, cross-remit findings and the marker key.
+- [[Audit Gate Reference]]: the marker handshake reference: merge-hook signals, the bypass stamp, the re-run carry-forward ledger, the findings block and the accepted limits of a status-based gate.
 - [[Task Orchestration]]
 - [[Workflow Doctrine]]: the one execution doctrine (roles, git ownership, checkpoint and resume, model choice) and the hook that injects it on a branch.
 - [[Code Review Audit Agent]]

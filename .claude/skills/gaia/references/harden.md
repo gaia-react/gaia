@@ -358,14 +358,14 @@ git add -A && git commit -F <commit-message-file> && git push -u origin <HARDEN_
 ```
 
 ```bash
-gh pr create --title "<commit subject>" --body-file <pr-body-file>
+gh pr create --draft --title "<commit subject>" --body-file <pr-body-file>
 ```
 
 <!-- gaia:maintainer-only:start -->
 **Clear the CHANGELOG gate** per `wiki/concepts/PR Merge Workflow.md` in a follow-up commit, now that the PR number exists for its `(#<PR>)` reference, and push it before any audit dispatch anchors on HEAD. A promoted policy rule that changes how the agent works usually warrants a `## [Unreleased]` entry.
 <!-- gaia:maintainer-only:end -->
 
-**Run the audit, on every path.** Read `wiki/concepts/PR Merge Workflow.md` and run its `#### Before the first dispatch: verify your own work` checks, then resolve the spawn set its Roster-first step prescribes, including its fallback when the oracle is absent. Do not assume a harden diff is out of audit scope: a rule file or enforcement wiring can sit in a member's remit. When members are named, complete the workflow's marker handshake (spawn, fix, re-audit, under its `#### The branch checkpoint`); once that page's `#### Posting the status last` conditions hold, post the status yourself, `bash .claude/hooks/post-audit-status.sh <path to a current member marker>`, before the merge question below. When none are named, the out-of-scope bypass clears the merge with no marker. At a checkpoint, ask the human the same checkpoint `AskUserQuestion` the workflow prescribes for an interactive run: the pinned question `bash .gaia/scripts/audit-loop-eval.sh pinned-question --root <root>` prints, asked verbatim, with the evidence from `bash .gaia/scripts/audit-loop-eval.sh brief --root <root>` shown beside it.
+**Run the audit, on every path.** Read `wiki/concepts/PR Merge Workflow.md` and run its `#### Before the first dispatch: verify your own work` checks, then resolve the dispatched members with `bash .gaia/scripts/resolve-audit-members.sh`. Do not assume a harden diff is out of audit scope: a rule file or enforcement wiring can sit in a member's remit. When members are named, complete the workflow's marker handshake (dispatch the `audit-loop-unit` agent per its `## Dispatch the audit loop unit`, which spawns, fixes and re-audits under the `#### The branch checkpoint`); once that page's `#### Posting the status last` conditions hold, post the status yourself, `bash .claude/hooks/post-audit-status.sh <path to a current member marker>`, before the merge question below. When none are named, the out-of-scope bypass clears the merge with no marker. At a checkpoint, ask the human the same checkpoint `AskUserQuestion` the workflow prescribes for an interactive run: the pinned question `bash .gaia/scripts/audit-loop-eval.sh pinned-question --root <root>` prints, asked verbatim, with the evidence from `bash .gaia/scripts/audit-loop-eval.sh brief --root <root>` shown beside it.
 
 A fix to a drafted rule is a commit to a file in a member's remit, so it rotates that member's digest and buys a whole extra round. The citation check in the prose-rule template's filling rules is what keeps round one clean.
 
