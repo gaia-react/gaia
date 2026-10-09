@@ -21,6 +21,8 @@
 # Run under bash 5 (.claude/rules/bats-assertions.md):
 #   .gaia/scripts/bats5.sh .gaia/scripts/tests/token-pricing-override.bats
 
+# bats file_tags=whole-tree
+
 bats_require_minimum_version 1.5.0
 
 setup() {
