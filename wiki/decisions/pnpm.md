@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-04-26
 created: 2026-04-26
-updated: 2026-09-29
+updated: 2026-10-09
 tags: [decision, tooling, package-manager, security]
 ---
 
@@ -44,11 +44,7 @@ Caret ranges (`^x.y.z`) are kept in `package.json`. The lockfile is the authorit
 
 ## Maintainer CLI workspace
 
-The `.gaia/cli` lockfile carries no `packageManagerDependencies` header because that workspace declares no `packageManager`.
-
-`.gaia/cli` is a second, independent pnpm root: its own `pnpm-workspace.yaml` and `pnpm-lock.yaml`, resolved separately from the repository root. It carries the same supply-chain settings as root, `minimumReleaseAge`, `minimumReleaseAgeStrict`, `trustPolicy`, `trustPolicyExclude`, `minimumReleaseAgeExclude`, with each exclusion entry checked against that workspace's own dependency closure rather than copied wholesale from root's. Nothing holds these settings, or the two workspaces' shared devDependency pins, in parity automatically. `/update-deps`'s Phase 6b (`.claude/skills/update-deps/SKILL.md`) raises `.gaia/cli`'s shared devDependency pins to match root's after every dependency run. That covers declared pins only: rule packages that arrive transitively through a caret range, such as the plugins `eslint-config-airbnb-extended` pulls in, are resolved by each lockfile independently, so the two workspaces can still run different rule versions with nothing to notice.
-
-Every dependency-CVE surface in this repository (the `/update-deps` override audit, the code-review agent's advisory oracle) runs `pnpm audit` from the repository root only, so the CLI's second root is invisible to all of them; its overrides map carries security floors retired by hand, and its build inlines that closure into a binary adopters receive. `.gaia/scripts/check-cli-workspace-floors.sh` reports on it directly, run from the same CI job that installs `.gaia/cli`. Its parity arm is offline, deterministic, and decides the exit status: the `overrides:` map in the CLI workspace's `pnpm-workspace.yaml` must match the `overrides:` block in its own lockfile, the same drift `pnpm-overrides` calls out for the repository root, checked here for the second root instead. A separate advisory arm surfaces high/critical findings in the CLI's closure but needs the network, and it reaches the registry in about half its runs at a cost of several minutes either way, so `cli-tests.yml` passes `--no-audit` rather than put a coin flip inside a declared-required context. It runs instead on its own scheduled, non-required lane, `.github/workflows/cli-advisory-scan.yml`, where nothing waits on the answer: that lane retries a run the registry never answered, and passes `--advisory-strict` so the arm's outcome becomes the exit status, since a scheduled job's conclusion is its only channel to a human. Parity still outranks the advisory statuses there, and a maintainer runs the arm by hand the same way. Passing parity means the floors are applied as configured, not that they are still needed: a floor whose parents have since bumped their own pins past it quietly becomes a cap, and that decay needs the interactive override audit's toggle-and-re-resolve, not this read-only check, to catch.
+`.gaia/cli` is a member of the root pnpm workspace: one `pnpm-workspace.yaml`, one `pnpm-lock.yaml`, one install, one `pnpm audit`. The release scrub removes its workspace entry and its lockfile importer from the shipped pair, so adopters receive a workspace file and lockfile that name no CLI (see [[Bundle-time Scrub]]). A security floor the CLI's closure needs goes in the root `overrides` map like any other.
 <!-- gaia:maintainer-only:end -->
 
 ## Override audit

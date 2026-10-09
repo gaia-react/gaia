@@ -1,6 +1,7 @@
 import {dump as dumpYaml, load as parseYaml} from 'js-yaml';
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {execFileSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
 import {
   mkdirSync,
   mkdtempSync,
@@ -10,10 +11,12 @@ import {
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {resolveRepoRootFromImportMeta} from '../util/repo-root-fixture.js';
 import {deriveExcludedRefTokens} from './excluded-refs.js';
 import {listGitFiles, parseExcludeLines} from './manifest.js';
-import {globToRegex, parseKeyPath, run} from './scrub.js';
+import {stripPnpmMember} from './pnpm-member-strip.js';
+import {globToRegex, loadConfig, parseKeyPath, run} from './scrub.js';
 
 const JSON_STRIP_CONFIG = `
 transforms:
@@ -2584,5 +2587,249 @@ describe('shipped audience-label-vocabulary check', () => {
 
     expect(run([sandbox.stagingDir, '--config', sandbox.configPath])).toBe(0);
     expect(stdio.outputs.join('')).toContain('leaks: none');
+  });
+});
+
+const PNPM_FIXTURE_ROOT = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '..',
+  '..',
+  'test-fixtures',
+  'pnpm-member-strip'
+);
+const STAGED_LOCKFILE = 'pnpm-lock.yaml';
+const STAGED_WORKSPACE = 'pnpm-workspace.yaml';
+
+const PNPM_STRIP_CONFIG = `
+transforms:
+  - type: pnpm-member-strip
+    member: ".gaia/cli"
+    workspace: "${STAGED_WORKSPACE}"
+    lockfile: "${STAGED_LOCKFILE}"
+`;
+
+const PNPM_LEAK_ONLY_CONFIG = String.raw`
+transforms:
+  - type: leak-check
+    checks:
+      - id: pnpm-workspace-member
+        pattern: "\\.gaia/cli"
+        scope:
+          - "pnpm-lock.yaml"
+          - "pnpm-workspace.yaml"
+`;
+
+const readPnpmFixture = (caseName: string, fileName: string): string =>
+  readFileSync(path.join(PNPM_FIXTURE_ROOT, caseName, fileName), 'utf8');
+
+const sha256Of = (absolutePath: string): string =>
+  createHash('sha256').update(readFileSync(absolutePath)).digest('hex');
+
+describe('pnpm-member-strip transform', () => {
+  let sandbox: Sandbox;
+  let stdio: ReturnType<typeof captureStdio>;
+
+  const stagePnpmCase = (caseName: string): void => {
+    sandbox.writeStaged(
+      STAGED_LOCKFILE,
+      readPnpmFixture(caseName, 'input.lock.fixture.yaml')
+    );
+    sandbox.writeStaged(
+      STAGED_WORKSPACE,
+      readPnpmFixture(caseName, 'input.workspace.fixture.yaml')
+    );
+  };
+
+  const stagedPath = (relativePath: string): string =>
+    path.join(sandbox.stagingDir, relativePath);
+
+  const stagedHashes = (): string[] => [
+    sha256Of(stagedPath(STAGED_LOCKFILE)),
+    sha256Of(stagedPath(STAGED_WORKSPACE)),
+  ];
+
+  beforeEach(() => {
+    stdio = captureStdio();
+    sandbox = setupSandbox({config: PNPM_STRIP_CONFIG});
+  });
+
+  afterEach(() => {
+    stdio.restore();
+    sandbox.cleanup();
+  });
+
+  test('strips the member from both staged files and reports the counts', () => {
+    stagePnpmCase('synthetic');
+
+    const exit = run([
+      sandbox.stagingDir,
+      '--config',
+      sandbox.configPath,
+      '--json',
+    ]);
+
+    expect(exit).toBe(0);
+    expect(readFileSync(stagedPath(STAGED_LOCKFILE), 'utf8')).toBe(
+      readPnpmFixture('synthetic', 'expected.lock.fixture.yaml')
+    );
+    expect(readFileSync(stagedPath(STAGED_WORKSPACE), 'utf8')).toBe(
+      readPnpmFixture('synthetic', 'expected.workspace.fixture.yaml')
+    );
+
+    const report = JSON.parse(stdio.outputs.join('')) as {
+      pnpm_member_strip: unknown;
+    };
+    const outcome = stripPnpmMember({
+      lockfile: readPnpmFixture('synthetic', 'input.lock.fixture.yaml'),
+      member: '.gaia/cli',
+      workspace: readPnpmFixture('synthetic', 'input.workspace.fixture.yaml'),
+    });
+    const {removed} = outcome as {
+      removed: {packages: string[]; snapshots: string[]};
+    };
+
+    expect(outcome.kind).toBe('stripped');
+    expect(report.pnpm_member_strip).toEqual({
+      files_touched: [STAGED_WORKSPACE, STAGED_LOCKFILE],
+      importers_removed: 1,
+      packages_removed: removed.packages.length,
+      snapshots_removed: removed.snapshots.length,
+    });
+  });
+
+  test('prints the removal counts in the human report', () => {
+    stagePnpmCase('synthetic');
+
+    expect(run([sandbox.stagingDir, '--config', sandbox.configPath])).toBe(0);
+    expect(stdio.outputs.join('')).toMatch(
+      /release scrub: removed 1 pnpm importer\(s\), [1-9]\d* package\(s\), [1-9]\d* snapshot\(s\)/
+    );
+  });
+
+  test('leaves a pair with no member and no importer byte-identical', () => {
+    stagePnpmCase('noop');
+    const before = stagedHashes();
+
+    expect(run([sandbox.stagingDir, '--config', sandbox.configPath])).toBe(0);
+    expect(stagedHashes()).toEqual(before);
+    expect(stdio.outputs.join('')).toContain(
+      'release scrub: removed 0 pnpm importer(s), 0 package(s), 0 snapshot(s)'
+    );
+  });
+
+  test.each([
+    ['unknown-version-document-1', STAGED_LOCKFILE, 'unknown-lockfile-version'],
+    ['unknown-version-document-2', STAGED_LOCKFILE, 'unknown-lockfile-version'],
+    ['member-without-importer', STAGED_WORKSPACE, 'member-without-importer'],
+    ['importer-without-member', STAGED_LOCKFILE, 'importer-without-member'],
+    ['missing-snapshot', STAGED_LOCKFILE, 'missing-snapshot'],
+  ])(
+    '%s exits non-zero naming %s and %s, writing neither file',
+    (caseName, file, token) => {
+      stagePnpmCase(caseName);
+      const before = stagedHashes();
+
+      expect(
+        run([sandbox.stagingDir, '--config', sandbox.configPath])
+      ).not.toBe(0);
+      expect(stagedHashes()).toEqual(before);
+
+      const stderr = stdio.errors.join('');
+
+      expect(stderr).toContain('pnpm_member_strip_refused');
+      expect(stderr).toContain(JSON.stringify(stagedPath(file)));
+      expect(stderr).toContain(token);
+    }
+  );
+
+  test('the self-check refuses a prune that leaves a member-only snapshot', () => {
+    stagePnpmCase('synthetic');
+    const before = stagedHashes();
+    const variant = 'use-sync-external-store@1.2.2(react@17.0.2)';
+    const input = readPnpmFixture('synthetic', 'input.lock.fixture.yaml');
+    const blockStart = input.indexOf(`\n\n  ${variant}:`);
+    const leftover = input.slice(
+      blockStart,
+      input.indexOf('\n\n', blockStart + 2)
+    );
+
+    const exit = run([sandbox.stagingDir, '--config', sandbox.configPath], {
+      stripPnpmMember: (stripInput) => {
+        const outcome = stripPnpmMember(stripInput);
+
+        return outcome.kind === 'stripped' ?
+            {...outcome, lockfile: `${outcome.lockfile}${leftover}\n`}
+          : outcome;
+      },
+    });
+
+    expect(exit).not.toBe(0);
+    expect(stagedHashes()).toEqual(before);
+
+    const stderr = stdio.errors.join('');
+
+    expect(stderr).toContain('cli-only-key-survives');
+    expect(stderr).toContain(variant);
+  });
+
+  test('the leak check fails the build when the member survives', () => {
+    sandbox.cleanup();
+    sandbox = setupSandbox({config: PNPM_LEAK_ONLY_CONFIG});
+    stagePnpmCase('synthetic');
+
+    expect(run([sandbox.stagingDir, '--config', sandbox.configPath])).not.toBe(
+      0
+    );
+    expect(stdio.outputs.join('')).toMatch(
+      /\[pnpm-workspace-member\] pnpm-workspace\.yaml:\d+/
+    );
+  });
+});
+
+describe('shipped release-scrub config', () => {
+  const configPath = path.join(
+    resolveRepoRootFromImportMeta(import.meta.url),
+    '.gaia',
+    'release-scrub.yml'
+  );
+
+  test('parses through the loader run() uses', () => {
+    const config = loadConfig(configPath);
+
+    expect(config.transforms).toContainEqual({
+      lockfile: 'pnpm-lock.yaml',
+      member: '.gaia/cli',
+      type: 'pnpm-member-strip',
+      workspace: 'pnpm-workspace.yaml',
+    });
+  });
+
+  test('json-strips the maintainer-only lint:cli script from the root package.json', () => {
+    const jsonStrip = loadConfig(configPath).transforms.find(
+      (transform) =>
+        transform.type === 'json-strip' &&
+        transform.paths.includes('package.json')
+    );
+    const sandbox = setupSandbox({
+      config: dumpYaml({transforms: [jsonStrip]}),
+    });
+    const stdio = captureStdio();
+
+    try {
+      sandbox.writeStaged(
+        'package.json',
+        `${JSON.stringify({scripts: {'lint:cli': 'pnpm -C .gaia/cli lint', test: 'vitest'}}, null, 2)}\n`
+      );
+
+      expect(run([sandbox.stagingDir, '--config', sandbox.configPath])).toBe(0);
+      expect(
+        JSON.parse(
+          readFileSync(path.join(sandbox.stagingDir, 'package.json'), 'utf8')
+        )
+      ).toEqual({scripts: {test: 'vitest'}});
+    } finally {
+      stdio.restore();
+      sandbox.cleanup();
+    }
   });
 });

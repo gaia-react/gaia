@@ -3,7 +3,7 @@ type: concept
 title: Release Workflow
 status: active
 created: 2026-04-22
-updated: 2026-10-03
+updated: 2026-10-09
 tags: [release, claude, maintainer, versioning]
 ---
 
@@ -60,9 +60,9 @@ The tag push triggers [`release.yml`](../../.github/workflows/release.yml), whic
 `release.yml` builds the tarball in five phases:
 
 1. **Stage**: drive the file set from `git ls-files` (not a raw `tar .`) and subtract `.gaia/release-exclude` patterns. `git ls-files` already ignores anything in `.gitignore` (no `.DS_Store`, `node_modules`, build output, `.idea/`); `.gaia/release-exclude` strips the tracked-but-maintainer-only content. The staging filter compiles `.gaia/release-exclude` into the anchored regexes it feeds to `grep -vE -f` by invoking `gaia-maintainer release exclude-regex`, the single compiler every release surface calls. `rsync` materializes the include list into `/tmp/gaia-vX.Y.Z/`. `.gaia/scripts/assert-no-release-leak.sh` then re-scans the materialized tree against the same exclude regex and fails closed: a leak exits 1, a scan that could not complete (an unreadable directory, a dead enumeration) exits 2, and either halts the release rather than shipping an unverified tree.
-2. **Bundle-time scrub**: `gaia-maintainer release scrub /tmp/gaia-vX.Y.Z` applies the transforms in `.gaia/release-scrub.yml`: marker-delimited section strips and a leak-check pass that mirrors the `wiki-style.md` audit greps. Build fails closed on any leak. See [[Bundle-time Scrub]] for rationale.
+2. **Bundle-time scrub**: `gaia-maintainer release scrub /tmp/gaia-vX.Y.Z` applies the transforms in `.gaia/release-scrub.yml`: marker-delimited section strips, JSON key strips, removal of the maintainer-only CLI member from the shipped pnpm workspace file and lockfile, and a leak-check pass that mirrors the `wiki-style.md` audit greps. Build fails closed on any leak or on a pnpm pair it cannot strip consistently. See [[Bundle-time Scrub]] for rationale.
 3. **Runtime-deps verification**: `gaia-maintainer release runtime-deps --staging /tmp/gaia-vX.Y.Z` walks shipped shell scripts and verifies every explicit path constant resolves to a shipped path, an adopter-owned sentinel, or a runtime-allocated location. Catches the leak class scrubbing cannot see; runtime references survive lexical strip.
-4. **Distribution test gate**: `bash .gaia/tests/distribution/run-all.sh` runs Layers 0+1 against an independently-staged tree (`build-staging.sh` re-runs the same `git ls-files` + scrub + runtime-deps phases above). Layer 0 confirms an adopter scaffold typechecks, lints, tests, and builds; Layer 1 confirms the bootstrap path survives in a PATH-stripped subshell. If any scenario fails the release halts; the tarball is never built and `gh release create` never runs, so a broken release cannot publish.
+4. **Distribution test gate**: `bash .gaia/tests/distribution/run-all.sh` runs Layers 0+1 against an independently-staged tree (`build-staging.sh` re-runs the same `git ls-files` + scrub + runtime-deps phases above). Layer 0 confirms an adopter scaffold typechecks, lints, tests, and builds; Layer 1 confirms the bootstrap path survives in a PATH-stripped subshell. If any scenario fails the release halts; the tarball is never built and `gh release create` never runs, so a broken release cannot publish. When the scrub or this gate fails on a pushed tag, nothing is published: delete the tag locally and on the remote, fix on main, and re-tag.
 5. **Tar**: `tar -czf gaia-bundle-vX.Y.Z.tar.gz -C /tmp gaia-vX.Y.Z`, plus `gaia-bundle-vX.Y.Z.tar.gz.sha256` (`shasum -a 256`). The asset is `gaia-bundle-<tag>.tar.gz`, not `gaia-<tag>.tar.gz`, deliberately: v1.6.1's `/update-gaia` downloads with `--pattern "gaia-${tag}.tar.gz"`, and the 2.x manifest is keyed on `frontend/` paths a 1.6.1 merge would read as deletions of the adopter's app. Under the new name that download fails at its fetch step, before any write. `.gaia/scripts/compose-release-body.sh` then builds the release body, with the 1.6.1 routing line first (fail-closed for `v2.0.0`), the Proceed side effects (a `chore/update-gaia-*` branch is created and `.gaia-backup` and `.gaia/cache` tag dirs pruned before the expected `FETCH_FAILED`), and the sha256. `.gaia/tests/lib/release-asset-name.bats` pins the asset name against `release.yml` and the `/update-gaia` Step 5 pattern. The same release-exclude list drives `gaia-maintainer release manifest`, so the manifest never references files an adopter cannot have. What the list withholds, and why, is covered in the next section.
 
 The scrubbed `wiki/log.md` contains only the release marker; none of GAIA's internal change history.
@@ -119,6 +119,6 @@ A file's presence in the GAIA source tree (`gaia/.claude/commands/`, etc.) does 
 - [[PR Merge Workflow]]: the audit + marker handshake and `--auto` merge pattern the release PR follows like any other.
 - [[Quality Gate]]: must pass before `/gaia-release` will let you tag.
 - [[Wiki Sync]]: drift gate at Step 2; release is blocked until `wiki/.state.json` matches HEAD.
-- [[Bundle-time Scrub]]: rationale for marker-strip + leak-check + runtime-deps; what the system catches, what it does not.
+- [[Bundle-time Scrub]]: rationale for the scrub transforms, the leak checks, and runtime-deps; what the system catches, what it does not.
 - [[Git Workflow]]: destructive-on-main hook that `/gaia-release` coexists with (the final push is gated behind explicit user confirmation).
 - [[Worktrees]]: the per-tree state model behind `.claude/worktrees/`, generated at runtime and excluded from the release tarball.

@@ -110,16 +110,6 @@ add_lockfile() {
   git -C "$MAIN" commit -q -m "add lockfile"
 }
 
-# add_cli_lockfile: the same placeholder, committed at the .gaia/cli workspace
-# root, which pnpm treats as its own workspace and the root install never
-# reaches.
-add_cli_lockfile() {
-  mkdir -p "$MAIN/.gaia/cli"
-  echo lockfile > "$MAIN/.gaia/cli/pnpm-lock.yaml"
-  git -C "$MAIN" add -A
-  git -C "$MAIN" commit -q -m "add cli lockfile"
-}
-
 # stub_pnpm [exit_code]: a pnpm stand-in prepended onto PATH, standing in for
 # the real package manager the same way stub_typegen stands in for
 # react-router. Every invocation appends the cwd it ran in to PNPM_LOG, so the
@@ -772,46 +762,26 @@ SH
   [ -f "$WORKTREE_PATH/frontend/.react-router/types/.stamp" ]
 }
 
-# The CLI workspace is a second pnpm root with its own lockfile, so the root
-# install leaves its node_modules empty and every suite resolving a CLI
-# dependency from there reds in a fresh worktree.
-@test "the .gaia/cli workspace is installed on entry when it carries its own lockfile" {
+# The CLI is a member of the root workspace, so the one root install provisions
+# its node_modules too; a second install in the member directory would repeat
+# the work. The fixture still carries a lockfile and a manifest at the member
+# so a regression to a per-member install shows up as a second pnpm invocation.
+@test "a tree whose CLI member carries a lockfile and manifest is installed exactly once, at the root" {
   make_main
   add_lockfile
-  add_cli_lockfile
+  local cli_directory="$MAIN/.gaia/cli"
+  mkdir -p "$cli_directory"
+  echo lockfile > "$cli_directory/pnpm-lock.yaml"
+  echo '{}' > "$cli_directory/package.json"
+  git -C "$MAIN" add -A
+  git -C "$MAIN" commit -q -m "add cli member"
   stub_pnpm
-  WORKTREE_PATH="$(add_worktree feat-install-cli)"
+  WORKTREE_PATH="$(add_worktree feat-install-once)"
 
   run bash "$HOOK_ABSOLUTE_PATH" "$WORKTREE_PATH"
   [ "$status" -eq 0 ]
-  [ "$(cat "$PNPM_LOG")" = "$(printf '%s\n%s' "$WORKTREE_PATH" "$WORKTREE_PATH/.gaia/cli")" ] || return 1
-  [ "$(cat "$PNPM_ARGS_LOG")" = "$(printf 'install --frozen-lockfile\ninstall --frozen-lockfile')" ] || return 1
-  grep -qF -- "installed dependencies in $WORKTREE_PATH/.gaia/cli" <<<"$output"
-}
-
-@test "pnpm absent from PATH: the .gaia/cli skip is logged against that workspace" {
-  make_main
-  add_lockfile
-  add_cli_lockfile
-  WORKTREE_PATH="$(add_worktree feat-install-cli-nopnpm)"
-
-  PATH="$(path_without pnpm)" run bash "$HOOK_ABSOLUTE_PATH" "$WORKTREE_PATH"
-  [ "$status" -eq 0 ]
-  grep -qF -- "dependency install skipped for $WORKTREE_PATH/.gaia/cli" <<<"$output"
-}
-
-@test "a failed .gaia/cli install is logged against that workspace and is non-fatal" {
-  make_main
-  add_lockfile
-  add_cli_lockfile
-  stub_typegen
-  stub_pnpm 1
-  WORKTREE_PATH="$(add_worktree feat-install-cli-fail)"
-
-  run bash "$HOOK_ABSOLUTE_PATH" "$WORKTREE_PATH"
-  [ "$status" -eq 0 ]
-  grep -qF -- "INSTALL FAILED for $WORKTREE_PATH/.gaia/cli" <<<"$output" || return 1
-  [ -f "$WORKTREE_PATH/frontend/.react-router/types/.stamp" ]
+  [ "$(cat "$PNPM_LOG")" = "$WORKTREE_PATH" ] || return 1
+  [ "$(cat "$PNPM_ARGS_LOG")" = "install --frozen-lockfile" ]
 }
 
 # The adopter shape: .gaia/cli ships its bundled binary but not its lockfile,

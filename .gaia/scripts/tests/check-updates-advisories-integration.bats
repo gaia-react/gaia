@@ -385,13 +385,15 @@ refresh_fields() {
   true
 }
 
-@test "alerts on the CLI's own lockfile are not counted" {
+@test "a member package.json alert counts and a deleted member manifest alert does not" {
+  printf '{"name":"member","private":true}\n' > "$SCRATCH_ROOT/.gaia/cli/package.json"
+  printf 'packages:\n  - .gaia/cli\n' > "$SCRATCH_ROOT/pnpm-workspace.yaml"
   write_alerts "$STUB_OPEN_ALERTS_FILE" \
-    "$(alert_record 1 "$GHSA_A" widgetlib pnpm-lock.yaml)" \
-    "$(alert_record 2 "$GHSA_B" gadgetlib .gaia/cli/pnpm-lock.yaml)" \
+    "$(alert_record 1 "$GHSA_A" gadgetlib .gaia/cli/package.json)" \
+    "$(alert_record 2 "$GHSA_B" widgetlib pnpm-lock.yaml)" \
     "$(alert_record 3 "$GHSA_C" gadgetlib .gaia/cli/pnpm-lock.yaml)"
   run_refresher
-  assert_security 1 dependabot ""
+  assert_security 2 dependabot ""
 }
 
 @test "a CI run skips alerts without spawning gh" {

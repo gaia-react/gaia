@@ -1,7 +1,8 @@
 name: 'GAIA Setup Node'
 description: |
   Install pnpm, set up Node from .node-version with the pnpm store cached, and
-  optionally run the frozen-lockfile install for one or both workspaces.
+  optionally run the frozen-lockfile install for the whole workspace or for
+  the CLI member and its dependencies alone.
 
   Deliberately excludes `actions/checkout`: `fetch-depth` differs across
   callers, and a local action is resolved from the already-checked-out
@@ -34,7 +35,8 @@ description: |
 inputs:
   install:
     description: >-
-      Which workspace(s) to install. One of: none, root, cli, both.
+      Which install to run. One of: none, root (every workspace member), cli
+      (the CLI member and its dependencies only, from the repo root).
     required: false
     default: 'root'
   cache-dependency-path:
@@ -58,10 +60,10 @@ runs:
         cache: 'pnpm'
         cache-dependency-path: ${{ inputs.cache-dependency-path }}
     - name: Install root dependencies
-      if: inputs.install == 'root' || inputs.install == 'both'
+      if: inputs.install == 'root'
       shell: bash
       run: pnpm install --frozen-lockfile
     - name: Install CLI dependencies
-      if: inputs.install == 'cli' || inputs.install == 'both'
+      if: inputs.install == 'cli'
       shell: bash
-      run: pnpm -C .gaia/cli install --frozen-lockfile
+      run: pnpm install --frozen-lockfile --filter "@gaia-react/cli..."

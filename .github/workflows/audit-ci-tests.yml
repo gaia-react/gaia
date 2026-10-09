@@ -478,28 +478,25 @@ jobs:
               #     greps the wiki and release command surfaces.
               #   .claude/commands/gaia-release.md  the other surface C5-03
               #     greps for a resolver consult.
-              #   both lockfiles  three scenarios resolve `typescript`/`tsx`
+              #   the root lockfile  three scenarios resolve `typescript`/`tsx`
               #     from installed dependencies, and a dependency bump touches
-              #     a lockfile without touching any source dir here. That is a
-              #     live path in this repo (/update-deps runs on its own
-              #     cadence), so without them a bump could red the meter and
+              #     the lockfile without touching any source dir here. That is
+              #     a live path in this repo (/update-deps runs on its own
+              #     cadence), so without it a bump could red the meter and
               #     the next unrelated PR would be the first to notice.
-              #   both workspace files  same argument as the lockfiles, same
-              #     installs: pnpm-workspace.yaml governs `allowBuilds`,
+              #   the root workspace file  same argument as the lockfile, same
+              #     install: pnpm-workspace.yaml governs `allowBuilds`,
               #     `trustPolicyExclude` and `minimumReleaseAge` for the very
-              #     `pnpm install --frozen-lockfile` runs the meter depends on,
-              #     and each is edited standalone. .gaia/cli/pnpm-workspace.yaml
-              #     documents ERR_PNPM_IGNORED_BUILDS in its own header, so a
-              #     missing allowBuilds entry breaking the install is observed
+              #     `pnpm install --frozen-lockfile` run the meter depends on,
+              #     and it is edited standalone. A missing allowBuilds entry
+              #     breaking the install (ERR_PNPM_IGNORED_BUILDS) is observed
               #     behavior here, not a hypothetical.
               - '.gaia/tests/concurrency/**'
               - '.gaia/state-registry.json'
               - '.gaia/cli/src/**'
               - '.claude/commands/gaia-release.md'
               - 'pnpm-lock.yaml'
-              - '.gaia/cli/pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
-              - '.gaia/cli/pnpm-workspace.yaml'
               # The remaining two install inputs. No sibling workflow lists
               # .node-version, but this job is the one that reads it
               # (node-version-file below) AND is judged by a scenario count, so
@@ -830,16 +827,14 @@ jobs:
       - if: matrix.shard == 'commitlint' && (steps.filter.outputs.commitlint == 'true' || github.event_name == 'workflow_dispatch')
         name: Install the root workspace only
         run: pnpm install --frozen-lockfile --filter .
-      # TWO installs on THIS leg, not one, and the reason is structural:
-      # .gaia/cli is deliberately its own isolated pnpm workspace
-      # (.gaia/cli/pnpm-workspace.yaml), so a repo-root install does not reach
-      # it. The root install is what C4-04 and C4-07 need (their node helpers
-      # resolve `typescript` from the repo root); the .gaia/cli install is what
-      # C3-05 needs (it runs the CLI's own tsx binary out of
-      # .gaia/cli/node_modules, which is gitignored and so absent on a fresh
-      # checkout). Skipping either flips a landed, green scenario red for want
-      # of an npm install, which would read as a regression in the number this
-      # program is judged by rather than as the environment gap it is.
+      # One root install on THIS leg provisions both things the meter needs:
+      # the root dependencies C4-04 and C4-07 resolve `typescript` from, and
+      # the CLI member's node_modules, which C3-05 needs because it runs the
+      # CLI's own tsx binary out of .gaia/cli/node_modules (gitignored, so
+      # absent on a fresh checkout). Skipping the install flips a landed, green
+      # scenario red for want of an npm install, which would read as a
+      # regression in the number this program is judged by rather than as the
+      # environment gap it is.
       #
       # This step is scoped to the `concurrency` leg, but Node itself is NOT
       # this leg's alone. It used to say so -- "no bats suite in any other
@@ -855,22 +850,19 @@ jobs:
       # the two separate rather than widening this one's `if:`, because they
       # install different things for different reasons.
       - if: matrix.shard == 'concurrency' && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
-        name: Setup Node and install both workspaces
+        name: Setup Node and install the workspace
         uses: ./.github/actions/gaia-setup-node
         with:
-          install: both
-          # Both lockfiles: the meter installs both workspaces, so warming the
-          # store on only one leaves the other cold.
-          cache-dependency-path: |
-            pnpm-lock.yaml
-            .gaia/cli/pnpm-lock.yaml
+          install: root
+          cache-dependency-path: pnpm-lock.yaml
       # The root workspace for the node-dependent RED suites: red-ledger-lib,
       # capture-red-observations, red-verify-commit-check, red-verify-e2e and
       # worthiness-presence-check. Each drives
       # .gaia/scripts/red-ledger/extract-test-signals.mjs and/or
       # .gaia/scripts/classifier/classify-determinism.mjs, and both resolve
-      # `typescript` through createRequire against the repo root. Root only:
-      # none of them reaches into .gaia/cli. The list is spelled out rather
+      # `typescript` through createRequire against the repo root. The root
+      # install also provisions the CLI member, though none of them reaches
+      # into .gaia/cli. The list is spelled out rather
       # than counted; the suites are the authority on how many there are.
       #
       # THE LEG LIST IS A WHOLE EXCHANGE GROUP, which is what makes it safe to
@@ -894,8 +886,7 @@ jobs:
       #
       # The cost is bounded by something already on this job rather than by an
       # estimate: it is the same composite action the `concurrency` leg runs,
-      # asked for LESS work (one workspace, not both), with the pnpm store
-      # cached the same way. Those legs' own runtimes sit far enough under this
+      # the same install, with the pnpm store cached the same way. Those legs' own runtimes sit far enough under this
       # job's `timeout-minutes` that adding one install plus the suites it
       # unblocks does not approach it. The leg that is genuinely close to the
       # cap is scripts-1, and it draws neither this step nor any of these
@@ -905,82 +896,15 @@ jobs:
         uses: ./.github/actions/gaia-setup-node
         with:
           install: root
-          # Root lockfile only: this step runs no .gaia/cli install, so keying
-          # the store cache on that workspace's lockfile too would rebuild the
-          # cache on bumps this leg does not consume.
+          # The root install now also provisions the CLI member, and the cache
+          # key stays the root lockfile: the CLI member has no lockfile of its own.
           cache-dependency-path: pnpm-lock.yaml
-      # The CLI workspace floor check reads both YAML files with js-yaml, the
-      # library pnpm itself serializes pnpm-lock.yaml with, and resolves it from
-      # .gaia/cli/node_modules. Its suite therefore needs that workspace
-      # installed, and it refuses loudly rather than skipping when it is absent,
-      # which is the same fail-loud posture the node-dependent RED suites above
-      # take and the reason neither needs a W-check of its own.
-      #
-      # THE CONDITION IS DERIVED FROM THE SHARDER, NOT WRITTEN AS A SHARD NAME.
-      # This suite has already moved between scripts-1, scripts-2 and scripts-3
-      # as it grew, because bats-shards.sh weights shards by suite size and
-      # auto-discovers. A hard-coded name would be correct until the next time
-      # it moves and would then install on the wrong leg, arming nothing and
-      # reddening the leg that actually holds the suite. Asking the sharder
-      # which shard holds it costs one grep and cannot drift.
-      #
-      # Only the one leg that holds the suite pays the install, whichever leg
-      # that is; blanket-gating all three scripts shards would charge the two
-      # that do not run it. NO PLACEMENT IS NAMED HERE ON PURPOSE. An earlier
-      # version of this very comment argued that the derived gate spares the leg
-      # this job calls closest to its cap, and that went stale the same day: the
-      # sharder re-balances on size, adding fixtures to the suite moved it, and
-      # the sentence then asserted the inverse of what runs. If the budget
-      # question matters on a given day, `bats-shards.sh files <shard>` answers
-      # which leg pays, and the region-marker docblock in cli-tests.yml records
-      # what to check on that leg and when the check is actually owed.
-      - if: matrix.shard != 'sandbox' && matrix.shard != 'concurrency' && matrix.shard != 'commitlint' && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
-        id: needs-cli-workspace
-        name: Ask the sharder whether this shard holds the js-yaml-dependent suite
-        env:
-          SHARD: ${{ matrix.shard }}
-        run: |
-          set -euo pipefail
-          # Captured first and read from a here-string rather than piped into
-          # `grep -qF`. Under `set -o pipefail` a producer killed by SIGPIPE
-          # after the quiet grep exits early resolves the pipeline to FALSE
-          # BECAUSE a match was found, which would set needed=0 on a leg that
-          # does hold the suite and then red at exit 2 with the install skipped.
-          # This shape removes the pipeline rather than arguing the race is
-          # unreachable, so nothing here rests on the shard list staying small
-          # relative to the pipe buffer. `.gaia/scripts/lint-sigpipe-readers.sh`
-          # is the gate that now reaches this surface and keeps the piped form
-          # from coming back.
-          shard_files="$(bash .gaia/tests/bats-shards.sh files "$SHARD")"
-          if grep -qF 'check-cli-workspace-floors.bats' <<<"$shard_files"; then
-            printf 'needed=1\n' >> "$GITHUB_OUTPUT"
-          else
-            printf 'needed=0\n' >> "$GITHUB_OUTPUT"
-          fi
-      # Deliberately carries no arming conjunct of its own. The step above
-      # this one already carries the arming conjunct, so on a leg the arming
-      # step declined to arm, that step's `run:` body never executes,
-      # `needed` is never written to `$GITHUB_OUTPUT`, and the `== '1'` gate
-      # below reads empty, which is not `'1'`. The narrowing reaches this step
-      # transitively rather than through its own conjunct; the canary's
-      # evidence checklist observes this step's `conclusion` explicitly for
-      # that reason.
-      - if: steps.needs-cli-workspace.outputs.needed == '1'
-        name: Install the CLI workspace for the floor-check suite
-        uses: ./.github/actions/gaia-setup-node
-        with:
-          install: cli
-          # The CLI lockfile only: this step installs that workspace alone, so
-          # keying the store cache on the root lockfile as well would rebuild
-          # the cache on bumps this leg does not consume.
-          cache-dependency-path: .gaia/cli/pnpm-lock.yaml
       # Two suites run a real Chromium: the story-name equality suite (the
       # storybook Vitest project) and the UAT lifecycle suite (Playwright over
       # a rendered spec), so the leg that holds either owes a browser install.
-      # The condition is derived from the sharder for the reason the floor-check
-      # step above gives: a suite moves between legs as the weighted split
-      # re-balances, and a hard-coded shard name would arm the install on the
-      # wrong leg. Only the legs that install the root workspace can hold them,
+      # The condition is derived from the sharder, not written as a shard name:
+      # a suite moves between legs as the weighted split re-balances, and a
+      # hard-coded shard name would arm the install on the wrong leg. Only the legs that install the root workspace can hold them,
       # and both suites fail rather than skip when Chromium is absent.
       - if: contains(fromJSON('["hooks-2", "hooks-3", "hooks-4"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
         id: needs-chromium

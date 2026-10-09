@@ -261,16 +261,14 @@ auditors:
       - ".gaia/cli/src/**/*.snap"
       - ".gaia/cli/templates/.gitkeep"
       # The CLI build/config surface beside src/: the bundle build scripts and
-      # runtime deps (package.json), the resolved dependency tree
-      # (pnpm-lock.yaml), the workspace's supply-chain policy
-      # (pnpm-workspace.yaml: minimumReleaseAge, trustPolicy, and both
-      # exclusion lists), the build config (tsconfig*.json), and the CLI's own
+      # runtime deps (package.json), the build config (tsconfig*.json), and
+      # the CLI's own
       # tool configs (vitest.config.ts, eslint.config.mjs,
       # prettier.config.mjs), whose `setupFiles` and rule sets decide what the
       # CLI test and lint runs actually execute. Without these a change to any
-      # merges with no code-audit review. The default member's own
-      # `pnpm-workspace.yaml` and bare `*.config.*` globs never cross a `/`, so
-      # they claim the repository-root files only and reach these not at all.
+      # merges with no code-audit review. The default member's bare
+      # `*.config.*` globs never cross a `/`, so they claim the
+      # repository-root files only and reach these not at all.
       #
       # The config family is enumerated across the five JS/TS extensions,
       # matching what the default member declares at the repository root, and
@@ -284,8 +282,6 @@ auditors:
       # below, not this line: a sixth config extension added here without a
       # roster entry is now reported ownerless instead of merging unreviewed.
       - ".gaia/cli/package.json"
-      - ".gaia/cli/pnpm-lock.yaml"
-      - ".gaia/cli/pnpm-workspace.yaml"
       - ".gaia/cli/tsconfig*.json"
       - ".gaia/cli/*.config.ts"
       - ".gaia/cli/*.config.mts"
@@ -304,12 +300,10 @@ auditors:
     # smaller than for app source.
     light_line_cap: 30
     # Dependency and build configuration, and the Node the gates call: a
-    # manifest, lockfile, workspace policy or compiler setting is never a small
-    # change whatever its line count.
+    # manifest, tool config or compiler setting is never a small change
+    # whatever its line count.
     light_hard_full:
       - ".gaia/cli/package.json"
-      - ".gaia/cli/pnpm-lock.yaml"
-      - ".gaia/cli/pnpm-workspace.yaml"
       - ".gaia/cli/tsconfig*.json"
       - ".gaia/cli/*.config.ts"
       - ".gaia/cli/*.config.mts"
@@ -405,6 +399,7 @@ unowned:
   - ".gitattributes"
   - ".gaia/cli/test-fixtures/**/*.json"
   - ".gaia/cli/test-fixtures/**/*.md"
+  - ".gaia/cli/test-fixtures/**/*.yaml"
   # Scoped to `tests/` rather than the whole subtree: `.gaia/scripts/**/*.json`
   # also reaches `.gaia/scripts/token-rates.json`, the shipped rate table the
   # cost tooling reads, and exempting it would not merely leave it ownerless but

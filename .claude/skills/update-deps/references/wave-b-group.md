@@ -12,6 +12,9 @@ You are upgrading the `{GROUP}` dependency group from `{FROM}` to `{TO}`.
 2. **Install** the group, **from the repository root only**:
    - `storybook` group: run `pnpm dlx storybook@latest upgrade` (Storybook's own upgrade tool migrates config alongside the version bump).
    - All others: `pnpm -C frontend add <pkg1>@<latest> <pkg2>@<latest> ...` for every group member present in `frontend/package.json` (a member declared in the root `package.json` goes through `pnpm add -w`).
+<!-- gaia:maintainer-only:start -->
+   - A member carrying `"workspace": ".gaia/cli"`: `pnpm -C .gaia/cli add <pkg>@<latest>`, never `pnpm -C frontend add`.
+<!-- gaia:maintainer-only:end -->
    - `msw` group: after the install, run `pnpm -C frontend msw:init` (`pnpm -C frontend exec msw init` when the project has no such script) to regenerate `frontend/public/mockServiceWorker.js`.
 3. **Conflict check**: `pnpm ls 2>&1`. On peer-dep error, attempt one `overrides:` fix in `pnpm-workspace.yaml`, then `pnpm dedupe` to apply it, a bare `pnpm install` won't re-resolve an overrides-only change. If still failing, revert the group and skip with reason.
 4. **Apply breaking changes** within scope: from the migration guide, identify code-affecting changes (renamed APIs, removed exports, config schema changes). Grep `frontend/app/`, `frontend/test/`, and the frontend config files for affected patterns. Edit only files inside scope.

@@ -19,6 +19,7 @@
  */
 import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
+import {compareSegments, parseSegments} from './version.js';
 
 /** A declined group reappears once it is this old, regardless of versions. */
 export const MAX_SNOOZE_MS = 14 * 24 * 60 * 60 * 1000;
@@ -252,7 +253,16 @@ export const collectOutstandingGroups = (
       return;
     }
 
-    existing[item.name] = item.latest;
+    // A name outstanding in two workspaces may target different versions; the
+    // higher one wins so the snapshot does not depend on iteration order.
+    const previous = existing[item.name];
+
+    if (
+      previous === undefined ||
+      compareSegments(parseSegments(item.latest), parseSegments(previous)) > 0
+    ) {
+      existing[item.name] = item.latest;
+    }
   };
 
   for (const entry of payload.wave_a) {

@@ -174,3 +174,104 @@ tests_verdict() {
   run grep -nE 'cache-dependency-path:[[:space:]]*frontend/' "$REPO_ROOT/.github/actions/gaia-setup-node/action.yml" "$TESTS_YML" "$CHROMATIC_YML"
   [ "$status" -eq 1 ]
 }
+
+# The quoted entries of one job's `code:` filter list in a workflow file. The
+# job is named by its two-space-indented key, so a sibling job's identical
+# entry never answers for it.
+workflow_job_globs() {
+  local workflow="$1" job="$2"
+  awk -v job="$job" '
+    /^  [A-Za-z0-9_-]+:[[:space:]]*$/ { in_job = ($1 == job ":"); in_code = 0; next }
+    in_job && /^[[:space:]]+code:[[:space:]]*$/ { in_code = 1; next }
+    in_job && in_code && /^[[:space:]]*-[[:space:]]*'"'"'/ {
+      line = $0
+      sub(/^[[:space:]]*-[[:space:]]*'"'"'/, "", line)
+      sub(/'"'"'[[:space:]]*$/, "", line)
+      print line
+      next
+    }
+    in_job && in_code && /^[[:space:]]*#/ { next }
+    in_job && in_code { in_code = 0 }
+  ' "$workflow"
+}
+
+# Writes the workflow to $4 with one job's `code:` entry for glob $3 removed.
+workflow_without_job_glob() {
+  local workflow="$1" job="$2" glob="$3" destination="$4"
+  awk -v job="$job" -v drop="- '$glob'" '
+    /^  [A-Za-z0-9_-]+:[[:space:]]*$/ { in_job = ($1 == job ":") }
+    { line = $0; sub(/^[[:space:]]+/, "", line) }
+    in_job && line == drop { next }
+    { print }
+  ' "$workflow" > "$destination"
+}
+
+@test "cli-tests.yml: a root lockfile-only change arms the distribution job" {
+  local globs
+  globs="$(workflow_job_globs "$REPO_ROOT/.github/workflows/cli-tests.yml" distribution-harness)"
+  [ -n "$globs" ]
+  [ "$(glob_verdict "$globs" pnpm-lock.yaml)" = select ]
+  [ "$(glob_verdict "$globs" pnpm-workspace.yaml)" = select ]
+}
+
+@test "cli-tests.yml: a root lockfile-only change arms the required CLI job" {
+  local globs
+  globs="$(workflow_job_globs "$REPO_ROOT/.github/workflows/cli-tests.yml" cli-tests)"
+  [ -n "$globs" ]
+  [ "$(glob_verdict "$globs" pnpm-lock.yaml)" = select ]
+  [ "$(glob_verdict "$globs" pnpm-workspace.yaml)" = select ]
+}
+
+@test "cli-tests.yml: the distribution job without the lockfile line skips a lockfile-only change (the guard can fail)" {
+  local scratch="$BATS_TEST_TMPDIR/cli-tests.yml" globs
+  workflow_without_job_glob "$REPO_ROOT/.github/workflows/cli-tests.yml" distribution-harness pnpm-lock.yaml "$scratch"
+  globs="$(workflow_job_globs "$scratch" distribution-harness)"
+  [ -n "$globs" ]
+  [ "$(glob_verdict "$globs" pnpm-lock.yaml)" = skip ]
+  # The removal is scoped to the one job: the sibling still selects.
+  globs="$(workflow_job_globs "$scratch" cli-tests)"
+  [ "$(glob_verdict "$globs" pnpm-lock.yaml)" = select ]
+}
+
+# The values the composite's install steps compare `inputs.install` against,
+# one per line, sorted.
+composite_install_modes() {
+  grep -oE "inputs\.install == '[a-z]+'" "$1" | sed "s/.*== '\\([a-z]*\\)'/\\1/" | sort -u
+}
+
+# The `run:` command of the composite step armed by the `cli` install mode.
+composite_cli_command() {
+  awk '
+    /if: inputs\.install == .cli./ { armed = 1; next }
+    armed && /^[[:space:]]+run:/ { sub(/^[[:space:]]+run:[[:space:]]*/, ""); print; exit }
+  ' "$1"
+}
+
+composite_is_single_root_install() {
+  local action="$1" command
+  [ "$(composite_install_modes "$action")" = "$(printf 'cli\nroot')" ] || return 1
+  command="$(composite_cli_command "$action")"
+  case "$command" in *--filter*) ;; *) return 1 ;; esac
+  case "$command" in *--frozen-lockfile*) ;; *) return 1 ;; esac
+  case "$command" in *'-C .gaia/cli'*) return 1 ;; esac
+  return 0
+}
+
+@test "gaia-setup-node: install takes root and cli only, and cli is a filtered frozen root install" {
+  composite_is_single_root_install "$REPO_ROOT/.github/actions/gaia-setup-node/action.yml"
+}
+
+@test "gaia-setup-node: restoring the second-root install step fails the composite guard (the guard can fail)" {
+  local scratch="$BATS_TEST_TMPDIR/action.yml"
+  local second_root_install="pnpm -C .gaia/""cli install --frozen-lockfile"
+  local retired_mode="inputs.install == '""both'"
+  sed "/if: inputs.install == 'cli'/{n;n;s|run: .*|run: $second_root_install|;}" \
+    "$REPO_ROOT/.github/actions/gaia-setup-node/action.yml" > "$scratch"
+  run composite_is_single_root_install "$scratch"
+  [ "$status" -ne 0 ]
+  # A restored `both` arm alone also fails it.
+  sed "s/if: inputs.install == 'root'/if: inputs.install == 'root' || $retired_mode/" \
+    "$REPO_ROOT/.github/actions/gaia-setup-node/action.yml" > "$scratch"
+  run composite_is_single_root_install "$scratch"
+  [ "$status" -ne 0 ]
+}

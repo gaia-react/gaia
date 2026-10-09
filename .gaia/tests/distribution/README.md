@@ -48,7 +48,7 @@ Covers tarball extraction and the corepack-driven pnpm bootstrap inside a PATH-s
 
 Does not cover `/gaia-init` or `/setup-gaia` execution (no Claude in the subshell), full filesystem isolation (a true Docker run is the answer), or non-host operating systems. The `npm install -g pnpm` fallback path inside `create-gaia`'s `ensurePnpm()` is intentionally untested here; exercising it would mutate the host's global npm state with no clean rollback.
 
-Skips automatically if `corepack` is not on the host PATH (Node 16.13+ ships corepack, so this is rare). Skip is reported as a soft PASS so `run-all.sh` summaries stay green on hosts where the layer cannot run.
+Skips automatically if `corepack` is not on the host PATH (Node 16.13+ ships corepack, so this is rare). Skip is reported as a soft PASS so `run-all.sh` summaries stay green on hosts where the layer cannot run. Setting `GAIA_DISTRIBUTION_REQUIRE_COREPACK=1` turns the skip into a failure; `release.yml` sets it on the distribution gate step, so a release run counts this scenario only when the install executed. A run that installed prints a PASS line containing `frozen install ran`, while the skip's PASS line contains `skipped`. When the install fails, the last 40 lines of pnpm's output are printed to stderr under a `FAIL` line.
 
 ### Adopter-flow regressions (`07-`+)
 

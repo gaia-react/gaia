@@ -440,16 +440,8 @@ Run this as a **Haiku agent**. Its dispatch carries every Phase 6 duty, so pass 
 
 <!-- gaia:maintainer-only:start -->
 
-## Phase 6b: `.gaia/cli` pin sync (GAIA maintainer repository)
+In this checkout `run --emit-updates` also lists `.gaia/cli` member entries carrying `"workspace": ".gaia/cli"`. Apply each with `pnpm -C .gaia/cli add <name>@<spec>`, never `pnpm -C frontend add`, then run `pnpm -C .gaia/cli typecheck`, `pnpm -C .gaia/cli lint`, `pnpm -C .gaia/cli exec vitest run` and `pnpm -C .gaia/cli bundle`. A decline or snooze is per package name and covers both workspaces (when the two disagree on `latest`, the higher one is recorded). Shared devDependencies may drift between the two importers; align them by hand when noticed.
 
-`.gaia/cli` is a second workspace root with its own `package.json` and lockfile, and it inherits nothing from the root: a devDependency the two share can drift to different pinned versions with nothing to notice, and a lint- or type-rule package pinned differently in each workspace silently changes what each one flags. The phases above bump the root alone, so a run that moves a shared pin leaves `.gaia/cli` behind. Run this phase inline, after Phase 6 and before the report:
-
-1. For each devDependency declared in both root `package.json` and `.gaia/cli/package.json` whose CLI spec differs from the root's, set the CLI spec to the root's verbatim. The direction is always CLI to root; never edit the root to match the CLI. Skip the rest of this phase only when nothing differs **and** the run left the root `pnpm-lock.yaml` unchanged.
-2. Run `pnpm -C .gaia/cli install`, then `pnpm -C .gaia/cli lint`, `pnpm -C .gaia/cli typecheck`, and `pnpm -C .gaia/cli test`.
-3. Run `pnpm -C .gaia/cli bundle`, then `bash .gaia/scripts/verify-cli-bundle-fresh.sh` from the repository root. Phase 8's `git add -A` commits any bundle that moved.
-4. Add a `.gaia/cli pin sync` row to the report's Quality gate table naming each raised pin (`<name>: <old> → <new>`) and the step 2 and 3 results. On a failure, keep the raised pins, since reverting them reintroduces the drift this phase exists to prevent, and let the row carry the failure for the maintainer.
-
-The raised pins put `.gaia/cli/package.json` and its lockfile in the diff, which dispatches `code-audit-maintainer-node`. On a run that started on `main`/`master`, Phase 8's merge step covers that dispatch; on any other run, the branch owner does.
 <!-- gaia:maintainer-only:end -->
 
 ## Phase 7: Final report
@@ -499,7 +491,6 @@ Build the report **only** from the agent reports returned to you, the snooze and
 <!-- gaia:maintainer-only:start -->
 
 - **Vendored skills**: built inline from the Vendored skill sync step, so it is an exception to building the report only from agent reports. One row: marker version, upstream latest, and `current`, `re-vendored`, `verify failed (<path>)`, or `unknown`.
-- **Phase 6b**: runs inline rather than as an agent, so its `.gaia/cli pin sync` row is an exception to building the report only from agent reports, like the Security section. Include it whenever Phase 6b ran past step 1, including a failed step it kept in the diff.
 
 <!-- gaia:maintainer-only:end -->
 
@@ -575,8 +566,7 @@ git commit -F <commit-message-file>
 The commit **subject** must be `chore(deps): <concise summary of what moved>` (use `chore(deps-dev):` when every landed change is a devDependency version bump; a refresh-only run uses `chore(deps): refresh transitive dependencies`). The summary names the security work, for example `chore(deps): resolve 2 security advisories (cookie, tar)`. An in-range refresh or a security-floor override has no declared dependency type, so a run whose landed changes are only security resolutions, with no devDependency-only version bump, always uses `chore(deps):`. A reverted resolution leaves no trace in the commit: its revert restored its files before staging. Every `/update-deps` commit follows a passing local quality gate. That subject triggers the dep-bump bypass in the merge gate (`wiki/concepts/Audit Gate Reference.md`, `#### Signals`; `.gaia/scripts/chore-deps-skip.sh` decides it) only when every path the PR changes is a dependency manifest (`package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml` at the repository root); a migration edit, a root-config change, or any other path denies the bypass and the PR gets the normal audit handshake and the normal Tests/Chromatic runs. On a manifest-only PR the bypass waives code-audit-frontend only; any other member the diff dispatches still earns its own marker. Routing the message through a file rather than `-m` keeps package-manager keywords from tripping shell-hook false positives. The Wave agents already ran the full quality gate over their changes, and Phase 6 kept only the override changes that passed it, so nothing else is owed before committing. A Phase 6 gate failure with nothing to restore is already in the report's Quality gate section for the maintainer.
 <!-- gaia:maintainer-only:start -->
 
-In this checkout the same three manifests under `.gaia/cli/` also count as dependency manifests.
-A Phase 6b failure is the exception: it keeps its raised pins and reports through its `.gaia/cli pin sync` row, so the required `Vitest (.gaia/cli)` check stays red and step 3's queued merge waits on the maintainer rather than landing.
+In this checkout `.gaia/cli/package.json` also counts as a dependency manifest. A CLI dependency change touches it and the root `pnpm-lock.yaml`, so the diff routes to `code-audit-maintainer-node`.
 <!-- gaia:maintainer-only:end -->
 
 Then branch on where the run started.
@@ -592,7 +582,7 @@ Then branch on where the run started.
 
 <!-- gaia:maintainer-only:start -->
 
-On a manifest-only run, first run `bash .gaia/scripts/resolve-audit-members.sh`; when it names a member other than `code-audit-frontend`, dispatch the `audit-loop-unit` agent per `wiki/concepts/PR Merge Workflow.md` `## Dispatch the audit loop unit`. Whenever Phase 6b raised a pin, `code-audit-maintainer-node` is among them. If the Phase 6b bundle rebuild moved a committed `.gaia/cli` bundle file (Phase 8's `git add -A` picks up only a bundle that actually moved), the diff is NOT manifest-only, so `code-audit-frontend` is owed too, same as any other member. Otherwise, on a manifest-only run, the `chore(deps)` title waives only `code-audit-frontend` (see the bypass paragraph in `wiki/concepts/Audit Gate Reference.md`), so each other member's earned marker is what completes the handshake. Skip this and `GAIA-Audit` stays at `members pending` and the queued merge waits on it indefinitely. Once that page's `#### Posting the status last` conditions hold, post the status per that section before the merge call below.
+On a manifest-only run, first run `bash .gaia/scripts/resolve-audit-members.sh`; when it names a member other than `code-audit-frontend`, dispatch the `audit-loop-unit` agent per `wiki/concepts/PR Merge Workflow.md` `## Dispatch the audit loop unit`. Whenever the run changed `.gaia/cli/package.json`, `code-audit-maintainer-node` is among them. If the `pnpm -C .gaia/cli bundle` rebuild moved a committed `.gaia/cli` bundle file (Phase 8's `git add -A` picks up only a bundle that actually moved), the diff is NOT manifest-only, so `code-audit-frontend` is owed too, same as any other member. Otherwise, on a manifest-only run, the `chore(deps)` title waives only `code-audit-frontend` (see the bypass paragraph in `wiki/concepts/Audit Gate Reference.md`), so each other member's earned marker is what completes the handshake. Skip this and `GAIA-Audit` stays at `members pending` and the queued merge waits on it indefinitely. Once `wiki/concepts/PR Merge Workflow.md` `#### Posting the status last` conditions hold, post the status per that section before the merge call below.
 <!-- gaia:maintainer-only:end -->
 
 ```bash

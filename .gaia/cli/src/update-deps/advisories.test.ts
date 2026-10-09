@@ -231,6 +231,22 @@ const invoke = async (invocation: Invocation): Promise<number> => {
   return run(['--emit', sandbox.emit, ...(invocation.args ?? [])], options);
 };
 
+const MEMBER = '.gaia/cli';
+const MEMBER_MANIFEST = path.posix.join(MEMBER, 'package.json');
+const STALE_MEMBER_LOCKFILE = path.posix.join(MEMBER, 'pnpm-lock.yaml');
+
+/** Writes the root workspace file, listing the CLI member only when asked. */
+const registerCliMember = (listed: boolean): void => {
+  mkdirSync(path.join(sandbox.root, MEMBER), {recursive: true});
+  writeFileSync(path.join(sandbox.root, MEMBER_MANIFEST), '{}\n');
+  writeFileSync(
+    path.join(sandbox.root, 'pnpm-workspace.yaml'),
+    listed ?
+      `packages:\n  - frontend\n  - ${MEMBER}\n`
+    : 'packages:\n  - frontend\n'
+  );
+};
+
 const readText = (): string => readFileSync(sandbox.emit, 'utf8');
 
 const readPayload = (): AdvisoriesPayload =>
@@ -355,41 +371,45 @@ describe('advisories: alerts source', () => {
     expect(readPayload()).toMatchObject({count: 2, source: 'dependabot'});
   });
 
-  test('alerts on the CLI lockfile are not owned; a registry-glob manifest is', async () => {
+  test('alerts on a deleted member manifest are dropped; the member package.json is owned', async () => {
+    registerCliMember(true);
+
     await invoke({
       gh: ghStub({
         open: ghOk([
-          alert({number: 1}),
-          alert({
-            ghsa: GHSA_B,
-            manifest: '.gaia/cli/pnpm-lock.yaml',
-            number: 2,
-          }),
-          alert({
-            ghsa: GHSA_C,
-            manifest: '.gaia/cli/pnpm-lock.yaml',
-            number: 3,
-          }),
+          alert({ghsa: GHSA_A, manifest: MEMBER_MANIFEST, number: 1}),
+          alert({ghsa: GHSA_B, number: 2}),
+          alert({ghsa: GHSA_C, manifest: STALE_MEMBER_LOCKFILE, number: 3}),
         ]),
       }),
     });
 
-    expect(readPayload().count).toBe(1);
+    expect(readPayload()).toMatchObject({count: 2, source: 'dependabot'});
+    expect(
+      new Set(readPayload().advisories.map((entry) => entry.key))
+    ).toStrictEqual(new Set([GHSA_A, GHSA_B]));
+  });
+
+  test('without the member in the root workspace its package.json alert is unowned', async () => {
+    registerCliMember(false);
 
     await invoke({
       gh: ghStub({
         open: ghOk([
-          alert({ghsa: GHSA_D, manifest: 'frontend/package.json', number: 4}),
+          alert({ghsa: GHSA_A, manifest: MEMBER_MANIFEST, number: 1}),
+          alert({ghsa: GHSA_B, number: 2}),
+          alert({ghsa: GHSA_C, manifest: STALE_MEMBER_LOCKFILE, number: 3}),
         ]),
       }),
     });
 
     expect(readPayload().advisories.map((entry) => entry.key)).toStrictEqual([
-      GHSA_D,
+      GHSA_B,
     ]);
   });
 
-  test('the CLI lockfile stays unowned even when a registry glob matches it', async () => {
+  test('a registry-glob manifest is owned beside the member package.json', async () => {
+    registerCliMember(true);
     writeFileSync(
       path.join(sandbox.root, '.gaia', 'packages.json'),
       JSON.stringify([{name: 'frontend', path: '.'}])
@@ -400,7 +420,7 @@ describe('advisories: alerts source', () => {
         ...BUILTIN_DESCRIPTOR,
         globs: {
           ...BUILTIN_DESCRIPTOR.globs,
-          dependencyManifests: ['**/pnpm-lock.yaml'],
+          dependencyManifests: ['tools/pnpm-lock.yaml'],
         },
       })
     );
@@ -408,19 +428,16 @@ describe('advisories: alerts source', () => {
     await invoke({
       gh: ghStub({
         open: ghOk([
-          alert({
-            ghsa: GHSA_B,
-            manifest: '.gaia/cli/pnpm-lock.yaml',
-            number: 2,
-          }),
-          alert({ghsa: GHSA_C, manifest: 'tools/pnpm-lock.yaml', number: 3}),
+          alert({ghsa: GHSA_A, manifest: MEMBER_MANIFEST, number: 1}),
+          alert({ghsa: GHSA_B, manifest: 'tools/pnpm-lock.yaml', number: 2}),
+          alert({ghsa: GHSA_C, manifest: 'other/package.json', number: 3}),
         ]),
       }),
     });
 
-    expect(readPayload().advisories.map((entry) => entry.key)).toStrictEqual([
-      GHSA_C,
-    ]);
+    expect(
+      new Set(readPayload().advisories.map((entry) => entry.key))
+    ).toStrictEqual(new Set([GHSA_A, GHSA_B]));
   });
 
   test('non-npm, dismissed, and fixed records are excluded from the count', async () => {
@@ -626,6 +643,23 @@ describe('advisories: when alerts are not read', () => {
 
     expect(gh.calls).toHaveLength(0);
     expect(readPayload().reasons[0]).toBe('ci');
+  });
+
+  test('a pnpm audit advisory whose only path starts at the member importer is counted', async () => {
+    registerCliMember(true);
+
+    await invoke({
+      args: ['--no-alerts', '--count-only'],
+      pnpm: pnpmStub(
+        auditOutput(
+          auditAdvisory({
+            findings: [{paths: ['.gaia__cli>cookie'], version: '0.6.0'}],
+          })
+        )
+      ),
+    });
+
+    expect(readPayload()).toMatchObject({count: 1, source: 'pnpm-audit'});
   });
 
   test('--no-alerts never spawns gh', async () => {
