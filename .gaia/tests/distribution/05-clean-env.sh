@@ -16,13 +16,19 @@
 #   - Full filesystem isolation (a true Docker run is the answer; deferred).
 #   - Linux-only adopter environments (the host OS is what it is).
 #
-# Skipped automatically if `corepack` is not on PATH; the bootstrap path
-# is unverifiable without it.
+# Skipped automatically (soft PASS) if `corepack` is not on PATH; the
+# bootstrap path is unverifiable without it. Setting
+# GAIA_DISTRIBUTION_REQUIRE_COREPACK=1 turns that skip into a failure, so a
+# release gate cannot count a run whose frozen install never happened.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 source "$HERE/lib/lib.sh"
 
 if ! command -v corepack >/dev/null 2>&1; then
+  if [ "${GAIA_DISTRIBUTION_REQUIRE_COREPACK:-}" = "1" ]; then
+    fail "corepack not on PATH and GAIA_DISTRIBUTION_REQUIRE_COREPACK=1 forbids skipping"
+    exit 1
+  fi
   log "corepack not on PATH; skipping (Node 16.13+ ships corepack)"
   pass "corepack unavailable; scenario skipped (Node ships corepack since v16.13)"
   exit 0
@@ -97,7 +103,12 @@ ln -s "$GIT_BIN"      "$FAKE_HOME/bin/git"
     || { printf 'corepack did not provision pnpm into PATH\n' >&2; exit 1; }
 
   pnpm --version >/dev/null
-  pnpm install --frozen-lockfile >/dev/null 2>&1
+  install_log="$(mktemp "$FAKE_HOME/pnpm-install-XXXXXX")"
+  if ! pnpm install --frozen-lockfile >"$install_log" 2>&1; then
+    printf 'FAIL: pnpm install --frozen-lockfile failed; last 40 lines of output:\n' >&2
+    tail -n 40 "$install_log" >&2
+    exit 1
+  fi
 )
 
-pass "clean-env bootstrap (PATH-strip + corepack pnpm provision) succeeded"
+pass "clean-env bootstrap (PATH-strip + corepack pnpm provision) succeeded; frozen install ran"

@@ -1541,3 +1541,219 @@ describe('update-deps run: frontend package root', () => {
     expect(existsSync(outPath)).toBe(false);
   });
 });
+
+describe('update-deps run: CLI workspace member', () => {
+  let root: string;
+
+  const writeJson = (relative: string, contents: unknown): void => {
+    const target = path.join(root, relative);
+
+    mkdirSync(path.dirname(target), {recursive: true});
+    writeFileSync(target, JSON.stringify(contents), 'utf8');
+  };
+
+  const writeMemberList = (members: readonly string[]): void => {
+    const lines = members.map((member) => `  - ${member}`);
+
+    writeFileSync(
+      path.join(root, 'pnpm-workspace.yaml'),
+      ['packages:', ...lines, ''].join('\n'),
+      'utf8'
+    );
+  };
+
+  type Call = {args: readonly string[]; cwd: string};
+
+  const recordingRunner = (
+    outdatedByCwd: Record<string, FakeOutdated>,
+    calls: Call[]
+  ): PnpmRunner => {
+    const noViews = makePnpmRunner({});
+
+    return (args, options) => {
+      calls.push({args, cwd: options.cwd});
+
+      if (args[0] === 'outdated') {
+        const fake = outdatedByCwd[options.cwd] ?? {};
+
+        return {
+          status: Object.keys(fake).length === 0 ? 0 : 1,
+          stderr: '',
+          stdout: JSON.stringify(fake),
+        };
+      }
+
+      return noViews(args, options);
+    };
+  };
+
+  beforeEach(() => {
+    root = realpathSync(
+      mkdtempSync(path.join(tmpdir(), 'gaia-update-deps-cli-member-'))
+    );
+    execFileSync('git', ['init', '-q', '-b', 'main'], {cwd: root});
+    writeJson('package.json', {name: 'root'});
+    writeJson('frontend/package.json', {
+      dependencies: {foo: '^1.2.3'},
+      name: 'frontend',
+    });
+  });
+
+  afterEach(() => {
+    rmSync(root, {force: true, recursive: true});
+  });
+
+  test('an adopter tree emits the app payload and runs pnpm outdated only in the app and the root', () => {
+    writeMemberList(['frontend']);
+    const calls: Call[] = [];
+    const result = computeUpdates({
+      cwd: root,
+      now: RELEASE_AGE_NOW,
+      pnpmRunner: recordingRunner(
+        {
+          [path.join(root, 'frontend')]: {
+            foo: {current: '1.2.3', latest: '1.3.0', wanted: '1.3.0'},
+          },
+        },
+        calls
+      ),
+    });
+
+    expect(result.wave_a).toEqual([
+      {
+        bucket: 'minor',
+        current: '1.2.3',
+        group: 'singleton:foo',
+        is_pinned: false,
+        kind: 'minor',
+        latest: '1.3.0',
+        name: 'foo',
+        wanted: '1.3.0',
+      },
+    ]);
+    expect(result.wave_b).toEqual([]);
+    expect(calls).toEqual([
+      {args: ['outdated', '--json'], cwd: path.join(root, 'frontend')},
+      {args: ['outdated', '--json'], cwd: root},
+    ]);
+  });
+
+  test('a listed member whose manifest is absent runs no member pass and does not throw', () => {
+    writeMemberList(['frontend', '.gaia/cli']);
+    const calls: Call[] = [];
+
+    expect(() =>
+      computeUpdates({
+        cwd: root,
+        now: RELEASE_AGE_NOW,
+        pnpmRunner: recordingRunner({}, calls),
+      })
+    ).not.toThrow();
+    expect(calls.map((call) => call.cwd)).not.toContain(
+      path.join(root, '.gaia/cli')
+    );
+  });
+
+  test('an outdated member devDependency is emitted with its workspace and discovered in the member directory', () => {
+    writeMemberList(['frontend', '.gaia/cli']);
+    writeJson('.gaia/cli/package.json', {
+      devDependencies: {vitest: '4.0.0'},
+      name: '@gaia-react/cli',
+    });
+    const calls: Call[] = [];
+    const memberDirectory = path.join(root, '.gaia/cli');
+    const result = computeUpdates({
+      cwd: root,
+      now: RELEASE_AGE_NOW,
+      pnpmRunner: recordingRunner(
+        {
+          [memberDirectory]: {
+            vitest: {current: '4.0.0', latest: '4.0.2', wanted: '4.0.2'},
+          },
+        },
+        calls
+      ),
+    });
+
+    expect(result.wave_a).toEqual([
+      {
+        bucket: 'patch',
+        current: '4.0.0',
+        group: 'vitest',
+        is_pinned: true,
+        kind: 'patch',
+        latest: '4.0.2',
+        name: 'vitest',
+        wanted: '4.0.2',
+        workspace: '.gaia/cli',
+      },
+    ]);
+    expect(
+      calls
+        .filter((call) => call.args[0] === 'outdated')
+        .map((call) => call.cwd)
+    ).toContain(memberDirectory);
+  });
+
+  test('a name outdated in the app and the member appears once per workspace, and only the member copy carries a workspace', () => {
+    writeMemberList(['frontend', '.gaia/cli']);
+    writeJson('.gaia/cli/package.json', {
+      devDependencies: {foo: '1.2.3'},
+      name: '@gaia-react/cli',
+    });
+    const result = computeUpdates({
+      cwd: root,
+      now: RELEASE_AGE_NOW,
+      pnpmRunner: recordingRunner(
+        {
+          [path.join(root, '.gaia/cli')]: {
+            foo: {current: '1.2.3', latest: '1.4.0', wanted: '1.4.0'},
+          },
+          [path.join(root, 'frontend')]: {
+            foo: {current: '1.2.3', latest: '1.3.0', wanted: '1.3.0'},
+          },
+        },
+        []
+      ),
+    });
+
+    expect(result.wave_a.map((entry) => [entry.name, entry.workspace])).toEqual(
+      [
+        ['foo', undefined],
+        ['foo', '.gaia/cli'],
+      ]
+    );
+    expect('workspace' in (result.wave_a[0] ?? {})).toBe(false);
+  });
+
+  test('a companion group never mixes the app and the member in one Wave B group', () => {
+    writeMemberList(['frontend', '.gaia/cli']);
+    writeJson('frontend/package.json', {
+      dependencies: {vite: '^7.0.0'},
+      name: 'frontend',
+    });
+    writeJson('.gaia/cli/package.json', {
+      devDependencies: {vite: '7.0.0'},
+      name: '@gaia-react/cli',
+    });
+    const result = computeUpdates({
+      cwd: root,
+      now: RELEASE_AGE_NOW,
+      pnpmRunner: recordingRunner(
+        {
+          [path.join(root, '.gaia/cli')]: {
+            vite: {current: '7.0.0', latest: '8.0.0', wanted: '7.0.0'},
+          },
+          [path.join(root, 'frontend')]: {
+            vite: {current: '7.0.0', latest: '8.0.0', wanted: '7.0.0'},
+          },
+        },
+        []
+      ),
+    });
+
+    expect(
+      result.wave_b.map((group) => group.packages.map((pkg) => pkg.workspace))
+    ).toEqual([[undefined], ['.gaia/cli']]);
+  });
+});

@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-05-08
 created: 2026-05-08
-updated: 2026-08-01
+updated: 2026-10-09
 tags: [decision, release, maintainer, distribution-boundary]
 ---
 
@@ -13,7 +13,7 @@ tags: [decision, release, maintainer, distribution-boundary]
 > [!note] Audience
 > Maintainer-only. This page is excluded from adopter distribution by `.gaia/release-exclude`. Adopter-facing release detail lives in [[Update Workflow]]; the maintainer release flow is in [[Release Workflow]].
 
-The release tarball passes through two enforcement primitives between staging and tar: a transform-and-leak-check pass against the staged tree (marker-delimited section strip, JSON key strip, JSON array-element strip, and codified leak patterns) and a runtime-deps verification of shipped scripts.
+The release tarball passes through two enforcement primitives between staging and tar: a transform-and-leak-check pass against the staged tree (marker-delimited section strip, JSON key strip, JSON array-element strip, pnpm workspace-member strip, and codified leak patterns) and a runtime-deps verification of shipped scripts.
 
 ## Why
 
@@ -27,13 +27,19 @@ Two primitives, sequenced inside `release.yml` between rsync-staging and tar:
 
 ### `gaia-maintainer release scrub <staging-dir>`
 
-Reads `.gaia/release-scrub.yml`. Three transform types, applied in order:
+Reads `.gaia/release-scrub.yml`. Transforms are applied in the order `.gaia/release-scrub.yml` lists them:
 
 **marker-strip.** Removes content between `<!-- gaia:maintainer-only:start -->` and `<!-- gaia:maintainer-only:end -->` markers in markdown files under `wiki/` and `.claude/`. Source becomes superset; bundle is subset. The maintainer can carry useful context (entity pages, internal cross-references, audit rationale) in the source repo without leaking into adopter scaffolds. Unbalanced markers are a build failure. A second marker-strip covers `.prettierignore` (which carries maintainer-only globs for byte-sensitive `.gaia/tests/` fixtures) using `#`-comment markers (`# gaia:maintainer-only:start` / `# gaia:maintainer-only:end`), because `.prettierignore` is not markdown and HTML-comment markers would read as literal ignore globs there.
 
-**json-strip.** Deletes maintainer-only keys from structured JSON files. From `package.json` it removes `bin` (registers the `gaia` CLI binary, meaningful only for published packages, not adopter apps) and `scripts.test:forensics` (runs GAIA's internal BATS suite against release-excluded `.gaia/tests/forensics/unit.bats`). Keys use dot-notation paths; dots are path separators, so a key name must not itself contain a literal dot. Missing keys are silently skipped. Runs after marker-strip so leak-check sees already-clean JSON.
+**json-strip.** Deletes maintainer-only keys from structured JSON files. From `package.json` it removes `bin` (registers the `gaia` CLI binary, meaningful only for published packages, not adopter apps) and the maintainer-only `scripts.*` entries that run release-excluded suites or lint release-excluded source; `.gaia/release-scrub.yml` is the authoritative key list. Keys use dot-notation paths; dots are path separators, so a key name must not itself contain a literal dot. Missing keys are silently skipped. Runs after marker-strip so leak-check sees already-clean JSON.
 
 **json-strip-array-element.** Removes a single array element by predicate, the shape `json-strip` cannot express since it only deletes whole object keys. A selector's dot-notation `path` walks to the target array (a `[]` suffix marks the array to iterate); `match` is a non-empty key→value map, and an element is removed only when every entry matches the element's own value, so a stale selector matches nothing and is a silent no-op rather than a corruption of the shipped file. This lets a maintainer-only hook registration live in committed `.claude/settings.json` (rather than only in the maintainer's gitignored `settings.local.json`) and still be scrubbed out of the adopter bundle; an emptied `hooks[]` array stays `[]` rather than being collapsed or removed.
+
+**pnpm-member-strip.** Removes one maintainer-only workspace member (today the CLI under `.gaia/cli`) from the staged root `pnpm-workspace.yaml` and `pnpm-lock.yaml`. A frozen install refuses a lockfile that names an importer the tree lacks, so stripping only the workspace entry would ship an uninstallable pair. The transform removes the member's `packages:` entry, its lockfile importer, and only the `packages` and `snapshots` entries reachable from that importer and from no remaining importer. Pre-existing orphan entries stay: pnpm keeps them in a lockfile it writes, so deleting them would break byte identity with what pnpm itself produces. The lockfile's first YAML document (pnpm's own `packageManagerDependencies`) passes through byte for byte, and in the dependency document every byte outside the removed entries is unchanged.
+
+It is hermetic: no network and no pnpm call, because having pnpm regenerate the pair re-verifies supply-chain policy against registry metadata that a cold release runner does not have. It refuses, writing neither file and naming the staged file and a refusal token, on an unrecognized lockfile format version in either document, a workspace entry with no importer or an importer with no workspace entry, a referenced snapshot that has no entry, or a failed post-strip self-check. When neither file names the member it is a no-op. The self-check compares the result against the input and fails closed if a key reachable only from the member survived, or if a dangling reference or a snapshot lacking its `packages` base remains.
+
+A scoped literal leak check, `pnpm-workspace-member`, backs it. The derived `excluded-refs` check matches excluded file paths, so it cannot see a lockfile importer key or a bare workspace entry; the literal check can. Neither sees a member-only package key, since none contains the member path, which is why the self-check exists.
 
 **leak-check.** For each codified check (UAT-NNN narrative, concrete maintainer SPEC IDs, sibling-monorepo prefixes, absolute filesystem literals), runs the pattern over the post-strip staging tree. Each check has a scope (path globs that determine which files to scan), an optional path-allowlist (files exempt from this check by design, e.g. `wiki-style.md` itself names patterns to teach the rule), and an optional line-allowlist (regexes that exempt structural matches like filename literals or identifier fragments).
 

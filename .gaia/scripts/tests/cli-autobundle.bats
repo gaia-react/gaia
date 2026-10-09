@@ -88,6 +88,17 @@ staged() {
   [[ "$(staged)" == *".gaia/cli/gaia"$'\n'* ]]
 }
 
+@test "a staged root pnpm-lock.yaml change alone triggers" {
+  echo 'lockfileVersion: 9' > "$REPO/pnpm-lock.yaml"
+  git -C "$REPO" add pnpm-lock.yaml
+  git -C "$REPO" commit --quiet -m "add root lockfile"
+  echo 'lockfileVersion: 10' > "$REPO/pnpm-lock.yaml"
+  git -C "$REPO" add pnpm-lock.yaml
+  run bash "$SCRIPT" "$REPO"
+  [ "$status" -eq 0 ]
+  [ "$(staged)" = $'.gaia/cli/gaia\n.gaia/cli/gaia-maintainer\npnpm-lock.yaml' ]
+}
+
 @test "a staged .gaia/cli/tsconfig.json change triggers" {
   echo '{"a":1}' > "$REPO/.gaia/cli/tsconfig.json"
   git -C "$REPO" add .gaia/cli/tsconfig.json
@@ -122,7 +133,7 @@ staged() {
   git -C "$REPO" add .gaia/cli/src/a.ts
   run bash "$SCRIPT" "$REPO"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"pnpm -C .gaia/cli install --frozen-lockfile"* ]]
+  [[ "$output" == *"pnpm install --frozen-lockfile"* ]]
   [[ "$output" == *"pnpm -C .gaia/cli bundle"* ]]
   [ "$(staged)" = ".gaia/cli/src/a.ts" ]
 }

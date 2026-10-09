@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-09-20
-updated: 2026-10-01
+updated: 2026-10-09
 tags: [concept, gaia, scripts]
 ---
 
@@ -50,7 +50,6 @@ The maintainer's copy of this page carries every root file. An adopter's copy ca
 |---|---|---|---|
 | `check-audit-base-derivation.sh` | no | GAIA's own invariant harness (maintainer-side) | Keeps every Code Audit Team member resolving one review base rather than several. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `check-audit-key-callers.sh` | no | GAIA's own invariant harness (maintainer-side) | Asserts the agent definitions that name an audit artifact actually call the shared key helper instead of hand-building a path. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
-| `check-cli-workspace-floors.sh` | no | `cli-advisory-scan.yml`, `cli-tests.yml` | Reports security floors that have stopped being applied in a pnpm workspace root outside the repository root. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `check-debt-issue-metadata.sh` | yes | the audit agent, `/gaia-debt` | Validates the label set and dedup key a tech-debt filing carries against the filing rules. |
 | `check-hook-command-rooting.sh` | yes | GAIA's own invariant harness (maintainer-side) | Asserts every hook command in `.claude/settings.json` is rooted at the repository top level rather than at the working directory. |
 | `check-hook-scope-manifest.sh` | yes | GAIA's own invariant harness (maintainer-side) | Scans every hook for a `.gaia/local` path built without a resolved root. |

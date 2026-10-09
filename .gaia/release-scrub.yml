@@ -1,32 +1,38 @@
 # Bundle-time scrub config. Consumed by `gaia-maintainer release scrub <staging-dir>`
 # from inside `release.yml` between staging and tarball creation.
 #
-# Five transforms run in order against the staging tree:
+# The transforms below run in the order they are listed, against the staging
+# tree. The transform types:
 #
-#   1. marker-strip: remove maintainer-only blocks delimited by HTML
-#      comment markers from in-scope markdown files.
+#   - marker-strip: remove maintainer-only blocks delimited by HTML
+#     comment markers from in-scope markdown files.
 #
-#   2. json-strip: delete maintainer-only keys from structured JSON files.
-#      Keys use dot-notation to address nested paths (e.g. "scripts.foo").
-#      Dots are path separators; key names must not contain literal dots.
-#      Missing keys are silently skipped (no error). Runs after marker-strip
-#      so leak-check sees the already-clean JSON.
+#   - json-strip: delete maintainer-only keys from structured JSON files.
+#     Keys use dot-notation to address nested paths (e.g. "scripts.foo").
+#     Dots are path separators; key names must not contain literal dots.
+#     Missing keys are silently skipped (no error). Runs after marker-strip
+#     so leak-check sees the already-clean JSON.
 #
-#   3. json-strip-array-element: remove a single array element by predicate
-#      from a structured JSON file, the shape json-strip cannot express. A
-#      selector's `path` walks the JSON by dot-notation with a `[]` suffix
-#      marking an array to iterate; `match` is a key→value map, and an element
-#      is removed only when every entry equals the element's own value. A
-#      selector that matches nothing is a silent no-op. Runs before leak-check
-#      so it sees the already-clean JSON.
+#   - json-strip-array-element: remove a single array element by predicate
+#     from a structured JSON file, the shape json-strip cannot express. A
+#     selector's `path` walks the JSON by dot-notation with a `[]` suffix
+#     marking an array to iterate; `match` is a key→value map, and an element
+#     is removed only when every entry equals the element's own value. A
+#     selector that matches nothing is a silent no-op. Runs before leak-check
+#     so it sees the already-clean JSON.
 #
-#   4. json-field-rewrite: substitute inside a JSON string field a selector
-#      addresses, for a maintainer-only token that has to leave the bundle
-#      while the field itself survives (a schema-required key a delete would
-#      invalidate). Refuses to empty a field, so a value consisting only of
-#      the matched token fails the build rather than shipping "".
+#   - json-field-rewrite: substitute inside a JSON string field a selector
+#     addresses, for a maintainer-only token that has to leave the bundle
+#     while the field itself survives (a schema-required key a delete would
+#     invalidate). Refuses to empty a field, so a value consisting only of
+#     the matched token fails the build rather than shipping "".
 #
-#   5. leak-check: run codified audit patterns against the post-strip
+#   - pnpm-member-strip: remove a maintainer-only workspace member from the
+#     staged pnpm workspace file and lockfile, offline and without calling
+#     pnpm. Refuses, writing neither file, when it cannot produce a
+#     consistent pair; a no-op when neither file names the member.
+#
+#   - leak-check: run codified audit patterns against the post-strip
 #      staging tree. Non-empty match = build failure with a leak report.
 #      Mirrors the patterns in `.claude/rules/wiki-style.md` Audit section
 #      and `.gaia/cli/health/taxonomy.md` Distribution boundary classes.
@@ -79,6 +85,8 @@ transforms:
   #   .gaia/tests/forensics/unit.bats, which is release-excluded and does
   #   not exist on adopter machines.
   # scripts.test:sandbox: same shape, against .gaia/tests/sandbox/run-all.sh.
+  # scripts.lint:cli: lints the maintainer-only CLI source under .gaia/cli,
+  #   which is release-excluded; no release has shipped it.
   # The frontend package's own package.json is listed so a maintainer-only key
   # added there later cannot ship; a key it does not carry is a silent no-op.
   - type: json-strip
@@ -89,6 +97,7 @@ transforms:
       - "bin"
       - "scripts.test:forensics"
       - "scripts.test:sandbox"
+      - "scripts.lint:cli"
 
   # Maintainer-audience entries in the label registry. `audience:adopter` and
   # `audience:maintainer` classify a defect against GAIA's own distribution
@@ -126,6 +135,17 @@ transforms:
       - path: "entries[].source"
         pattern: "\\bSPEC-[0-9]{3,}\\s*|gaia-react/gaia#[0-9]+,?\\s*"
         replacement: ""
+
+  # The CLI is a member of the maintainer's root pnpm workspace, but its
+  # package.json never ships, and pnpm refuses a frozen install whose lockfile
+  # names an importer the tree does not have. This removes the member's
+  # workspace entry, its lockfile importer, and only the lockfile entries
+  # reachable from it and from no remaining importer, leaving every other
+  # byte as it was. Backed by the `pnpm-workspace-member` leak check below.
+  - type: pnpm-member-strip
+    member: ".gaia/cli"
+    workspace: "pnpm-workspace.yaml"
+    lockfile: "pnpm-lock.yaml"
 
   # The six token-leak checks (uat-narrative through monorepo-prefix) plus
   # `absolute-paths` each carry `scope: ["**"]`, the whole staging tree. That
@@ -528,3 +548,16 @@ transforms:
         pattern: "^\\s*paths-ignore\\s*:|^\\s*-\\s*['\"]?!|\\[[^\\]]*['\"]!"
         scope:
           - ".github/workflows/**"
+
+      # ---- Maintainer-only pnpm workspace member surviving the strip ----
+      # Backs the pnpm-member-strip transform. The derived excluded-refs check
+      # matches excluded file paths, so it cannot see a lockfile importer key
+      # or a bare workspace entry; this literal can. It cannot see a CLI-only
+      # package key either, since none contains the member path; the
+      # transform's own self-check covers that.
+      - id: pnpm-workspace-member
+        description: "The maintainer-only .gaia/cli member left in the shipped pnpm workspace file or lockfile"
+        pattern: "\\.gaia/cli"
+        scope:
+          - "pnpm-lock.yaml"
+          - "pnpm-workspace.yaml"

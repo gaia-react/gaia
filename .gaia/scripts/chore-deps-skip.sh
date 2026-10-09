@@ -78,8 +78,8 @@ case "$subject" in
       case "$changed_path" in
         package.json | pnpm-lock.yaml | pnpm-workspace.yaml) ;;
       # gaia:maintainer-only:start
-        # This maintainer checkout's own package manifests, under .gaia/cli/.
-        .gaia/cli/package.json | .gaia/cli/pnpm-lock.yaml | .gaia/cli/pnpm-workspace.yaml) ;;
+        # This maintainer checkout's CLI package manifest; its lockfile is the root one.
+        .gaia/cli/package.json) ;;
       # gaia:maintainer-only:end
         *)
           if [ -z "$manifest_ere" ] || ! printf '%s\n' "$changed_path" | grep -Eq -- "$manifest_ere"; then

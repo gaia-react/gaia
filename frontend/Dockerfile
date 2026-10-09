@@ -8,7 +8,9 @@ RUN corepack enable
 WORKDIR /repo
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY frontend/package.json ./frontend/package.json
-RUN pnpm install --frozen-lockfile
+# Filtered to frontend: the source repo's lockfile also names the maintainer CLI importer,
+# whose manifest this image does not copy, and adopter trees carry no such importer.
+RUN pnpm install --frozen-lockfile --filter frontend
 COPY frontend ./frontend
 RUN pnpm --filter frontend build
 RUN pnpm deploy --filter frontend --prod /app

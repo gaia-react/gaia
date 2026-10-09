@@ -144,7 +144,7 @@ var resolveRepoRoot = (cwd = process.cwd()) => execGaiaGit(["rev-parse", "--show
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/external.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/external.js
 var external_exports = {};
 __export(external_exports, {
   $brand: () => $brand,
@@ -387,7 +387,7 @@ __export(external_exports, {
   xor: () => xor
 });
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/index.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/index.js
 var core_exports2 = {};
 __export(core_exports2, {
   $ZodAny: () => $ZodAny,
@@ -666,7 +666,7 @@ __export(core_exports2, {
   version: () => version
 });
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/core.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/core.js
 var _a;
 var NEVER = /* @__PURE__ */ Object.freeze({
   status: "aborted"
@@ -743,7 +743,7 @@ function config(newConfig) {
   return globalConfig;
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/util.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/util.js
 var util_exports = {};
 __export(util_exports, {
   BIGINT_FORMAT_RANGES: () => BIGINT_FORMAT_RANGES,
@@ -1439,7 +1439,7 @@ var Class = class {
   }
 };
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/errors.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/errors.js
 var initializer = (inst, def) => {
   inst.name = "$ZodError";
   Object.defineProperty(inst, "_zod", {
@@ -1578,7 +1578,7 @@ function prettifyError(error51) {
   return lines.join("\n");
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/parse.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/parse.js
 var _parse = (_Err) => (schema2, value, _ctx, _params) => {
   const ctx = _ctx ? { ..._ctx, async: false } : { async: false };
   const result = schema2._zod.run({ value, issues: [] }, ctx);
@@ -1666,7 +1666,7 @@ var _safeDecodeAsync = (_Err) => async (schema2, value, _ctx) => {
 };
 var safeDecodeAsync = /* @__PURE__ */ _safeDecodeAsync($ZodRealError);
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/regexes.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/regexes.js
 var regexes_exports = {};
 __export(regexes_exports, {
   base64: () => base64,
@@ -1825,7 +1825,7 @@ var sha512_hex = /^[0-9a-fA-F]{128}$/;
 var sha512_base64 = /* @__PURE__ */ fixedBase64(86, "==");
 var sha512_base64url = /* @__PURE__ */ fixedBase64url(86);
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/checks.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/checks.js
 var $ZodCheck = /* @__PURE__ */ $constructor("$ZodCheck", (inst, def) => {
   var _a3;
   inst._zod ?? (inst._zod = {});
@@ -2373,7 +2373,7 @@ var $ZodCheckOverwrite = /* @__PURE__ */ $constructor("$ZodCheckOverwrite", (ins
   };
 });
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/doc.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/doc.js
 var Doc = class {
   constructor(args = []) {
     this.content = [];
@@ -2409,14 +2409,14 @@ var Doc = class {
   }
 };
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/versions.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/versions.js
 var version = {
   major: 4,
   minor: 4,
   patch: 3
 };
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/schemas.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/schemas.js
 var $ZodType = /* @__PURE__ */ $constructor("$ZodType", (inst, def) => {
   var _a3;
   inst ?? (inst = {});
@@ -4509,7 +4509,7 @@ function handleRefineResult(result, payload, input, inst) {
   }
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/index.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/index.js
 var locales_exports = {};
 __export(locales_exports, {
   ar: () => ar_default,
@@ -4566,7 +4566,7 @@ __export(locales_exports, {
   zhTW: () => zh_TW_default
 });
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ar.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ar.js
 var error = () => {
   const Sizable = {
     string: { unit: "\u062D\u0631\u0641", verb: "\u0623\u0646 \u064A\u062D\u0648\u064A" },
@@ -4673,7 +4673,7 @@ function ar_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/az.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/az.js
 var error2 = () => {
   const Sizable = {
     string: { unit: "simvol", verb: "olmal\u0131d\u0131r" },
@@ -4779,7 +4779,7 @@ function az_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/be.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/be.js
 function getBelarusianPlural(count, one, few, many) {
   const absCount = Math.abs(count);
   const lastDigit = absCount % 10;
@@ -4936,7 +4936,7 @@ function be_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/bg.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/bg.js
 var error4 = () => {
   const Sizable = {
     string: { unit: "\u0441\u0438\u043C\u0432\u043E\u043B\u0430", verb: "\u0434\u0430 \u0441\u044A\u0434\u044A\u0440\u0436\u0430" },
@@ -5057,7 +5057,7 @@ function bg_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ca.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ca.js
 var error5 = () => {
   const Sizable = {
     string: { unit: "car\xE0cters", verb: "contenir" },
@@ -5166,7 +5166,7 @@ function ca_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/cs.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/cs.js
 var error6 = () => {
   const Sizable = {
     string: { unit: "znak\u016F", verb: "m\xEDt" },
@@ -5278,7 +5278,7 @@ function cs_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/da.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/da.js
 var error7 = () => {
   const Sizable = {
     string: { unit: "tegn", verb: "havde" },
@@ -5394,7 +5394,7 @@ function da_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/de.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/de.js
 var error8 = () => {
   const Sizable = {
     string: { unit: "Zeichen", verb: "zu haben" },
@@ -5503,7 +5503,7 @@ function de_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/el.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/el.js
 var error9 = () => {
   const Sizable = {
     string: { unit: "\u03C7\u03B1\u03C1\u03B1\u03BA\u03C4\u03AE\u03C1\u03B5\u03C2", verb: "\u03BD\u03B1 \u03AD\u03C7\u03B5\u03B9" },
@@ -5613,7 +5613,7 @@ function el_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/en.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/en.js
 var error10 = () => {
   const Sizable = {
     string: { unit: "characters", verb: "to have" },
@@ -5726,7 +5726,7 @@ function en_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/eo.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/eo.js
 var error11 = () => {
   const Sizable = {
     string: { unit: "karaktrojn", verb: "havi" },
@@ -5836,7 +5836,7 @@ function eo_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/es.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/es.js
 var error12 = () => {
   const Sizable = {
     string: { unit: "caracteres", verb: "tener" },
@@ -5969,7 +5969,7 @@ function es_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/fa.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/fa.js
 var error13 = () => {
   const Sizable = {
     string: { unit: "\u06A9\u0627\u0631\u0627\u06A9\u062A\u0631", verb: "\u062F\u0627\u0634\u062A\u0647 \u0628\u0627\u0634\u062F" },
@@ -6084,7 +6084,7 @@ function fa_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/fi.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/fi.js
 var error14 = () => {
   const Sizable = {
     string: { unit: "merkki\xE4", subject: "merkkijonon" },
@@ -6197,7 +6197,7 @@ function fi_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/fr.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/fr.js
 var error15 = () => {
   const Sizable = {
     string: { unit: "caract\xE8res", verb: "avoir" },
@@ -6323,7 +6323,7 @@ function fr_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/fr-CA.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/fr-CA.js
 var error16 = () => {
   const Sizable = {
     string: { unit: "caract\xE8res", verb: "avoir" },
@@ -6431,7 +6431,7 @@ function fr_CA_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/he.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/he.js
 var error17 = () => {
   const TypeNames = {
     string: { label: "\u05DE\u05D7\u05E8\u05D5\u05D6\u05EA", gender: "f" },
@@ -6626,7 +6626,7 @@ function he_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/hr.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/hr.js
 var error18 = () => {
   const Sizable = {
     string: { unit: "znakova", verb: "imati" },
@@ -6749,7 +6749,7 @@ function hr_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/hu.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/hu.js
 var error19 = () => {
   const Sizable = {
     string: { unit: "karakter", verb: "legyen" },
@@ -6858,7 +6858,7 @@ function hu_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/hy.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/hy.js
 function getArmenianPlural(count, one, many) {
   return Math.abs(count) === 1 ? one : many;
 }
@@ -7006,7 +7006,7 @@ function hy_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/id.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/id.js
 var error21 = () => {
   const Sizable = {
     string: { unit: "karakter", verb: "memiliki" },
@@ -7113,7 +7113,7 @@ function id_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/is.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/is.js
 var error22 = () => {
   const Sizable = {
     string: { unit: "stafi", verb: "a\xF0 hafa" },
@@ -7223,7 +7223,7 @@ function is_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/it.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/it.js
 var error23 = () => {
   const Sizable = {
     string: { unit: "caratteri", verb: "avere" },
@@ -7332,7 +7332,7 @@ function it_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ja.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ja.js
 var error24 = () => {
   const Sizable = {
     string: { unit: "\u6587\u5B57", verb: "\u3067\u3042\u308B" },
@@ -7440,7 +7440,7 @@ function ja_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ka.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ka.js
 var error25 = () => {
   const Sizable = {
     string: { unit: "\u10E1\u10D8\u10DB\u10D1\u10DD\u10DA\u10DD", verb: "\u10E3\u10DC\u10D3\u10D0 \u10E8\u10D4\u10D8\u10EA\u10D0\u10D5\u10D3\u10D4\u10E1" },
@@ -7553,7 +7553,7 @@ function ka_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/km.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/km.js
 var error26 = () => {
   const Sizable = {
     string: { unit: "\u178F\u17BD\u17A2\u1780\u17D2\u179F\u179A", verb: "\u1782\u17BD\u179A\u1798\u17B6\u1793" },
@@ -7664,12 +7664,12 @@ function km_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/kh.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/kh.js
 function kh_default() {
   return km_default();
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ko.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ko.js
 var error27 = () => {
   const Sizable = {
     string: { unit: "\uBB38\uC790", verb: "to have" },
@@ -7781,7 +7781,7 @@ function ko_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/lt.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/lt.js
 var capitalizeFirstCharacter = (text) => {
   return text.charAt(0).toUpperCase() + text.slice(1);
 };
@@ -7985,7 +7985,7 @@ function lt_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/mk.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/mk.js
 var error29 = () => {
   const Sizable = {
     string: { unit: "\u0437\u043D\u0430\u0446\u0438", verb: "\u0434\u0430 \u0438\u043C\u0430\u0430\u0442" },
@@ -8095,7 +8095,7 @@ function mk_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ms.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ms.js
 var error30 = () => {
   const Sizable = {
     string: { unit: "aksara", verb: "mempunyai" },
@@ -8203,7 +8203,7 @@ function ms_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/nl.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/nl.js
 var error31 = () => {
   const Sizable = {
     string: { unit: "tekens", verb: "heeft" },
@@ -8314,7 +8314,7 @@ function nl_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/no.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/no.js
 var error32 = () => {
   const Sizable = {
     string: { unit: "tegn", verb: "\xE5 ha" },
@@ -8423,7 +8423,7 @@ function no_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ota.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ota.js
 var error33 = () => {
   const Sizable = {
     string: { unit: "harf", verb: "olmal\u0131d\u0131r" },
@@ -8533,7 +8533,7 @@ function ota_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ps.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ps.js
 var error34 = () => {
   const Sizable = {
     string: { unit: "\u062A\u0648\u06A9\u064A", verb: "\u0648\u0644\u0631\u064A" },
@@ -8648,7 +8648,7 @@ function ps_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/pl.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/pl.js
 var error35 = () => {
   const Sizable = {
     string: { unit: "znak\xF3w", verb: "mie\u0107" },
@@ -8758,7 +8758,7 @@ function pl_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/pt.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/pt.js
 var error36 = () => {
   const Sizable = {
     string: { unit: "caracteres", verb: "ter" },
@@ -8867,7 +8867,7 @@ function pt_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ro.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ro.js
 var error37 = () => {
   const Sizable = {
     string: { unit: "caractere", verb: "s\u0103 aib\u0103" },
@@ -8987,7 +8987,7 @@ function ro_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ru.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ru.js
 function getRussianPlural(count, one, few, many) {
   const absCount = Math.abs(count);
   const lastDigit = absCount % 10;
@@ -9144,7 +9144,7 @@ function ru_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/sl.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/sl.js
 var error39 = () => {
   const Sizable = {
     string: { unit: "znakov", verb: "imeti" },
@@ -9254,7 +9254,7 @@ function sl_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/sv.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/sv.js
 var error40 = () => {
   const Sizable = {
     string: { unit: "tecken", verb: "att ha" },
@@ -9365,7 +9365,7 @@ function sv_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ta.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ta.js
 var error41 = () => {
   const Sizable = {
     string: { unit: "\u0B8E\u0BB4\u0BC1\u0BA4\u0BCD\u0BA4\u0BC1\u0B95\u0BCD\u0B95\u0BB3\u0BCD", verb: "\u0B95\u0BCA\u0BA3\u0BCD\u0B9F\u0BBF\u0BB0\u0BC1\u0B95\u0BCD\u0B95 \u0BB5\u0BC7\u0BA3\u0BCD\u0B9F\u0BC1\u0BAE\u0BCD" },
@@ -9476,7 +9476,7 @@ function ta_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/th.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/th.js
 var error42 = () => {
   const Sizable = {
     string: { unit: "\u0E15\u0E31\u0E27\u0E2D\u0E31\u0E01\u0E29\u0E23", verb: "\u0E04\u0E27\u0E23\u0E21\u0E35" },
@@ -9587,7 +9587,7 @@ function th_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/tr.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/tr.js
 var error43 = () => {
   const Sizable = {
     string: { unit: "karakter", verb: "olmal\u0131" },
@@ -9693,7 +9693,7 @@ function tr_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/uk.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/uk.js
 var error44 = () => {
   const Sizable = {
     string: { unit: "\u0441\u0438\u043C\u0432\u043E\u043B\u0456\u0432", verb: "\u043C\u0430\u0442\u0438\u043C\u0435" },
@@ -9802,12 +9802,12 @@ function uk_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ua.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ua.js
 function ua_default() {
   return uk_default();
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ur.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ur.js
 var error45 = () => {
   const Sizable = {
     string: { unit: "\u062D\u0631\u0648\u0641", verb: "\u06C1\u0648\u0646\u0627" },
@@ -9918,7 +9918,7 @@ function ur_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/uz.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/uz.js
 var error46 = () => {
   const Sizable = {
     string: { unit: "belgi", verb: "bo\u2018lishi kerak" },
@@ -10029,7 +10029,7 @@ function uz_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/vi.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/vi.js
 var error47 = () => {
   const Sizable = {
     string: { unit: "k\xFD t\u1EF1", verb: "c\xF3" },
@@ -10138,7 +10138,7 @@ function vi_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/zh-CN.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/zh-CN.js
 var error48 = () => {
   const Sizable = {
     string: { unit: "\u5B57\u7B26", verb: "\u5305\u542B" },
@@ -10248,7 +10248,7 @@ function zh_CN_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/zh-TW.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/zh-TW.js
 var error49 = () => {
   const Sizable = {
     string: { unit: "\u5B57\u5143", verb: "\u64C1\u6709" },
@@ -10356,7 +10356,7 @@ function zh_TW_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/yo.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/yo.js
 var error50 = () => {
   const Sizable = {
     string: { unit: "\xE0mi", verb: "n\xED" },
@@ -10464,7 +10464,7 @@ function yo_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/registries.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/registries.js
 var _a2;
 var $output = /* @__PURE__ */ Symbol("ZodOutput");
 var $input = /* @__PURE__ */ Symbol("ZodInput");
@@ -10514,7 +10514,7 @@ function registry() {
 (_a2 = globalThis).__zod_globalRegistry ?? (_a2.__zod_globalRegistry = registry());
 var globalRegistry = globalThis.__zod_globalRegistry;
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/api.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/api.js
 // @__NO_SIDE_EFFECTS__
 function _string(Class2, params) {
   return new Class2({
@@ -11553,7 +11553,7 @@ function _stringFormat(Class2, format, fnOrRegex, _params = {}) {
   return inst;
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/to-json-schema.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/to-json-schema.js
 function initializeContext(params) {
   let target = params?.target ?? "draft-2020-12";
   if (target === "draft-4")
@@ -11912,7 +11912,7 @@ var createStandardJSONSchemaMethod = (schema2, io, processors = {}) => (params) 
   return finalize(ctx, schema2);
 };
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/json-schema-processors.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/json-schema-processors.js
 var formatMap = {
   guid: "uuid",
   url: "uri",
@@ -12456,7 +12456,7 @@ function toJSONSchema(input, params) {
   return finalize(ctx, input);
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/json-schema-generator.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/json-schema-generator.js
 var JSONSchemaGenerator = class {
   /** @deprecated Access via ctx instead */
   get metadataRegistry() {
@@ -12531,10 +12531,10 @@ var JSONSchemaGenerator = class {
   }
 };
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/json-schema.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/json-schema.js
 var json_schema_exports = {};
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/schemas.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/schemas.js
 var schemas_exports2 = {};
 __export(schemas_exports2, {
   ZodAny: () => ZodAny,
@@ -12705,7 +12705,7 @@ __export(schemas_exports2, {
   xor: () => xor
 });
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/checks.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/checks.js
 var checks_exports2 = {};
 __export(checks_exports2, {
   endsWith: () => _endsWith,
@@ -12739,7 +12739,7 @@ __export(checks_exports2, {
   uppercase: () => _uppercase
 });
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/iso.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/iso.js
 var iso_exports = {};
 __export(iso_exports, {
   ZodISODate: () => ZodISODate,
@@ -12780,7 +12780,7 @@ function duration2(params) {
   return _isoDuration(ZodISODuration, params);
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/errors.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/errors.js
 var initializer2 = (inst, issues) => {
   $ZodError.init(inst, issues);
   inst.name = "ZodError";
@@ -12820,7 +12820,7 @@ var ZodRealError = /* @__PURE__ */ $constructor("ZodError", initializer2, {
   Parent: Error
 });
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/parse.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/parse.js
 var parse2 = /* @__PURE__ */ _parse(ZodRealError);
 var parseAsync2 = /* @__PURE__ */ _parseAsync(ZodRealError);
 var safeParse2 = /* @__PURE__ */ _safeParse(ZodRealError);
@@ -12834,7 +12834,7 @@ var safeDecode2 = /* @__PURE__ */ _safeDecode(ZodRealError);
 var safeEncodeAsync2 = /* @__PURE__ */ _safeEncodeAsync(ZodRealError);
 var safeDecodeAsync2 = /* @__PURE__ */ _safeDecodeAsync(ZodRealError);
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/schemas.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/schemas.js
 var _installedGroups = /* @__PURE__ */ new WeakMap();
 function _installLazyMethods(inst, group, methods) {
   const proto = Object.getPrototypeOf(inst);
@@ -14124,7 +14124,7 @@ function preprocess(fn, schema2) {
   });
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/compat.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/compat.js
 var ZodIssueCode = {
   invalid_type: "invalid_type",
   too_big: "too_big",
@@ -14150,7 +14150,7 @@ var ZodFirstPartyTypeKind;
 /* @__PURE__ */ (function(ZodFirstPartyTypeKind2) {
 })(ZodFirstPartyTypeKind || (ZodFirstPartyTypeKind = {}));
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/from-json-schema.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/from-json-schema.js
 var z = {
   ...schemas_exports2,
   ...checks_exports2,
@@ -14630,7 +14630,7 @@ function fromJSONSchema(schema2, params) {
   return convertSchema(normalized, ctx);
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/coerce.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/coerce.js
 var coerce_exports = {};
 __export(coerce_exports, {
   bigint: () => bigint3,
@@ -14655,7 +14655,7 @@ function date4(params) {
   return _coercedDate(ZodDate, params);
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/external.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/external.js
 config(en_default());
 
 // src/schemas/labels.ts
@@ -16046,7 +16046,7 @@ var scanRegion = (source, startMarker, endMarker) => {
   return { endLine, kind: "region", startLine };
 };
 
-// node_modules/.pnpm/js-yaml@4.3.2/node_modules/js-yaml/dist/js-yaml.mjs
+// ../../node_modules/.pnpm/js-yaml@4.3.2/node_modules/js-yaml/dist/js-yaml.mjs
 function getDefaultExportFromCjs(x) {
   return x && x.__esModule && Object.prototype.hasOwnProperty.call(x, "default") ? x["default"] : x;
 }
@@ -21016,7 +21016,7 @@ var run11 = (argv, options = {}) => {
 };
 
 // src/release/scrub.ts
-import { readFileSync as readFileSync15, statSync as statSync3 } from "node:fs";
+import { existsSync as existsSync11, readFileSync as readFileSync15, statSync as statSync3 } from "node:fs";
 import path16 from "node:path";
 
 // src/wiki/util/wikilinks.ts
@@ -21131,12 +21131,556 @@ var compileExcludedRefMatcher = (tokens) => {
   };
 };
 
+// src/release/pnpm-member-strip.ts
+var SUPPORTED_LOCKFILE_VERSION = "9.0";
+var DOCUMENT_START = "---";
+var ENTRY_SECTIONS = ["importers", "packages", "snapshots"];
+var IMPORTER_DEPENDENCY_FIELDS = [
+  "dependencies",
+  "devDependencies",
+  "optionalDependencies"
+];
+var SNAPSHOT_DEPENDENCY_FIELDS = [
+  "dependencies",
+  "optionalDependencies"
+];
+var ALIAS_VALUE = /^(?:@[^@/]+\/)?[^@/:]+@/;
+var ENTRY_LINE = /^ {2}\S/;
+var TOP_LEVEL_LINE = /^\S/;
+var WORKSPACE_PACKAGES_HEADER = /^packages\s*:\s*(?:#.*)?$/;
+var WORKSPACE_ITEM_MARKER = "- ";
+var WORKSPACE_BLOCK_END = /^[^\s#-]/;
+var StripRefusal = class extends Error {
+  detail;
+  file;
+  token;
+  constructor(file2, token, detail) {
+    super(`${token}: ${detail}`);
+    this.detail = detail;
+    this.file = file2;
+    this.token = token;
+  }
+};
+var refuse2 = (file2, token, detail) => {
+  throw new StripRefusal(file2, token, detail);
+};
+var messageOf = (error51) => error51 instanceof Error ? error51.message : String(error51);
+var isRecord = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+var splitLockfile = (lockfile) => {
+  const lines = lockfile.split("\n");
+  const starts = lines.flatMap(
+    (line, index) => line === DOCUMENT_START ? [index] : []
+  );
+  const [first, second] = starts;
+  if (starts.length !== 2 || first !== 0 || second === void 0) {
+    return refuse2(
+      "lockfile",
+      "unparseable",
+      `expected exactly two YAML documents, each opened by a '${DOCUMENT_START}' line, found ${starts.length}`
+    );
+  }
+  return {
+    dependencyDocument: lines.slice(second + 1).join("\n"),
+    packageManagerDocument: lines.slice(1, second).join("\n"),
+    prefix: `${lines.slice(0, second + 1).join("\n")}
+`
+  };
+};
+var parseDocument = (text, label, schema2) => {
+  let parsed;
+  try {
+    parsed = schema2 === void 0 ? load(text) : load(text, { schema: schema2 });
+  } catch (error51) {
+    return refuse2("lockfile", "unparseable", `${label}: ${messageOf(error51)}`);
+  }
+  return isRecord(parsed) ? parsed : refuse2("lockfile", "unparseable", `${label} is not a YAML mapping`);
+};
+var assertLockfileVersions = (split) => {
+  const documents = [
+    ["document 1 (packageManagerDependencies)", split.packageManagerDocument],
+    ["document 2 (dependencies)", split.dependencyDocument]
+  ];
+  for (const [label, text] of documents) {
+    const version2 = parseDocument(text, label).lockfileVersion;
+    if (version2 !== SUPPORTED_LOCKFILE_VERSION) {
+      refuse2(
+        "lockfile",
+        "unknown-lockfile-version",
+        `${label} declares lockfileVersion ${JSON.stringify(version2)}; only '${SUPPORTED_LOCKFILE_VERSION}' is supported`
+      );
+    }
+  }
+};
+var sectionOf = (document, section) => {
+  const value = document[section];
+  if (value === void 0 || value === null || value === "") return {};
+  return isRecord(value) ? value : refuse2("lockfile", "unparseable", `${section} is not a mapping`);
+};
+var readEdges = ({
+  body,
+  fields,
+  owner,
+  versionOf
+}) => {
+  const edges = /* @__PURE__ */ new Map();
+  if (!isRecord(body)) return edges;
+  for (const field of fields) {
+    const dependencies = body[field];
+    if (isRecord(dependencies)) {
+      for (const [name, entry] of Object.entries(dependencies)) {
+        const version2 = versionOf(entry);
+        if (typeof version2 !== "string" || version2.length === 0) {
+          refuse2(
+            "lockfile",
+            "unparseable",
+            `${owner} ${field}.${name} has no version string`
+          );
+        }
+        edges.set(name, version2);
+      }
+    }
+  }
+  return edges;
+};
+var buildGraph = (document) => {
+  const importers = /* @__PURE__ */ new Map();
+  const snapshots = /* @__PURE__ */ new Map();
+  for (const [key, body] of Object.entries(sectionOf(document, "importers"))) {
+    importers.set(
+      key,
+      readEdges({
+        body,
+        fields: IMPORTER_DEPENDENCY_FIELDS,
+        owner: `importers.${key}`,
+        versionOf: (entry) => isRecord(entry) ? entry.version : void 0
+      })
+    );
+  }
+  for (const [key, body] of Object.entries(sectionOf(document, "snapshots"))) {
+    snapshots.set(
+      key,
+      readEdges({
+        body,
+        fields: SNAPSHOT_DEPENDENCY_FIELDS,
+        owner: `snapshots.${key}`,
+        versionOf: (entry) => entry
+      })
+    );
+  }
+  return {
+    importers,
+    packageIds: new Set(Object.keys(sectionOf(document, "packages"))),
+    snapshots
+  };
+};
+var dependencyTarget = (name, value) => {
+  if (value.startsWith("link:") || value.startsWith("file:")) return null;
+  if (/^\d/.test(value)) return `${name}@${value}`;
+  return ALIAS_VALUE.test(value) ? value : `${name}@${value}`;
+};
+var edgeTargets = (edges) => [...edges].flatMap(([name, value]) => {
+  const target = dependencyTarget(name, value);
+  return target === null ? [] : [target];
+});
+var packageBase = (snapshotId) => {
+  const peerStart = snapshotId.indexOf("(", 1);
+  return peerStart === -1 ? snapshotId : snapshotId.slice(0, peerStart);
+};
+var reachFrom = (graph, importerKeys) => {
+  const reached = /* @__PURE__ */ new Set();
+  const pending = importerKeys.flatMap(
+    (key) => edgeTargets(graph.importers.get(key) ?? /* @__PURE__ */ new Map()).map((id) => ({
+      from: `importers.${key}`,
+      id
+    }))
+  );
+  for (let next = pending.pop(); next !== void 0; next = pending.pop()) {
+    const { from, id } = next;
+    if (!reached.has(id)) {
+      const edges = graph.snapshots.get(id);
+      if (edges === void 0) {
+        refuse2(
+          "lockfile",
+          "missing-snapshot",
+          `${id} (referenced from ${from}) has no snapshots entry`
+        );
+      }
+      reached.add(id);
+      for (const target of edgeTargets(edges)) {
+        pending.push({ from: `snapshots.${id}`, id: target });
+      }
+    }
+  }
+  return reached;
+};
+var pruneView = (graph, member) => {
+  const rest = [...graph.importers.keys()].filter((key) => key !== member);
+  const memberEdges = graph.importers.get(member) ?? /* @__PURE__ */ new Map();
+  return {
+    memberDependencyNames: new Set(memberEdges.keys()),
+    memberReach: reachFrom(graph, [member]),
+    restReach: reachFrom(graph, rest),
+    snapshotIds: [...graph.snapshots.keys()]
+  };
+};
+var memberOnlyPrune = ({ memberReach, restReach }) => new Set([...memberReach].filter((id) => !restReach.has(id)));
+var planPrune = (graph, droppedSnapshots) => {
+  const survivingBases = new Set(
+    [...graph.snapshots.keys()].filter((id) => !droppedSnapshots.has(id)).map((id) => packageBase(id))
+  );
+  const packages = new Set(
+    [...droppedSnapshots].map((id) => packageBase(id)).filter((base) => graph.packageIds.has(base) && !survivingBases.has(base))
+  );
+  return {
+    packages,
+    snapshots: new Set(
+      [...droppedSnapshots].filter((id) => graph.snapshots.has(id))
+    )
+  };
+};
+var alphabetical = (left, right) => left.localeCompare(right);
+var sortedStrings = (values) => {
+  const copy = [...values];
+  return copy.toSorted(alphabetical);
+};
+var parseEntryKey = (line, index) => {
+  let parsed;
+  try {
+    parsed = load(line.trim(), { schema: FAILSAFE_SCHEMA });
+  } catch {
+    parsed = void 0;
+  }
+  const keys = isRecord(parsed) ? Object.keys(parsed) : [];
+  return keys.length === 1 ? keys[0] : refuse2(
+    "lockfile",
+    "unparseable",
+    `line ${index + 1} of the dependency document is not a single entry key`
+  );
+};
+var assertSpansMatchDocument = (spans, document) => {
+  for (const name of ENTRY_SECTIONS) {
+    const located = spans.get(name) ?? /* @__PURE__ */ new Map();
+    const parsed = Object.keys(sectionOf(document, name));
+    if (located.size !== parsed.length || !parsed.every((key) => located.has(key))) {
+      refuse2(
+        "lockfile",
+        "unparseable",
+        `the line locator found ${located.size} ${name} entries where the parsed document has ${parsed.length}`
+      );
+    }
+  }
+};
+var locateEntries = (lines, document) => {
+  const spans = new Map(
+    ENTRY_SECTIONS.map((section2) => [section2, /* @__PURE__ */ new Map()])
+  );
+  let section = null;
+  let current = null;
+  for (const [index, line] of lines.entries()) {
+    if (line !== "") {
+      if (TOP_LEVEL_LINE.test(line)) {
+        current = null;
+        section = line.slice(0, line.indexOf(":"));
+      } else if (ENTRY_LINE.test(line) && section !== null && spans.has(section)) {
+        const key = parseEntryKey(line, index);
+        const sectionSpans = spans.get(section);
+        if (sectionSpans.has(key) || lines[index - 1] !== "") {
+          refuse2(
+            "lockfile",
+            "unparseable",
+            `${section}.${key} at line ${index + 1} is duplicated or not preceded by a blank line`
+          );
+        }
+        current = { end: index, key, section, start: index };
+        sectionSpans.set(key, current);
+      } else if (current !== null) {
+        current.end = index;
+      }
+    }
+  }
+  assertSpansMatchDocument(spans, document);
+  return spans;
+};
+var removeEntries = (dependencyDocument, document, removals) => {
+  const lines = dependencyDocument.split("\n");
+  const spans = locateEntries(lines, document);
+  const dropped = /* @__PURE__ */ new Set();
+  for (const [section, keys] of removals) {
+    const sectionSpans = spans.get(section);
+    if (keys.size > 0 && keys.size >= sectionSpans.size) {
+      refuse2(
+        "lockfile",
+        "unparseable",
+        `removing every ${section} entry leaves a shape this line edit cannot write`
+      );
+    }
+    for (const key of keys) {
+      const span = sectionSpans.get(key);
+      for (let index = span.start - 1; index <= span.end; index += 1) {
+        dropped.add(index);
+      }
+    }
+  }
+  return lines.filter((_, index) => !dropped.has(index)).join("\n");
+};
+var readWorkspacePackages = (workspace) => {
+  let parsed;
+  try {
+    parsed = load(workspace);
+  } catch (error51) {
+    return refuse2("workspace", "unparseable", messageOf(error51));
+  }
+  const packages = isRecord(parsed) ? parsed.packages : void 0;
+  if (packages === void 0 || packages === null) return [];
+  if (!Array.isArray(packages) || !packages.every((item) => typeof item === "string")) {
+    return refuse2(
+      "workspace",
+      "unparseable",
+      "packages is not a list of strings"
+    );
+  }
+  return packages;
+};
+var parseItemValue = (text) => {
+  try {
+    return load(text, { schema: FAILSAFE_SCHEMA });
+  } catch {
+    return void 0;
+  }
+};
+var removeWorkspaceMember = (workspace, member) => {
+  const lines = workspace.split("\n");
+  const headers = lines.flatMap(
+    (line, index) => WORKSPACE_PACKAGES_HEADER.test(line) ? [index] : []
+  );
+  const [header] = headers;
+  if (headers.length !== 1 || header === void 0) {
+    return refuse2(
+      "workspace",
+      "unparseable",
+      "no single block-style packages key to edit"
+    );
+  }
+  const matches = [];
+  for (let index = header + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (WORKSPACE_BLOCK_END.test(line)) break;
+    const item = line.trimStart();
+    if (item.startsWith(WORKSPACE_ITEM_MARKER) && parseItemValue(item.slice(WORKSPACE_ITEM_MARKER.length)) === member) {
+      matches.push(index);
+    }
+  }
+  if (matches.length !== 1) {
+    return refuse2(
+      "workspace",
+      "unparseable",
+      `found ${matches.length} packages item lines for ${member}, expected exactly one`
+    );
+  }
+  return lines.filter((_, index) => index !== matches[0]).join("\n");
+};
+var toRefused = (error51) => {
+  if (error51 instanceof StripRefusal) {
+    return {
+      detail: error51.detail,
+      file: error51.file,
+      kind: "refused",
+      token: error51.token
+    };
+  }
+  return {
+    detail: messageOf(error51),
+    file: "lockfile",
+    kind: "refused",
+    token: "unparseable"
+  };
+};
+var stripWith = (input, policy) => {
+  const split = splitLockfile(input.lockfile);
+  assertLockfileVersions(split);
+  const document = parseDocument(
+    split.dependencyDocument,
+    "document 2 (dependencies)",
+    FAILSAFE_SCHEMA
+  );
+  const listed = readWorkspacePackages(input.workspace).filter(
+    (item) => item === input.member
+  );
+  const graph = buildGraph(document);
+  const hasImporter = graph.importers.has(input.member);
+  if (listed.length > 1) {
+    refuse2("workspace", "unparseable", `packages lists ${input.member} twice`);
+  }
+  if (listed.length === 0 && !hasImporter) return { kind: "noop" };
+  if (!hasImporter) {
+    refuse2(
+      "workspace",
+      "member-without-importer",
+      `packages lists ${input.member} but the lockfile has no importers entry for it`
+    );
+  }
+  if (listed.length === 0) {
+    refuse2(
+      "lockfile",
+      "importer-without-member",
+      `importers has an entry for ${input.member} but the workspace packages list does not name it`
+    );
+  }
+  const plan = planPrune(graph, policy(pruneView(graph, input.member)));
+  const dependencyDocument = removeEntries(
+    split.dependencyDocument,
+    document,
+    /* @__PURE__ */ new Map([
+      ["importers", /* @__PURE__ */ new Set([input.member])],
+      ["packages", plan.packages],
+      ["snapshots", plan.snapshots]
+    ])
+  );
+  return {
+    kind: "stripped",
+    lockfile: `${split.prefix}${dependencyDocument}`,
+    removed: {
+      importers: [input.member],
+      packages: sortedStrings(plan.packages),
+      snapshots: sortedStrings(plan.snapshots)
+    },
+    workspace: removeWorkspaceMember(input.workspace, input.member)
+  };
+};
+var stripPnpmMemberUnchecked = (input, policy) => {
+  try {
+    return stripWith(input, policy);
+  } catch (error51) {
+    return toRefused(error51);
+  }
+};
+var parseDependencyDocument = (lockfile) => buildGraph(
+  parseDocument(
+    splitLockfile(lockfile).dependencyDocument,
+    "document 2 (dependencies)",
+    FAILSAFE_SCHEMA
+  )
+);
+var memberOnlyKeys = (graph, member) => graph.importers.has(member) ? planPrune(graph, memberOnlyPrune(pruneView(graph, member))) : { packages: /* @__PURE__ */ new Set(), snapshots: /* @__PURE__ */ new Set() };
+var findMemberOnlyLeftovers = ({
+  after,
+  before,
+  member
+}) => {
+  const beforeGraph = parseDependencyDocument(before);
+  const afterGraph = parseDependencyDocument(after);
+  const memberOnly = memberOnlyKeys(beforeGraph, member);
+  return sortedStrings([
+    ...afterGraph.importers.has(member) ? [`importers[${member}]`] : [],
+    ...[...memberOnly.packages].filter((key) => afterGraph.packageIds.has(key)).map((key) => `packages[${key}]`),
+    ...[...memberOnly.snapshots].filter((key) => afterGraph.snapshots.has(key)).map((key) => `snapshots[${key}]`)
+  ]);
+};
+var danglingReferences = (graph) => {
+  const dangling = /* @__PURE__ */ new Set();
+  const owners = [
+    ...[...graph.importers].map(
+      ([key, edges]) => [
+        `importers.${key}`,
+        edges
+      ]
+    ),
+    ...[...graph.snapshots].map(
+      ([key, edges]) => [
+        `snapshots.${key}`,
+        edges
+      ]
+    )
+  ];
+  for (const [owner, edges] of owners) {
+    for (const target of edgeTargets(edges)) {
+      if (!graph.snapshots.has(target)) dangling.add(`${owner} -> ${target}`);
+    }
+  }
+  return dangling;
+};
+var snapshotsWithoutPackage = (graph) => new Set(
+  [...graph.snapshots.keys()].filter(
+    (id) => !graph.packageIds.has(packageBase(id))
+  )
+);
+var packagesWithoutSnapshot = (graph) => {
+  const bases = new Set(
+    [...graph.snapshots.keys()].map((id) => packageBase(id))
+  );
+  return new Set([...graph.packageIds].filter((key) => !bases.has(key)));
+};
+var newIn = (after, before) => sortedStrings([...after].filter((item) => !before.has(item)));
+var integrityProblems = (beforeGraph, afterGraph) => [
+  ...newIn(danglingReferences(afterGraph), danglingReferences(beforeGraph)).map(
+    (reference) => `dangling reference ${reference}`
+  ),
+  ...newIn(
+    snapshotsWithoutPackage(afterGraph),
+    snapshotsWithoutPackage(beforeGraph)
+  ).map((id) => `snapshots[${id}] has no packages entry`),
+  ...newIn(
+    packagesWithoutSnapshot(afterGraph),
+    packagesWithoutSnapshot(beforeGraph)
+  ).map((key) => `packages[${key}] has no snapshot`)
+];
+var checkWorkspace = (input, workspace) => {
+  const expected = readWorkspacePackages(input.workspace).filter(
+    (item) => item !== input.member
+  );
+  const actual = readWorkspacePackages(workspace);
+  if (actual.join("\n") !== expected.join("\n")) {
+    refuse2(
+      "workspace",
+      "integrity",
+      `packages is [${actual.join(", ")}], expected [${expected.join(", ")}]`
+    );
+  }
+};
+var checkPair = (input, stripped) => {
+  checkWorkspace(input, stripped.workspace);
+  if (splitLockfile(stripped.lockfile).prefix !== splitLockfile(input.lockfile).prefix) {
+    refuse2(
+      "lockfile",
+      "integrity",
+      "document 1 (packageManagerDependencies) changed"
+    );
+  }
+  const leftovers = findMemberOnlyLeftovers({
+    after: stripped.lockfile,
+    before: input.lockfile,
+    member: input.member
+  });
+  if (leftovers.length > 0) {
+    refuse2("lockfile", "cli-only-key-survives", leftovers.join(", "));
+  }
+  const problems = integrityProblems(
+    parseDependencyDocument(input.lockfile),
+    parseDependencyDocument(stripped.lockfile)
+  );
+  if (problems.length > 0) refuse2("lockfile", "integrity", problems.join("; "));
+};
+var checkStrippedPair = (input, stripped) => {
+  try {
+    checkPair(input, stripped);
+    return null;
+  } catch (error51) {
+    return toRefused(error51);
+  }
+};
+var stripPnpmMember = (input) => {
+  const outcome = stripPnpmMemberUnchecked(input, memberOnlyPrune);
+  if (outcome.kind !== "stripped") return outcome;
+  return checkStrippedPair(input, outcome) ?? outcome;
+};
+
 // src/release/scrub.ts
 var HELP_TEXT12 = `Usage: gaia-maintainer release scrub <staging-dir> [--config <path>] [--json]
 
-  Apply bundle-time scrub transforms (marker-strip + leak-check) to a
-  staging directory produced by release.yml. Writes in place inside
-  <staging-dir>; treats the source repo as read-only.
+  Apply the bundle-time scrub transforms in .gaia/release-scrub.yml (marker,
+  JSON and pnpm workspace-member strips, then leak checks) to a staging
+  directory produced by release.yml. Writes in place inside <staging-dir>;
+  treats the source repo as read-only.
 
   Flags:
     --config <path>  Override config path (default: .gaia/release-scrub.yml
@@ -21146,7 +21690,8 @@ var HELP_TEXT12 = `Usage: gaia-maintainer release scrub <staging-dir> [--config 
 
   Exit codes:
     0  clean
-    1  leaks detected, unbalanced markers, missing staging dir, bad flags
+    1  leaks detected, unbalanced markers, refused pnpm member strip,
+       missing staging dir, bad flags
     2  config parse error or filesystem IO failure
 `;
 var HELP_TOKENS12 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
@@ -21229,6 +21774,12 @@ var JsonFieldRewriteSchema = external_exports.object({
   ).min(1),
   type: external_exports.literal("json-field-rewrite")
 });
+var PnpmMemberStripSchema = external_exports.strictObject({
+  lockfile: external_exports.string().min(1),
+  member: external_exports.string().min(1),
+  type: external_exports.literal("pnpm-member-strip"),
+  workspace: external_exports.string().min(1)
+});
 var ConfigSchema = external_exports.object({
   transforms: external_exports.array(
     external_exports.union([
@@ -21236,6 +21787,7 @@ var ConfigSchema = external_exports.object({
       JsonStripSchema,
       JsonStripArrayElementSchema,
       JsonFieldRewriteSchema,
+      PnpmMemberStripSchema,
       LeakCheckSchema
     ])
   ).min(1)
@@ -21513,6 +22065,62 @@ var applyJsonFieldRewrite = (stagingRoot, files, transform2) => {
     }
   }
   return { fieldsRewritten, filesTouched };
+};
+var NOTHING_STRIPPED = {
+  filesTouched: [],
+  importersRemoved: 0,
+  packagesRemoved: 0,
+  refusal: null,
+  snapshotsRemoved: 0
+};
+var applyPnpmMemberStrip = (stagingRoot, transform2, strip) => {
+  const paths = {
+    lockfile: path16.join(stagingRoot, transform2.lockfile),
+    workspace: path16.join(stagingRoot, transform2.workspace)
+  };
+  const present = {
+    lockfile: existsSync11(paths.lockfile),
+    workspace: existsSync11(paths.workspace)
+  };
+  if (!present.lockfile && !present.workspace) return NOTHING_STRIPPED;
+  if (!present.lockfile || !present.workspace) {
+    const missing = present.lockfile ? "workspace" : "lockfile";
+    return {
+      ...NOTHING_STRIPPED,
+      refusal: {
+        detail: "staged without its pnpm counterpart file",
+        file: paths[missing],
+        token: "unparseable"
+      }
+    };
+  }
+  const input = {
+    lockfile: readFileSync15(paths.lockfile, "utf8"),
+    member: transform2.member,
+    workspace: readFileSync15(paths.workspace, "utf8")
+  };
+  const stripped = strip(input);
+  const outcome = stripped.kind === "stripped" ? checkStrippedPair(input, stripped) ?? stripped : stripped;
+  if (outcome.kind === "noop") return NOTHING_STRIPPED;
+  if (outcome.kind === "refused") {
+    return {
+      ...NOTHING_STRIPPED,
+      refusal: {
+        detail: outcome.detail,
+        file: paths[outcome.file],
+        token: outcome.token
+      }
+    };
+  }
+  atomicWriteFileSync(paths.workspace, outcome.workspace);
+  atomicWriteFileSync(paths.lockfile, outcome.lockfile);
+  return {
+    filesTouched: [transform2.workspace, transform2.lockfile],
+    importersRemoved: outcome.removed.importers.length,
+    packagesRemoved: outcome.removed.packages.length,
+    refusal: null,
+    snapshotsRemoved: outcome.removed.snapshots.length
+  };
 };
 var trackLineAllowlist = (check2) => {
   const entries = (check2["line-allowlist"] ?? []).map(
@@ -21814,7 +22422,8 @@ var renderHumanReport = (report, jsonMode) => {
     `release scrub: stripped ${report.marker_strip.blocks_stripped} marker block(s) across ${report.marker_strip.files_touched.length} file(s)`,
     `release scrub: removed ${report.json_strip.keys_removed} json key(s) from ${report.json_strip.files_touched.length} file(s)`,
     `release scrub: removed ${report.json_strip_array_element.elements_removed} json array element(s) from ${report.json_strip_array_element.files_touched.length} file(s)`,
-    `release scrub: rewrote ${report.json_field_rewrite.fields_rewritten} json field(s) in ${report.json_field_rewrite.files_touched.length} file(s)`
+    `release scrub: rewrote ${report.json_field_rewrite.fields_rewritten} json field(s) in ${report.json_field_rewrite.files_touched.length} file(s)`,
+    `release scrub: removed ${report.pnpm_member_strip.importers_removed} pnpm importer(s), ${report.pnpm_member_strip.packages_removed} package(s), ${report.pnpm_member_strip.snapshots_removed} snapshot(s)`
   ];
   if (report.unbalanced_markers.length > 0) {
     out.push("", `unbalanced markers (${report.unbalanced_markers.length}):`);
@@ -21924,12 +22533,18 @@ var runTransforms = (config2, ctx) => {
     jsonStripFiles: [],
     jsonStripKeysRemoved: 0,
     leaks: [],
+    pnpmFiles: [],
+    pnpmImportersRemoved: 0,
+    pnpmPackagesRemoved: 0,
+    pnpmRefusal: null,
+    pnpmSnapshotsRemoved: 0,
     stripBlocks: 0,
     stripFiles: [],
     unbalanced: [],
     warnings: []
   };
   for (const transform2 of config2.transforms) {
+    if (results.pnpmRefusal !== null) break;
     if (transform2.type === "marker-strip") {
       const result = applyMarkerStrip(
         ctx.stagingDir,
@@ -21959,6 +22574,17 @@ var runTransforms = (config2, ctx) => {
       );
       results.jsonFieldsRewritten += result.fieldsRewritten;
       results.jsonFieldRewriteFiles.push(...result.filesTouched);
+    } else if (transform2.type === "pnpm-member-strip") {
+      const result = applyPnpmMemberStrip(
+        ctx.stagingDir,
+        transform2,
+        ctx.stripPnpmMember
+      );
+      results.pnpmFiles.push(...result.filesTouched);
+      results.pnpmImportersRemoved += result.importersRemoved;
+      results.pnpmPackagesRemoved += result.packagesRemoved;
+      results.pnpmSnapshotsRemoved += result.snapshotsRemoved;
+      results.pnpmRefusal = result.refusal;
     } else {
       const result = runLeakChecksForTransform(transform2, ctx);
       results.leaks.push(...result.leaks);
@@ -22020,9 +22646,22 @@ var run12 = (argv, options = {}) => {
   const results = tryRunTransformsOrReport(config2, {
     cwd,
     stagedFiles,
-    stagingDir
+    stagingDir,
+    stripPnpmMember: options.stripPnpmMember ?? stripPnpmMember
   });
   if (results === null) return UNEXPECTED_EXIT9;
+  if (results.pnpmRefusal !== null) {
+    const { detail, file: file2, token } = results.pnpmRefusal;
+    structuredError({
+      code: "pnpm_member_strip_refused",
+      detail,
+      file: file2,
+      message: `pnpm-member-strip refused ${file2} (${token}): ${detail}; neither pnpm file was written`,
+      subcommand: "release scrub",
+      token
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
   const report = {
     json_field_rewrite: {
       fields_rewritten: results.jsonFieldsRewritten,
@@ -22040,6 +22679,12 @@ var run12 = (argv, options = {}) => {
     marker_strip: {
       blocks_stripped: results.stripBlocks,
       files_touched: results.stripFiles
+    },
+    pnpm_member_strip: {
+      files_touched: results.pnpmFiles,
+      importers_removed: results.pnpmImportersRemoved,
+      packages_removed: results.pnpmPackagesRemoved,
+      snapshots_removed: results.pnpmSnapshotsRemoved
     },
     unbalanced_markers: results.unbalanced,
     unused_allowlist: results.warnings

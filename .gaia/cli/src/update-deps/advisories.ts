@@ -47,6 +47,7 @@ import type {GhRunner, OriginReader} from './advisory-sources.js';
 import {isRangeString, toSemverRange} from './advisory-validate.js';
 import {fetchVersionTimes, readMinimumReleaseAge} from './run.js';
 import type {PnpmRunner} from './run.js';
+import {readCliWorkspaceMember} from './workspace-member.js';
 
 const HELP_TEXT = `Usage: gaia update-deps advisories --emit <path> [--count-only] [--updates <path>] [--no-alerts]
 
@@ -208,9 +209,10 @@ const readBaselineIds = (repoRoot: string): ReadonlySet<number> => {
 };
 
 /**
- * Whether /update-deps owns a manifest: the root manifests, or a path matching
- * a registered package's `dependencyManifests` globs. The CLI's own lockfile
- * tree is never owned, even if a future glob would match it.
+ * Whether /update-deps owns a manifest: the root manifests, a path matching a
+ * registered package's `dependencyManifests` globs, or the package manifest of
+ * the CLI workspace member when the root workspace lists one. An adopter tree
+ * has no such member, so the last rule is inert there.
  */
 const ownedManifestPredicate = (
   repoRoot: string
@@ -218,11 +220,16 @@ const ownedManifestPredicate = (
   const loaded = loadPackages(repoRoot);
   const patterns =
     loaded.ok ? repoRegExps(loaded.packages, 'dependencyManifests') : [];
+  const member = readCliWorkspaceMember(repoRoot);
+  // Joined, never spelled whole: the adopter bundle is scanned for the literal
+  // path of a release-excluded file.
+  const memberManifest =
+    member === null ? null : path.posix.join(member, 'package.json');
 
   return (manifestPath) =>
-    !manifestPath.startsWith('.gaia/cli/') &&
-    (ALWAYS_OWNED_MANIFESTS.has(manifestPath) ||
-      patterns.some((pattern) => pattern.test(manifestPath)));
+    ALWAYS_OWNED_MANIFESTS.has(manifestPath) ||
+    manifestPath === memberManifest ||
+    patterns.some((pattern) => pattern.test(manifestPath));
 };
 
 type AlertsOutcome =

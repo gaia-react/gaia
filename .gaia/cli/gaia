@@ -34,9 +34,9 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   mod
 ));
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/internal/constants.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/internal/constants.js
 var require_constants = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/internal/constants.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/internal/constants.js"(exports, module) {
     "use strict";
     var SEMVER_SPEC_VERSION = "2.0.0";
     var MAX_LENGTH = 256;
@@ -66,9 +66,9 @@ var require_constants = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/internal/debug.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/internal/debug.js
 var require_debug = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/internal/debug.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/internal/debug.js"(exports, module) {
     "use strict";
     var debug = typeof process === "object" && process.env && process.env.NODE_DEBUG && /\bsemver\b/i.test(process.env.NODE_DEBUG) ? (...args) => console.error("SEMVER", ...args) : () => {
     };
@@ -76,9 +76,9 @@ var require_debug = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/internal/re.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/internal/re.js
 var require_re = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/internal/re.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/internal/re.js"(exports, module) {
     "use strict";
     var {
       MAX_SAFE_COMPONENT_LENGTH,
@@ -164,9 +164,9 @@ var require_re = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/internal/parse-options.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/internal/parse-options.js
 var require_parse_options = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/internal/parse-options.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/internal/parse-options.js"(exports, module) {
     "use strict";
     var looseOption = Object.freeze({ loose: true });
     var emptyOpts = Object.freeze({});
@@ -183,9 +183,9 @@ var require_parse_options = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/internal/identifiers.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/internal/identifiers.js
 var require_identifiers = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/internal/identifiers.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/internal/identifiers.js"(exports, module) {
     "use strict";
     var numeric = /^[0-9]+$/;
     var compareIdentifiers = (a, b) => {
@@ -208,9 +208,9 @@ var require_identifiers = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/classes/semver.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/classes/semver.js
 var require_semver = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/classes/semver.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/classes/semver.js"(exports, module) {
     "use strict";
     var debug = require_debug();
     var { MAX_LENGTH, MAX_SAFE_INTEGER } = require_constants();
@@ -500,9 +500,9 @@ var require_semver = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/parse.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/parse.js
 var require_parse = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/parse.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/parse.js"(exports, module) {
     "use strict";
     var SemVer = require_semver();
     var parse3 = (version2, options, throwErrors = false) => {
@@ -522,9 +522,9 @@ var require_parse = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/valid.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/valid.js
 var require_valid = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/valid.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/valid.js"(exports, module) {
     "use strict";
     var parse3 = require_parse();
     var valid = (version2, options) => {
@@ -535,9 +535,9 @@ var require_valid = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/clean.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/clean.js
 var require_clean = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/clean.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/clean.js"(exports, module) {
     "use strict";
     var parse3 = require_parse();
     var clean = (version2, options) => {
@@ -548,9 +548,9 @@ var require_clean = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/inc.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/inc.js
 var require_inc = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/inc.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/inc.js"(exports, module) {
     "use strict";
     var SemVer = require_semver();
     var inc = (version2, release, options, identifier, identifierBase) => {
@@ -572,9 +572,9 @@ var require_inc = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/diff.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/diff.js
 var require_diff = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/diff.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/diff.js"(exports, module) {
     "use strict";
     var parse3 = require_parse();
     var diff = (version1, version2) => {
@@ -616,9 +616,9 @@ var require_diff = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/major.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/major.js
 var require_major = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/major.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/major.js"(exports, module) {
     "use strict";
     var SemVer = require_semver();
     var major = (a, loose) => new SemVer(a, loose).major;
@@ -626,9 +626,9 @@ var require_major = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/minor.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/minor.js
 var require_minor = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/minor.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/minor.js"(exports, module) {
     "use strict";
     var SemVer = require_semver();
     var minor = (a, loose) => new SemVer(a, loose).minor;
@@ -636,9 +636,9 @@ var require_minor = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/patch.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/patch.js
 var require_patch = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/patch.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/patch.js"(exports, module) {
     "use strict";
     var SemVer = require_semver();
     var patch = (a, loose) => new SemVer(a, loose).patch;
@@ -646,9 +646,9 @@ var require_patch = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/prerelease.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/prerelease.js
 var require_prerelease = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/prerelease.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/prerelease.js"(exports, module) {
     "use strict";
     var parse3 = require_parse();
     var prerelease = (version2, options) => {
@@ -659,9 +659,9 @@ var require_prerelease = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/compare.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/compare.js
 var require_compare = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/compare.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/compare.js"(exports, module) {
     "use strict";
     var SemVer = require_semver();
     var compare = (a, b, loose) => new SemVer(a, loose).compare(new SemVer(b, loose));
@@ -669,9 +669,9 @@ var require_compare = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/rcompare.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/rcompare.js
 var require_rcompare = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/rcompare.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/rcompare.js"(exports, module) {
     "use strict";
     var compare = require_compare();
     var rcompare = (a, b, loose) => compare(b, a, loose);
@@ -679,9 +679,9 @@ var require_rcompare = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/compare-loose.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/compare-loose.js
 var require_compare_loose = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/compare-loose.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/compare-loose.js"(exports, module) {
     "use strict";
     var compare = require_compare();
     var compareLoose = (a, b) => compare(a, b, true);
@@ -689,9 +689,9 @@ var require_compare_loose = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/compare-build.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/compare-build.js
 var require_compare_build = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/compare-build.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/compare-build.js"(exports, module) {
     "use strict";
     var SemVer = require_semver();
     var compareBuild = (a, b, loose) => {
@@ -703,9 +703,9 @@ var require_compare_build = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/sort.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/sort.js
 var require_sort = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/sort.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/sort.js"(exports, module) {
     "use strict";
     var compareBuild = require_compare_build();
     var sort = (list, loose) => list.sort((a, b) => compareBuild(a, b, loose));
@@ -713,9 +713,9 @@ var require_sort = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/rsort.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/rsort.js
 var require_rsort = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/rsort.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/rsort.js"(exports, module) {
     "use strict";
     var compareBuild = require_compare_build();
     var rsort = (list, loose) => list.sort((a, b) => compareBuild(b, a, loose));
@@ -723,9 +723,9 @@ var require_rsort = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/gt.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/gt.js
 var require_gt = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/gt.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/gt.js"(exports, module) {
     "use strict";
     var compare = require_compare();
     var gt = (a, b, loose) => compare(a, b, loose) > 0;
@@ -733,9 +733,9 @@ var require_gt = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/lt.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/lt.js
 var require_lt = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/lt.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/lt.js"(exports, module) {
     "use strict";
     var compare = require_compare();
     var lt = (a, b, loose) => compare(a, b, loose) < 0;
@@ -743,9 +743,9 @@ var require_lt = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/eq.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/eq.js
 var require_eq = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/eq.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/eq.js"(exports, module) {
     "use strict";
     var compare = require_compare();
     var eq = (a, b, loose) => compare(a, b, loose) === 0;
@@ -753,9 +753,9 @@ var require_eq = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/neq.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/neq.js
 var require_neq = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/neq.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/neq.js"(exports, module) {
     "use strict";
     var compare = require_compare();
     var neq = (a, b, loose) => compare(a, b, loose) !== 0;
@@ -763,9 +763,9 @@ var require_neq = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/gte.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/gte.js
 var require_gte = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/gte.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/gte.js"(exports, module) {
     "use strict";
     var compare = require_compare();
     var gte = (a, b, loose) => compare(a, b, loose) >= 0;
@@ -773,9 +773,9 @@ var require_gte = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/lte.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/lte.js
 var require_lte = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/lte.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/lte.js"(exports, module) {
     "use strict";
     var compare = require_compare();
     var lte = (a, b, loose) => compare(a, b, loose) <= 0;
@@ -783,9 +783,9 @@ var require_lte = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/cmp.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/cmp.js
 var require_cmp = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/cmp.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/cmp.js"(exports, module) {
     "use strict";
     var eq = require_eq();
     var neq = require_neq();
@@ -833,9 +833,9 @@ var require_cmp = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/coerce.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/coerce.js
 var require_coerce = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/coerce.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/coerce.js"(exports, module) {
     "use strict";
     var SemVer = require_semver();
     var parse3 = require_parse();
@@ -879,9 +879,9 @@ var require_coerce = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/truncate.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/truncate.js
 var require_truncate = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/truncate.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/truncate.js"(exports, module) {
     "use strict";
     var parse3 = require_parse();
     var constants = require_constants();
@@ -920,9 +920,9 @@ var require_truncate = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/internal/lrucache.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/internal/lrucache.js
 var require_lrucache = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/internal/lrucache.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/internal/lrucache.js"(exports, module) {
     "use strict";
     var LRUCache = class {
       constructor() {
@@ -958,9 +958,9 @@ var require_lrucache = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/classes/range.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/classes/range.js
 var require_range = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/classes/range.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/classes/range.js"(exports, module) {
     "use strict";
     var SPACE_CHARACTERS = /\s+/g;
     var Range = class _Range {
@@ -1343,9 +1343,9 @@ var require_range = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/classes/comparator.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/classes/comparator.js
 var require_comparator = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/classes/comparator.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/classes/comparator.js"(exports, module) {
     "use strict";
     var ANY = /* @__PURE__ */ Symbol("SemVer ANY");
     var Comparator = class _Comparator {
@@ -1456,9 +1456,9 @@ var require_comparator = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/satisfies.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/satisfies.js
 var require_satisfies = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/satisfies.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/satisfies.js"(exports, module) {
     "use strict";
     var Range = require_range();
     var satisfies = (version2, range, options) => {
@@ -1473,9 +1473,9 @@ var require_satisfies = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/to-comparators.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/to-comparators.js
 var require_to_comparators = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/to-comparators.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/to-comparators.js"(exports, module) {
     "use strict";
     var Range = require_range();
     var toComparators = (range, options) => new Range(range, options).set.map((comp) => comp.map((c) => c.value).join(" ").trim().split(" "));
@@ -1483,9 +1483,9 @@ var require_to_comparators = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/max-satisfying.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/max-satisfying.js
 var require_max_satisfying = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/max-satisfying.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/max-satisfying.js"(exports, module) {
     "use strict";
     var SemVer = require_semver();
     var Range = require_range();
@@ -1512,9 +1512,9 @@ var require_max_satisfying = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/min-satisfying.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/min-satisfying.js
 var require_min_satisfying = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/min-satisfying.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/min-satisfying.js"(exports, module) {
     "use strict";
     var SemVer = require_semver();
     var Range = require_range();
@@ -1541,9 +1541,9 @@ var require_min_satisfying = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/min-version.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/min-version.js
 var require_min_version = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/min-version.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/min-version.js"(exports, module) {
     "use strict";
     var SemVer = require_semver();
     var Range = require_range();
@@ -1600,9 +1600,9 @@ var require_min_version = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/valid.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/valid.js
 var require_valid2 = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/valid.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/valid.js"(exports, module) {
     "use strict";
     var Range = require_range();
     var validRange = (range, options) => {
@@ -1616,9 +1616,9 @@ var require_valid2 = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/outside.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/outside.js
 var require_outside = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/outside.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/outside.js"(exports, module) {
     "use strict";
     var SemVer = require_semver();
     var Comparator = require_comparator();
@@ -1685,9 +1685,9 @@ var require_outside = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/gtr.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/gtr.js
 var require_gtr = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/gtr.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/gtr.js"(exports, module) {
     "use strict";
     var outside = require_outside();
     var gtr = (version2, range, options) => outside(version2, range, ">", options);
@@ -1695,9 +1695,9 @@ var require_gtr = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/ltr.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/ltr.js
 var require_ltr = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/ltr.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/ltr.js"(exports, module) {
     "use strict";
     var outside = require_outside();
     var ltr = (version2, range, options) => outside(version2, range, "<", options);
@@ -1705,9 +1705,9 @@ var require_ltr = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/intersects.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/intersects.js
 var require_intersects = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/intersects.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/intersects.js"(exports, module) {
     "use strict";
     var Range = require_range();
     var intersects = (r1, r2, options) => {
@@ -1719,9 +1719,9 @@ var require_intersects = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/simplify.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/simplify.js
 var require_simplify = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/simplify.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/simplify.js"(exports, module) {
     "use strict";
     var satisfies = require_satisfies();
     var compare = require_compare();
@@ -1769,9 +1769,9 @@ var require_simplify = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/subset.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/subset.js
 var require_subset = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/subset.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/subset.js"(exports, module) {
     "use strict";
     var Range = require_range();
     var Comparator = require_comparator();
@@ -1931,9 +1931,9 @@ var require_subset = __commonJS({
   }
 });
 
-// node_modules/.pnpm/semver@7.8.5/node_modules/semver/index.js
+// ../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/index.js
 var require_semver2 = __commonJS({
-  "node_modules/.pnpm/semver@7.8.5/node_modules/semver/index.js"(exports, module) {
+  "../../node_modules/.pnpm/semver@7.8.5/node_modules/semver/index.js"(exports, module) {
     "use strict";
     var internalRe = require_re();
     var constants = require_constants();
@@ -2059,7 +2059,7 @@ var takeNonFlagValue = (argv, index, flag) => {
   return { ok: true, value };
 };
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/external.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/external.js
 var external_exports = {};
 __export(external_exports, {
   $brand: () => $brand,
@@ -2302,7 +2302,7 @@ __export(external_exports, {
   xor: () => xor
 });
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/index.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/index.js
 var core_exports2 = {};
 __export(core_exports2, {
   $ZodAny: () => $ZodAny,
@@ -2581,7 +2581,7 @@ __export(core_exports2, {
   version: () => version
 });
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/core.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/core.js
 var _a;
 var NEVER = /* @__PURE__ */ Object.freeze({
   status: "aborted"
@@ -2658,7 +2658,7 @@ function config(newConfig) {
   return globalConfig;
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/util.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/util.js
 var util_exports = {};
 __export(util_exports, {
   BIGINT_FORMAT_RANGES: () => BIGINT_FORMAT_RANGES,
@@ -2825,10 +2825,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema2) {
   return mergeDefs(schema2._zod.def);
 }
-function getElementAtPath(obj, path66) {
-  if (!path66)
+function getElementAtPath(obj, path67) {
+  if (!path67)
     return obj;
-  return path66.reduce((acc, key) => acc?.[key], obj);
+  return path67.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -3237,11 +3237,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path66, issues) {
+function prefixIssues(path67, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path66);
+    iss.path.unshift(path67);
     return iss;
   });
 }
@@ -3354,7 +3354,7 @@ var Class = class {
   }
 };
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/errors.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/errors.js
 var initializer = (inst, def) => {
   inst.name = "$ZodError";
   Object.defineProperty(inst, "_zod", {
@@ -3388,16 +3388,16 @@ function flattenError(error51, mapper = (issue2) => issue2.message) {
 }
 function formatError(error51, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error52, path66 = []) => {
+  const processError = (error52, path67 = []) => {
     for (const issue2 of error52.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path66, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path67, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path66, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path67, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path66, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path67, ...issue2.path]);
       } else {
-        const fullpath = [...path66, ...issue2.path];
+        const fullpath = [...path67, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -3424,17 +3424,17 @@ function formatError(error51, mapper = (issue2) => issue2.message) {
 }
 function treeifyError(error51, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error52, path66 = []) => {
+  const processError = (error52, path67 = []) => {
     var _a3, _b;
     for (const issue2 of error52.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path66, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path67, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path66, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path67, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path66, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path67, ...issue2.path]);
       } else {
-        const fullpath = [...path66, ...issue2.path];
+        const fullpath = [...path67, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -3466,8 +3466,8 @@ function treeifyError(error51, mapper = (issue2) => issue2.message) {
 }
 function toDotPath(_path) {
   const segs = [];
-  const path66 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
-  for (const seg of path66) {
+  const path67 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path67) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -3493,7 +3493,7 @@ function prettifyError(error51) {
   return lines.join("\n");
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/parse.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/parse.js
 var _parse = (_Err) => (schema2, value, _ctx, _params) => {
   const ctx = _ctx ? { ..._ctx, async: false } : { async: false };
   const result = schema2._zod.run({ value, issues: [] }, ctx);
@@ -3581,7 +3581,7 @@ var _safeDecodeAsync = (_Err) => async (schema2, value, _ctx) => {
 };
 var safeDecodeAsync = /* @__PURE__ */ _safeDecodeAsync($ZodRealError);
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/regexes.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/regexes.js
 var regexes_exports = {};
 __export(regexes_exports, {
   base64: () => base64,
@@ -3740,7 +3740,7 @@ var sha512_hex = /^[0-9a-fA-F]{128}$/;
 var sha512_base64 = /* @__PURE__ */ fixedBase64(86, "==");
 var sha512_base64url = /* @__PURE__ */ fixedBase64url(86);
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/checks.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/checks.js
 var $ZodCheck = /* @__PURE__ */ $constructor("$ZodCheck", (inst, def) => {
   var _a3;
   inst._zod ?? (inst._zod = {});
@@ -4288,7 +4288,7 @@ var $ZodCheckOverwrite = /* @__PURE__ */ $constructor("$ZodCheckOverwrite", (ins
   };
 });
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/doc.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/doc.js
 var Doc = class {
   constructor(args = []) {
     this.content = [];
@@ -4324,14 +4324,14 @@ var Doc = class {
   }
 };
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/versions.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/versions.js
 var version = {
   major: 4,
   minor: 4,
   patch: 3
 };
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/schemas.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/schemas.js
 var $ZodType = /* @__PURE__ */ $constructor("$ZodType", (inst, def) => {
   var _a3;
   inst ?? (inst = {});
@@ -6424,7 +6424,7 @@ function handleRefineResult(result, payload, input, inst) {
   }
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/index.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/index.js
 var locales_exports = {};
 __export(locales_exports, {
   ar: () => ar_default,
@@ -6481,7 +6481,7 @@ __export(locales_exports, {
   zhTW: () => zh_TW_default
 });
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ar.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ar.js
 var error = () => {
   const Sizable = {
     string: { unit: "\u062D\u0631\u0641", verb: "\u0623\u0646 \u064A\u062D\u0648\u064A" },
@@ -6588,7 +6588,7 @@ function ar_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/az.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/az.js
 var error2 = () => {
   const Sizable = {
     string: { unit: "simvol", verb: "olmal\u0131d\u0131r" },
@@ -6694,7 +6694,7 @@ function az_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/be.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/be.js
 function getBelarusianPlural(count, one, few, many) {
   const absCount = Math.abs(count);
   const lastDigit = absCount % 10;
@@ -6851,7 +6851,7 @@ function be_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/bg.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/bg.js
 var error4 = () => {
   const Sizable = {
     string: { unit: "\u0441\u0438\u043C\u0432\u043E\u043B\u0430", verb: "\u0434\u0430 \u0441\u044A\u0434\u044A\u0440\u0436\u0430" },
@@ -6972,7 +6972,7 @@ function bg_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ca.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ca.js
 var error5 = () => {
   const Sizable = {
     string: { unit: "car\xE0cters", verb: "contenir" },
@@ -7081,7 +7081,7 @@ function ca_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/cs.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/cs.js
 var error6 = () => {
   const Sizable = {
     string: { unit: "znak\u016F", verb: "m\xEDt" },
@@ -7193,7 +7193,7 @@ function cs_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/da.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/da.js
 var error7 = () => {
   const Sizable = {
     string: { unit: "tegn", verb: "havde" },
@@ -7309,7 +7309,7 @@ function da_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/de.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/de.js
 var error8 = () => {
   const Sizable = {
     string: { unit: "Zeichen", verb: "zu haben" },
@@ -7418,7 +7418,7 @@ function de_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/el.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/el.js
 var error9 = () => {
   const Sizable = {
     string: { unit: "\u03C7\u03B1\u03C1\u03B1\u03BA\u03C4\u03AE\u03C1\u03B5\u03C2", verb: "\u03BD\u03B1 \u03AD\u03C7\u03B5\u03B9" },
@@ -7528,7 +7528,7 @@ function el_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/en.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/en.js
 var error10 = () => {
   const Sizable = {
     string: { unit: "characters", verb: "to have" },
@@ -7641,7 +7641,7 @@ function en_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/eo.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/eo.js
 var error11 = () => {
   const Sizable = {
     string: { unit: "karaktrojn", verb: "havi" },
@@ -7751,7 +7751,7 @@ function eo_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/es.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/es.js
 var error12 = () => {
   const Sizable = {
     string: { unit: "caracteres", verb: "tener" },
@@ -7884,7 +7884,7 @@ function es_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/fa.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/fa.js
 var error13 = () => {
   const Sizable = {
     string: { unit: "\u06A9\u0627\u0631\u0627\u06A9\u062A\u0631", verb: "\u062F\u0627\u0634\u062A\u0647 \u0628\u0627\u0634\u062F" },
@@ -7999,7 +7999,7 @@ function fa_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/fi.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/fi.js
 var error14 = () => {
   const Sizable = {
     string: { unit: "merkki\xE4", subject: "merkkijonon" },
@@ -8112,7 +8112,7 @@ function fi_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/fr.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/fr.js
 var error15 = () => {
   const Sizable = {
     string: { unit: "caract\xE8res", verb: "avoir" },
@@ -8238,7 +8238,7 @@ function fr_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/fr-CA.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/fr-CA.js
 var error16 = () => {
   const Sizable = {
     string: { unit: "caract\xE8res", verb: "avoir" },
@@ -8346,7 +8346,7 @@ function fr_CA_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/he.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/he.js
 var error17 = () => {
   const TypeNames = {
     string: { label: "\u05DE\u05D7\u05E8\u05D5\u05D6\u05EA", gender: "f" },
@@ -8541,7 +8541,7 @@ function he_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/hr.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/hr.js
 var error18 = () => {
   const Sizable = {
     string: { unit: "znakova", verb: "imati" },
@@ -8664,7 +8664,7 @@ function hr_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/hu.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/hu.js
 var error19 = () => {
   const Sizable = {
     string: { unit: "karakter", verb: "legyen" },
@@ -8773,7 +8773,7 @@ function hu_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/hy.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/hy.js
 function getArmenianPlural(count, one, many) {
   return Math.abs(count) === 1 ? one : many;
 }
@@ -8921,7 +8921,7 @@ function hy_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/id.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/id.js
 var error21 = () => {
   const Sizable = {
     string: { unit: "karakter", verb: "memiliki" },
@@ -9028,7 +9028,7 @@ function id_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/is.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/is.js
 var error22 = () => {
   const Sizable = {
     string: { unit: "stafi", verb: "a\xF0 hafa" },
@@ -9138,7 +9138,7 @@ function is_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/it.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/it.js
 var error23 = () => {
   const Sizable = {
     string: { unit: "caratteri", verb: "avere" },
@@ -9247,7 +9247,7 @@ function it_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ja.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ja.js
 var error24 = () => {
   const Sizable = {
     string: { unit: "\u6587\u5B57", verb: "\u3067\u3042\u308B" },
@@ -9355,7 +9355,7 @@ function ja_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ka.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ka.js
 var error25 = () => {
   const Sizable = {
     string: { unit: "\u10E1\u10D8\u10DB\u10D1\u10DD\u10DA\u10DD", verb: "\u10E3\u10DC\u10D3\u10D0 \u10E8\u10D4\u10D8\u10EA\u10D0\u10D5\u10D3\u10D4\u10E1" },
@@ -9468,7 +9468,7 @@ function ka_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/km.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/km.js
 var error26 = () => {
   const Sizable = {
     string: { unit: "\u178F\u17BD\u17A2\u1780\u17D2\u179F\u179A", verb: "\u1782\u17BD\u179A\u1798\u17B6\u1793" },
@@ -9579,12 +9579,12 @@ function km_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/kh.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/kh.js
 function kh_default() {
   return km_default();
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ko.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ko.js
 var error27 = () => {
   const Sizable = {
     string: { unit: "\uBB38\uC790", verb: "to have" },
@@ -9696,7 +9696,7 @@ function ko_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/lt.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/lt.js
 var capitalizeFirstCharacter = (text) => {
   return text.charAt(0).toUpperCase() + text.slice(1);
 };
@@ -9900,7 +9900,7 @@ function lt_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/mk.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/mk.js
 var error29 = () => {
   const Sizable = {
     string: { unit: "\u0437\u043D\u0430\u0446\u0438", verb: "\u0434\u0430 \u0438\u043C\u0430\u0430\u0442" },
@@ -10010,7 +10010,7 @@ function mk_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ms.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ms.js
 var error30 = () => {
   const Sizable = {
     string: { unit: "aksara", verb: "mempunyai" },
@@ -10118,7 +10118,7 @@ function ms_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/nl.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/nl.js
 var error31 = () => {
   const Sizable = {
     string: { unit: "tekens", verb: "heeft" },
@@ -10229,7 +10229,7 @@ function nl_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/no.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/no.js
 var error32 = () => {
   const Sizable = {
     string: { unit: "tegn", verb: "\xE5 ha" },
@@ -10338,7 +10338,7 @@ function no_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ota.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ota.js
 var error33 = () => {
   const Sizable = {
     string: { unit: "harf", verb: "olmal\u0131d\u0131r" },
@@ -10448,7 +10448,7 @@ function ota_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ps.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ps.js
 var error34 = () => {
   const Sizable = {
     string: { unit: "\u062A\u0648\u06A9\u064A", verb: "\u0648\u0644\u0631\u064A" },
@@ -10563,7 +10563,7 @@ function ps_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/pl.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/pl.js
 var error35 = () => {
   const Sizable = {
     string: { unit: "znak\xF3w", verb: "mie\u0107" },
@@ -10673,7 +10673,7 @@ function pl_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/pt.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/pt.js
 var error36 = () => {
   const Sizable = {
     string: { unit: "caracteres", verb: "ter" },
@@ -10782,7 +10782,7 @@ function pt_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ro.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ro.js
 var error37 = () => {
   const Sizable = {
     string: { unit: "caractere", verb: "s\u0103 aib\u0103" },
@@ -10902,7 +10902,7 @@ function ro_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ru.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ru.js
 function getRussianPlural(count, one, few, many) {
   const absCount = Math.abs(count);
   const lastDigit = absCount % 10;
@@ -11059,7 +11059,7 @@ function ru_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/sl.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/sl.js
 var error39 = () => {
   const Sizable = {
     string: { unit: "znakov", verb: "imeti" },
@@ -11169,7 +11169,7 @@ function sl_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/sv.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/sv.js
 var error40 = () => {
   const Sizable = {
     string: { unit: "tecken", verb: "att ha" },
@@ -11280,7 +11280,7 @@ function sv_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ta.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ta.js
 var error41 = () => {
   const Sizable = {
     string: { unit: "\u0B8E\u0BB4\u0BC1\u0BA4\u0BCD\u0BA4\u0BC1\u0B95\u0BCD\u0B95\u0BB3\u0BCD", verb: "\u0B95\u0BCA\u0BA3\u0BCD\u0B9F\u0BBF\u0BB0\u0BC1\u0B95\u0BCD\u0B95 \u0BB5\u0BC7\u0BA3\u0BCD\u0B9F\u0BC1\u0BAE\u0BCD" },
@@ -11391,7 +11391,7 @@ function ta_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/th.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/th.js
 var error42 = () => {
   const Sizable = {
     string: { unit: "\u0E15\u0E31\u0E27\u0E2D\u0E31\u0E01\u0E29\u0E23", verb: "\u0E04\u0E27\u0E23\u0E21\u0E35" },
@@ -11502,7 +11502,7 @@ function th_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/tr.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/tr.js
 var error43 = () => {
   const Sizable = {
     string: { unit: "karakter", verb: "olmal\u0131" },
@@ -11608,7 +11608,7 @@ function tr_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/uk.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/uk.js
 var error44 = () => {
   const Sizable = {
     string: { unit: "\u0441\u0438\u043C\u0432\u043E\u043B\u0456\u0432", verb: "\u043C\u0430\u0442\u0438\u043C\u0435" },
@@ -11717,12 +11717,12 @@ function uk_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ua.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ua.js
 function ua_default() {
   return uk_default();
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ur.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/ur.js
 var error45 = () => {
   const Sizable = {
     string: { unit: "\u062D\u0631\u0648\u0641", verb: "\u06C1\u0648\u0646\u0627" },
@@ -11833,7 +11833,7 @@ function ur_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/uz.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/uz.js
 var error46 = () => {
   const Sizable = {
     string: { unit: "belgi", verb: "bo\u2018lishi kerak" },
@@ -11944,7 +11944,7 @@ function uz_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/vi.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/vi.js
 var error47 = () => {
   const Sizable = {
     string: { unit: "k\xFD t\u1EF1", verb: "c\xF3" },
@@ -12053,7 +12053,7 @@ function vi_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/zh-CN.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/zh-CN.js
 var error48 = () => {
   const Sizable = {
     string: { unit: "\u5B57\u7B26", verb: "\u5305\u542B" },
@@ -12163,7 +12163,7 @@ function zh_CN_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/zh-TW.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/zh-TW.js
 var error49 = () => {
   const Sizable = {
     string: { unit: "\u5B57\u5143", verb: "\u64C1\u6709" },
@@ -12271,7 +12271,7 @@ function zh_TW_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/yo.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/yo.js
 var error50 = () => {
   const Sizable = {
     string: { unit: "\xE0mi", verb: "n\xED" },
@@ -12379,7 +12379,7 @@ function yo_default() {
   };
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/registries.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/registries.js
 var _a2;
 var $output = /* @__PURE__ */ Symbol("ZodOutput");
 var $input = /* @__PURE__ */ Symbol("ZodInput");
@@ -12429,7 +12429,7 @@ function registry() {
 (_a2 = globalThis).__zod_globalRegistry ?? (_a2.__zod_globalRegistry = registry());
 var globalRegistry = globalThis.__zod_globalRegistry;
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/api.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/api.js
 // @__NO_SIDE_EFFECTS__
 function _string(Class2, params) {
   return new Class2({
@@ -13468,7 +13468,7 @@ function _stringFormat(Class2, format, fnOrRegex, _params = {}) {
   return inst;
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/to-json-schema.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/to-json-schema.js
 function initializeContext(params) {
   let target = params?.target ?? "draft-2020-12";
   if (target === "draft-4")
@@ -13827,7 +13827,7 @@ var createStandardJSONSchemaMethod = (schema2, io, processors = {}) => (params) 
   return finalize(ctx, schema2);
 };
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/json-schema-processors.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/json-schema-processors.js
 var formatMap = {
   guid: "uuid",
   url: "uri",
@@ -14371,7 +14371,7 @@ function toJSONSchema(input, params) {
   return finalize(ctx, input);
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/json-schema-generator.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/json-schema-generator.js
 var JSONSchemaGenerator = class {
   /** @deprecated Access via ctx instead */
   get metadataRegistry() {
@@ -14446,10 +14446,10 @@ var JSONSchemaGenerator = class {
   }
 };
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/json-schema.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/json-schema.js
 var json_schema_exports = {};
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/schemas.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/schemas.js
 var schemas_exports2 = {};
 __export(schemas_exports2, {
   ZodAny: () => ZodAny,
@@ -14620,7 +14620,7 @@ __export(schemas_exports2, {
   xor: () => xor
 });
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/checks.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/checks.js
 var checks_exports2 = {};
 __export(checks_exports2, {
   endsWith: () => _endsWith,
@@ -14654,7 +14654,7 @@ __export(checks_exports2, {
   uppercase: () => _uppercase
 });
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/iso.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/iso.js
 var iso_exports = {};
 __export(iso_exports, {
   ZodISODate: () => ZodISODate,
@@ -14695,7 +14695,7 @@ function duration2(params) {
   return _isoDuration(ZodISODuration, params);
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/errors.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/errors.js
 var initializer2 = (inst, issues) => {
   $ZodError.init(inst, issues);
   inst.name = "ZodError";
@@ -14735,7 +14735,7 @@ var ZodRealError = /* @__PURE__ */ $constructor("ZodError", initializer2, {
   Parent: Error
 });
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/parse.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/parse.js
 var parse2 = /* @__PURE__ */ _parse(ZodRealError);
 var parseAsync2 = /* @__PURE__ */ _parseAsync(ZodRealError);
 var safeParse2 = /* @__PURE__ */ _safeParse(ZodRealError);
@@ -14749,7 +14749,7 @@ var safeDecode2 = /* @__PURE__ */ _safeDecode(ZodRealError);
 var safeEncodeAsync2 = /* @__PURE__ */ _safeEncodeAsync(ZodRealError);
 var safeDecodeAsync2 = /* @__PURE__ */ _safeDecodeAsync(ZodRealError);
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/schemas.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/schemas.js
 var _installedGroups = /* @__PURE__ */ new WeakMap();
 function _installLazyMethods(inst, group, methods) {
   const proto = Object.getPrototypeOf(inst);
@@ -16039,7 +16039,7 @@ function preprocess(fn, schema2) {
   });
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/compat.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/compat.js
 var ZodIssueCode = {
   invalid_type: "invalid_type",
   too_big: "too_big",
@@ -16065,7 +16065,7 @@ var ZodFirstPartyTypeKind;
 /* @__PURE__ */ (function(ZodFirstPartyTypeKind2) {
 })(ZodFirstPartyTypeKind || (ZodFirstPartyTypeKind = {}));
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/from-json-schema.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/from-json-schema.js
 var z = {
   ...schemas_exports2,
   ...checks_exports2,
@@ -16159,13 +16159,13 @@ function resolveRef(ref, ctx) {
   if (!ref.startsWith("#")) {
     throw new Error("External $ref is not supported, only local refs (#/...) are allowed");
   }
-  const path66 = ref.slice(1).split("/").filter(Boolean);
-  if (path66.length === 0) {
+  const path67 = ref.slice(1).split("/").filter(Boolean);
+  if (path67.length === 0) {
     return ctx.rootSchema;
   }
   const defsKey = ctx.version === "draft-2020-12" ? "$defs" : "definitions";
-  if (path66[0] === defsKey) {
-    const key = path66[1];
+  if (path67[0] === defsKey) {
+    const key = path67[1];
     if (!key || !ctx.defs[key]) {
       throw new Error(`Reference not found: ${ref}`);
     }
@@ -16545,7 +16545,7 @@ function fromJSONSchema(schema2, params) {
   return convertSchema(normalized, ctx);
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/coerce.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/coerce.js
 var coerce_exports = {};
 __export(coerce_exports, {
   bigint: () => bigint3,
@@ -16570,7 +16570,7 @@ function date4(params) {
   return _coercedDate(ZodDate, params);
 }
 
-// node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/external.js
+// ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/external.js
 config(en_default());
 
 // src/fitness/render-card.ts
@@ -22946,9 +22946,9 @@ var parseKey = (innerKey, grammar) => {
     };
   }
   const [, rawClass = "", rawPath = "", rawLine = ""] = fields;
-  const path66 = normalizeRepoRelativePath(rawPath);
-  if (!path66.ok) {
-    return path66;
+  const path67 = normalizeRepoRelativePath(rawPath);
+  if (!path67.ok) {
+    return path67;
   }
   const line = parseKeyLine(rawLine);
   if (!line.ok) {
@@ -22956,7 +22956,7 @@ var parseKey = (innerKey, grammar) => {
   }
   return {
     ok: true,
-    value: { class: rawClass, line: line.value, path: path66.value, version: "v1" }
+    value: { class: rawClass, line: line.value, path: path67.value, version: "v1" }
   };
 };
 var parseWrappedKeys = (text) => {
@@ -22966,10 +22966,10 @@ var parseWrappedKeys = (text) => {
     const rawPath = match[1];
     const digits = /^\d+/.exec(text.slice(match.index + match[0].length));
     if (rawPath !== void 0 && digits !== null) {
-      const path66 = normalizeRepoRelativePath(rawPath);
+      const path67 = normalizeRepoRelativePath(rawPath);
       const line = parseKeyLine(digits[0]);
-      if (path66.ok && line.ok) {
-        found.push({ line: line.value, path: path66.value });
+      if (path67.ok && line.ok) {
+        found.push({ line: line.value, path: path67.value });
       }
     }
   }
@@ -23022,13 +23022,13 @@ var decodeToken = (token) => {
   if (!Number.isSafeInteger(prNumber)) {
     return { ok: false, reason: "decoded token carries an invalid pr_number" };
   }
-  const path66 = normalizeRepoRelativePath(rawPath);
-  if (!path66.ok) return { ok: false, reason: path66.reason };
+  const path67 = normalizeRepoRelativePath(rawPath);
+  if (!path67.ok) return { ok: false, reason: path67.reason };
   const line = parseKeyLine(rawLine);
   if (!line.ok) return { ok: false, reason: line.reason };
   return {
     ok: true,
-    value: { line: line.value, path: path66.value, pr_number: prNumber }
+    value: { line: line.value, path: path67.value, pr_number: prNumber }
   };
 };
 
@@ -27136,7 +27136,7 @@ var run38 = (argv, options = {}) => {
   return EXIT_CODES.OK;
 };
 
-// node_modules/.pnpm/js-yaml@4.3.2/node_modules/js-yaml/dist/js-yaml.mjs
+// ../../node_modules/.pnpm/js-yaml@4.3.2/node_modules/js-yaml/dist/js-yaml.mjs
 function getDefaultExportFromCjs(x) {
   return x && x.__esModule && Object.prototype.hasOwnProperty.call(x, "default") ? x["default"] : x;
 }
@@ -30418,8 +30418,8 @@ var run41 = async (argv) => {
 
 // src/update-deps/advisories.ts
 var import_semver4 = __toESM(require_semver2(), 1);
-import { mkdirSync as mkdirSync16, readFileSync as readFileSync35 } from "node:fs";
-import path44 from "node:path";
+import { mkdirSync as mkdirSync16, readFileSync as readFileSync36 } from "node:fs";
+import path45 from "node:path";
 
 // src/update-deps/advisory-lockfile.ts
 var import_semver = __toESM(require_semver2(), 1);
@@ -31030,12 +31030,51 @@ var runPnpmAudit = (options) => {
 
 // src/update-deps/run.ts
 import { spawnSync as spawnSync3 } from "node:child_process";
-import { mkdirSync as mkdirSync15, readFileSync as readFileSync34, writeFileSync as writeFileSync6 } from "node:fs";
-import path43 from "node:path";
+import { mkdirSync as mkdirSync15, readFileSync as readFileSync35, writeFileSync as writeFileSync6 } from "node:fs";
+import path44 from "node:path";
 
 // src/update-deps/declines.ts
 import { mkdirSync as mkdirSync14, readFileSync as readFileSync33, writeFileSync as writeFileSync5 } from "node:fs";
 import path42 from "node:path";
+
+// src/update-deps/version.ts
+var stripRange = (raw) => {
+  let value = raw.trim();
+  while (value.length > 0) {
+    const first = value[0];
+    if (first === "^" || first === "~" || first === "=" || first === "v") {
+      value = value.slice(1);
+    } else if (first === ">" || first === "<") {
+      value = value.slice(1);
+      if (value.startsWith("=")) value = value.slice(1);
+    } else {
+      break;
+    }
+  }
+  return value.trim();
+};
+var parseSegments = (raw) => {
+  const cleaned = stripRange(raw);
+  const parts = cleaned.split(/[+-]/u, 1)[0]?.split(".") ?? [];
+  const out = [];
+  for (const part of parts) {
+    const parsed = Number.parseInt(part, 10);
+    out.push(Number.isFinite(parsed) ? parsed : 0);
+  }
+  while (out.length < 3) out.push(0);
+  return out;
+};
+var compareSegments = (a, b) => {
+  const maxLength = Math.max(a.length, b.length);
+  for (let index = 0; index < maxLength; index += 1) {
+    const av = a[index] ?? 0;
+    const bv = b[index] ?? 0;
+    if (av !== bv) return av < bv ? -1 : 1;
+  }
+  return 0;
+};
+
+// src/update-deps/declines.ts
 var MAX_SNOOZE_MS = 14 * 24 * 60 * 60 * 1e3;
 var LEDGER_RELATIVE_PATH = path42.join(
   ".gaia",
@@ -31115,7 +31154,10 @@ var collectOutstandingGroups = (payload) => {
       map3.set(item.group, { [item.name]: item.latest });
       return;
     }
-    existing[item.name] = item.latest;
+    const previous = existing[item.name];
+    if (previous === void 0 || compareSegments(parseSegments(item.latest), parseSegments(previous)) > 0) {
+      existing[item.name] = item.latest;
+    }
   };
   for (const entry of payload.wave_a) {
     record2(entry);
@@ -31324,41 +31366,24 @@ var resolveGroupMembers = (groupName, allPackageNames) => {
   return out;
 };
 
-// src/update-deps/version.ts
-var stripRange = (raw) => {
-  let value = raw.trim();
-  while (value.length > 0) {
-    const first = value[0];
-    if (first === "^" || first === "~" || first === "=" || first === "v") {
-      value = value.slice(1);
-    } else if (first === ">" || first === "<") {
-      value = value.slice(1);
-      if (value.startsWith("=")) value = value.slice(1);
-    } else {
-      break;
-    }
+// src/update-deps/workspace-member.ts
+import { existsSync as existsSync29, readFileSync as readFileSync34 } from "node:fs";
+import path43 from "node:path";
+var CLI_WORKSPACE_MEMBER = ".gaia/cli";
+var readCliWorkspaceMember = (repoRoot) => {
+  try {
+    const parsed = load(
+      readFileSync34(path43.join(repoRoot, "pnpm-workspace.yaml"), "utf8")
+    );
+    if (typeof parsed !== "object" || parsed === null) return null;
+    const { packages } = parsed;
+    if (!Array.isArray(packages) || !packages.includes(CLI_WORKSPACE_MEMBER))
+      return null;
+    const manifestPath = path43.posix.join(CLI_WORKSPACE_MEMBER, "package.json");
+    return existsSync29(path43.join(repoRoot, manifestPath)) ? CLI_WORKSPACE_MEMBER : null;
+  } catch {
+    return null;
   }
-  return value.trim();
-};
-var parseSegments = (raw) => {
-  const cleaned = stripRange(raw);
-  const parts = cleaned.split(/[+-]/u, 1)[0]?.split(".") ?? [];
-  const out = [];
-  for (const part of parts) {
-    const parsed = Number.parseInt(part, 10);
-    out.push(Number.isFinite(parsed) ? parsed : 0);
-  }
-  while (out.length < 3) out.push(0);
-  return out;
-};
-var compareSegments = (a, b) => {
-  const maxLength = Math.max(a.length, b.length);
-  for (let index = 0; index < maxLength; index += 1) {
-    const av = a[index] ?? 0;
-    const bv = b[index] ?? 0;
-    if (av !== bv) return av < bv ? -1 : 1;
-  }
-  return 0;
 };
 
 // src/update-deps/run.ts
@@ -31401,7 +31426,7 @@ var compareStrings3 = (a, b) => {
   return a > b ? 1 : 0;
 };
 var readPackageJson = (cwd) => {
-  const raw = readFileSync34(path43.join(cwd, "package.json"), "utf8");
+  const raw = readFileSync35(path44.join(cwd, "package.json"), "utf8");
   return JSON.parse(raw);
 };
 var readUpdateDepsHolds = (pkg) => {
@@ -31419,8 +31444,8 @@ var readUpdateDepsHolds = (pkg) => {
 };
 var readInstalledVersion = (cwd, name) => {
   try {
-    const raw = readFileSync34(
-      path43.join(cwd, "node_modules", name, "package.json"),
+    const raw = readFileSync35(
+      path44.join(cwd, "node_modules", name, "package.json"),
       "utf8"
     );
     const parsed = JSON.parse(raw);
@@ -31550,7 +31575,7 @@ var fetchLatestVersion = (name, cwd, pnpmRunner) => {
 var readMinimumReleaseAge = (cwd) => {
   let raw;
   try {
-    raw = readFileSync34(path43.join(cwd, "pnpm-workspace.yaml"), "utf8");
+    raw = readFileSync35(path44.join(cwd, "pnpm-workspace.yaml"), "utf8");
   } catch {
     return 0;
   }
@@ -31791,7 +31816,8 @@ var expandGroupSiblings = (byGroup, allPackageNames, context) => {
   }
   return skipped;
 };
-var routeGroupIntoWaves = (group, members) => {
+var routeGroupIntoWaves = (group, members, workspace) => {
+  const workspaceField = workspace === void 0 ? {} : { workspace };
   const hasMajor = members.some((member) => member.kind === "major");
   if (!hasMajor) {
     const waveAEntries = [];
@@ -31805,7 +31831,8 @@ var routeGroupIntoWaves = (group, members) => {
           kind: member.kind,
           latest: member.latest,
           name: member.name,
-          wanted: member.wanted
+          wanted: member.wanted,
+          ...workspaceField
         });
       }
     }
@@ -31823,7 +31850,8 @@ var routeGroupIntoWaves = (group, members) => {
         kind: member.kind,
         latest: member.latest,
         name: member.name,
-        wanted: member.wanted
+        wanted: member.wanted,
+        ...workspaceField
       }))
     }
   };
@@ -31856,6 +31884,39 @@ var mergeManifests = (rootPackage, pkg) => ({
     pkg.peerDependencies
   )
 });
+var buildWorkspaceWaves = (args) => {
+  const { entries, expandContext, workspace } = args;
+  const { cooldown, getVersions, holds, pkg } = expandContext;
+  const adjustContext = { cooldown, getVersions, holds, pkg };
+  const adjusted = [];
+  const skipped = [];
+  for (const entry of entries) {
+    const outcome = adjustOutdatedEntry(entry, adjustContext);
+    if (outcome.kind === "adjusted") adjusted.push(outcome.value);
+    else if (outcome.kind === "skipped") skipped.push(outcome.value);
+  }
+  const byGroup = /* @__PURE__ */ new Map();
+  for (const entry of adjusted) {
+    const list = byGroup.get(entry.group);
+    if (list === void 0) byGroup.set(entry.group, [entry]);
+    else list.push(entry);
+  }
+  const allPackageNames = Object.keys({
+    ...pkg.dependencies,
+    ...pkg.devDependencies,
+    ...pkg.optionalDependencies,
+    ...pkg.peerDependencies
+  });
+  skipped.push(...expandGroupSiblings(byGroup, allPackageNames, expandContext));
+  const waveA = [];
+  const waveB = [];
+  for (const [group, members] of byGroup) {
+    const routed = routeGroupIntoWaves(group, members, workspace);
+    waveA.push(...routed.waveAEntries);
+    if (routed.waveBGroup !== null) waveB.push(routed.waveBGroup);
+  }
+  return { skipped, waveA, waveB };
+};
 var computeUpdates = (options) => {
   const pnpmRunner = options.pnpmRunner ?? defaultPnpmRunner;
   const target = resolvePackageTarget(options.cwd);
@@ -31881,42 +31942,38 @@ var computeUpdates = (options) => {
     minimumReleaseAgeMinutes,
     pnpmRunner
   };
-  const getVersions = createVersionFetcher(packageDir, pnpmRunner);
   const holds = readUpdateDepsHolds(rootPackage);
-  const adjustContext = { cooldown, getVersions, holds, pkg };
-  const adjusted = [];
-  const skipped = [];
-  for (const entry of raw) {
-    const outcome = adjustOutdatedEntry(entry, adjustContext);
-    if (outcome.kind === "adjusted") adjusted.push(outcome.value);
-    else if (outcome.kind === "skipped") skipped.push(outcome.value);
-  }
-  const byGroup = /* @__PURE__ */ new Map();
-  for (const entry of adjusted) {
-    const list = byGroup.get(entry.group);
-    if (list === void 0) byGroup.set(entry.group, [entry]);
-    else list.push(entry);
-  }
-  const allPackageNames = Object.keys({
-    ...pkg.dependencies,
-    ...pkg.devDependencies,
-    ...pkg.optionalDependencies,
-    ...pkg.peerDependencies
+  const appWaves = buildWorkspaceWaves({
+    entries: raw,
+    expandContext: {
+      cooldown,
+      getVersions: createVersionFetcher(packageDir, pnpmRunner),
+      holds,
+      pkg,
+      pnpmRunner
+    },
+    workspace: void 0
   });
-  const expandContext = {
-    cooldown,
-    getVersions,
-    holds,
-    pkg,
-    pnpmRunner
-  };
-  skipped.push(...expandGroupSiblings(byGroup, allPackageNames, expandContext));
-  const waveA = [];
-  const waveB = [];
-  for (const [group, members] of byGroup) {
-    const routed = routeGroupIntoWaves(group, members);
-    waveA.push(...routed.waveAEntries);
-    if (routed.waveBGroup !== null) waveB.push(routed.waveBGroup);
+  const skipped = [...appWaves.skipped];
+  const waveA = [...appWaves.waveA];
+  const waveB = [...appWaves.waveB];
+  const cliMember = readCliWorkspaceMember(repoRoot);
+  if (cliMember !== null) {
+    const memberDirectory = path44.join(repoRoot, cliMember);
+    const memberWaves = buildWorkspaceWaves({
+      entries: discoverOutdated(memberDirectory, pnpmRunner),
+      expandContext: {
+        cooldown: { ...cooldown, cwd: memberDirectory },
+        getVersions: createVersionFetcher(memberDirectory, pnpmRunner),
+        holds,
+        pkg: readPackageJson(memberDirectory),
+        pnpmRunner
+      },
+      workspace: cliMember
+    });
+    skipped.push(...memberWaves.skipped);
+    waveA.push(...memberWaves.waveA);
+    waveB.push(...memberWaves.waveB);
   }
   waveA.sort((a, b) => compareStrings3(a.name, b.name));
   waveB.sort((a, b) => compareStrings3(a.group, b.group));
@@ -31977,8 +32034,8 @@ var run42 = (argv, options = {}) => {
       pnpmRunner: options.pnpmRunner
     });
     const stamped = payload;
-    const outPath = path43.isAbsolute(parsed.emitUpdates) ? parsed.emitUpdates : path43.join(cwd, parsed.emitUpdates);
-    mkdirSync15(path43.dirname(outPath), { recursive: true });
+    const outPath = path44.isAbsolute(parsed.emitUpdates) ? parsed.emitUpdates : path44.join(cwd, parsed.emitUpdates);
+    mkdirSync15(path44.dirname(outPath), { recursive: true });
     writeFileSync6(outPath, `${JSON.stringify(stamped, null, 2)}
 `, "utf8");
     return EXIT_CODES.OK;
@@ -32049,7 +32106,7 @@ var parseArgs8 = (argv) => {
 var isCiEnvironment = (env) => [env.CI, env.GITHUB_ACTIONS].some(
   (value) => value !== void 0 && value !== "" && value !== "false"
 );
-var resolveFrom = (cwd, target) => path44.isAbsolute(target) ? target : path44.join(cwd, target);
+var resolveFrom = (cwd, target) => path45.isAbsolute(target) ? target : path45.join(cwd, target);
 var isRecord4 = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 var asArray = (value) => Array.isArray(value) ? value : [];
 var namesOf = (entries) => entries.flatMap(
@@ -32059,7 +32116,7 @@ var readUpdateOffers = (filePath) => {
   if (filePath === null) return { waveA: /* @__PURE__ */ new Set(), waveB: /* @__PURE__ */ new Set() };
   let parsed;
   try {
-    parsed = JSON.parse(readFileSync35(filePath, "utf8"));
+    parsed = JSON.parse(readFileSync36(filePath, "utf8"));
   } catch {
     return null;
   }
@@ -32080,7 +32137,7 @@ var readBaselineIds = (repoRoot) => {
   let parsed;
   try {
     parsed = JSON.parse(
-      readFileSync35(path44.join(repoRoot, BASELINE_FILE), "utf8")
+      readFileSync36(path45.join(repoRoot, BASELINE_FILE), "utf8")
     );
   } catch {
     return ids;
@@ -32097,7 +32154,9 @@ var readBaselineIds = (repoRoot) => {
 var ownedManifestPredicate = (repoRoot) => {
   const loaded = loadPackages(repoRoot);
   const patterns = loaded.ok ? repoRegExps(loaded.packages, "dependencyManifests") : [];
-  return (manifestPath) => !manifestPath.startsWith(".gaia/cli/") && (ALWAYS_OWNED_MANIFESTS.has(manifestPath) || patterns.some((pattern) => pattern.test(manifestPath)));
+  const member = readCliWorkspaceMember(repoRoot);
+  const memberManifest = member === null ? null : path45.posix.join(member, "package.json");
+  return (manifestPath) => ALWAYS_OWNED_MANIFESTS.has(manifestPath) || manifestPath === memberManifest || patterns.some((pattern) => pattern.test(manifestPath));
 };
 var readAlerts = async (context) => {
   if (context.args.noAlerts || isCiEnvironment(context.env)) {
@@ -32153,7 +32212,7 @@ var readAudit = (context) => {
 var readLockfileKeys = (repoRoot) => {
   try {
     return projectPackageKeys(
-      readFileSync35(path44.join(repoRoot, "pnpm-lock.yaml"), "utf8")
+      readFileSync36(path45.join(repoRoot, "pnpm-lock.yaml"), "utf8")
     );
   } catch {
     return [];
@@ -32310,7 +32369,7 @@ var run43 = async (argv, options = {}) => {
   const payload = await buildPayload(context, offers);
   const outPath = resolveFrom(cwd, args.emit);
   try {
-    mkdirSync16(path44.dirname(outPath), { recursive: true });
+    mkdirSync16(path45.dirname(outPath), { recursive: true });
     atomicWriteFileSync(outPath, `${JSON.stringify(payload, null, 2)}
 `);
   } catch {
@@ -32326,8 +32385,8 @@ var run43 = async (argv, options = {}) => {
 
 // src/update-deps/advisory-landed.ts
 var import_semver5 = __toESM(require_semver2(), 1);
-import { readFileSync as readFileSync36 } from "node:fs";
-import path45 from "node:path";
+import { readFileSync as readFileSync37 } from "node:fs";
+import path46 from "node:path";
 var HELP_TEXT43 = `Usage: gaia update-deps advisory-landed --package <name> --vulnerable-range <range>
 
   Report whether a security resolution landed: no installed version of
@@ -32377,7 +32436,7 @@ var readLockfile = (cwd) => {
     root = cwd;
   }
   try {
-    return readFileSync36(path45.join(root, "pnpm-lock.yaml"), "utf8");
+    return readFileSync37(path46.join(root, "pnpm-lock.yaml"), "utf8");
   } catch {
     return null;
   }
@@ -32511,8 +32570,8 @@ var run45 = (argv) => {
 };
 
 // src/update-deps/decline.ts
-import { readFileSync as readFileSync37 } from "node:fs";
-import path46 from "node:path";
+import { readFileSync as readFileSync38 } from "node:fs";
+import path47 from "node:path";
 var HELP_TEXT45 = `Usage: gaia update-deps decline [options]
 
   Snooze update groups so the statusline stops counting them until a newer
@@ -32575,10 +32634,10 @@ var parseArgs11 = (argv) => {
   return finalizeParsedArgs(clear, source, skipRaw);
 };
 var readPayload = (cwd, source) => {
-  const sourcePath = path46.isAbsolute(source) ? source : path46.join(cwd, source);
+  const sourcePath = path47.isAbsolute(source) ? source : path47.join(cwd, source);
   let parsed;
   try {
-    parsed = JSON.parse(readFileSync37(sourcePath, "utf8"));
+    parsed = JSON.parse(readFileSync38(sourcePath, "utf8"));
   } catch {
     return void 0;
   }
@@ -32855,13 +32914,13 @@ var run48 = (argv, options = {}) => {
 
 // src/update-deps/write-security-cache.ts
 import {
-  existsSync as existsSync29,
+  existsSync as existsSync30,
   mkdirSync as mkdirSync17,
-  readFileSync as readFileSync38,
+  readFileSync as readFileSync39,
   rmSync as rmSync3,
   writeFileSync as writeFileSync7
 } from "node:fs";
-import path47 from "node:path";
+import path48 from "node:path";
 var HELP_TEXT48 = `Usage: gaia update-deps write-security-cache --count <n> --source <dependabot|pnpm-audit> [--reason <tokens>]
 
   Rewrite securityCount, securitySource, securityUnavailableReason, and
@@ -32921,7 +32980,7 @@ var acquireLock = (lockDirectory, budgetMs) => {
   for (; ; ) {
     try {
       mkdirSync17(lockDirectory);
-      writeFileSync7(path47.join(lockDirectory, "owner"), `${process.pid}
+      writeFileSync7(path48.join(lockDirectory, "owner"), `${process.pid}
 `);
       return true;
     } catch {
@@ -32932,7 +32991,7 @@ var acquireLock = (lockDirectory, budgetMs) => {
 };
 var releaseLock = (lockDirectory) => {
   try {
-    const owner = readFileSync38(path47.join(lockDirectory, "owner"), "utf8");
+    const owner = readFileSync39(path48.join(lockDirectory, "owner"), "utf8");
     if (owner.trim() === String(process.pid)) {
       rmSync3(lockDirectory, { force: true, recursive: true });
     }
@@ -32941,7 +33000,7 @@ var releaseLock = (lockDirectory) => {
 };
 var readCache = (cacheFile) => {
   try {
-    const parsed = JSON.parse(readFileSync38(cacheFile, "utf8"));
+    const parsed = JSON.parse(readFileSync39(cacheFile, "utf8"));
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
       return null;
     }
@@ -32972,13 +33031,13 @@ var run49 = (argv, options = {}) => {
   } catch {
     root = cwd;
   }
-  const cacheDirectory = path47.join(root, ".gaia/local/cache/shared");
-  const cacheFile = path47.join(cacheDirectory, "update-check.json");
-  if (!existsSync29(cacheFile)) {
+  const cacheDirectory = path48.join(root, ".gaia/local/cache/shared");
+  const cacheFile = path48.join(cacheDirectory, "update-check.json");
+  if (!existsSync30(cacheFile)) {
     printResult4({ reason: "no-cache", written: false });
     return EXIT_CODES.OK;
   }
-  const lockDirectory = path47.join(cacheDirectory, ".update-check.lock");
+  const lockDirectory = path48.join(cacheDirectory, ".update-check.lock");
   if (!acquireLock(lockDirectory, options.lockWaitMs ?? DEFAULT_LOCK_WAIT_MS)) {
     printResult4({ reason: "lock-held", written: false });
     return EXIT_CODES.OK;
@@ -33066,8 +33125,8 @@ var run50 = async (argv) => {
 };
 
 // src/update/merge-audit-ci.ts
-import { existsSync as existsSync30, readFileSync as readFileSync39 } from "node:fs";
-import path48 from "node:path";
+import { existsSync as existsSync31, readFileSync as readFileSync40 } from "node:fs";
+import path49 from "node:path";
 
 // src/util/parse-value-flags.ts
 var applyToken3 = ({
@@ -33276,7 +33335,7 @@ var printHuman5 = (report2) => {
 `);
 };
 var loadAuditCi = (absPath, role) => {
-  if (!existsSync30(absPath)) {
+  if (!existsSync31(absPath)) {
     return {
       code: "audit_ci_file_missing",
       message: `${role} audit-ci file not found: ${absPath}`,
@@ -33285,7 +33344,7 @@ var loadAuditCi = (absPath, role) => {
   }
   let parsed;
   try {
-    parsed = load(readFileSync39(absPath, "utf8"));
+    parsed = load(readFileSync40(absPath, "utf8"));
   } catch (error51) {
     return {
       code: "audit_ci_parse_failed",
@@ -33295,7 +33354,7 @@ var loadAuditCi = (absPath, role) => {
   }
   return { ok: true, root: asRecord(parsed) };
 };
-var resolvePath = (cwd, value) => path48.isAbsolute(value) ? value : path48.join(cwd, value);
+var resolvePath = (cwd, value) => path49.isAbsolute(value) ? value : path49.join(cwd, value);
 var run51 = (argv, options = {}) => {
   const [firstArgument] = argv;
   if (firstArgument !== void 0 && HELP_TOKENS48.has(firstArgument)) {
@@ -33342,8 +33401,8 @@ var run51 = (argv, options = {}) => {
 };
 
 // src/update/merge-region.ts
-import { existsSync as existsSync31, readFileSync as readFileSync40 } from "node:fs";
-import path49 from "node:path";
+import { existsSync as existsSync32, readFileSync as readFileSync41 } from "node:fs";
+import path50 from "node:path";
 
 // src/update/region-markers.ts
 var REGION_PLACEHOLDER = "<<<gaia:region>>>";
@@ -33496,7 +33555,7 @@ var printHuman6 = (report2) => {
 `);
 };
 var loadRegionFile = (absPath, role) => {
-  if (!existsSync31(absPath)) {
+  if (!existsSync32(absPath)) {
     return {
       code: "region_file_missing",
       message: `${role} file not found: ${absPath}`,
@@ -33504,7 +33563,7 @@ var loadRegionFile = (absPath, role) => {
     };
   }
   try {
-    return { content: readFileSync40(absPath, "utf8"), ok: true };
+    return { content: readFileSync41(absPath, "utf8"), ok: true };
   } catch (error51) {
     return {
       code: "region_read_failed",
@@ -33513,7 +33572,7 @@ var loadRegionFile = (absPath, role) => {
     };
   }
 };
-var resolvePath2 = (cwd, value) => path49.isAbsolute(value) ? value : path49.join(cwd, value);
+var resolvePath2 = (cwd, value) => path50.isAbsolute(value) ? value : path50.join(cwd, value);
 var run52 = (argv, options = {}) => {
   const [firstArgument] = argv;
   if (firstArgument !== void 0 && HELP_TOKENS49.has(firstArgument)) {
@@ -33566,8 +33625,8 @@ var run52 = (argv, options = {}) => {
 };
 
 // src/update/merge-workspace.ts
-import { existsSync as existsSync32, readFileSync as readFileSync41 } from "node:fs";
-import path50 from "node:path";
+import { existsSync as existsSync33, readFileSync as readFileSync42 } from "node:fs";
+import path51 from "node:path";
 var HELP_TEXT52 = `Usage: gaia update merge-workspace --baseline <file> --latest <file> --current <file> [--json]
 
   Field-aware three-way verdict for pnpm-workspace.yaml. Reads three YAML
@@ -33742,7 +33801,7 @@ var printHuman7 = (report2) => {
 `);
 };
 var loadWorkspace = (absPath, role) => {
-  if (!existsSync32(absPath)) {
+  if (!existsSync33(absPath)) {
     return {
       code: "workspace_file_missing",
       message: `${role} workspace file not found: ${absPath}`,
@@ -33751,7 +33810,7 @@ var loadWorkspace = (absPath, role) => {
   }
   let parsed;
   try {
-    parsed = load(readFileSync41(absPath, "utf8"));
+    parsed = load(readFileSync42(absPath, "utf8"));
   } catch (error51) {
     return {
       code: "workspace_parse_failed",
@@ -33761,7 +33820,7 @@ var loadWorkspace = (absPath, role) => {
   }
   return { ok: true, root: asRecord2(parsed) };
 };
-var resolvePath3 = (cwd, value) => path50.isAbsolute(value) ? value : path50.join(cwd, value);
+var resolvePath3 = (cwd, value) => path51.isAbsolute(value) ? value : path51.join(cwd, value);
 var run53 = (argv, options = {}) => {
   const [firstArgument] = argv;
   if (firstArgument !== void 0 && HELP_TOKENS50.has(firstArgument)) {
@@ -33813,18 +33872,18 @@ import { createHash as createHash3 } from "node:crypto";
 import {
   chmodSync,
   copyFileSync as copyFileSync2,
-  existsSync as existsSync33,
+  existsSync as existsSync34,
   lstatSync as lstatSync2,
   mkdirSync as mkdirSync18,
   readdirSync as readdirSync3,
-  readFileSync as readFileSync42,
+  readFileSync as readFileSync43,
   readlinkSync,
   realpathSync as realpathSync2,
   rmSync as rmSync4,
   symlinkSync,
   writeFileSync as writeFileSync8
 } from "node:fs";
-import path51 from "node:path";
+import path52 from "node:path";
 
 // src/util/git-z.ts
 var gitZArgs = (verb, args = []) => ["-c", "core.quotepath=false", verb, "-z", ...args];
@@ -33974,7 +34033,7 @@ var normalizeDeclaredPaths = (paths) => {
     const candidate = normalizeRepoPath(declPath);
     if (candidate.trim() === "")
       return { ok: false, reason: "paths carries an empty entry" };
-    if (path51.isAbsolute(candidate))
+    if (path52.isAbsolute(candidate))
       return {
         ok: false,
         reason: `paths carries an absolute path: ${candidate}`
@@ -33984,7 +34043,7 @@ var normalizeDeclaredPaths = (paths) => {
         ok: false,
         reason: `paths carries a parent-directory segment: ${candidate}`
       };
-    if (path51.posix.dirname(candidate) === ".")
+    if (path52.posix.dirname(candidate) === ".")
       return {
         ok: false,
         reason: `paths carries a path whose parent is the repository root: ${candidate}`
@@ -34080,23 +34139,23 @@ var computeSkipReason = (decl, inputs) => {
 var checkOperand = (decl, context) => {
   const { realRoot, root, shippedKeys } = context;
   const { interpreter, operand } = decl;
-  if (path51.isAbsolute(operand)) return "operand is an absolute path";
+  if (path52.isAbsolute(operand)) return "operand is an absolute path";
   if (operand.split("/").includes(".."))
     return "operand carries a parent-directory segment";
   if (!shippedKeys.has(normalizeRepoPath(operand)))
     return "operand is not a path this manifest ships";
   let resolvedReal;
   try {
-    resolvedReal = realpathSync2(path51.resolve(root, operand));
+    resolvedReal = realpathSync2(path52.resolve(root, operand));
   } catch {
     resolvedReal = void 0;
   }
   if (resolvedReal !== void 0) {
-    const insideRoot = resolvedReal === realRoot || resolvedReal.startsWith(`${realRoot}${path51.sep}`);
+    const insideRoot = resolvedReal === realRoot || resolvedReal.startsWith(`${realRoot}${path52.sep}`);
     if (!insideRoot)
       return "operand resolves through a symlink out of the repository";
   }
-  if (interpreter.trim() === "" || path51.isAbsolute(interpreter) || interpreter.includes("/") || interpreter.includes("\\"))
+  if (interpreter.trim() === "" || path52.isAbsolute(interpreter) || interpreter.includes("/") || interpreter.includes("\\"))
     return "interpreter is not a bare program name";
   return void 0;
 };
@@ -34105,12 +34164,12 @@ var performBackup = (inputs) => {
   if (backupDir === void 0) return [];
   const backedUp = [];
   paths.forEach((declPath) => {
-    const srcAbs = path51.resolve(root, declPath);
-    if (!existsSync33(srcAbs)) return;
-    const destinationAbs = path51.resolve(backupDir, declPath);
-    if (existsSync33(destinationAbs)) return;
+    const srcAbs = path52.resolve(root, declPath);
+    if (!existsSync34(srcAbs)) return;
+    const destinationAbs = path52.resolve(backupDir, declPath);
+    if (existsSync34(destinationAbs)) return;
     try {
-      mkdirSync18(path51.dirname(destinationAbs), { recursive: true });
+      mkdirSync18(path52.dirname(destinationAbs), { recursive: true });
       copyFileSync2(srcAbs, destinationAbs);
       backedUp.push(declPath);
     } catch (error51) {
@@ -34124,7 +34183,7 @@ var performBackup = (inputs) => {
   });
   return backedUp;
 };
-var scopeDirsFor = (paths) => new Set(paths.map((declPath) => path51.posix.dirname(declPath)));
+var scopeDirsFor = (paths) => new Set(paths.map((declPath) => path52.posix.dirname(declPath)));
 var isUntouched = (before, after) => {
   if (after === void 0) return false;
   if (before.kind === "symlink")
@@ -34135,8 +34194,8 @@ var permissionsOf = (mode) => mode % 4096;
 var collectScopeDigests = (root, scopeDirs) => {
   const digests = /* @__PURE__ */ new Map();
   scopeDirs.forEach((dir) => {
-    const absDir = path51.resolve(root, dir);
-    if (!existsSync33(absDir)) return;
+    const absDir = path52.resolve(root, dir);
+    if (!existsSync34(absDir)) return;
     let entries;
     try {
       entries = readdirSync3(absDir, { recursive: true });
@@ -34144,14 +34203,14 @@ var collectScopeDigests = (root, scopeDirs) => {
       return;
     }
     entries.forEach((rel) => {
-      const abs = path51.join(absDir, rel);
+      const abs = path52.join(absDir, rel);
       let stat;
       try {
         stat = lstatSync2(abs);
       } catch {
         return;
       }
-      const repoRelative = path51.relative(root, abs).split(path51.sep).join("/");
+      const repoRelative = path52.relative(root, abs).split(path52.sep).join("/");
       if (stat.isSymbolicLink()) {
         try {
           digests.set(repoRelative, {
@@ -34165,7 +34224,7 @@ var collectScopeDigests = (root, scopeDirs) => {
       if (!stat.isFile()) return;
       let content;
       try {
-        content = readFileSync42(abs);
+        content = readFileSync43(abs);
       } catch {
         return;
       }
@@ -34189,7 +34248,7 @@ var sweepScope = (inputs) => {
     if (afterEntry === void 0) return;
     if (isUntouched(beforeEntry, afterEntry)) return;
     try {
-      const abs = path51.resolve(root, relPath);
+      const abs = path52.resolve(root, relPath);
       rmSync4(abs, { force: true });
       if (beforeEntry.kind === "symlink") {
         symlinkSync(beforeEntry.target, abs);
@@ -34206,7 +34265,7 @@ var sweepScope = (inputs) => {
   [...after.keys()].forEach((relPath) => {
     if (declaredSet.has(relPath) || before.has(relPath)) return;
     try {
-      rmSync4(path51.resolve(root, relPath), { force: true });
+      rmSync4(path52.resolve(root, relPath), { force: true });
       confined.push({ action: "removed", path: relPath, regionId });
     } catch {
       confined.push({ action: "reported", path: relPath, regionId });
@@ -34260,7 +34319,7 @@ var trySpawn = (decl, root) => {
   try {
     execFileSync5(
       decl.interpreter,
-      [path51.resolve(root, decl.operand), ...decl.args],
+      [path52.resolve(root, decl.operand), ...decl.args],
       {
         cwd: root,
         encoding: "utf8",
@@ -34418,12 +34477,12 @@ var processRegion = (raw, index, context) => {
   }
   runRegeneration(decl, commandArgv, context);
 };
-var resolvePath4 = (cwd, value) => path51.isAbsolute(value) ? value : path51.join(cwd, value);
+var resolvePath4 = (cwd, value) => path52.isAbsolute(value) ? value : path52.join(cwd, value);
 var loadRunInputs = (cwd, flags) => {
   const manifestPath = resolvePath4(cwd, flags.manifest);
   const root = resolvePath4(cwd, flags.root);
   const backupDir = flags.backupDir === void 0 ? void 0 : resolvePath4(cwd, flags.backupDir);
-  if (!existsSync33(manifestPath)) {
+  if (!existsSync34(manifestPath)) {
     structuredError({
       code: "manifest_not_found",
       message: `manifest not found: ${manifestPath}`,
@@ -34433,7 +34492,7 @@ var loadRunInputs = (cwd, flags) => {
   }
   let manifestRaw;
   try {
-    manifestRaw = readFileSync42(manifestPath, "utf8");
+    manifestRaw = readFileSync43(manifestPath, "utf8");
   } catch (error51) {
     structuredError({
       code: "manifest_read_failed",
@@ -34453,7 +34512,7 @@ var loadRunInputs = (cwd, flags) => {
     });
     return { ok: false };
   }
-  if (!existsSync33(root)) {
+  if (!existsSync34(root)) {
     structuredError({
       code: "root_not_found",
       message: `root directory not found: ${root}`,
@@ -34653,8 +34712,8 @@ var runWhenInvokedDirectly = async (importMetaUrl, run71) => {
 };
 
 // src/wiki/broken-links.ts
-import { readFileSync as readFileSync43 } from "node:fs";
-import path54 from "node:path";
+import { readFileSync as readFileSync44 } from "node:fs";
+import path55 from "node:path";
 
 // src/wiki/util/frontmatter.ts
 var FRONTMATTER_FENCE = "---";
@@ -34725,20 +34784,20 @@ var parseFrontmatter = (raw) => {
 
 // src/wiki/util/markdown-corpus.ts
 import { statSync as statSync4 } from "node:fs";
-import path53 from "node:path";
+import path54 from "node:path";
 
 // src/util/tree-walk.ts
 import { readdirSync as readdirSync4 } from "node:fs";
-import path52 from "node:path";
+import path53 from "node:path";
 var EVERY_EXTENSION = "every-extension";
 var normalizeEntry = (entry, separator) => entry.split(separator).join("/");
 var collectTreeFiles = (root, extensions) => {
   const walk = (directory) => readdirSync4(directory, { withFileTypes: true }).flatMap((entry) => {
-    const absolute = path52.join(directory, entry.name);
+    const absolute = path53.join(directory, entry.name);
     if (entry.isDirectory()) {
       return walk(absolute);
     }
-    return entry.isFile() && (extensions === EVERY_EXTENSION || extensions.has(path52.extname(entry.name).toLowerCase())) ? [normalizeEntry(path52.relative(root, absolute), path52.sep)] : [];
+    return entry.isFile() && (extensions === EVERY_EXTENSION || extensions.has(path53.extname(entry.name).toLowerCase())) ? [normalizeEntry(path53.relative(root, absolute), path53.sep)] : [];
   });
   return walk(root).toSorted((a, b) => a.localeCompare(b));
 };
@@ -34754,14 +34813,14 @@ var GENERATED_CONTENT_EXEMPT_PATHS = /* @__PURE__ */ new Set([
 var isWikiScanExempt = (relativePath) => WIKI_SCAN_EXEMPT_PREFIXES.some((prefix) => relativePath.startsWith(prefix));
 var isGeneratedContentExempt = (relativePath) => GENERATED_CONTENT_EXEMPT_PATHS.has(relativePath);
 var collectWikiMarkdown = (cwd) => {
-  const wikiDir = path53.join(cwd, WIKI_DIR);
+  const wikiDir = path54.join(cwd, WIKI_DIR);
   try {
     statSync4(wikiDir);
   } catch {
     return [];
   }
   return collectTreeFiles(wikiDir, MARKDOWN_EXTENSIONS).map(
-    (relativePath) => path53.posix.join(WIKI_DIR, relativePath)
+    (relativePath) => path54.posix.join(WIKI_DIR, relativePath)
   );
 };
 
@@ -34791,9 +34850,9 @@ var buildTargetKeys = (cwd, corpus) => {
   const keys = /* @__PURE__ */ new Set();
   for (const relPath of corpus) {
     if (!isArchived(relPath)) {
-      keys.add(path54.posix.basename(relPath, ".md").toLowerCase());
+      keys.add(path55.posix.basename(relPath, ".md").toLowerCase());
       const { body } = parseFrontmatter(
-        readFileSync43(path54.join(cwd, relPath), "utf8")
+        readFileSync44(path55.join(cwd, relPath), "utf8")
       );
       const title = firstHeading(body);
       if (title !== void 0 && title !== "") keys.add(title.toLowerCase());
@@ -34840,7 +34899,7 @@ var findBrokenLinks = (cwd) => {
   for (const relPath of corpus.filter((entry) => !shouldSkipFile(entry))) {
     const page = scanPage(
       relPath,
-      readFileSync43(path54.join(cwd, relPath), "utf8"),
+      readFileSync44(path55.join(cwd, relPath), "utf8"),
       keys
     );
     result.broken.push(...page.broken);
@@ -35124,9 +35183,9 @@ var commitDetails = (sinceSha, cwd) => {
 };
 
 // src/wiki/util/statusline-cache.ts
-import { existsSync as existsSync34, readFileSync as readFileSync44 } from "node:fs";
-import path55 from "node:path";
-var CACHE_RELATIVE_PATH = path55.join(
+import { existsSync as existsSync35, readFileSync as readFileSync45 } from "node:fs";
+import path56 from "node:path";
+var CACHE_RELATIVE_PATH = path56.join(
   ".gaia",
   "local",
   "cache",
@@ -35135,12 +35194,12 @@ var CACHE_RELATIVE_PATH = path55.join(
 );
 var invalidateStatuslineCache = (repoRoot) => {
   try {
-    const cachePath = path55.join(
+    const cachePath = path56.join(
       resolveMainWorktreeRoot(repoRoot),
       CACHE_RELATIVE_PATH
     );
-    if (!existsSync34(cachePath)) return;
-    const parsed = JSON.parse(readFileSync44(cachePath, "utf8"));
+    if (!existsSync35(cachePath)) return;
+    const parsed = JSON.parse(readFileSync45(cachePath, "utf8"));
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
       return;
     atomicWriteFileSync(
@@ -35758,8 +35817,8 @@ var parseConventionalCommitHeader = (subject) => {
 var isCommitType = (type2) => COMMIT_TYPES.includes(type2);
 
 // src/wiki/classify-paths.ts
-import { existsSync as existsSync35, readFileSync as readFileSync45 } from "node:fs";
-import path56 from "node:path";
+import { existsSync as existsSync36, readFileSync as readFileSync46 } from "node:fs";
+import path57 from "node:path";
 var defaultClassifyPaths = (repoRoot) => {
   const loaded = loadPackages(repoRoot);
   if (!loaded.ok) {
@@ -35793,11 +35852,11 @@ var PackageJsonSchema = external_exports.object({
 });
 var readClassifyPaths = (repoRoot) => {
   const defaults = defaultClassifyPaths(repoRoot);
-  const target = path56.join(repoRoot, "package.json");
-  if (!existsSync35(target)) return defaults;
+  const target = path57.join(repoRoot, "package.json");
+  if (!existsSync36(target)) return defaults;
   let parsed;
   try {
-    parsed = JSON.parse(readFileSync45(target, "utf8"));
+    parsed = JSON.parse(readFileSync46(target, "utf8"));
   } catch {
     return defaults;
   }
@@ -36110,8 +36169,8 @@ var run58 = (argv, options = {}) => {
 };
 
 // src/wiki/dead-paths.ts
-import { readFileSync as readFileSync46, statSync as statSync5 } from "node:fs";
-import path57 from "node:path";
+import { readFileSync as readFileSync47, statSync as statSync5 } from "node:fs";
+import path58 from "node:path";
 var HELP_TEXT58 = `Usage: gaia wiki dead-paths [--json]
 
   Scan wiki/**/*.md for backticked repo-relative paths under .claude/, .gaia/,
@@ -36158,7 +36217,7 @@ var isTrackedPath = (token, prefixes) => {
 var shouldSkipFile2 = (relPath) => isWikiScanExempt(relPath) || isGeneratedContentExempt(relPath) || relPath.startsWith(LOCAL_EXEMPT_PREFIX);
 var pathExists = (root, candidate) => {
   try {
-    statSync5(path57.join(root, candidate));
+    statSync5(path58.join(root, candidate));
     return true;
   } catch {
     return false;
@@ -36174,7 +36233,7 @@ var collectFindingsInLine = (ctx, lineNumber, line) => {
   return { dead };
 };
 var collectFindingsInFile = (ctx) => {
-  const content = readFileSync46(path57.join(ctx.cwd, ctx.filePath), "utf8");
+  const content = readFileSync47(path58.join(ctx.cwd, ctx.filePath), "utf8");
   const lines = content.split("\n");
   const perLine = lines.map(
     (line, index) => collectFindingsInLine(ctx, index + 1, line)
@@ -36232,8 +36291,8 @@ var run59 = (argv, options = {}) => {
 };
 
 // src/wiki/empty-sections.ts
-import { readFileSync as readFileSync47 } from "node:fs";
-import path58 from "node:path";
+import { readFileSync as readFileSync48 } from "node:fs";
+import path59 from "node:path";
 var HELP_TEXT59 = `Usage: gaia wiki empty-sections [--json]
 
   Scan wiki/**/*.md (excluding wiki/meta/**, wiki/hot.md, wiki/log.md) for
@@ -36289,7 +36348,7 @@ var findInBody = (body, bodyLineOffset, relPath) => {
   });
 };
 var findEmptySections = (cwd) => collectWikiMarkdown(cwd).filter((filePath) => !shouldSkipFile3(filePath)).flatMap((filePath) => {
-  const content = readFileSync47(path58.join(cwd, filePath), "utf8");
+  const content = readFileSync48(path59.join(cwd, filePath), "utf8");
   const { body } = parseFrontmatter(content);
   const offset = content.split("\n").length - body.split("\n").length;
   return findInBody(body, offset, filePath);
@@ -36341,8 +36400,8 @@ var run60 = (argv, options = {}) => {
 };
 
 // src/wiki/frontmatter.ts
-import { readFileSync as readFileSync48 } from "node:fs";
-import path59 from "node:path";
+import { readFileSync as readFileSync49 } from "node:fs";
+import path60 from "node:path";
 var HELP_TEXT60 = `Usage: gaia wiki frontmatter [--json]
 
   Scan wiki/**/*.md (excluding wiki/meta/**) for pages missing required
@@ -36357,7 +36416,7 @@ var findFrontmatterGaps = (cwd) => {
   const gaps = [];
   for (const filePath of collectWikiMarkdown(cwd)) {
     if (!isWikiScanExempt(filePath)) {
-      const content = readFileSync48(path59.join(cwd, filePath), "utf8");
+      const content = readFileSync49(path60.join(cwd, filePath), "utf8");
       const { frontmatter } = parseFrontmatter(content);
       const missing = REQUIRED_FIELDS.filter(
         (field2) => !hasField(frontmatter, field2)
@@ -36416,8 +36475,8 @@ var run61 = (argv, options = {}) => {
 };
 
 // src/wiki/log-prepend.ts
-import { existsSync as existsSync36, readFileSync as readFileSync49, renameSync as renameSync4, writeFileSync as writeFileSync9 } from "node:fs";
-import path60 from "node:path";
+import { existsSync as existsSync37, readFileSync as readFileSync50, renameSync as renameSync4, writeFileSync as writeFileSync9 } from "node:fs";
+import path61 from "node:path";
 var HELP_TEXT61 = `Usage: gaia wiki log-prepend --sha <h> --decision <WORTHY|SKIP|RE_ANCHOR> --reason "..."
 
   Prepends one canonical line to wiki/log.md after the frontmatter.
@@ -36518,8 +36577,8 @@ var run62 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const logPath = path60.join(repoRoot, "wiki", "log.md");
-  if (!existsSync36(logPath)) {
+  const logPath = path61.join(repoRoot, "wiki", "log.md");
+  if (!existsSync37(logPath)) {
     structuredError({
       code: "log_missing",
       message: "wiki/log.md does not exist",
@@ -36527,7 +36586,7 @@ var run62 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const raw = readFileSync49(logPath, "utf8");
+  const raw = readFileSync50(logPath, "utf8");
   const lines = raw.split("\n");
   const scan = scanFrontmatter(lines);
   if (scan.kind === "missing" || scan.kind === "malformed") {
@@ -36553,8 +36612,8 @@ var run62 = (argv, options = {}) => {
 };
 
 // src/wiki/near-collisions.ts
-import { existsSync as existsSync37, readdirSync as readdirSync5, statSync as statSync6 } from "node:fs";
-import path61 from "node:path";
+import { existsSync as existsSync38, readdirSync as readdirSync5, statSync as statSync6 } from "node:fs";
+import path62 from "node:path";
 var HELP_TEXT62 = `Usage: gaia wiki near-collisions [--max-distance 3]
 
   Per-domain Levenshtein over slugs. Emits tab-separated rows:
@@ -36600,8 +36659,8 @@ var levenshtein = (a, b) => {
 };
 var isCollectibleSlugFile = (entry) => entry.isFile() && entry.name.endsWith(".md") && !SKIPPED_FILES.has(entry.name) && !entry.name.startsWith("_");
 var collectDomainSlugs = (wikiRoot) => DOMAIN_DIRS.flatMap((domain2) => {
-  const domainDir = path61.join(wikiRoot, domain2);
-  if (!existsSync37(domainDir) || !statSync6(domainDir).isDirectory()) {
+  const domainDir = path62.join(wikiRoot, domain2);
+  if (!existsSync38(domainDir) || !statSync6(domainDir).isDirectory()) {
     return [];
   }
   const entries = readdirSync5(domainDir, { withFileTypes: true });
@@ -36687,7 +36746,7 @@ var run63 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const wikiRoot = path61.join(repoRoot, "wiki");
+  const wikiRoot = path62.join(repoRoot, "wiki");
   const domainGroups = collectDomainSlugs(wikiRoot);
   const collisions = findCollisions(domainGroups, parsed.flags.maxDistance);
   if (collisions.length === 0) return EXIT_CODES.OK;
@@ -36700,8 +36759,8 @@ var run63 = (argv, options = {}) => {
 };
 
 // src/wiki/page-index.ts
-import { existsSync as existsSync38, readdirSync as readdirSync6, readFileSync as readFileSync50, statSync as statSync7 } from "node:fs";
-import path62 from "node:path";
+import { existsSync as existsSync39, readdirSync as readdirSync6, readFileSync as readFileSync51, statSync as statSync7 } from "node:fs";
+import path63 from "node:path";
 
 // src/wiki/util/wikilinks.ts
 var WIKILINK_PATTERN2 = /\[\[([^\][]+)\]\]/gu;
@@ -36739,7 +36798,7 @@ var DOMAIN_DIRS2 = [
 ];
 var SKIPPED_FILES2 = /* @__PURE__ */ new Set(["_index.md", "README.md"]);
 var ROOT_LINK_SOURCES = ["index.md", "overview.md", "hot.md"];
-var slugFromPath = (filePath) => path62.basename(filePath, ".md");
+var slugFromPath = (filePath) => path63.basename(filePath, ".md");
 var extractTitle = (body, fallback) => {
   const lines = body.split("\n");
   for (const line of lines) {
@@ -36764,8 +36823,8 @@ var arrayOfStrings = (value) => {
 };
 var isIndexablePage = (entry) => entry.isFile() && entry.name.endsWith(".md") && !SKIPPED_FILES2.has(entry.name) && !entry.name.startsWith("_");
 var readPageRecord = (domainDir, domain2, entry) => {
-  const absPath = path62.join(domainDir, entry.name);
-  const raw = readFileSync50(absPath, "utf8");
+  const absPath = path63.join(domainDir, entry.name);
+  const raw = readFileSync51(absPath, "utf8");
   const { body, frontmatter } = parseFrontmatter(raw);
   const slug = slugFromPath(entry.name);
   const title = extractTitle(body, slug);
@@ -36774,7 +36833,7 @@ var readPageRecord = (domainDir, domain2, entry) => {
     body,
     domain: domain2,
     outboundTargets: targets,
-    relativePath: path62.posix.join("wiki", domain2, entry.name),
+    relativePath: path63.posix.join("wiki", domain2, entry.name),
     slug,
     status: stringValue(frontmatter.status),
     tags: arrayOfStrings(frontmatter.tags),
@@ -36783,16 +36842,16 @@ var readPageRecord = (domainDir, domain2, entry) => {
   };
 };
 var collectDomainPages = (wikiRoot, domain2) => {
-  const domainDir = path62.join(wikiRoot, domain2);
-  if (!existsSync38(domainDir) || !statSync7(domainDir).isDirectory()) return [];
+  const domainDir = path63.join(wikiRoot, domain2);
+  if (!existsSync39(domainDir) || !statSync7(domainDir).isDirectory()) return [];
   const entries = readdirSync6(domainDir, { withFileTypes: true });
   return entries.filter((entry) => isIndexablePage(entry)).map((entry) => readPageRecord(domainDir, domain2, entry));
 };
 var collectPages = (wikiRoot) => DOMAIN_DIRS2.flatMap((domain2) => collectDomainPages(wikiRoot, domain2));
 var collectRootLinkSources = (wikiRoot) => ROOT_LINK_SOURCES.filter(
-  (filename) => existsSync38(path62.join(wikiRoot, filename))
+  (filename) => existsSync39(path63.join(wikiRoot, filename))
 ).map((filename) => {
-  const raw = readFileSync50(path62.join(wikiRoot, filename), "utf8");
+  const raw = readFileSync51(path63.join(wikiRoot, filename), "utf8");
   const { body } = parseFrontmatter(raw);
   return extractWikilinks(body);
 });
@@ -36843,7 +36902,7 @@ var printHuman10 = (index) => {
 };
 var computePageIndex = (cwd) => {
   const repoRoot = resolveRepoRoot(cwd);
-  const wikiRoot = path62.join(repoRoot, "wiki");
+  const wikiRoot = path63.join(repoRoot, "wiki");
   const pages = collectPages(wikiRoot);
   const rootSources = collectRootLinkSources(wikiRoot);
   return buildIndex(pages, rootSources);
@@ -36877,7 +36936,7 @@ var run64 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const wikiRoot = path62.join(repoRoot, "wiki");
+  const wikiRoot = path63.join(repoRoot, "wiki");
   const pages = collectPages(wikiRoot);
   const rootSources = collectRootLinkSources(wikiRoot);
   const index = buildIndex(pages, rootSources);
@@ -36898,7 +36957,7 @@ var HELP_TEXT64 = `Usage: gaia wiki orphans [--json]
   title, domain } ] }.
 `;
 var HELP_TOKENS63 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
-var isMaintainerOnly = (path66) => path66.startsWith("wiki/meta/") || path66.startsWith("wiki/entities/");
+var isMaintainerOnly = (path67) => path67.startsWith("wiki/meta/") || path67.startsWith("wiki/entities/");
 var run65 = (argv, options = {}) => {
   let json3 = false;
   for (const token of argv) {
@@ -36954,8 +37013,8 @@ var run65 = (argv, options = {}) => {
 };
 
 // src/wiki/state-bump.ts
-import { existsSync as existsSync39, readFileSync as readFileSync51 } from "node:fs";
-import path63 from "node:path";
+import { existsSync as existsSync40, readFileSync as readFileSync52 } from "node:fs";
+import path64 from "node:path";
 var HELP_TEXT65 = `Usage: gaia wiki state-bump <field> <value>
 
   Updates a single field in wiki/.state.json. Sibling fields and key order
@@ -37026,8 +37085,8 @@ var run66 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const statePath = path63.join(repoRoot, "wiki", ".state.json");
-  if (!existsSync39(statePath)) {
+  const statePath = path64.join(repoRoot, "wiki", ".state.json");
+  if (!existsSync40(statePath)) {
     structuredError({
       code: "state_missing",
       message: "wiki/.state.json does not exist",
@@ -37035,7 +37094,7 @@ var run66 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const raw = readFileSync51(statePath, "utf8");
+  const raw = readFileSync52(statePath, "utf8");
   let parsed;
   try {
     parsed = JSON.parse(raw);
@@ -37065,8 +37124,8 @@ var run66 = (argv, options = {}) => {
 
 // src/wiki/state-init.ts
 import { execFileSync as execFileSync7 } from "node:child_process";
-import { existsSync as existsSync40, mkdirSync as mkdirSync19 } from "node:fs";
-import path64 from "node:path";
+import { existsSync as existsSync41, mkdirSync as mkdirSync19 } from "node:fs";
+import path65 from "node:path";
 var HELP_TEXT66 = `Usage: gaia wiki state-init <sha>
 
   Create wiki/.state.json with {version: 1, last_evaluated_sha,
@@ -37143,9 +37202,9 @@ var run67 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const wikiDir = path64.join(repoRoot, "wiki");
-  const statePath = path64.join(wikiDir, ".state.json");
-  if (existsSync40(statePath)) {
+  const wikiDir = path65.join(repoRoot, "wiki");
+  const statePath = path65.join(wikiDir, ".state.json");
+  if (existsSync41(statePath)) {
     structuredError({
       code: "state_already_exists",
       message: "wiki/.state.json already exists; use `gaia wiki state-bump` to update fields",
@@ -37168,8 +37227,8 @@ var run67 = (argv, options = {}) => {
 };
 
 // src/wiki/state.ts
-import { existsSync as existsSync41, readdirSync as readdirSync7, readFileSync as readFileSync52, statSync as statSync8 } from "node:fs";
-import path65 from "node:path";
+import { existsSync as existsSync42, readdirSync as readdirSync7, readFileSync as readFileSync53, statSync as statSync8 } from "node:fs";
+import path66 from "node:path";
 var HELP_TEXT67 = `Usage: gaia wiki state [--json]
 `;
 var ALL_ZERO_SHA = "0".repeat(40);
@@ -37193,8 +37252,8 @@ var DOMAIN_DIRS3 = [
 var countDomainPages = (wikiRoot) => {
   const counts = {};
   for (const domain2 of DOMAIN_DIRS3) {
-    const domainDir = path65.join(wikiRoot, domain2);
-    if (!existsSync41(domainDir) || !statSync8(domainDir).isDirectory()) {
+    const domainDir = path66.join(wikiRoot, domain2);
+    if (!existsSync42(domainDir) || !statSync8(domainDir).isDirectory()) {
       counts[domain2] = 0;
     } else {
       const entries = readdirSync7(domainDir, { withFileTypes: true });
@@ -37210,8 +37269,8 @@ var countDomainPages = (wikiRoot) => {
   return counts;
 };
 var readStateFile2 = (statePath) => {
-  if (!existsSync41(statePath)) return null;
-  const raw = readFileSync52(statePath, "utf8");
+  if (!existsSync42(statePath)) return null;
+  const raw = readFileSync53(statePath, "utf8");
   try {
     return JSON.parse(raw);
   } catch {
@@ -37282,8 +37341,8 @@ var run68 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const wikiRoot = path65.join(repoRoot, "wiki");
-  const statePath = path65.join(wikiRoot, ".state.json");
+  const wikiRoot = path66.join(repoRoot, "wiki");
+  const statePath = path66.join(wikiRoot, ".state.json");
   const stateFile = readStateFile2(statePath);
   const stateSha = stateFile?.last_evaluated_sha ?? "";
   const stateAt = stateFile?.last_evaluated_at ?? "";

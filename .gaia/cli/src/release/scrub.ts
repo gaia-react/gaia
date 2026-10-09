@@ -3,26 +3,31 @@
  *
  * Bundle-time discipline for the GAIA release tarball. Runs inside
  * `release.yml` between the staging step (rsync from `git ls-files` minus
- * `.gaia/release-exclude`) and the final `tar -czf`. Five transforms run
- * in order against the staging tree:
+ * `.gaia/release-exclude`) and the final `tar -czf`. The transforms run in
+ * config order against the staging tree:
  *
- *   1. marker-strip: remove maintainer-only blocks delimited by HTML
- *      comment markers. Source becomes superset; bundle is subset.
+ *   - marker-strip: remove maintainer-only blocks delimited by HTML
+ *     comment markers. Source becomes superset; bundle is subset.
  *
- *   2. json-strip: delete maintainer-only keys from structured JSON files
- *      using dot-notation paths (e.g. "scripts.test:forensics"). Dots are
- *      path separators; key names must not contain literal dots.
+ *   - json-strip: delete maintainer-only keys from structured JSON files
+ *     using dot-notation paths (e.g. "scripts.test:forensics"). Dots are
+ *     path separators; key names must not contain literal dots.
  *
- *   3. json-strip-array-element: remove a single array element by predicate
- *      from a structured JSON file (e.g. a maintainer-only hook registration
- *      inside `.claude/settings.json`), the shape json-strip cannot express.
+ *   - json-strip-array-element: remove a single array element by predicate
+ *     from a structured JSON file (e.g. a maintainer-only hook registration
+ *     inside `.claude/settings.json`), the shape json-strip cannot express.
  *
- *   4. json-field-rewrite: substitute inside a JSON string field a
- *      selector addresses, for a maintainer-only token that must leave the
- *      bundle while the field itself survives (a schema-required key a
- *      delete would invalidate).
+ *   - json-field-rewrite: substitute inside a JSON string field a
+ *     selector addresses, for a maintainer-only token that must leave the
+ *     bundle while the field itself survives (a schema-required key a
+ *     delete would invalidate).
  *
- *   5. leak-check: run codified audit patterns from
+ *   - pnpm-member-strip: remove a maintainer-only workspace member from the
+ *     staged pnpm workspace file and lockfile (`pnpm-member-strip.ts`).
+ *     Refuses, writing neither file, when it cannot produce a consistent
+ *     pair.
+ *
+ *   - leak-check: run codified audit patterns from
  *      `.claude/rules/wiki-style.md` Audit section + the distribution-
  *      boundary classes in `.gaia/cli/health/taxonomy.md` against the
  *      post-strip staging tree. Non-empty match = build failure with a
@@ -33,13 +38,13 @@
  *
  * Exit codes:
  *   0: clean (no leaks; transforms applied successfully)
- *   1: user-correctable (leaks detected, unbalanced markers, missing
- *       staging dir, malformed config flags)
+ *   1: user-correctable (leaks detected, unbalanced markers, a refused
+ *       pnpm member strip, missing staging dir, malformed config flags)
  *   2: unexpected (config parse error, filesystem IO failure)
  */
 import {load as parseYaml} from 'js-yaml';
 import {z} from 'zod';
-import {readFileSync, statSync} from 'node:fs';
+import {existsSync, readFileSync, statSync} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
@@ -54,12 +59,19 @@ import {
 } from './excluded-refs.js';
 import {listGitFiles, parseExcludeLines} from './manifest.js';
 import {stripMarkerBlocks} from './marker-strip.js';
+import {checkStrippedPair, stripPnpmMember} from './pnpm-member-strip.js';
+import type {
+  PnpmMemberStripInput,
+  PnpmMemberStripOutcome,
+  PnpmStripRefusal,
+} from './pnpm-member-strip.js';
 
 const HELP_TEXT = `Usage: gaia-maintainer release scrub <staging-dir> [--config <path>] [--json]
 
-  Apply bundle-time scrub transforms (marker-strip + leak-check) to a
-  staging directory produced by release.yml. Writes in place inside
-  <staging-dir>; treats the source repo as read-only.
+  Apply the bundle-time scrub transforms in .gaia/release-scrub.yml (marker,
+  JSON and pnpm workspace-member strips, then leak checks) to a staging
+  directory produced by release.yml. Writes in place inside <staging-dir>;
+  treats the source repo as read-only.
 
   Flags:
     --config <path>  Override config path (default: .gaia/release-scrub.yml
@@ -69,7 +81,8 @@ const HELP_TEXT = `Usage: gaia-maintainer release scrub <staging-dir> [--config 
 
   Exit codes:
     0  clean
-    1  leaks detected, unbalanced markers, missing staging dir, bad flags
+    1  leaks detected, unbalanced markers, refused pnpm member strip,
+       missing staging dir, bad flags
     2  config parse error or filesystem IO failure
 `;
 
@@ -211,6 +224,15 @@ const JsonFieldRewriteSchema = z.object({
   type: z.literal('json-field-rewrite'),
 });
 
+// Strict like the leak checks: a misspelled key here would otherwise be
+// stripped and the transform would run against a default it never had.
+const PnpmMemberStripSchema = z.strictObject({
+  lockfile: z.string().min(1),
+  member: z.string().min(1),
+  type: z.literal('pnpm-member-strip'),
+  workspace: z.string().min(1),
+});
+
 const ConfigSchema = z.object({
   transforms: z
     .array(
@@ -219,6 +241,7 @@ const ConfigSchema = z.object({
         JsonStripSchema,
         JsonStripArrayElementSchema,
         JsonFieldRewriteSchema,
+        PnpmMemberStripSchema,
         LeakCheckSchema,
       ])
     )
@@ -238,6 +261,7 @@ type JsonStripTransform = z.infer<typeof JsonStripSchema>;
 type LeakCheckEntry = LeakCheckTransform['checks'][number];
 type LeakCheckTransform = z.infer<typeof LeakCheckSchema>;
 type MarkerStripTransform = z.infer<typeof MarkerStripSchema>;
+type PnpmMemberStripTransform = z.infer<typeof PnpmMemberStripSchema>;
 type RefsDerivedLeakCheck = z.infer<typeof RefsDerivedLeakCheckSchema>;
 type StaticLeakCheck = z.infer<typeof StaticLeakCheckSchema>;
 type TitleDerivedLeakCheck = z.infer<typeof TitleDerivedLeakCheckSchema>;
@@ -780,6 +804,105 @@ const applyJsonFieldRewrite = (
   }
 
   return {fieldsRewritten, filesTouched};
+};
+
+// pnpm member strip
+
+type PnpmMemberStripper = (
+  input: PnpmMemberStripInput
+) => PnpmMemberStripOutcome;
+
+type PnpmMemberStripRefusal = {
+  detail: string;
+  file: string;
+  token: PnpmStripRefusal;
+};
+
+type PnpmMemberStripResult = {
+  filesTouched: readonly string[];
+  importersRemoved: number;
+  packagesRemoved: number;
+  refusal: null | PnpmMemberStripRefusal;
+  snapshotsRemoved: number;
+};
+
+const NOTHING_STRIPPED = {
+  filesTouched: [],
+  importersRemoved: 0,
+  packagesRemoved: 0,
+  refusal: null,
+  snapshotsRemoved: 0,
+} as const;
+
+/**
+ * Writes the staged pair only after the outcome is `stripped` AND passes
+ * `checkStrippedPair`, which runs here as well as inside the stripper so an
+ * injected or faulty stripper still cannot write a pair that fails it. A
+ * staging tree carrying neither file has nothing to strip.
+ */
+const applyPnpmMemberStrip = (
+  stagingRoot: string,
+  transform: PnpmMemberStripTransform,
+  strip: PnpmMemberStripper
+): PnpmMemberStripResult => {
+  const paths = {
+    lockfile: path.join(stagingRoot, transform.lockfile),
+    workspace: path.join(stagingRoot, transform.workspace),
+  };
+  const present = {
+    lockfile: existsSync(paths.lockfile),
+    workspace: existsSync(paths.workspace),
+  };
+
+  if (!present.lockfile && !present.workspace) return NOTHING_STRIPPED;
+
+  if (!present.lockfile || !present.workspace) {
+    const missing = present.lockfile ? 'workspace' : 'lockfile';
+
+    return {
+      ...NOTHING_STRIPPED,
+      refusal: {
+        detail: 'staged without its pnpm counterpart file',
+        file: paths[missing],
+        token: 'unparseable',
+      },
+    };
+  }
+
+  const input = {
+    lockfile: readFileSync(paths.lockfile, 'utf8'),
+    member: transform.member,
+    workspace: readFileSync(paths.workspace, 'utf8'),
+  };
+  const stripped = strip(input);
+  const outcome =
+    stripped.kind === 'stripped' ?
+      (checkStrippedPair(input, stripped) ?? stripped)
+    : stripped;
+
+  if (outcome.kind === 'noop') return NOTHING_STRIPPED;
+
+  if (outcome.kind === 'refused') {
+    return {
+      ...NOTHING_STRIPPED,
+      refusal: {
+        detail: outcome.detail,
+        file: paths[outcome.file],
+        token: outcome.token,
+      },
+    };
+  }
+
+  atomicWriteFileSync(paths.workspace, outcome.workspace);
+  atomicWriteFileSync(paths.lockfile, outcome.lockfile);
+
+  return {
+    filesTouched: [transform.workspace, transform.lockfile],
+    importersRemoved: outcome.removed.importers.length,
+    packagesRemoved: outcome.removed.packages.length,
+    refusal: null,
+    snapshotsRemoved: outcome.removed.snapshots.length,
+  };
 };
 
 // Leak check
@@ -1388,6 +1511,12 @@ type Report = {
     blocks_stripped: number;
     files_touched: readonly string[];
   };
+  pnpm_member_strip: {
+    files_touched: readonly string[];
+    importers_removed: number;
+    packages_removed: number;
+    snapshots_removed: number;
+  };
   unbalanced_markers: readonly {
     file: string;
     line: number;
@@ -1398,6 +1527,8 @@ type Report = {
 
 type RunOptions = {
   cwd?: string;
+  /** Test seam: replaces the pnpm member stripper the transform calls. */
+  stripPnpmMember?: PnpmMemberStripper;
 };
 
 const renderHumanReport = (report: Report, jsonMode: boolean): string => {
@@ -1408,6 +1539,7 @@ const renderHumanReport = (report: Report, jsonMode: boolean): string => {
     `release scrub: removed ${report.json_strip.keys_removed} json key(s) from ${report.json_strip.files_touched.length} file(s)`,
     `release scrub: removed ${report.json_strip_array_element.elements_removed} json array element(s) from ${report.json_strip_array_element.files_touched.length} file(s)`,
     `release scrub: rewrote ${report.json_field_rewrite.fields_rewritten} json field(s) in ${report.json_field_rewrite.files_touched.length} file(s)`,
+    `release scrub: removed ${report.pnpm_member_strip.importers_removed} pnpm importer(s), ${report.pnpm_member_strip.packages_removed} package(s), ${report.pnpm_member_strip.snapshots_removed} snapshot(s)`,
   ];
 
   if (report.unbalanced_markers.length > 0) {
@@ -1488,6 +1620,7 @@ type ScrubContext = {
   cwd: string;
   stagedFiles: readonly string[];
   stagingDir: string;
+  stripPnpmMember: PnpmMemberStripper;
 };
 
 /**
@@ -1556,6 +1689,11 @@ type TransformResults = {
   jsonStripFiles: string[];
   jsonStripKeysRemoved: number;
   leaks: Leak[];
+  pnpmFiles: string[];
+  pnpmImportersRemoved: number;
+  pnpmPackagesRemoved: number;
+  pnpmRefusal: null | PnpmMemberStripRefusal;
+  pnpmSnapshotsRemoved: number;
   stripBlocks: number;
   stripFiles: string[];
   unbalanced: {file: string; line: number; reason: string}[];
@@ -1563,7 +1701,9 @@ type TransformResults = {
 };
 
 // After marker-strip and json-strip land, leak-check sees the post-strip
-// tree because we re-read each file fresh inside the check.
+// tree because we re-read each file fresh inside the check. A refused pnpm
+// member strip stops the run: the later transforms would only report the
+// same unscrubbed member again.
 const runTransforms = (
   config: ScrubConfig,
   ctx: ScrubContext
@@ -1576,6 +1716,11 @@ const runTransforms = (
     jsonStripFiles: [],
     jsonStripKeysRemoved: 0,
     leaks: [],
+    pnpmFiles: [],
+    pnpmImportersRemoved: 0,
+    pnpmPackagesRemoved: 0,
+    pnpmRefusal: null,
+    pnpmSnapshotsRemoved: 0,
     stripBlocks: 0,
     stripFiles: [],
     unbalanced: [],
@@ -1583,6 +1728,8 @@ const runTransforms = (
   };
 
   for (const transform of config.transforms) {
+    if (results.pnpmRefusal !== null) break;
+
     if (transform.type === 'marker-strip') {
       const result = applyMarkerStrip(
         ctx.stagingDir,
@@ -1612,6 +1759,17 @@ const runTransforms = (
       );
       results.jsonFieldsRewritten += result.fieldsRewritten;
       results.jsonFieldRewriteFiles.push(...result.filesTouched);
+    } else if (transform.type === 'pnpm-member-strip') {
+      const result = applyPnpmMemberStrip(
+        ctx.stagingDir,
+        transform,
+        ctx.stripPnpmMember
+      );
+      results.pnpmFiles.push(...result.filesTouched);
+      results.pnpmImportersRemoved += result.importersRemoved;
+      results.pnpmPackagesRemoved += result.packagesRemoved;
+      results.pnpmSnapshotsRemoved += result.snapshotsRemoved;
+      results.pnpmRefusal = result.refusal;
     } else {
       const result = runLeakChecksForTransform(transform, ctx);
       results.leaks.push(...result.leaks);
@@ -1702,9 +1860,25 @@ export const run = (
     cwd,
     stagedFiles,
     stagingDir,
+    stripPnpmMember: options.stripPnpmMember ?? stripPnpmMember,
   });
 
   if (results === null) return UNEXPECTED_EXIT;
+
+  if (results.pnpmRefusal !== null) {
+    const {detail, file, token} = results.pnpmRefusal;
+
+    structuredError({
+      code: 'pnpm_member_strip_refused',
+      detail,
+      file,
+      message: `pnpm-member-strip refused ${file} (${token}): ${detail}; neither pnpm file was written`,
+      subcommand: 'release scrub',
+      token,
+    });
+
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
 
   const report: Report = {
     json_field_rewrite: {
@@ -1723,6 +1897,12 @@ export const run = (
     marker_strip: {
       blocks_stripped: results.stripBlocks,
       files_touched: results.stripFiles,
+    },
+    pnpm_member_strip: {
+      files_touched: results.pnpmFiles,
+      importers_removed: results.pnpmImportersRemoved,
+      packages_removed: results.pnpmPackagesRemoved,
+      snapshots_removed: results.pnpmSnapshotsRemoved,
     },
     unbalanced_markers: results.unbalanced,
     unused_allowlist: results.warnings,
