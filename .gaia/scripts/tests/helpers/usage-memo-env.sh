@@ -59,9 +59,8 @@ _umemo_build_tree() {
   local root="$1" script_file
   mkdir -p "$root/.gaia/scripts" "$root/.gaia/scripts/spec"
   for script_file in "$UM_SOURCE_ROOT"/.gaia/scripts/usage*.sh "$UM_SOURCE_ROOT"/.gaia/scripts/token-pricing-lib.sh \
-    "$UM_SOURCE_ROOT"/.gaia/scripts/token-rates-local-lib.sh "$UM_SOURCE_ROOT"/.gaia/scripts/token-rates-feed-lib.sh \
     "$UM_SOURCE_ROOT"/.gaia/scripts/ledger-path-lib.sh "$UM_SOURCE_ROOT"/.gaia/scripts/main-root-lib.sh \
-    "$UM_SOURCE_ROOT"/.gaia/scripts/branch-name-lib.sh "$UM_SOURCE_ROOT"/.gaia/scripts/token-rollup.sh; do
+    "$UM_SOURCE_ROOT"/.gaia/scripts/branch-name-lib.sh; do
     cp "$script_file" "$root/.gaia/scripts/" || return 1
   done
   cp "$UM_SOURCE_ROOT/.gaia/scripts/spec/with-ledger-lock.sh" "$root/.gaia/scripts/spec/" || return 1
@@ -91,6 +90,22 @@ umemo_setup() {
   for pinned_file in $UMEMO_PINNED; do
     cp "$UM_BASELINE_DIRECTORY/$pinned_file" "$UM_OLD/.gaia/scripts/$pinned_file" || return 1
   done
+  # The frozen baseline prices through gaia_resolve_rate_table, which the
+  # production pricing lib no longer defines. Appending it to the old tree's
+  # copy alone keeps both trees pricing from the same table.
+  cat >>"$UM_OLD/.gaia/scripts/token-pricing-lib.sh" <<'SHIM'
+
+# Test-only: the frozen baseline prices through this name and the production
+# lib no longer defines it. Prints its first argument when non-empty, else the
+# distributed table of this tree.
+gaia_resolve_rate_table() {
+  if [[ -n "${1:-}" ]]; then
+    printf '%s' "$1"
+  else
+    printf '%s' "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/token-rates.json"
+  fi
+}
+SHIM
   # The frozen baseline loads the ledger lock only from its old relative path.
   mkdir -p "$UM_OLD/.specify/extensions/gaia/lib" || return 1
   cp "$UM_SOURCE_ROOT/.gaia/scripts/spec/with-ledger-lock.sh" "$UM_OLD/.specify/extensions/gaia/lib/" || return 1
@@ -112,7 +127,6 @@ umemo_setup() {
 EOF
   UM_OUTPUT_FILE="$UM_TEMPORARY_DIRECTORY/u.out"
   UM_ERROR_FILE="$UM_TEMPORARY_DIRECTORY/u.err"
-  export GAIA_RATES_FEED_DISABLE=1 GAIA_RATES_STATE_DIRECTORY="$UM_TEMPORARY_DIRECTORY/rates-state"
   unset CLAUDE_CODE_SESSION_ID GAIA_TALLY_PROJECTS_ROOT GITHUB_ACTIONS GAIA_USAGE_MEMO_TRACE GAIA_USAGE_MEMO_SEAM
   return 0
 }
@@ -133,13 +147,15 @@ _umemo_run() {
 u_new() { _umemo_run "$UM_NEW" "$UM_OUTPUT_FILE" "$UM_ERROR_FILE" "$@"; }
 u_old() { _umemo_run "$UM_OLD" "$UM_OUTPUT_FILE" "$UM_ERROR_FILE" "$@"; }
 
-# umemo_load_store <name>: copies fixtures/usage/<name>/{usage,links,cost}.jsonl
-# into $UM_TELEMETRY_DIRECTORY (replacing whatever was there).
+# umemo_load_store <name>: copies fixtures/usage/<name>/{usage,links}.jsonl
+# into $UM_TELEMETRY_DIRECTORY (replacing whatever was there). The fixtures
+# hold no store the pinned baseline reads and the working tree does not, so
+# the two trees read the same rows.
 umemo_load_store() {
   local store_file store_directory="$UM_FIXTURES/$1"
   [ -d "$store_directory" ] || { _umemo_fail "no fixture store named '$1' under $UM_FIXTURES"; return 1; }
   mkdir -p "$UM_TELEMETRY_DIRECTORY" || return 1
-  for store_file in usage.jsonl links.jsonl cost.jsonl; do
+  for store_file in usage.jsonl links.jsonl; do
     if [ -f "$store_directory/$store_file" ]; then cp "$store_directory/$store_file" "$UM_TELEMETRY_DIRECTORY/$store_file" || return 1; else rm -f "$UM_TELEMETRY_DIRECTORY/$store_file"; fi
   done
 }
@@ -224,21 +240,22 @@ umemo_validate_probes() {
 # umemo_probe_count <probes.json>: how many probes the file holds.
 umemo_probe_count() { jq -r '.probes | length' "$1"; }
 
-# _umemo_store_jq <filter> [jq args...]: the stores in $UM_TELEMETRY_DIRECTORY as $u, $l, $c and
+# _umemo_store_jq <filter> [jq args...]: the stores in $UM_TELEMETRY_DIRECTORY as $u and $l and
 # the pinned lib's $keys object, with the pinned usage and resolve defs ahead of
 # the filter. Pinned so a sibling task editing the working tree's jq cannot
-# move what a fixture is checked against.
+# move what a fixture is checked against. The pinned defs take a third store
+# the fixtures no longer hold, so it is always empty here: /dev/null for the
+# keys scan and [] wherever a def asks for its rows.
 _umemo_store_jq() {
-  local filter="$1" usage_store="$UM_TELEMETRY_DIRECTORY/usage.jsonl" links_store="$UM_TELEMETRY_DIRECTORY/links.jsonl" cost_store="$UM_TELEMETRY_DIRECTORY/cost.jsonl"
+  local filter="$1" usage_store="$UM_TELEMETRY_DIRECTORY/usage.jsonl" links_store="$UM_TELEMETRY_DIRECTORY/links.jsonl"
   shift
   [ -f "$usage_store" ] || usage_store=/dev/null
   [ -f "$links_store" ] || links_store=/dev/null
-  [ -f "$cost_store" ] || cost_store=/dev/null
   (
     # shellcheck source=/dev/null
     . "$UM_OLD/.gaia/scripts/usage-lib.sh" && . "$UM_OLD/.gaia/scripts/usage-resolve-lib.sh" || exit 1
-    keys="$(gaia_usage_keys_json "$UM_MAIN" "$usage_store" "$links_store" "$cost_store")" || exit 1
-    jq -n --rawfile u "$usage_store" --rawfile l "$links_store" --rawfile c "$cost_store" --argjson keys "$keys" "$@" \
+    keys="$(gaia_usage_keys_json "$UM_MAIN" "$usage_store" "$links_store" /dev/null)" || exit 1
+    jq -n --rawfile u "$usage_store" --rawfile l "$links_store" --argjson keys "$keys" "$@" \
       "$GAIA_USAGE_JQ_DEFS$GAIA_USAGE_RESOLVE_JQ$filter"
   )
 }
@@ -287,19 +304,22 @@ umemo_check_probe() {
         ;;
       inherit)
         got="$(_umemo_store_jq 'usage_rows($u) as $usage_records | [$usage_records[] | select(.kind == "binding")] as $bindings
-          | usage_resolve([$usage_records[] | select(.kind == "segment")]; $bindings; usage_intervals($bindings; usage_rows($c)))
+          | usage_resolve([$usage_records[] | select(.kind == "segment")]; $bindings; usage_intervals($bindings; []))
           | any(.[]; .inherit == true and .rkey == $key)' --arg key "$key")" || got=error
         [ "$got" = "$expect_value" ] || { _umemo_fail "probe $pr: inherit is $got for $key, expect $expect_value"; exit_status=1; }
         ;;
       interval)
         # An interval resolves a session's segments to a spec: or plan: key, so
         # the segment is found at the probe key or at one of its ancestors (the
-        # spec or plan its branch name implies), inside a closed interval.
-        got="$(_umemo_store_jq 'usage_rows($u) as $usage_records | usage_rows($l) as $links | usage_rows($c) as $cost
+        # spec or plan its branch name implies), inside a closed interval. The
+        # pinned defs close an interval only from the retired store, so over
+        # these fixtures the check reads false: an interval probe pins that the
+        # start stays open in both trees. Close-row pairing has its own suites.
+        got="$(_umemo_store_jq 'usage_rows($u) as $usage_records | usage_rows($l) as $links
           | [$usage_records[] | select(.kind == "binding")] as $bindings
-          | usage_intervals($bindings; $cost) as $intervals
+          | usage_intervals($bindings; []) as $intervals
           | usage_resolve_t([$usage_records[] | select(.kind == "segment")]; $bindings; $intervals) as $segments
-          | usage_walk(usage_edges($links; $cost; $keys); $key; true).seen as $ancestors
+          | usage_walk(usage_edges($links; []; $keys); $key; true).seen as $ancestors
           | any($segments[]; . as $segment | ($segment.rkey | type) == "string" and ($segment.rkey | test("^(spec|plan):"))
               and any($ancestors[]; . == $segment.rkey)
               and any($intervals[]; .session_id == $segment.session_id and .key == $segment.rkey
@@ -321,12 +341,12 @@ umemo_check_anchor() {
     open_start)
       session_id="$(jq -r '.anchors.open_start.session_id' "$probes_file")" key="$(jq -r '.anchors.open_start.key' "$probes_file")"
       pr="$(jq -r '.anchors.open_start.pr' "$probes_file")"
-      got="$(_umemo_store_jq 'usage_rows($u) as $usage_records | usage_rows($l) as $links | usage_rows($c) as $cost
+      got="$(_umemo_store_jq 'usage_rows($u) as $usage_records | usage_rows($l) as $links
         | [$usage_records[] | select(.kind == "binding")] as $bindings
-        | usage_resolve([$usage_records[] | select(.kind == "segment")]; $bindings; usage_intervals($bindings; $cost)) as $segments
-        | usage_edges($links; $cost; $keys) as $edges
+        | usage_resolve([$usage_records[] | select(.kind == "segment")]; $bindings; usage_intervals($bindings; [])) as $segments
+        | usage_edges($links; []; $keys) as $edges
         | any($bindings[]; .type == "start" and .session_id == $session_id)
-          and ([$cost[] | select(.session_id == $session_id)] | length == 0)
+          and ([$bindings[] | select(.type == "close" and .session_id == $session_id)] | length == 0)
           and ([$segments[] | select(.session_id == $session_id)] | length > 0)
           and all($segments[] | select(.session_id == $session_id); .rkey == "session:" + $session_id)
           and any($edges[]; .child == $key and (.parent | test("^(spec|plan):")))' --arg session_id "$session_id" --arg key "$key")" || got=error
@@ -338,7 +358,7 @@ umemo_check_anchor() {
       session_id="$(jq -r '.anchors.unbound_session.session_id' "$probes_file")" root="$(jq -r '.anchors.unbound_session.root' "$probes_file")"
       pr="$(jq -r '.anchors.unbound_session.pr' "$probes_file")"
       got="$(_umemo_store_jq 'usage_rows($u) as $usage_records | [$usage_records[] | select(.kind == "binding")] as $bindings
-        | usage_resolve([$usage_records[] | select(.kind == "segment")]; $bindings; usage_intervals($bindings; usage_rows($c))) as $segments
+        | usage_resolve([$usage_records[] | select(.kind == "segment")]; $bindings; usage_intervals($bindings; [])) as $segments
         | ([$segments[] | select(.session_id == $session_id)] | length > 0)
           and all($segments[] | select(.session_id == $session_id); .rkey == "session:" + $session_id)' --arg session_id "$session_id")" || got=error
       [ "$got" = true ] || { _umemo_fail "anchor unbound_session: segments of $session_id do not all resolve to session:$session_id (got $got)"; return 1; }
@@ -348,15 +368,15 @@ umemo_check_anchor() {
       ;;
     spare_root)
       reference="$(jq -r '.anchors.spare_root.ref' "$probes_file")" pr="$(jq -r '.anchors.spare_root.pr' "$probes_file")"
-      got="$(_umemo_store_jq 'usage_rows($u) as $usage_records | usage_rows($l) as $links | usage_rows($c) as $cost
+      got="$(_umemo_store_jq 'usage_rows($u) as $usage_records | usage_rows($l) as $links
         | [$usage_records[] | select(.kind == "binding")] as $bindings
-        | usage_resolve([$usage_records[] | select(.kind == "segment")]; $bindings; usage_intervals($bindings; $cost)) as $segments
-        | usage_edges($links; $cost; $keys) as $edges
+        | usage_resolve([$usage_records[] | select(.kind == "segment")]; $bindings; usage_intervals($bindings; [])) as $segments
+        | usage_edges($links; []; $keys) as $edges
         | usage_closure($edges; $reference) as $closure
         | ([$segments[] | select(.rkey as $root_key | any($closure[]; . == $root_key)) | .by_model | to_entries[] | .value.fresh_input // 0] | add // 0) > 0' \
         --arg reference "$reference")" || got=error
       [ "$got" = true ] || { _umemo_fail "anchor spare_root: $reference owns no spend (got $got)"; return 1; }
-      got="$(_umemo_store_jq 'usage_rows($l) as $links | usage_rows($c) as $cost | usage_edges($links; $cost; $keys) as $edges
+      got="$(_umemo_store_jq 'usage_rows($l) as $links | usage_edges($links; []; $keys) as $edges
         | [$probes[0].probes[] | .key | strings | . as $key | usage_walk($edges; $key; true).seen | any(.[]; . == $reference)] | any' \
         --arg reference "$reference" --slurpfile probes "$probes_file")" || got=error
       [ "$got" = false ] || { _umemo_fail "anchor spare_root: a probe key reaches $reference (got $got)"; return 1; }
@@ -366,7 +386,7 @@ umemo_check_anchor() {
       raw="$(jq -r '.anchors.new_branch.raw' "$probes_file")" key="$(jq -r '.anchors.new_branch.key' "$probes_file")"
       parent="$(jq -r '.anchors.new_branch.parent' "$probes_file")"
       case "$raw" in */*) ;; *) _umemo_fail "anchor new_branch: raw $raw has no slash"; return 1 ;; esac
-      for got in usage links cost; do
+      for got in usage links; do
         if [ -f "$UM_TELEMETRY_DIRECTORY/$got.jsonl" ] && { grep -qF -- "$raw" "$UM_TELEMETRY_DIRECTORY/$got.jsonl" || grep -qF -- "$key" "$UM_TELEMETRY_DIRECTORY/$got.jsonl"; }; then
           _umemo_fail "anchor new_branch: $raw or $key already occurs in $got.jsonl"
           return 1
@@ -378,10 +398,10 @@ umemo_check_anchor() {
       got="$(bash -c '. "$1/.gaia/scripts/usage-lib.sh" && . "$1/.gaia/scripts/usage-resolve-lib.sh" &&
         gaia_usage_derive_map "$2" | jq -r --arg key "$2" --arg parent "$3" "(.[\$key] // []) | any(. == \$parent)"' _ "$UM_OLD" "$key" "$parent")" || got=error
       [ "$got" = true ] || { _umemo_fail "anchor new_branch: $key does not derive parent $parent (got $got)"; return 1; }
-      got="$(_umemo_store_jq 'usage_rows($u) as $usage_records | usage_rows($l) as $links | usage_rows($c) as $cost
+      got="$(_umemo_store_jq 'usage_rows($u) as $usage_records | usage_rows($l) as $links
         | [$usage_records[] | select(.kind == "binding")] as $bindings
-        | usage_resolve([$usage_records[] | select(.kind == "segment")]; $bindings; usage_intervals($bindings; $cost)) as $segments
-        | usage_closure(usage_edges($links; $cost; $keys); $parent) as $closure
+        | usage_resolve([$usage_records[] | select(.kind == "segment")]; $bindings; usage_intervals($bindings; [])) as $segments
+        | usage_closure(usage_edges($links; []; $keys); $parent) as $closure
         | ([$segments[] | select(.rkey as $root_key | any($closure[]; . == $root_key)) | .by_model | to_entries[] | .value.fresh_input // 0] | add // 0) > 0' \
         --arg parent "$parent")" || got=error
       [ "$got" = true ] || { _umemo_fail "anchor new_branch: parent $parent owns no spend (got $got)"; return 1; }

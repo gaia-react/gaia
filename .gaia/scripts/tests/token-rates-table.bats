@@ -2,8 +2,8 @@
 #
 # Bats suite for the SHIPPED rate table, .gaia/scripts/token-rates.json.
 #
-# Every other pricing suite (token-price.bats, token-tally-price.bats) drives
-# the arithmetic through AUTHORED fixture tables, so none of them notices when
+# Every other pricing suite drives the arithmetic through AUTHORED fixture
+# tables, so none of them notices when
 # the shipped table is missing a row for a model GAIA actually runs. That gap
 # is the whole of #1088: an absent key makes `rate_window` yield null,
 # `priced_row` maps a null window to 0, and the row still returns well-formed,
@@ -30,8 +30,8 @@ setup() {
 }
 
 # rate_for <model> <date> -> "<input> <output>" via the REAL rate_window, so a
-# row whose window is nested wrongly fails here exactly as it would in
-# token-tally.sh, rather than passing a shallow has-key check.
+# row whose window is nested wrongly fails here exactly as it would in a
+# readout, rather than passing a shallow has-key check.
 #
 # It does NOT catch a string-typed rate: jq renders "\(.input)" identically for
 # `5` and `"5"`, so every equality assertion below passes either way. The rate

@@ -22,7 +22,6 @@ setup() {
   git -C "$MAIN" -c user.email=t@example.com -c user.name=T -c commit.gpgsign=false commit -q --allow-empty -m init
   register_hooks
   mkdir -p "$TELEMETRY_DIRECTORY" "$PROJECTS_DIRECTORY"
-  export GAIA_RATES_FEED_DISABLE=1 GAIA_RATES_STATE_DIRECTORY="$BATS_TEST_TMPDIR/rates-state"
   unset CLAUDE_CODE_SESSION_ID GAIA_TALLY_PROJECTS_ROOT
 }
 
@@ -242,8 +241,8 @@ cursors() {
   arms="$(awk '/^case "\$SUBCOMMAND" in$/ { in_case = 1; next } in_case && /^esac$/ { exit }
     in_case && /^  [^ ]/ { sub(/^  /, ""); sub(/\).*/, ""); print }' "$USAGE" |
     grep -vxF -e '"" | -h | --help' -e '*' | sort)"
-  [ "$(printf '%s\n' "$arms" | wc -l | tr -d ' ')" -eq 8 ]
-  [ "$arms" = "$(printf '%s\n' link unlink lineage declare pr pr-branch initiative reconcile | sort)" ]
+  [ "$(printf '%s\n' "$arms" | wc -l | tr -d ' ')" -eq 10 ]
+  [ "$arms" = "$(printf '%s\n' link unlink lineage declare pr pr-branch initiative reconcile record represented | sort)" ]
   # Both excluded arms are present, so the exclusion above removed something real.
   [ "$(awk '/^case "\$SUBCOMMAND" in$/ { in_case = 1; next } in_case && /^esac$/ { exit } in_case' "$USAGE" | grep -cE '^  ("" \| -h \| --help|\*)\)')" -eq 2 ]
 }

@@ -28,9 +28,6 @@ bats_require_minimum_version 1.5.0
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   TEMPORARY_DIRECTORY="$(cd "$BATS_TEST_TMPDIR" && pwd -P)"
-  # The real scripts copied below reach the pricing path; the hermetic
-  # suite holds every usage suite to this isolation.
-  export GAIA_RATES_FEED_DISABLE=1 GAIA_RATES_STATE_DIRECTORY="$TEMPORARY_DIRECTORY/rates-state"
   unset GITHUB_ACTIONS CLAUDE_CODE_SESSION_ID GAIA_TALLY_PROJECTS_ROOT GAIA_USAGE_TEST_BARRIER
   REPO="$TEMPORARY_DIRECTORY/repo"
   PROJECTS_DIRECTORY="$TEMPORARY_DIRECTORY/projects"

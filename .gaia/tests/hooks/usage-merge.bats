@@ -1,8 +1,8 @@
 #!/usr/bin/env bats
 #
 # Bats suite for .gaia/scripts/usage-merge.sh, the per-PR cost block printed at
-# every `gh pr merge` (run through the real token-rollup-merge.sh hook, which
-# is what calls it). Covers SPEC-087 UAT-007, UAT-016, UAT-021 and the merge
+# every `gh pr merge` (run through the real pr-merge-cost.sh hook, which is
+# what calls it). Covers SPEC-087 UAT-007, UAT-016, UAT-021 and the merge
 # hook's resolution, confirmation, and no-new-host contracts.
 #
 # Run under bash 5 (.claude/rules/bats-assertions.md):
@@ -76,7 +76,6 @@ setup() {
   # shellcheck disable=SC2034  # read by build_repo in the helper
   SOURCE_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   TEMPORARY_DIRECTORY="$(cd "$BATS_TEST_TMPDIR" && pwd -P)"
-  export GAIA_RATES_STATE_DIRECTORY="$BATS_TEST_TMPDIR/rates-state" GAIA_RATES_FEED_DISABLE=1
   unset CLAUDE_CODE_SESSION_ID GAIA_TALLY_PROJECTS_ROOT GITHUB_ACTIONS GAIA_USAGE_HOOKS_DISABLE
   unset GAIA_LEDGER_LOCK_FORCE_FALLBACK GAIA_LEDGER_LOCK_TIMEOUT_SECONDS GAIA_USAGE_MERGE_CAP_SECONDS GAIA_USAGE_RENDER_CAP_SECONDS
   export GAIA_LEDGER_LOCK_POLL_SECONDS=0.1
@@ -302,22 +301,8 @@ slow_render() {
     "$1" >"$REPO/.gaia/scripts/usage.sh"
 }
 
-# seed_rollup: an active plan on the current branch with one execute record,
-# so token-rollup-merge.sh prints its cycle roll-up after the block.
-seed_rollup() {
-  local plan="$REPO/.gaia/local/plans/my-plan"
-  mkdir -p "$plan"
-  printf '# Plan\n\n## Source SPEC\n\nDerived from SPEC-042 (/abs/root/.gaia/local/specs/SPEC-042/SPEC.md).\n' >"$plan/README.md"
-  printf 'branch: main\nslug: my-plan\nstarted: 2026-07-01T00:00:00Z\n' >"$plan/RUNNING"
-  jq -nc '{kind:"execute", spec_id:"SPEC-042", plan_slug:"my-plan", session_id:"sess-a",
-    buckets:{fresh_input:300, cache_write:0, cache_read:0, output:0}, total:300, partial:false,
-    started_at:"2026-06-01T00:00:00Z", ended_at:"2026-06-01T00:00:00Z", duration_seconds:10,
-    duration_available:true, ts:"2026-06-01T00:00:00Z"}' >>"$TELEMETRY_DIRECTORY/cost.jsonl"
-}
-
-@test "the render cap: a render past the cap is killed, one timed-out line replaces the block, and the roll-up still prints" {
+@test "the render cap: a render past the cap is killed and one timed-out line replaces the block" {
   seed_uat007
-  seed_rollup
   slow_render 8
   gh_view 103 103 fix/foo MERGED 2026-09-25T02:00:00Z
   export GAIA_USAGE_RENDER_CAP_SECONDS=1
@@ -330,8 +315,7 @@ seed_rollup() {
   has_line "! readout timed out after 1s; rerun: bash .gaia/scripts/usage.sh pr 103"
   [ "$(grep -c 'readout timed out' <<<"$output")" -eq 1 ]
   lacks "[PR cost]"
-  has_line "[cycle cost at merge]"
-  grep -qF "Cycle cost (SPEC-042)" <<<"$output"
+  lacks "[cycle cost at merge]"
   [ "$(merge_rows 103)" -eq 1 ]
 }
 

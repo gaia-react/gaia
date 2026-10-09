@@ -6,7 +6,7 @@
 # the shipped jq defs, never a re-implementation:
 #   - the differential compares the full resolver's per-ref sums with the
 #     pruned sums, and goes red for each committed mutant of the prune def;
-#   - the globals-blank equivalence runs each `_of` view with $usage_store, $links_store, $cost_store bound
+#   - the globals-blank equivalence runs each `_of` view with $usage_store, $links_store bound
 #     to "" and $keys to {}, and goes red for each committed sed mutant.
 #
 # Run under bash 5 (.claude/rules/bats-assertions.md):
@@ -32,7 +32,7 @@ setup() {
   . "$SCRIPTS/usage-render-lib.sh"
   # shellcheck source=.gaia/scripts/token-pricing-lib.sh
   . "$SCRIPTS/token-pricing-lib.sh"
-  KEYS="$(gaia_usage_keys_json "$MAIN" "$FIXTURES_DIRECTORY/usage.jsonl" "$FIXTURES_DIRECTORY/links.jsonl" "$FIXTURES_DIRECTORY/cost.jsonl")"
+  KEYS="$(gaia_usage_keys_json "$MAIN" "$FIXTURES_DIRECTORY/usage.jsonl" "$FIXTURES_DIRECTORY/links.jsonl")"
   RATES="$(gaia_load_rate_table "$RATES_FILE")"
   export KEYS RATES
   printf '%s' "$KEYS" >"$TEMPORARY_DIRECTORY/keys.json"
@@ -44,12 +44,11 @@ setup() {
 diff_prog() {
   # shellcheck disable=SC2016  # jq source
   printf '%s%s%s%s%s' "$GAIA_USAGE_JQ_DEFS" "$GAIA_PRICING_JQ_DEFS" "$GAIA_USAGE_RESOLVE_JQ" "$GAIA_USAGE_MODEL_JQ" "$1"'
-usage_rows($usage_store) as $usage_records | usage_rows($links_store) as $links | usage_rows($cost_store) as $cost
-| usage_model_base_of($usage_records; $links; $cost; $keys) as $readout_model
+usage_rows($usage_store) as $usage_records | usage_rows($links_store) as $links
+| usage_model_base_of($usage_records; $links; $keys) as $readout_model
 | $readout_model.edges as $edges
 | ([$usage_records[] | select(.kind == "segment") | .key | strings | select(startswith("branch:"))]
-   + [$links[] | (.child, .parent, .key) | strings | select(startswith("branch:"))]
-   + [$keys.bmap[] | .key | strings] | unique) as $branch_keys
+   + [$links[] | (.child, .parent, .key) | strings | select(startswith("branch:"))] | unique) as $branch_keys
 | ([$branch_keys[] | usage_roots($edges; .)[]] | unique) as $roots
 | ([$readout_model.segs[].rkey | strings] | unique) as $resolved_keys
 | ([$branch_keys[] | . as $branch_key | {name: ("key " + $branch_key),
@@ -60,14 +59,14 @@ usage_rows($usage_store) as $usage_records | usage_rows($links_store) as $links 
     [$reference_set | to_entries[] | .key as $reference | {ref: $reference, sum: usage_sum([$segments[] | select(.rkey == $reference) | usage_priced])}];
   {keys: ($branch_keys | length), roots: ($roots | length), resolved_keys: ($resolved_keys | length), cases: ($cases | length),
    full: [$cases[] | {name, sums: sums($readout_model.segs; .reference_set)}],
-   pruned: [$cases[] | usage_pr_scope($usage_records; $cost; .reference_set) as $scope
-     | usage_resolve_t($scope.segs; $scope.bindings; usage_intervals($scope.bindings; $scope.cost)) as $segments
+   pruned: [$cases[] | usage_pr_scope($usage_records; .reference_set) as $scope
+     | usage_resolve_t($scope.segs; $scope.bindings; usage_intervals($scope.bindings)) as $segments
      | {name, sums: sums($segments; .reference_set)}]}'
 }
 
 # run_diff <view-jq>: writes the differential to $TEMPORARY_DIRECTORY/diff.json.
 run_diff() {
-  jq -n --rawfile usage_store "$FIXTURES_DIRECTORY/usage.jsonl" --rawfile links_store "$FIXTURES_DIRECTORY/links.jsonl" --rawfile cost_store "$FIXTURES_DIRECTORY/cost.jsonl" \
+  jq -n --rawfile usage_store "$FIXTURES_DIRECTORY/usage.jsonl" --rawfile links_store "$FIXTURES_DIRECTORY/links.jsonl" \
     --argjson keys "$KEYS" --argjson rates "$RATES" "$(diff_prog "$1")" >"$TEMPORARY_DIRECTORY/diff.json"
 }
 
@@ -107,8 +106,8 @@ assert_mutant_red() {
   assert_mutant_red no-binding-clause
 }
 
-@test "guard red: dropping the cost-row clause changes a pruned sum" {
-  assert_mutant_red no-cost-clause
+@test "guard red: dropping the close binding from the binding clause changes a pruned sum" {
+  assert_mutant_red no-close-clause
 }
 
 @test "guard red: dropping the raw segment key clause changes a pruned sum" {
@@ -119,15 +118,16 @@ assert_mutant_red() {
   assert_mutant_red segment-granular
 }
 
-@test "guard red: keeping only the cost rows keyed in N changes a pruned sum" {
-  assert_mutant_red filter-cost-rows
+@test "guard red: keeping only the bindings keyed in N changes a pruned sum" {
+  assert_mutant_red filter-bindings
 }
 
 # equiv_run <library_directory> <mode>: runs the views over the prune fixture with the
 # libs in <library_directory> (usage-resolve-lib.sh, usage-render-lib.sh) and prints one
-# JSON document. Modes: `wrapper` binds $usage_store $links_store $cost_store $keys to the real stores and
-# keys; `empty-keys` is the wrapper with $keys = {}; `of` binds $usage_store $links_store $cost_store to ""
-# and $keys to {} and hands the real parsed rows and keys to the `_of` views.
+# JSON document. Modes: `wrapper` binds $usage_store $links_store $keys to the real stores and
+# keys; `empty-keys` is the wrapper with $keys = {}; `of` binds $usage_store $links_store to ""
+# and $keys to {} and hands the real parsed rows and keys to the `_of` views. Every pr view
+# carries an auditors list, so the audit sum is compared too.
 EQUIV_SH='
 library_directory="$1" mode="$2" scripts="$3" fixtures_directory="$4" keys="$5" rates="$6"
 . "$scripts/usage-lib.sh"
@@ -135,34 +135,33 @@ library_directory="$1" mode="$2" scripts="$3" fixtures_directory="$4" keys="$5" 
 . "$library_directory/usage-render-lib.sh"
 . "$scripts/token-pricing-lib.sh"
 program="$GAIA_USAGE_JQ_DEFS$GAIA_PRICING_JQ_DEFS$GAIA_USAGE_RESOLVE_JQ$GAIA_USAGE_MODEL_JQ$GAIA_USAGE_VIEW_JQ"
-lists="$(jq -n --rawfile usage_store "$fixtures_directory/usage.jsonl" --rawfile links_store "$fixtures_directory/links.jsonl" --rawfile cost_store "$fixtures_directory/cost.jsonl" \
+lists="$(jq -n --rawfile usage_store "$fixtures_directory/usage.jsonl" --rawfile links_store "$fixtures_directory/links.jsonl" \
   --argjson keys "$(cat "$keys")" --argjson rates null \
-  "$program"" usage_rows(\$usage_store) as \$usage_records | usage_rows(\$links_store) as \$links | usage_rows(\$cost_store) as \$cost
-    | usage_edges(\$links; \$cost; \$keys) as \$edges
+  "$program"" usage_rows(\$usage_store) as \$usage_records | usage_rows(\$links_store) as \$links
+    | usage_edges(\$links; \$keys) as \$edges
     | ([\$usage_records[] | select(.kind == \"segment\") | .key | strings | select(startswith(\"branch:\"))]
-       + [\$links[] | (.child, .parent, .key) | strings | select(startswith(\"branch:\"))]
-       + [\$keys.bmap[] | .key | strings] | unique) as \$branch_keys
+       + [\$links[] | (.child, .parent, .key) | strings | select(startswith(\"branch:\"))] | unique) as \$branch_keys
     | {branch_keys: \$branch_keys, roots: ([\$branch_keys[] | usage_roots(\$edges; .)[]] | unique)}")" || exit 1
 rates_text="$(cat "$rates")"
 case "$mode" in
   wrapper | empty-keys)
     keys_text="$(cat "$keys")"
     [ "$mode" = empty-keys ] && keys_text="{}"
-    jq -nc --rawfile usage_store "$fixtures_directory/usage.jsonl" --rawfile links_store "$fixtures_directory/links.jsonl" --rawfile cost_store "$fixtures_directory/cost.jsonl" \
+    jq -nc --rawfile usage_store "$fixtures_directory/usage.jsonl" --rawfile links_store "$fixtures_directory/links.jsonl" \
       --argjson keys "$keys_text" --argjson rates "$rates_text" --argjson lists "$lists" \
       "$program"" {view_count: ((\$lists.branch_keys | length) + 2 + (\$lists.roots | length) + 1),
-        pr: ([\$lists.branch_keys[] | usage_view_pr(11; .)] + [usage_view_pr(12; null), usage_view_pr(99; null)]),
+        pr: ([\$lists.branch_keys[] | usage_view_pr(11; .; [\"main\"])] + [usage_view_pr(12; null; [\"main\"]), usage_view_pr(99; null; null)]),
         initiatives: [\$lists.roots[] | usage_view_initiative(.)], reconcile: usage_view_reconcile}" || exit 1 ;;
   of)
-    jq -nc --rawfile real_usage_store "$fixtures_directory/usage.jsonl" --rawfile real_links_store "$fixtures_directory/links.jsonl" --rawfile real_cost_store "$fixtures_directory/cost.jsonl" \
-      --arg usage_store "" --arg links_store "" --arg cost_store "" --argjson keys "{}" --argjson real_keys "$(cat "$keys")" \
+    jq -nc --rawfile real_usage_store "$fixtures_directory/usage.jsonl" --rawfile real_links_store "$fixtures_directory/links.jsonl" \
+      --arg usage_store "" --arg links_store "" --argjson keys "{}" --argjson real_keys "$(cat "$keys")" \
       --argjson rates "$rates_text" --argjson lists "$lists" \
-      "$program"" usage_rows(\$real_usage_store) as \$usage_records | usage_rows(\$real_links_store) as \$links | usage_rows(\$real_cost_store) as \$cost
+      "$program"" usage_rows(\$real_usage_store) as \$usage_records | usage_rows(\$real_links_store) as \$links
         | {view_count: ((\$lists.branch_keys | length) + 2 + (\$lists.roots | length) + 1),
-           pr: ([\$lists.branch_keys[] | usage_view_pr_of(\$usage_records; \$links; \$cost; 11; .; \$real_keys)]
-                + [usage_view_pr_of(\$usage_records; \$links; \$cost; 12; null; \$real_keys), usage_view_pr_of(\$usage_records; \$links; \$cost; 99; null; \$real_keys)]),
-           initiatives: [\$lists.roots[] | usage_view_initiative_of(\$usage_records; \$links; \$cost; .; \$real_keys)],
-           reconcile: usage_view_reconcile_of(\$usage_records; \$links; \$cost; \$real_keys)}" || exit 1 ;;
+           pr: ([\$lists.branch_keys[] | usage_view_pr_of(\$usage_records; \$links; 11; .; \$real_keys; [\"main\"])]
+                + [usage_view_pr_of(\$usage_records; \$links; 12; null; \$real_keys; [\"main\"]), usage_view_pr_of(\$usage_records; \$links; 99; null; \$real_keys; null)]),
+           initiatives: [\$lists.roots[] | usage_view_initiative_of(\$usage_records; \$links; .; \$real_keys)],
+           reconcile: usage_view_reconcile_of(\$usage_records; \$links; \$real_keys)}" || exit 1 ;;
 esac
 '
 
@@ -198,7 +197,7 @@ apply_sed_mutant() {
 }
 
 @test "guard red: reconcile pricing through the no-arg usage_model reads the global rows" {
-  apply_sed_mutant usage-render-lib.sh reads-global-rows 'usage_model_of($usage_records; $links; $cost; $keys) as $readout_model'
+  apply_sed_mutant usage-render-lib.sh reads-global-rows 'usage_model_of($usage_records; $links; $keys) as $readout_model'
   equiv_run "$TEMPORARY_DIRECTORY/mut" wrapper >"$TEMPORARY_DIRECTORY/wrapper.json"
   equiv_run "$TEMPORARY_DIRECTORY/mut" of >"$TEMPORARY_DIRECTORY/of.json"
   [ -s "$TEMPORARY_DIRECTORY/wrapper.json" ]
@@ -207,7 +206,7 @@ apply_sed_mutant() {
 }
 
 @test "guard red: a usage_model_base_of without its keys parameter reads the global keys" {
-  apply_sed_mutant usage-resolve-lib.sh reads-global-keys 'def usage_model_base_of($usage_records; $links; $cost; $keys):'
+  apply_sed_mutant usage-resolve-lib.sh reads-global-keys 'def usage_model_base_of($usage_records; $links; $keys):'
   equiv_run "$TEMPORARY_DIRECTORY/mut" wrapper >"$TEMPORARY_DIRECTORY/wrapper.json"
   equiv_run "$TEMPORARY_DIRECTORY/mut" of >"$TEMPORARY_DIRECTORY/of.json"
   [ -s "$TEMPORARY_DIRECTORY/wrapper.json" ]

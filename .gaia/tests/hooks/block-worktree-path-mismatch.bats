@@ -71,7 +71,7 @@ write_registry() {
     { "id": "setup-state", "path": "setup-state.json", "match": "exact", "kind": "file", "scope": "shared" },
     { "id": "cache-shared", "path": "cache/shared/", "match": "prefix", "kind": "dir", "scope": "shared" },
     { "id": "audit", "path": "audit/*.ok", "match": "glob", "kind": "file", "scope": "shared" },
-    { "id": "telemetry", "path": "telemetry/cost.jsonl", "match": "exact", "kind": "file", "scope": "shared" },
+    { "id": "telemetry", "path": "telemetry/usage.jsonl", "match": "exact", "kind": "file", "scope": "shared" },
     { "id": "debt", "path": "debt/count.json", "match": "exact", "kind": "file", "scope": "shared" },
     { "id": "specs", "path": "specs/", "match": "prefix", "kind": "dir", "scope": "main-only" },
     { "id": "plans", "path": "plans/", "match": "prefix", "kind": "dir", "scope": "main-only" },

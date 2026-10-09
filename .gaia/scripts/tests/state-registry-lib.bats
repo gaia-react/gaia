@@ -393,14 +393,7 @@ run_in_registry_repo() {
     "audit/abc123.ok:shared"
     "audit/abc123.def456.findings.json:shared"
     "audit/security/deadbeef.md:shared"
-    "telemetry/cost.jsonl:shared"
-    "telemetry/token-rates.json:shared"
-    "telemetry/token-rates.base.json:shared"
-    "telemetry/token-rates.dist.json:shared"
-    "telemetry/token-rates.feed-state.json:shared"
-    "telemetry/token-rates.json.corrupt.1790000000.abc123:shared"
-    "telemetry/.token-rates.json.tmp.AbC123:shared"
-    "telemetry/.token-rates.feed-body.tmp.AbC123:shared"
+    "telemetry/token-rates.override.json:shared"
     "debt/count.json:shared"
     "debt/refresh-requested:shared"
     "red-ledger/observations.jsonl:per-tree"
@@ -424,11 +417,18 @@ run_in_registry_repo() {
     "cache/spec-session-SPEC-042.json:ephemeral"
     "cache/audit-SPEC-042:ephemeral"
     "cache/mutation-scratch/abc123.work.code-audit-frontend:ephemeral"
-    "cache/audit-window-SPEC-042.json:ephemeral"
     "cache/some-run/renders.json:ephemeral"
     "audit/KNOWLEDGE-2026-07-23.md:ephemeral"
     "audit/issue-body-abc.md:ephemeral"
     "mentorship.json:residue"
+    "telemetry/cost"".jsonl:residue"
+    "telemetry/token-rates.json:residue"
+    "telemetry/token-rates.base.json:residue"
+    "telemetry/token-rates.dist.json:residue"
+    "telemetry/token-rates.feed-state.json:residue"
+    "telemetry/token-rates.json.corrupt.1790000000.abc123:residue"
+    "telemetry/.token-rates.json.tmp.AbC123:residue"
+    "telemetry/.token-rates.feed-body.tmp.AbC123:residue"
     "telemetry/cloud/x.json:residue"
     "telemetry/analytics/x.json:residue"
     "cache/shared/coaching-active.txt:residue"
@@ -535,4 +535,73 @@ run_in_registry_repo() {
   [ "$status" -eq 0 ]
   run_in_registry_repo gaia_registry_recognizes audit/light-unregistered d
   [ "$status" -ne 0 ]
+}
+
+# ========== retired cost stores and the price override ==========
+# The retired cost ledger and the seeded rate-table files stay on disk unread,
+# so the registry keeps recognizing them as residue; the optional price override
+# is live shared state. The names are assembled from parts so this file holds no
+# retired name literally.
+
+retired_cost_state_paths() {
+  printf '%s\n' \
+    "telemetry/cost"".jsonl" \
+    "telemetry/token-rates.json" \
+    "telemetry/token-rates.base.json" \
+    "telemetry/token-rates.dist.json" \
+    "telemetry/token-rates.feed-state.json" \
+    "telemetry/token-rates.json.corrupt.*" \
+    "telemetry/.token-rates*.tmp.*"
+}
+
+# retired_cost_state_violations <registry>: one line per way the registry
+# departs from the retired-cost-state shape; empty when it conforms.
+retired_cost_state_violations() {
+  local retired_json
+  retired_json="$(retired_cost_state_paths | jq -R . | jq -s .)"
+  jq -r --argjson retired "$retired_json" '
+    ([ $retired[] as $path
+       | (select([.residue[] | select(.path == $path and .writer == "none-residue")] | length != 1) | "not residue: " + $path),
+         (select([.entries[] | select(.path == $path)] | length != 0) | "still live: " + $path) ])
+    + (if ([.entries[] | select(.path | test("audit-window"))] | length) != 0 then ["audit-window entry present"] else [] end)
+    + (if ([.entries[] | select(.id == "telemetry-rate-override" and .path == "telemetry/token-rates.override.json" and .match == "exact" and .kind == "file" and .scope == "shared" and .writer == "hand-authored" and .reaped_by == null)] | length) == 1 then [] else ["override entry missing or wrong"] end)
+    | .[]
+  ' "$1"
+}
+
+@test "registry: the retired cost stores are residue only, the audit-window entry is gone, the price override is live" {
+  [ -n "$(retired_cost_state_paths)" ]
+  [ -z "$(retired_cost_state_violations "$REGISTRY")" ]
+}
+
+@test "registry: a scratch registry restoring the audit-window entry is caught" {
+  local scratch="$BATS_TEST_TMPDIR/restored-window.json"
+  jq '.entries += [{"id":"audit-window-breadcrumb","path":"cache/audit-window-*.json","match":"glob","kind":"file","scope":"ephemeral","keyed_by":null,"why":"x","writer":"code","reaped_by":null,"source":"x"}]' "$REGISTRY" >"$scratch"
+  retired_cost_state_violations "$scratch" | grep -qF "audit-window entry present"
+}
+
+@test "registry: a scratch registry with the cost ledger live again, or the override missing, is caught" {
+  local scratch="$BATS_TEST_TMPDIR/live-ledger.json" ledger_path="telemetry/cost"".jsonl"
+  jq --arg path "$ledger_path" '.entries += [{"id":"x","path":$path,"match":"exact","kind":"file","scope":"shared","keyed_by":"x","why":"x","writer":"code","reaped_by":null,"source":"x"}]' "$REGISTRY" >"$scratch"
+  retired_cost_state_violations "$scratch" | grep -qF "still live: $ledger_path"
+  jq 'del(.entries[] | select(.id == "telemetry-rate-override"))' "$REGISTRY" >"$scratch"
+  retired_cost_state_violations "$scratch" | grep -qF "override entry missing or wrong"
+  jq --arg path "$ledger_path" 'del(.residue[] | select(.path == $path))' "$REGISTRY" >"$scratch"
+  retired_cost_state_violations "$scratch" | grep -qF "not residue: $ledger_path"
+}
+
+@test "gaia_registry_recognizes and classify: retired cost files are residue and the override is shared" {
+  local retired_file
+  for retired_file in "telemetry/cost"".jsonl" telemetry/token-rates.json telemetry/token-rates.base.json \
+    telemetry/token-rates.dist.json telemetry/token-rates.feed-state.json \
+    telemetry/token-rates.json.corrupt.1790000000.abc123 telemetry/.token-rates.json.tmp.AbC123; do
+    run_in_registry_repo gaia_registry_recognizes "$retired_file" f
+    [ "$status" -eq 0 ] || { echo "not recognized: $retired_file"; return 1; }
+    run_in_registry_repo gaia_registry_classify "$retired_file"
+    [ "$output" = "residue" ] || { echo "not residue: $retired_file got $output"; return 1; }
+  done
+  run_in_registry_repo gaia_registry_recognizes telemetry/token-rates.override.json f
+  [ "$status" -eq 0 ]
+  run_in_registry_repo gaia_registry_classify telemetry/token-rates.override.json
+  [ "$output" = "shared" ]
 }

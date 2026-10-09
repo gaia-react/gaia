@@ -19,7 +19,6 @@ setup() {
   FLUSH="$SCRIPTS/usage-flush.sh"
   FIXTURES_DIRECTORY="$BATS_TEST_DIRNAME/fixtures/usage/flush"
   TEMPORARY_DIRECTORY="$(cd "$BATS_TEST_TMPDIR" && pwd -P)"
-  export GAIA_RATES_FEED_DISABLE=1 GAIA_RATES_STATE_DIRECTORY="$TEMPORARY_DIRECTORY/rates-state"
   unset GITHUB_ACTIONS GAIA_USAGE_TEST_BARRIER GAIA_USAGE_DEBUG_HOLD GAIA_TALLY_PROJECTS_ROOT
   unset GAIA_LEDGER_LOCK_FORCE_FALLBACK GAIA_LEDGER_LOCK_TIMEOUT_SECONDS
   use_repo "$TEMPORARY_DIRECTORY/repo"
@@ -214,16 +213,17 @@ holdback_run() {
 
 # ---------- UAT-012 / PERF-006 ----------
 
-@test "UAT-012: a cold sweep reads every file from byte 0, leaves cost.jsonl byte-identical, and equals golden" {
+@test "UAT-012: a cold sweep reads every file from byte 0, keeps the ledger rows already there, and equals golden" {
   install sweep
   mkdir -p "$TEL"
-  subst "$FIXTURES_DIRECTORY/sweep/cost.jsonl" >"$TEL/cost.jsonl"
-  cp "$TEL/cost.jsonl" "$TEMPORARY_DIRECTORY/cost.before"
+  subst "$FIXTURES_DIRECTORY/sweep/close-rows.jsonl" >"$TEL/usage.jsonl"
+  cp "$TEL/usage.jsonl" "$TEMPORARY_DIRECTORY/usage.before"
   run flush --sweep
   [ "$status" -eq 0 ]
-  cmp "$TEL/cost.jsonl" "$TEMPORARY_DIRECTORY/cost.before"
+  head -c "$(file_size "$TEMPORARY_DIRECTORY/usage.before")" "$TEL/usage.jsonl" | cmp - "$TEMPORARY_DIRECTORY/usage.before"
   assert_golden sweep
-  # The cost.jsonl row between s-sw2's two messages is a split point.
+  # The close row between s-sw2's two messages is a split point; the other
+  # session's close is not.
   [ "$(jq -s '[.[] | select(.kind == "segment" and .session_id == "s-sw2")] | length' "$TEL/usage.jsonl")" -eq 2 ]
   [ "$(jq -s '[.[] | select(.kind == "cursor")] | length' "$TEL/usage.jsonl")" -eq 6 ]
 }

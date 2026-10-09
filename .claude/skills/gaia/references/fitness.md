@@ -171,22 +171,22 @@ After each heal cycle, re-dispatch the affected category checks as fresh subagen
 
 ## Cost record (run end)
 
-Every path that ends the run appends exactly one cost record immediately before its final printed line, and relays the tally's `Cost:` line verbatim as the last line of the reply:
+Every path that ends the run appends exactly one cost record immediately before its final printed line, and relays the record's `Cost:` line verbatim as the last line of the reply (on a non-zero exit nothing was recorded; relay the one stderr line in its place):
 
 ```bash
-bash .gaia/scripts/token-tally.sh --action command --command gaia-fitness
+bash .gaia/scripts/usage.sh record command:gaia-fitness --workflow gaia-fitness
 ```
 
-**Pass-through.** When this run opened a pull request and the agent read the URL `gh pr create` printed in its own Bash tool result, append the artifact. Every terminal merge arm in Step 8 below reaches this record, including the ones that leave the branch in place:
+**Pass-through.** When this run opened a pull request and the agent read the URL `gh pr create` printed in its own Bash tool result, append the artifact (`--pr` is same-repo only, since a ref carries no repo). Every terminal merge arm in Step 8 below reaches this record, including the ones that leave the branch in place:
 
 ```bash
-bash .gaia/scripts/token-tally.sh --action command --command gaia-fitness \
-  --github-type pr --github-number <N> --github-repo '<owner>/<name>'
+bash .gaia/scripts/usage.sh record command:gaia-fitness --workflow gaia-fitness \
+  --pr <N>
 ```
 
-Never look the number up (`gh pr list`, `gh pr view`), never reuse one from an earlier run, a different branch, or a manually-run `gh`, and never guess. If this run did not itself print a creation URL, pass no `--github-*` flags; the record correctly omits `github`.
+Never look the number up (`gh pr list`, `gh pr view`), never reuse one from an earlier run, a different branch, or a manually-run `gh`, and never guess. If this run did not itself print a creation URL, pass no `--pr`; the record correctly carries no artifact.
 
-The tally never blocks, never fails, and never turns a failed run into a successful one. On a failure STOP, record the cost, then report the failure exactly as before; do not report success.
+The record never blocks and never turns a failed run into a successful one. On a failure STOP, record the cost, then report the failure exactly as before; do not report success.
 
 Every run-ending path records here:
 
@@ -314,23 +314,23 @@ Heal already cut and switched to `<BRANCH>`, the name Step 4 minted, so the chan
      git -C "$PROJECT_ROOT" checkout main && git -C "$PROJECT_ROOT" pull origin main
      git -C "$PROJECT_ROOT" branch -D "<BRANCH>"
      git -C "$PROJECT_ROOT" fetch --prune origin
-     bash .gaia/scripts/token-tally.sh --action command --command gaia-fitness \
-       --github-type pr --github-number <N> --github-repo '<owner>/<name>'
+     bash .gaia/scripts/usage.sh record command:gaia-fitness --workflow gaia-fitness \
+       --pr <N>
      ```
 
-     Relay the tally's `Cost:` line as the last line of the reply, after the merged PR URL.
+     Relay the record's `Cost:` line as the last line of the reply, after the merged PR URL.
 
    - **`CONFLICTING`** (exit 3) → repair it per that page's `### Conflict found mid-wait` and run the wait again.
-   - **`CHECK_FAILED`** (exit 4) → name the check and say the merge will not land until it is fixed, then run the `TIMEOUT` arm's tally command below, print the PR URL, and keep the local branch, without that arm's lands-when-checks-pass note.
+   - **`CHECK_FAILED`** (exit 4) → name the check and say the merge will not land until it is fixed, then run the `TIMEOUT` arm's record command below, print the PR URL, and keep the local branch, without that arm's lands-when-checks-pass note.
    - **`TIMEOUT`** (exit 5) → the window closed with the pull request still open: record cost (pass-through: `gh pr create` above already printed the URL), print the PR URL, note auto-merge is queued and lands when checks pass, and do **not** delete the local branch or switch off it.
 
      ```bash
-     bash .gaia/scripts/token-tally.sh --action command --command gaia-fitness \
-       --github-type pr --github-number <N> --github-repo '<owner>/<name>'
+     bash .gaia/scripts/usage.sh record command:gaia-fitness --workflow gaia-fitness \
+       --pr <N>
      ```
 
-   - **`CLOSED`** (exit 6) → the pull request was closed without merging, so no wait can clear it: report the closure, run the `TIMEOUT` arm's tally command above, print the PR URL, and keep the local branch, without that arm's lands-when-checks-pass note.
-   - **exit 2** → the wait refused rather than answered: report what it could not read, run the `TIMEOUT` arm's tally command above, print the PR URL, and keep the local branch. Assert no state for the pull request, since nothing about it was read, so print neither the lands-when-checks-pass note nor any claim that the merge did or did not land; the merge queued above may still land.
+   - **`CLOSED`** (exit 6) → the pull request was closed without merging, so no wait can clear it: report the closure, run the `TIMEOUT` arm's record command above, print the PR URL, and keep the local branch, without that arm's lands-when-checks-pass note.
+   - **exit 2** → the wait refused rather than answered: report what it could not read, run the `TIMEOUT` arm's record command above, print the PR URL, and keep the local branch. Assert no state for the pull request, since nothing about it was read, so print neither the lands-when-checks-pass note nor any claim that the merge did or did not land; the merge queued above may still land.
 
    Caveat: the oracle check above already covers this. A heal edit to a nested `CLAUDE.md` under an in-scope path such as `frontend/app/` is exactly the kind of reached-an-audited-surface diff the oracle detects; if it named a member, the marker handshake ran before this PR was even opened.
 
@@ -340,15 +340,15 @@ Heal already cut and switched to `<BRANCH>`, the name Step 4 minted, so the chan
 git -C "$PROJECT_ROOT" add -A
 git -C "$PROJECT_ROOT" commit -F <commit-message-file>
 git -C "$PROJECT_ROOT" push
-bash .gaia/scripts/token-tally.sh --action command --command gaia-fitness
+bash .gaia/scripts/usage.sh record command:gaia-fitness --workflow gaia-fitness
 ```
 
-Relay the tally's `Cost:` line as the last line of the reply. Do not open a PR and do not merge; the branch owner drives it from here.
+Relay the record's `Cost:` line as the last line of the reply. Do not open a PR and do not merge; the branch owner drives it from here.
 
-If any `git push`, `gh pr create`, or `gh pr merge` above exits non-zero, record cost, then print the command's error and STOP. Pass the pass-through flags only if `gh pr create` had already succeeded and printed its URL before the later command failed; otherwise pass none:
+If any `git push`, `gh pr create`, or `gh pr merge` above exits non-zero, record cost, then print the command's error and STOP. Pass `--pr` only if `gh pr create` had already succeeded and printed its URL before the later command failed; otherwise pass none:
 
 ```bash
-bash .gaia/scripts/token-tally.sh --action command --command gaia-fitness
+bash .gaia/scripts/usage.sh record command:gaia-fitness --workflow gaia-fitness
 ```
 
-Do not retry, force-push, or amend, a rejected push or blocked merge is the user's call to resolve. The tally never blocks, never fails, and never turns this failed run into a successful one.
+Do not retry, force-push, or amend, a rejected push or blocked merge is the user's call to resolve. The record never blocks and never turns this failed run into a successful one.

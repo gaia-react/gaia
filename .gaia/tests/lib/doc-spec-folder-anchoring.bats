@@ -16,14 +16,15 @@
 #
 # THE READ SIDE IS THE SAME CLASS. Once the writes land in main, a read that
 # still builds a relative `.gaia/local/specs` path looks into a tree that holds
-# no SPECs at all. Three read sites build the path themselves rather than
+# no SPECs at all. Two read sites build the path themselves rather than
 # handing it to a library: the pre-flight sweep's cold-consolidation candidate
 # scan in spec/lifecycle.md (the ledger scan plus the per-candidate folder),
-# step 2's resume-point recency comparison in spec/resume.md
+# and step 2's resume-point recency comparison in spec/resume.md
 # (the canonical `SPEC.md` half of it; the draft cache is per-tree and stays in
-# the acting worktree), and step 9.2's read of the `dollars` field from the
-# SPEC folder's `cost.json` sidecar -- whose write, one block above it, is
-# already main-anchored.
+# the acting worktree). The save step's usage-record call is the third place
+# the negative-space test watches: it hands the SPEC id to `usage.sh record`
+# and builds no folder path, and that range must stay free of a bare
+# `.gaia/local/specs/` literal.
 #
 # EXECUTE THE ARTIFACT, DO NOT PARAPHRASE IT. The precedent is
 # doc-merge-workflow-fences.bats's "fence resolve-mode: eval-ing it puts a
@@ -63,9 +64,9 @@
 # read that resolves main returns main's id; a read that stays relative returns
 # the decoy. That distinguishes a genuinely anchored read from one that merely
 # happens to find something, which an "is the result non-empty" assertion
-# cannot. The third read site (step 9.2's `cost.json` read) is prose an agent
-# executes with a file read, not a shell block, so it is covered by the
-# read-side negative-space test rather than by execution.
+# cannot. The save step's record call is a single command with no
+# path to resolve, so it is covered by the read-side negative-space test
+# rather than by execution.
 
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
@@ -209,11 +210,9 @@ range_to_end() {
   # resolving, not the step that does the writing.
   block="$(range_between "$AUDIT_MD" '## 7c. Disposition routing + apply' '## 7d. Persist AUDIT.md')"
 
-  # The range can carry more than one ```bash fence: the audit-window breadcrumb writer
-  # sources `.gaia/scripts/audit-window-lib.sh` and calls its writer, neither
-  # of which this fixture holds. Select ONLY the fence that constructs the
-  # AUDIT.md path, so this test runs the block it measures and its status
-  # reports on path anchoring alone.
+  # The range can carry more than one ```bash fence. Select ONLY the fence
+  # that constructs the AUDIT.md path, so this test runs the block it measures
+  # and its status reports on path anchoring alone.
   bash_fence="$(printf '%s\n' "$block" | awk '
     /^```bash/ { inside_fence = 1; fence_text = ""; next }
     /^```$/ { if (inside_fence && fence_text ~ /AUDIT\.md/) { printf "%s", fence_text; exit } inside_fence = 0; next }
@@ -360,7 +359,15 @@ seed_decoy() {
 @test "negative space: no bare relative .gaia/local/specs/ read survives at the three converted read sites" {
   sweep_range="$(range_between "$LIFECYCLE_MD" '**2. Cold consolidation.**' '**3. Reap past retention.**')"
   resume_range="$(range_between "$RESUME_MD" 'Before prompting, gather context' 'Before presenting the resume choice')"
-  session_helper_range="$(range_between "$SPEC_MD" 'The helper reads `CLAUDE_CODE_SESSION_ID`' '**Auto-mode:** the tally fires identically')"
+  session_helper_range="$(range_between "$SPEC_MD" '4. **Record the run (never blocks):**' '**Auto-mode:** the record call fires identically')"
+
+  # The range is the save step's record call. It must hold the call itself,
+  # so a prose reflow that moves an anchor cannot leave the range measuring
+  # unrelated text and passing for the wrong reason.
+  if ! printf '%s\n' "$session_helper_range" | grep -qF 'usage.sh record spec:${SPEC_ID} --workflow gaia-spec'; then
+    printf 'the save-step range does not hold the usage.sh record call\n' >&2
+    return 1
+  fi
 
   # Ranges are scoped to the executable instructions only. Display prose that
   # names the generic path for a human to read (the draft-phase note above the
@@ -391,8 +398,7 @@ seed_decoy() {
   # construct of its own, relative or otherwise. Do not read persist_range passing as
   # evidence the write site is covered -- routing_range and S2 are what cover it.
   # persist_range runs from 7d to the end of spec/audit.md, which closes with
-  # the audit-window breadcrumb and the return to gate 2: the same text the
-  # range covered when it ended at step 8's heading.
+  # the return to gate 2.
   persist_range="$(range_to_end "$AUDIT_MD" '## 7d. Persist AUDIT.md')"
   routing_range="$(range_between "$AUDIT_MD" '## 7c. Disposition routing + apply' '## 7d. Persist AUDIT.md')"
 

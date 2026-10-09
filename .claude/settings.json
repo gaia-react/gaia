@@ -154,10 +154,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/token-tally-review.sh\""
-          },
-          {
-            "type": "command",
             "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/usage-capture.sh\""
           }
         ]
@@ -293,12 +289,6 @@
         "hooks": [
           {
             "type": "command",
-            "if": "Bash(git *)",
-            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/token-tally-git-op.sh\"",
-            "statusMessage": "Recording execute-phase token tally…"
-          },
-          {
-            "type": "command",
             "if": "Bash(gh pr merge *)",
             "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/post-findings-block-on-merge.sh\"",
             "statusMessage": "Posting local audit findings block…"
@@ -348,12 +338,7 @@
           {
             "type": "command",
             "if": "Bash(gh pr merge *)",
-            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/token-rollup-merge.sh\""
-          },
-          {
-            "type": "command",
-            "if": "Bash(gh pr merge *)",
-            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/token-tally-review.sh\""
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/pr-merge-cost.sh\""
           },
           {
             "type": "command",

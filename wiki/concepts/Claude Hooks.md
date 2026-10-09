@@ -47,7 +47,7 @@ The sourced libraries under `.claude/hooks/lib/` are deliberately absent. They a
 | `block-secrets-write.sh` | PreToolUse (Edit\|Write\|MultiEdit) | Denies a write targeting a `.env` file, and a write whose content carries an obvious secret. |
 | `block-sensitive-read.sh` | PreToolUse (Bash, Monitor, Read, Grep) | Read-side guard for dotenv paths and for key, certificate, and credential paths, plus the bare environment-dump deny, across every tool that can reach one; a Monitor command is judged exactly as a Bash command. |
 | `block-worktree-path-mismatch.sh` | PreToolUse (Edit\|Write\|MultiEdit) | Inside a linked worktree, denies an edit whose `file_path` resolves to the main checkout. |
-| `capture-gh-artifact.sh` | PostToolUse (Bash) | Records the pull request a `gh pr create` produced, so plan execution can name it in its cost rows, and the pull request's branch for the usage ledger. |
+| `capture-gh-artifact.sh` | PostToolUse (Bash) | Records the pull request's branch for the usage ledger when a `gh pr create` runs, and the session-ownership breadcrumb the main-branch destructive-git guard reads. |
 | `capture-red-observations.sh` | PostToolUse, PostToolUseFailure (Bash) | Records a genuinely-failing test run in the RED ledger, the observing half of the RED-verification gate. |
 | `debt-sentinel-touch.sh` | PostToolUse (Bash) | Arms the debt-count staleness sentinel after a `gh` command that mutates the backlog. |
 | `debt-session-reconcile.sh` | SessionStart (startup\|resume) | Reconciles a shown `Run /gaia-debt` nudge against the live backlog. |
@@ -56,12 +56,10 @@ The sourced libraries under `.claude/hooks/lib/` are deliberately absent. They a
 | `post-audit-status.sh` | Invoked by path by the orchestrating session, after every member is dispositioned | Posts the `GAIA-Audit` commit status on HEAD, then marks the draft pull request ready (a refusal posts `failure` and converts it back to draft). |
 | `post-findings-block-on-merge.sh` | PreToolUse (Bash) | Posts the machine-readable findings block on a local-mode merge, so it counts toward the recurrence tally. Never blocks. |
 | `pr-merge-audit-check.sh` | PreToolUse (Bash) | Blocks `gh pr merge` until every dispatched Code Audit Team member has written its clearance marker. |
+| `pr-merge-cost.sh` | PostToolUse (Bash) | Renders the per-PR usage-ledger block, the Code Audit Team line included, once a pull request merges. |
 | `ports-session-start.sh` | SessionStart (startup\|resume\|clear\|compact) | Registers the session host so its servers stay attributable; stops dead sessions' and removed trees' servers on a real start only. |
 | `provision-worktree.sh` | PostToolUse (EnterWorktree), SessionStart (startup\|resume) | Re-links a linked worktree's shared state, assigns its port slot and port file, and regenerates what it needs generated. |
 | `red-verify-commit-check.sh` | PreToolUse (Bash) | Denies `git commit` when a new-at-HEAD passing test has no matching failing run on record. |
-| `token-rollup-merge.sh` | PostToolUse (Bash) | Renders the per-PR usage block, then the full-cycle token-cost rollup, once a pull request merges. |
-| `token-tally-git-op.sh` | PreToolUse (Bash) | Records the session's ground-truth token counts ahead of a git operation. |
-| `token-tally-review.sh` | PostToolUse (Bash), Stop | Captures a code-review-audit run as its own cost record, on either end-of-context trigger. |
 | `usage-capture.sh` | Stop, SessionStart (startup\|resume) | Launches the detached usage flusher and returns. |
 | `wiki-session-start.sh` | SessionStart (startup\|resume) | Runs `local-janitor.sh`, then prints the janitor's one-line base-catch-up report on SessionStart stdout. |
 | `workflow-doctrine-inject.sh` | PostToolUse (Bash, EnterWorktree), SessionStart (startup\|resume\|clear\|compact) | Injects the execution doctrine into a session on a non-default branch or in a linked worktree, once per branch key. |
@@ -141,11 +139,9 @@ Neither of these denies anything; both repair state that a session's entry point
 
 ### Cost accounting (Bash)
 
-- **`token-tally-git-op.sh`** (PreToolUse, Bash): fires on the orchestrator's per-phase `git commit`/`push` during plan execution; gated on an active plan folder (resolved via the shared `.claude/hooks/lib/gaia-active-plan.sh`), it records the execution session's ground-truth token tally keyed to the feature. See [[Token Cost Readout]].
-- **`token-rollup-merge.sh`** (PostToolUse, Bash): fires on `gh pr merge`; resolves the feature key from the active plan folder (or the ledger's most recent `execute` row as a labeled fallback) and renders two blocks into the merging session: the per-PR usage-ledger block (from `.gaia/scripts/usage-merge.sh`, which flushes the session and confirms the merge under a cap), then the full spec/plan/execute/total cost roll-up. See [[Token Cost Readout]] and [[Usage Ledger]].
+- **`pr-merge-cost.sh`** (PostToolUse, Bash): fires on `gh pr merge` and runs `.gaia/scripts/usage-merge.sh` with the payload on stdin, which flushes the session, confirms the merge under a cap, and renders the per-PR usage-ledger block with its Code Audit Team line. When `usage-merge.sh` exits non-zero the hook prints one `[PR cost] unavailable` line carrying the rerun command; a missing sourced library makes it exit non-zero with stderr naming the file, so a broken install is not silent. See [[Usage Ledger]].
 - **`usage-capture.sh`** (Stop, and SessionStart `startup|resume`): launches `.gaia/scripts/usage-flush.sh` detached and returns, so spend is recorded while the transcript still exists. Stop flushes the ending session; SessionStart runs a bounded sweep over every transcript with unrecorded bytes. The synchronous path is a gate and a fork: it reads no transcript, prints nothing, and always exits 0. Inert in CI and without `jq`. See [[Usage Ledger]].
-- **`capture-gh-artifact.sh`** (PostToolUse, Bash): on a `gh pr create`, writes the session-keyed breadcrumb plan execution reads to name the pull request in its cost rows, and records the pull request's branch in the usage ledger (`usage.sh link --pr`) so the merge block can resolve it. See [[Cost Data Contract]] and [[Usage Ledger]].
-- **`token-tally-review.sh`** (PostToolUse, Bash matcher `gh pr merge`, and Stop): captures a `code-review-audit` run as a standalone `kind: "review"` cost ledger row. One script serves both end-of-context triggers (the merge gate, and an ad-hoc run that ends without a merge); `token-tally.sh --action review` owns window detection and dedups by `review_id`, so whichever trigger fires first writes the row. See [[Cost Data Contract]].
+- **`capture-gh-artifact.sh`** (PostToolUse, Bash): on a `gh pr create`, records the pull request's branch in the usage ledger (`usage.sh link --pr`) so the merge block can resolve it, and writes the session-keyed breadcrumb the main-branch destructive-git guard reads as proof a session owns its branch. The cost-recording commands bind their pull request by passing it to `usage.sh record` directly and read no breadcrumb. See [[Usage Ledger]].
 
 ### Shared verb-arming decision
 
@@ -182,7 +178,7 @@ GAIA maintainers: `.gaia/scripts/lint-hook-jq-availability.sh` holds the layer t
 
 A matcher is an unanchored regex over the **tool name**, so `"Bash"` selects the `Bash` tool and nothing else. More than one tool hands a hook a raw shell command in the same `tool_input.command` field and runs it in the same shell environment, and `Monitor` is the second one.
 
-Every **blocking** command-reading hook's `PreToolUse` registration names `Bash|Monitor`. `block-no-verify.sh`, `block-main-destructive-git.sh`, and `block-rm-rf.sh` carry no `tool_name` test at all, so they act on a call through either tool; `block-handrolled-pr-poll.sh` acts on both too. Every other blocking command-reading hook admits `Bash` alone in its own `tool_name` test and stands down on a call through `Monitor`. An **advisory** command-reading hook (`token-tally-git-op.sh`, `post-findings-block-on-merge.sh`) registers on `Bash` alone.
+Every **blocking** command-reading hook's `PreToolUse` registration names `Bash|Monitor`. `block-no-verify.sh`, `block-main-destructive-git.sh`, and `block-rm-rf.sh` carry no `tool_name` test at all, so they act on a call through either tool; `block-handrolled-pr-poll.sh` acts on both too. Every other blocking command-reading hook admits `Bash` alone in its own `tool_name` test and stands down on a call through `Monitor`. An **advisory** command-reading hook (`post-findings-block-on-merge.sh`) registers on `Bash` alone.
 
 ### Wiki coherence (multiple events)
 

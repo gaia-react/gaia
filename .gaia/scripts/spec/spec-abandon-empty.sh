@@ -16,9 +16,8 @@
 #     or missing allocated_at is treated as NOT aged, never guessed.
 #
 # Epoch math is jq-only (`now`, `fromdateiso8601`), never `date -d`/`date -j`,
-# mirroring token-tally.sh's cross-platform rule (see its header comment): the
-# `date` binary parses no timestamp here, so behavior is identical on macOS
-# and Linux CI.
+# because the `date` binary parses no timestamp here, so behavior is identical
+# on macOS and Linux CI.
 #
 # Usage:
 #   spec-abandon-empty.sh <repo_root>

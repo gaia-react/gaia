@@ -20,10 +20,8 @@
 #   1. `--git-common-dir`. The literal git flag both canonical resolvers
 #      hide behind (main-root-lib.sh in shell, main-root.ts in TypeScript).
 #      Every other historical use in this repo was the pre-resolver idiom
-#      `dirname(absolute(git rev-parse --git-common-dir))` -- still named in
-#      a stale comment in token-rollup.sh describing what it used to do
-#      before it delegated to the resolver, which is exactly the shape this
-#      check exists to catch if it were ever live code again.
+#      `dirname(absolute(git rev-parse --git-common-dir))`, which is exactly the
+#      shape this check exists to catch if it were ever live code again.
 #   2. A `${var%...worktrees...}`-style parameter-expansion trim: string
 #      surgery that peels a `.claude/worktrees/<name>` or `.git/worktrees/`
 #      suffix off a path to recover main by hand. No legitimate call site

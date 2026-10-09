@@ -138,7 +138,7 @@ probe_index() { jq -r --arg category "$1" '[.probes[].category] | index($categor
     '.probes[$probe_position].expect.roots_min += 1'
     '.probes[$probe_position].expect.merges = 2'
     '.probes[$probe_position].key = "branch:fix/2302-beta"'
-    '.probes[$probe_position].key = "branch:fix/2302-beta"'
+    '.probes[$probe_position].expect.interval = true'
     '.probes[$probe_position].pr = 2302'
     '.probes[$probe_position].pr = 2302'
     '.probes[$probe_position].pr = 2308'
@@ -148,7 +148,7 @@ probe_index() { jq -r --arg category "$1" '[.probes[].category] | index($categor
     'initiative line(s), expect at least'
     'merge row(s) for'
     'inherit is false'
-    'interval is false'
+    'interval is false for'
     'no_spend is false'
     'unresolvable is false'
     'nonzero is false'
@@ -181,7 +181,7 @@ probe_index() { jq -r --arg category "$1" '[.probes[].category] | index($categor
   local anchor_index seen=0
   local -a names=(open_start unbound_session spare_root new_branch cycle)
   local -a filters=(
-    '.anchors.open_start.session_id = "s09"'
+    '.anchors.open_start.session_id = "s40"'
     '.anchors.unbound_session.session_id = "s70"'
     '.anchors.spare_root.ref = "research:multi-topic"'
     '.anchors.new_branch.raw = "fix/cwd-spelling"'
@@ -257,8 +257,6 @@ probe_index() { jq -r --arg category "$1" '[.probes[].category] | index($categor
 @test "the harness registers both capture hooks and sets the hermetic environment" {
   jq -e '[.hooks.Stop[].hooks[].command, .hooks.SessionStart[].hooks[].command]
     | all(contains("/.claude/hooks/usage-capture.sh"))' "$UM_MAIN/.claude/settings.json" >/dev/null
-  [ "$GAIA_RATES_FEED_DISABLE" = 1 ]
-  case "$GAIA_RATES_STATE_DIRECTORY" in "$UM_TELEMETRY_DIRECTORY"*) return 1 ;; esac
   # A second setup clears what a polluted environment carries in.
   export CLAUDE_CODE_SESSION_ID=x GAIA_TALLY_PROJECTS_ROOT=/x GITHUB_ACTIONS=true GAIA_USAGE_MEMO_TRACE=/x GAIA_USAGE_MEMO_SEAM=/x
   umemo_setup
@@ -273,7 +271,7 @@ probe_index() { jq -r --arg category "$1" '[.probes[].category] | index($categor
 @test "a u_old readout is priced and leaves only the loaded stores in the telemetry dir" {
   local before
   before="$(ls -A "$UM_TELEMETRY_DIRECTORY" | tr '\n' ' ')"
-  [ "$before" = 'cost.jsonl links.jsonl usage.jsonl ' ]
+  [ "$before" = 'links.jsonl usage.jsonl ' ]
   u_old pr 2305
   assert_priced "$UM_OUTPUT_FILE" --roots
   [ ! -s "$UM_ERROR_FILE" ]
@@ -282,21 +280,20 @@ probe_index() { jq -r --arg category "$1" '[.probes[].category] | index($categor
 
 @test "the identity stores are small enough for a CI scripts shard" {
   local total
-  total="$(cat "$UM_TELEMETRY_DIRECTORY/usage.jsonl" "$UM_TELEMETRY_DIRECTORY/links.jsonl" "$UM_TELEMETRY_DIRECTORY/cost.jsonl" | wc -c | tr -d ' ')"
+  total="$(cat "$UM_TELEMETRY_DIRECTORY/usage.jsonl" "$UM_TELEMETRY_DIRECTORY/links.jsonl" | wc -c | tr -d ' ')"
   [ "$total" -lt 200000 ]
   [ "$(grep -c 'schema_version' "$UM_TELEMETRY_DIRECTORY/usage.jsonl")" -gt 0 ]
 }
 
-@test "no git_branch in the identity stores is spelled with a JSON escape" {
-  grep -F '"git_branch":"' "$UM_TELEMETRY_DIRECTORY/cost.jsonl" >"$BATS_TEST_TMPDIR/branches"
+@test "no branch key in the identity stores is spelled with a JSON escape" {
+  grep -ohE '"(key|child|parent)":"branch:[^"]*"' "$UM_TELEMETRY_DIRECTORY/usage.jsonl" "$UM_TELEMETRY_DIRECTORY/links.jsonl" >"$BATS_TEST_TMPDIR/branches"
   [ -s "$BATS_TEST_TMPDIR/branches" ]
-  grep -qE '"git_branch":"[^"]*\\' "$BATS_TEST_TMPDIR/branches" && return 1
+  grep -qF "\\" "$BATS_TEST_TMPDIR/branches" && return 1
   true
 }
 
 @test "the identity fixture holds the adversarial cursor rows" {
   grep -qF '"key":"branch:fix/cursor-drift"' "$UM_TELEMETRY_DIRECTORY/usage.jsonl"
-  grep -qF '\"kind\":\"cursor\"' "$UM_TELEMETRY_DIRECTORY/cost.jsonl"
   grep -q '^{"kind":"cursor","schema_version":1,' "$UM_TELEMETRY_DIRECTORY/usage.jsonl"
   grep -q '^{"schema_version":1,"kind":"cursor",' "$UM_TELEMETRY_DIRECTORY/usage.jsonl"
 }

@@ -3,16 +3,13 @@
 # counterpart to spec-archive-merged.sh (see that script's own suite,
 # spec-archive-merged.bats, for the merged path this mirrors).
 #
-# Deletion is gated on cost representation (cost_folder_represented, sourced
-# from .gaia/scripts/cost-represented.sh), the same fail-closed gate the
-# merged sweep uses. tmp-spec-repo.sh seeds an empty
-# .gaia/local/telemetry/cost.jsonl and copies of cost-represented.sh /
-# ledger-path-lib.sh into every tmp repo so the gate resolves in isolation.
+# Unlike the merged sweep there is no usage-ledger gate: an abandoned draft
+# never closes a run, so the age rule alone decides. Tests prove it with a
+# usage.sh stub that logs any invocation.
 #
 # Sweep criteria: a ledger row with status "abandoned" AND an active folder
-# AND abandoned_at past the retention window AND a passing representation
-# gate. Unlike the merged sweep there is no consolidation gate: an abandoned
-# folder reaps as one unit.
+# AND abandoned_at past the retention window. Unlike the merged sweep there is
+# no consolidation gate: an abandoned folder reaps as one unit.
 #
 # Each test spins up its own tmp git repo via helpers/tmp-spec-repo.sh and
 # tears it down; hermetic, no reliance on the real project ledger.
@@ -25,7 +22,7 @@ setup() {
   HELPERS="$BATS_TEST_DIRNAME/helpers"
   ARCHIVE=".gaia/scripts/spec/spec-archive-abandoned.sh"
   SPECS=".gaia/local/specs"
-  COST_LEDGER=".gaia/local/telemetry/cost.jsonl"
+  USAGE_LEDGER=".gaia/local/telemetry/usage.jsonl"
   # --seed-abandoned-folder stamps a fixed abandoned_at
   # ("2026-01-02T00:00:00Z") rather than "just abandoned", so every delete
   # test below needs the age gate collapsed to stay deterministic regardless
@@ -61,19 +58,6 @@ _snapshot() {
          | xargs -0 shasum 2>/dev/null ) || true
 }
 
-_seed_cost_row() {
-  local id="$1" session="$2" fresh="$3" cache_write="$4" cache_read="$5" output="$6"
-  local total=$((fresh + cache_write + cache_read + output))
-  jq -cn --arg id "$id" --arg session_id "$session" \
-    --argjson fresh "$fresh" --argjson cache_write "$cache_write" \
-    --argjson cache_read "$cache_read" --argjson output "$output" --argjson total "$total" \
-    '{schema_version: 1, kind: "spec", spec_id: $id, plan_id: null, plan_slug: null,
-      session_id: $session_id,
-      buckets: {fresh_input: $fresh, cache_write: $cache_write, cache_read: $cache_read, output: $output},
-      total: $total, seq: 0, final: true, source: "test"}' \
-    >> "$REPO/$COST_LEDGER"
-}
-
 _days_ago() {
   jq -rn --argjson days "$1" '(now - ($days * 86400)) | strftime("%Y-%m-%dT%H:%M:%SZ")'
 }
@@ -99,11 +83,10 @@ _clear_abandoned_at() {
   mv "$temporary_file" "$repo/$SPECS/ledger.json"
 }
 
-# --- 1: delete happy path (cost represented) ---------------------------------
+# --- 1: delete happy path (age rule alone) ----------------------------------
 
-@test "1: an abandoned row whose cost is represented is deleted; ledger stays abandoned" {
+@test "1: an abandoned row past the retention window is deleted; ledger stays abandoned" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-abandoned-folder SPEC-001)"
-  _seed_cost_row SPEC-001 sess-1 100 10 5 20
 
   run _archive "$REPO"
   [ "$status" -eq 0 ]
@@ -218,7 +201,7 @@ _clear_abandoned_at() {
 }
 
 
-@test "11: an abandoned folder past the retention window with represented cost is reaped" {
+@test "11: an abandoned folder past the retention window is reaped" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-abandoned-folder SPEC-001)"
   _set_abandoned_at "$REPO" SPEC-001 "$(_days_ago 45)"
   export GAIA_SPEC_RETENTION_DAYS=30
@@ -234,7 +217,7 @@ _clear_abandoned_at() {
 
 # --- 13/14: missing or unparseable abandoned_at -> kept regardless of age --------
 
-@test "13: an abandoned row with no abandoned_at is kept regardless of representation" {
+@test "13: an abandoned row with no abandoned_at is kept regardless of the usage ledger" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-abandoned-folder SPEC-001)"
   _clear_abandoned_at "$REPO" SPEC-001
   export GAIA_SPEC_RETENTION_DAYS=0
@@ -247,7 +230,7 @@ _clear_abandoned_at() {
   [ -f "$REPO/$SPECS/SPEC-001/AUDIT.md" ]
 }
 
-@test "14: an abandoned row with an unparseable abandoned_at is kept regardless of representation" {
+@test "14: an abandoned row with an unparseable abandoned_at is kept regardless of the usage ledger" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-abandoned-folder SPEC-001)"
   _set_abandoned_at "$REPO" SPEC-001 "not-a-timestamp"
   export GAIA_SPEC_RETENTION_DAYS=0
@@ -262,7 +245,7 @@ _clear_abandoned_at() {
 
 # --- 15/16: GAIA_SPEC_RETENTION_DAYS knob is honored, shared with the merged sweep
 
-@test "15: GAIA_SPEC_RETENTION_DAYS=0 reaps a just-abandoned represented folder" {
+@test "15: GAIA_SPEC_RETENTION_DAYS=0 reaps a just-abandoned folder" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-abandoned-folder SPEC-001)"
   _set_abandoned_at "$REPO" SPEC-001 "$(_days_ago 0)"
   export GAIA_SPEC_RETENTION_DAYS=0
@@ -350,7 +333,6 @@ _clear_abandoned_at() {
 
 @test "23: without ledger-lib.sh the sweep reaps nothing and says so; with it the same folder is reaped" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-abandoned-folder SPEC-001)"
-  _seed_cost_row SPEC-001 sess-1 100 10 5 20
 
   mv "$REPO/.gaia/scripts/spec/ledger-lib.sh" "$REPO/ledger-lib.sh.aside"
   run --separate-stderr _archive "$REPO"
@@ -364,13 +346,42 @@ _clear_abandoned_at() {
   [ ! -e "$REPO/$SPECS/SPEC-001" ]
 }
 
-@test "24: an unparseable cost.json leaves its folder for review and the sweep still reaps the next row" {
+@test "24: an abandoned folder past retention is deleted on age alone and usage.sh is never called" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-abandoned-folder SPEC-001 --seed-abandoned-folder SPEC-002)"
-  printf '{ not json' > "$REPO/$SPECS/SPEC-001/cost.json"
+  # A usage.sh stub that logs any invocation; the usage ledger is also absent,
+  # which would keep the folder under the merged sweep's gate.
+  rm -f "$REPO/$USAGE_LEDGER"
+  {
+    echo '#!/usr/bin/env bash'
+    echo "echo \"\$*\" >> \"$REPO/usage-calls.log\""
+    echo 'exit 1'
+  } > "$REPO/.gaia/scripts/usage.sh"
 
-  run --separate-stderr _archive "$REPO"
+  run _archive "$REPO"
   [ "$status" -eq 0 ]
-  grep -qF "cost not fully represented in cost.jsonl; left SPEC-001 folder for review" <<<"$stderr"
-  [ -d "$REPO/$SPECS/SPEC-001" ]
+  assert_contains "Deleted 2 abandoned SPEC folder(s): SPEC-001, SPEC-002"
+  [ ! -e "$REPO/$SPECS/SPEC-001" ]
   [ ! -e "$REPO/$SPECS/SPEC-002" ]
+  [ ! -e "$REPO/usage-calls.log" ]
+}
+
+@test "25: the stub in case 24 is live: the merged sweep, which does gate, calls it" {
+  REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-merged-folder SPEC-001)"
+  {
+    echo '#!/usr/bin/env bash'
+    echo "echo \"\$*\" >> \"$REPO/usage-calls.log\""
+    echo 'exit 1'
+  } > "$REPO/.gaia/scripts/usage.sh"
+
+  run bash "$REPO/.gaia/scripts/spec/spec-archive-merged.sh" "$REPO"
+  [ "$status" -eq 0 ]
+  [ -s "$REPO/usage-calls.log" ]
+  grep -qF "represented spec:SPEC-001 --workflow gaia-spec" "$REPO/usage-calls.log"
+}
+
+@test "26: the sweep's executable lines name no usage.sh call and no represented gate" {
+  non_comment="$(grep -v '^[[:space:]]*#' "$BATS_TEST_DIRNAME/../../scripts/spec/spec-archive-abandoned.sh")"
+  [ -n "$non_comment" ]
+  grep -qE 'usage\.sh|represented' <<<"$non_comment" && return 1
+  true
 }

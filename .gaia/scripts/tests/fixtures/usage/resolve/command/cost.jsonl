@@ -1,2 +1,0 @@
-{"schema_version":1,"kind":"command","session_id":"s17","ts":"2026-10-01T11:00:00Z","spec_id":null,"plan_id":null,"command":"gaia-debt","run_id":"gaia-debt-20261001T110000Z-a1b2","git_branch":"fix/other"}
-{"schema_version":1,"kind":"plan","session_id":"s17","ts":"2026-10-01T13:00:00Z","spec_id":"SPEC-091","plan_id":null,"git_branch":"fix/other"}

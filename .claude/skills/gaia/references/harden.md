@@ -394,7 +394,7 @@ Every stop above ends the run; see `## Cost record (run end)`, which is written 
 
 **On any other branch:** do not branch, commit, or PR. Leave the approved changes in the working tree and tell the engineer they ride the current branch's own PR (today's behavior). The end-of-run automation targets only the main-branch case, where a branch has to be made. (Run ends here; see `## Cost record (run end)`.)
 
-If any `git` or `gh` command above exits non-zero, print the error and STOP. Do not retry, force-push, or amend; a rejected push is the engineer's call to resolve. (Run ends here; see `## Cost record (run end)`, passing `--github-*` only if `gh pr create` already succeeded before the failure.)
+If any `git` or `gh` command above exits non-zero, print the error and STOP. Do not retry, force-push, or amend; a rejected push is the engineer's call to resolve. (Run ends here; see `## Cost record (run end)`, passing `--pr` only if `gh pr create` already succeeded before the failure.)
 
 ## list subcommand
 
@@ -418,7 +418,7 @@ Every path that ends a `/gaia-harden` run appends exactly one cost record, the r
 
 On the default-branch publish path the record is written once, at one of those outcomes, and its `Cost:` line is the last thing the run prints. Opening the PR is not a run end: the audit, the checks, and the merge question still follow it.
 
-Apply the shared tally machinery in `.claude/skills/gaia/references/cost-record.md` with `{{COMMAND}}` = `gaia-harden`.
+Apply the shared record recipe in `.claude/skills/gaia/references/cost-record.md` with `{{COMMAND}}` = `gaia-harden`.
 
 ## Guardrails
 

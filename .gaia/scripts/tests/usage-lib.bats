@@ -101,15 +101,14 @@ key_json() {
   [ "$(jq -r '.[""].key' <<<"$branch_map")" = "null" ]
 }
 
-@test "branch key: a failing branch hashes to the same 16 hex gaia_hash16 prints" {
-  local normalized_branch='feat/has space' want got
-  want="$( (source "$SCRIPTS/token-pricing-lib.sh"; printf '%s' "$normalized_branch" | gaia_hash16) )"
-  [ "${#want}" -eq 16 ]
-  got="$(gaia_usage_branch_key "$normalized_branch")"
-  [ "$got" = "branch:%$want" ]
+@test "branch key: a failing branch hashes to the first 16 hex characters of its sha256" {
+  local normalized_branch='feat/has space' want
+  # Pinned literal: the sha256 prefix of the input.
+  want=622b769126303c10
+  [ "$(gaia_usage_branch_key "$normalized_branch")" = "branch:%$want" ]
   # A 129-character name fails the grammar by length alone.
   normalized_branch="$(printf 'q%.0s' $(seq 1 129))"
-  want="$( (source "$SCRIPTS/token-pricing-lib.sh"; printf '%s' "$normalized_branch" | gaia_hash16) )"
+  want=f0886d9cc70695b4
   [ "$(gaia_usage_branch_key "$normalized_branch")" = "branch:%$want" ]
   [ "$(gaia_usage_branch_key "$(printf 'q%.0s' $(seq 1 128))")" = "branch:$(printf 'q%.0s' $(seq 1 128))" ]
 }
@@ -349,9 +348,9 @@ append_in_fresh_process() {
 @test "append: any other target basename returns 2 and writes nothing" {
   local telemetry_directory="$TEMPORARY_DIRECTORY/tel3" rows="$TEMPORARY_DIRECTORY/rows3.jsonl"
   printf '{"n":1}\n' >"$rows"
-  run append_in_fresh_process "$telemetry_directory" cost.jsonl "$rows"
+  run append_in_fresh_process "$telemetry_directory" other.jsonl "$rows"
   [ "$status" -eq 2 ]
-  [ ! -e "$telemetry_directory/cost.jsonl" ]
+  [ ! -e "$telemetry_directory/other.jsonl" ]
   run append_in_fresh_process "$telemetry_directory" ../usage.jsonl "$rows"
   [ "$status" -eq 2 ]
   [ ! -e "$telemetry_directory" ] || [ -z "$(ls -A "$telemetry_directory")" ]

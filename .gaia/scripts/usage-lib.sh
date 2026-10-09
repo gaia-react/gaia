@@ -2,8 +2,9 @@
 # GAIA usage-ledger shared library: paths, default branch, repo membership, the
 # ref grammar, key derivation, the locked append, and component-presence checks.
 # Sourced by the flusher, the resolver, usage.sh, and the hooks. Defines
-# functions and the GAIA_USAGE_JQ_DEFS variable only; sourcing runs no external
-# command, so it succeeds under `set -u` with PATH empty.
+# functions and the GAIA_USAGE_JQ_DEFS and GAIA_USAGE_START_SET variables only;
+# sourcing runs no external command, so it succeeds under `set -u` with PATH
+# empty.
 #
 # Siblings (main-root-lib.sh, branch-name-lib.sh, with-ledger-lock.sh) are
 # sourced lazily by the first function that needs one, located from
@@ -174,8 +175,7 @@ gaia_usage_valid_reference() {
   return 1
 }
 
-# Must equal gaia_hash16 in token-pricing-lib.sh for the same input. Computed
-# here rather than sourced so this library never loads the pricing lib.
+# The first 16 hex characters of the input's sha256.
 _gaia_usage_hash16() {
   local hash_output
   if hash_output="$(printf '%s' "$1" | shasum -a 256 2>/dev/null)" && [ -n "$hash_output" ]; then :
@@ -270,6 +270,12 @@ gaia_usage_hooks_registered() {
 }
 
 gaia_usage_in_ci() { [ -n "${GITHUB_ACTIONS:-}" ]; }
+
+# The workflows whose start opens an attribution interval and whose run
+# `usage.sh record` closes, as a JSON array string. The flusher's start
+# detection and record's workflow validation both read it.
+# shellcheck disable=SC2034  # consumed by sourcing scripts
+GAIA_USAGE_START_SET='["gaia-spec","gaia-plan","gaia-audit","gaia-debt","gaia-fitness","gaia-forensics","gaia-harden","gaia-residue","gaia-wiki"]'
 
 # \A and \z, not ^ and $: Oniguruma's $ also matches before a trailing newline,
 # which would let `research:x\n` through the grammar.

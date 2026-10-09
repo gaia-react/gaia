@@ -139,11 +139,7 @@ _plant_status() {
 # lint.sh validates a wholly separate status axis (the SPEC artifact's own
 # authoring lifecycle, in-progress|reopened|closed), never the ledger-row
 # vocabulary this suite covers. Belt-and-suspenders: confirms the ledger
-# guard's unified vocabulary was never leaked into lint.sh's enum. The
-# branch-keyed token-tally resolver half of this regression (the `^branch:`
-# match) is already covered by .gaia/tests/hooks/token-tally-git-op.bats;
-# not re-tested here.
-
+# guard's unified vocabulary was never leaked into lint.sh's enum.
 _lint_fixture() {
   local status_value="$1"
   cat <<EOF

@@ -8,11 +8,6 @@
 # Run under bash 5 (.claude/rules/bats-assertions.md):
 #   .gaia/scripts/bats5.sh .gaia/scripts/tests/usage-e2e.bats
 #
-# The "cost.jsonl files unchanged" half of SPEC success criterion 7 is a
-# merge-base diff, which a shallow CI checkout cannot run, so it is a Phase 4
-# gate step rather than a case here. The token-tally, token-rollup, and
-# cost-lock suites are run beside this one as that criterion's other half.
-#
 # mock-hook-input.sh is not used: it has no SessionStart event and hardcodes
 # /tmp/transcript.jsonl. Hook payloads are built with jq and point their
 # transcript_path into the fixture projects root.
@@ -20,7 +15,6 @@
 bats_require_minimum_version 1.5.0
 
 setup() {
-  export GAIA_RATES_FEED_DISABLE=1 GAIA_RATES_STATE_DIRECTORY="$BATS_TEST_TMPDIR/rates-state"
   # shellcheck source=fixtures/usage/e2e/helpers.sh
   . "$BATS_TEST_DIRNAME/fixtures/usage/e2e/helpers.sh"
   # shellcheck source=../../tests/helpers/path.sh
@@ -45,7 +39,7 @@ teardown() {
   assert_totals "$DEBT_TOTALS"
 
   gh_view 101 101 debt/123-slug MERGED 2026-10-02T00:00:00Z
-  fire token-rollup-merge.sh "$(merge_payload 'gh pr merge 101 --squash' s-m "$TRANSCRIPT_PATH_MAIN")"
+  fire pr-merge-cost.sh "$(merge_payload 'gh pr merge 101 --squash' s-m "$TRANSCRIPT_PATH_MAIN")"
   [ "$status" -eq 0 ]
   has_line "[PR cost] pr:101 branch:debt/123-slug"
   has_line "  tokens: 7,812 (fresh 7, cache write 770, cache read 7,000, output 35)"
@@ -120,10 +114,10 @@ snapshot() {
   run_usage link spec:SPEC-001 research:x >/dev/null
   local subcommand_names events nojq merge_hook_payload create_hook_payload subcommand args
   subcommand_names="$(derive_subcommands "$REPO/.gaia/scripts/usage.sh" | tr '\n' ' ')"
-  [ "$subcommand_names" = "declare initiative lineage link pr pr-branch reconcile unlink " ]
+  [ "$subcommand_names" = "declare initiative lineage link pr pr-branch reconcile record represented unlink " ]
   events="$(jq -r '[.hooks | to_entries[] | select(any(.value[].hooks[]; .command | test("usage-capture\\.sh"))) | .key] | sort | join(" ")' "$REPO/.claude/settings.json")"
   [ "$events" = "SessionStart Stop" ]
-  grep -q 'token-rollup-merge\.sh' "$REPO/.claude/settings.json"
+  grep -q 'pr-merge-cost\.sh' "$REPO/.claude/settings.json"
   grep -q 'capture-gh-artifact\.sh' "$REPO/.claude/settings.json"
 
   nojq="$(path_shim_without jq)"
@@ -139,7 +133,7 @@ snapshot() {
     [ "$status" -eq 0 ]
     [ -z "$output" ]
   done
-  run env PATH="$nojq" bash -c 'cd "$1" && printf %s "$2" | bash "$3"' _ "$REPO" "$merge_hook_payload" "$REPO/.claude/hooks/token-rollup-merge.sh"
+  run env PATH="$nojq" bash -c 'cd "$1" && printf %s "$2" | bash "$3"' _ "$REPO" "$merge_hook_payload" "$REPO/.claude/hooks/pr-merge-cost.sh"
   [ "$status" -eq 0 ]
   [ "$output" = "usage tracking inactive: jq not found" ]
   run env PATH="$nojq" bash -c 'cd "$1" && printf %s "$2" | bash "$3"' _ "$REPO" "$create_hook_payload" "$REPO/.claude/hooks/capture-gh-artifact.sh"
@@ -148,9 +142,17 @@ snapshot() {
   for subcommand in $subcommand_names; do
     args="$(subcommand_arguments "$subcommand")"
     # shellcheck disable=SC2086  # the argument list is split on purpose
-    run env PATH="$nojq" bash "$REPO/.gaia/scripts/usage.sh" $args
-    [ "$status" -eq 0 ]
-    [ "$output" = "usage tracking inactive: jq not found" ]
+    run --separate-stderr env PATH="$nojq" bash "$REPO/.gaia/scripts/usage.sh" $args
+    case "$subcommand" in
+      # The gates cannot answer without jq, so they refuse with 2 rather than
+      # reporting nothing owed.
+      record | represented)
+        [ "$status" -eq 2 ] || { echo "usage.sh $subcommand exited $status without jq" >&2; return 1; }
+        [ -z "$output" ] ;;
+      *)
+        [ "$status" -eq 0 ]
+        [ "$output" = "usage tracking inactive: jq not found" ] ;;
+    esac
   done
   sleep 1
   ! pgrep -f "$TEMPORARY_DIRECTORY/.*usage-flush" >/dev/null 2>&1 || return 1
@@ -165,7 +167,7 @@ snapshot() {
   if cmp -s "$mutant_script" "$REPO/.gaia/scripts/usage.sh"; then echo "mutation did not apply" >&2; return 1; fi
   full="$(derive_subcommands "$REPO/.gaia/scripts/usage.sh" | tr '\n' ' ')"
   short="$(derive_subcommands "$mutant_script" | tr '\n' ' ')"
-  [ "$full" = "declare initiative lineage link pr pr-branch reconcile unlink " ]
+  [ "$full" = "declare initiative lineage link pr pr-branch reconcile record represented unlink " ]
   [ "$short" != "$full" ]
   run subcommand_arguments brand-new-subcommand
   [ "$status" -ne 0 ]
@@ -230,7 +232,7 @@ net_clean() {
   printf -- '---\nspec_id: SPEC-009\nlineage: [research:topic-a]\n---\n' >"$REPO/.gaia/local/specs/SPEC-009/SPEC.md"
   fire usage-capture.sh "$(hook_payload Stop s-m "$TRANSCRIPT_PATH_MAIN")"
   fire usage-capture.sh "$(hook_payload SessionStart s-m "$TRANSCRIPT_PATH_MAIN")"
-  fire token-rollup-merge.sh "$(merge_payload 'gh pr merge 101' s-m "$TRANSCRIPT_PATH_MAIN")"
+  fire pr-merge-cost.sh "$(merge_payload 'gh pr merge 101' s-m "$TRANSCRIPT_PATH_MAIN")"
   has_line "[PR cost] pr:101 branch:debt/123-slug"
   fire capture-gh-artifact.sh "$(jq -nc '{hook_event_name:"PostToolUse",tool_name:"Bash",tool_input:{command:"gh pr create --title x"},tool_response:{stdout:"https://github.com/o/r/pull/9\n",stderr:""},session_id:"s-m"}')"
   [ "$status" -eq 0 ]
@@ -238,7 +240,7 @@ net_clean() {
     args="$(subcommand_arguments "$subcommand")"
     # shellcheck disable=SC2086  # the argument list is split on purpose
     run run_usage $args
-    [ "$status" -eq 0 ] || { echo "usage.sh $subcommand exited $status: $output" >&2; return 1; }
+    [ "$status" -eq "$(subcommand_expected_status "$subcommand")" ] || { echo "usage.sh $subcommand exited $status: $output" >&2; return 1; }
   done
   quiesce 2
   [ -f "$STUBLOG" ]

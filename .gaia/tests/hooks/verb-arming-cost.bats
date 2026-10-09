@@ -20,9 +20,9 @@
 #   gaia_verb_arm_view alone (library call, no hook process): 16KB ~8-12ms,
 #   32KB past-bound ~1-3ms (bash 3.2, the slow host this budget is written for).
 #
-#   Every adopting hook, one tool call: a 200-character ordinary `git commit`
-#   totals ~260-325ms; a 16KB raw-matching `gh pr merge` (most pay the walk;
-#   the rest raw-miss and skip it) totals ~330-390ms.
+#   Every adopting hook, one tool call (bash 5.3.15): a 200-character ordinary
+#   `git commit` totals ~180-195ms; a 16KB raw-matching `gh pr merge` (most pay
+#   the walk; the rest raw-miss and skip it) totals ~315-355ms.
 #
 #   Both figures were re-measured when four hooks took a `bash -n` parse check
 #   on their pre-gate verb-arming load (gaia-react/gaia#1556). What that change
@@ -35,14 +35,14 @@
 #   checks PAST each hook's gate and an armed hook pays those on top of its
 #   pre-gate one. Traced with `bash -x` against these rows' own fixtures:
 #
-#     200B ordinary `git commit`: 6 forks. token-tally-git-op.sh arms and pays
-#       three (verb-arming, main-root-lib, gaia-active-plan); the other three
-#       parse-checked hooks are unarmed by a git verb and pay one each.
-#       Bound: ~+18.6ms on 3.2.57, ~+34.2ms on 5.3.15.
-#     16KB raw-matching heredoc: 4 forks. The fixture raw-matches but ends up
+#     200B ordinary `git commit`: 2 forks. No adopting hook arms on a git
+#       verb, so each of the two parse-checked hooks (capture-gh-artifact.sh,
+#       post-findings-block-on-merge.sh) pays its one pre-gate check.
+#       Bound: ~+6.2ms on 3.2.57, ~+11.4ms on 5.3.15.
+#     16KB raw-matching heredoc: 2 forks. The fixture raw-matches but ends up
 #       UNARMED once the walker proves the body is data (the cat-HEREDOC note
 #       below), so every parse-checked hook pays its pre-gate check and nothing
-#       more. Bound: ~+12.4ms on 3.2.57, ~+22.8ms on 5.3.15.
+#       more. Bound: ~+6.2ms on 3.2.57, ~+11.4ms on 5.3.15.
 #
 #   Sizing a fifth parse-checked hook means asking which rows arm it, since an
 #   armed hook pays its post-gate checks on top. "None" is a valid answer, and
@@ -63,13 +63,11 @@
 #   threshold 8x too low and makes the 8KB and 16KB rows look past it, which
 #   would contradict the 16KB bullet directly above.
 #
-#   The transition is a clean step, and identical on 3.2.57 and 5.3.15: 4 forks
-#   at 16,384 characters or fewer, 7 at 16,385 or more, matching the `-le` test
-#   the guard above names. It is uneven per hook rather than blurred, because
-#   the four arm on different verbs: across a `gh pr merge` boundary
-#   token-tally-git-op.sh and capture-gh-artifact.sh stay at their pre-gate
-#   check, post-findings-block-on-merge.sh goes 1 -> 2, and token-rollup-merge.sh
-#   goes 1 -> 3.
+#   The transition is a clean step: 2 forks at 16,384 characters or fewer, 3 at
+#   16,385 or more, matching the `-le` test the guard above names. It is uneven
+#   per hook rather than blurred, because the hooks arm on different verbs:
+#   across a `gh pr merge` boundary capture-gh-artifact.sh stays at its
+#   pre-gate check and post-findings-block-on-merge.sh goes 1 -> 2.
 #
 #   An off-by-one sits between a requested size and the length the walker
 #   measures, and a sweep that misses it reads the boundary in the wrong
@@ -106,14 +104,14 @@
 # covers) in its own comment, per acceptance criterion 3.
 #
 # WHY "ONE HOOK PROCESS" MEANS pr-merge-audit-check.sh FOR THE SIZE SWEEP, and
-# token-tally-git-op.sh FOR THE PAST-BOUND CASE. A payload that raw-matches
+# pr-merge-cost.sh FOR THE PAST-BOUND CASE. A payload that raw-matches
 # and stays masked (the common shape below) never reaches a hook's own
 # post-arming logic at all, so which hook is swept barely matters there.
 # A GENUINELY ARMED large payload is a different story: pr-merge-audit-check.sh
 # calls into repo-scope.sh, an existing scanner unrelated to this SPEC, whose
 # own cost on a large armed command is not bounded the way the arming walk is
 # -- a pre-existing cost issue in a different file, not something this budget
-# owns or should let leak into its own ceiling. token-tally-git-op.sh makes no
+# owns or should let leak into its own ceiling. pr-merge-cost.sh makes no
 # repo-scope call on its arming path, so it isolates the past-bound case to
 # what this budget actually measures: the arming library's own cost.
 #
@@ -152,9 +150,6 @@
 bats_require_minimum_version 1.5.0
 
 setup() {
-  # Isolate pricing from the developer's real rate table and the network.
-  export GAIA_RATES_STATE_DIRECTORY="$BATS_TEST_TMPDIR/rates-state"
-  export GAIA_RATES_FEED_DISABLE=1
   # HOOKS_DIRECTORY is the real hooks dir, so the real usage-merge.sh would run in
   # every armed row below and, with the shared gh stub answering MERGED, drive
   # ledger writes during timing. The seam keeps every existing row timing what
@@ -187,10 +182,10 @@ esac
 GHEOF
   chmod +x "$GH_BIN/gh"
 
-  # A documented test seam (token-tally-review.sh, token-tally-git-op.sh):
-  # points the ledger/transcript scan at an empty tree instead of this
-  # machine's real ~/.claude/projects, which would make timing depend on
-  # however much real session history happens to be on disk.
+  # A documented test seam (usage-lib.sh): points the transcript scan at an
+  # empty tree instead of this machine's real ~/.claude/projects, which would
+  # make timing depend on however much real session history happens to be on
+  # disk.
   TALLY_ROOT="$REPO/.tally-empty"
   mkdir -p "$TALLY_ROOT"
 }
@@ -348,9 +343,7 @@ adopting_hooks() {
     pr-merge-audit-check.sh \
     worthiness-presence-check.sh \
     post-findings-block-on-merge.sh \
-    token-tally-git-op.sh \
-    token-tally-review.sh \
-    token-rollup-merge.sh \
+    pr-merge-cost.sh \
     issue-claim-release.sh \
     debt-sentinel-touch.sh \
     capture-gh-artifact.sh \
@@ -377,28 +370,28 @@ CEILING_ONE_HOOK_RAWMATCH_MS=300
 CEILING_ONE_HOOK_NONMATCH_MS=150
 
 # Every adopting hook, one 200-character ordinary `git commit` tool call.
-# Measured ~260-325ms. Headroom: 1000/325 ~= 3.1x. Margin below one byte-walk
+# Measured ~180-195ms. Headroom: 1000/195 ~= 5.1x. Margin below one byte-walk
 # per adopting hook, at the list length this was measured at, each paying
 # the 1010ms byte-walk figure (the "walk gets paid unconditionally" failure
-# this also guards against): 12120/1000 ~= 12.1x. The ceiling itself is
+# this also guards against): 8080/1000 ~= 8.1x. The ceiling itself is
 # unchanged: it is set against the 1010ms byte-walk reference rather than
 # against this machine's number, so re-measuring the number does not move it.
 CEILING_ALL_HOOKS_ORDINARY_MS=1000
 
 # Every adopting hook, one 16KB raw-matching `gh pr merge` tool call (most pay
-# the walk; the rest raw-miss and skip it). Measured ~330-390ms. Headroom:
-# 2000/390 ~= 5.1x. Margin below one byte-walk per adopting hook, at the list
+# the walk; the rest raw-miss and skip it). Measured ~315-355ms. Headroom:
+# 2000/355 ~= 5.6x. Margin below one byte-walk per adopting hook, at the list
 # length this was measured at, each paying the 1010ms byte-walk figure:
-# 12120/2000 ~= 6.1x. Ceiling unchanged, for the reason the ordinary one gives.
+# 8080/2000 ~= 4.0x. Ceiling unchanged, for the reason the ordinary one gives.
 CEILING_ALL_HOOKS_RAWMATCH_MS=2000
 
-# Past-bound (32KB), one hook (token-tally-git-op.sh), armed for real: the
-# walker's length check must short-circuit before it does any real work. What
-# is left is hook-body cost, not walk cost: measured ~75-90ms across runs
-# against ~21-23ms for an unmatched payload, the gap being the armed path's
-# own work. Headroom: 300/90 ~= 3.3x. Margin below a
-# conservative doubling of the 16KB byte-walk figure for a 32KB unbounded
-# walk (2020ms): 2020/300 ~= 6.7x.
+# Past-bound (32KB), one hook (pr-merge-cost.sh), armed for real: the walker's
+# length check must short-circuit before it does any real work. What is left
+# is hook-body cost, not walk cost: measured ~39-43ms across six runs against
+# ~28-32ms for an unmatched payload, the gap being the armed path's own work
+# (it launches usage-merge.sh, which exits at once under the disable seam).
+# Headroom: 300/43 ~= 7.0x. Margin below a conservative doubling of the 16KB
+# byte-walk figure for a 32KB unbounded walk (2020ms): 2020/300 ~= 6.7x.
 CEILING_PAST_BOUND_MS=300
 
 # gaia_verb_arm_view alone, 256KB, well past the bound: the length check must
@@ -454,9 +447,11 @@ CEILING_VIEW_16K_MS=100
 }
 
 @test "cost: a payload past the character bound never pays the walk, so only the hook body's own cost is left" {
-  local hook="$HOOKS_DIRECTORY/token-tally-git-op.sh"
+  # setup exports GAIA_USAGE_HOOKS_DISABLE, so usage-merge.sh exits before it
+  # reads or writes anything and the armed path is the hook's own work alone.
+  local hook="$HOOKS_DIRECTORY/pr-merge-cost.sh"
   local armed nonmatch
-  armed=$(build_plain_armed_payload "git commit -m x" 32768)
+  armed=$(build_plain_armed_payload "gh pr merge 30 --squash" 32768)
   nonmatch=$(build_nonmatch_payload 32768)
 
   time_hook_ms "$hook" "$armed"
@@ -528,14 +523,13 @@ CEILING_USAGE_MERGE_MS=4000
 @test "cost: the merge hook with the usage block live stays inside the cap plus headroom when gh cannot answer" {
   local copied_file
   mkdir -p "$REPO/.claude/hooks/lib" "$REPO/.gaia/scripts" "$REPO/.gaia/scripts/spec"
-  cp "$HOOKS_DIRECTORY/token-rollup-merge.sh" "$REPO/.claude/hooks/"
-  for copied_file in verb-arming.sh verb-arming-walk.sh repo-scope.sh gaia-active-plan.sh; do
+  cp "$HOOKS_DIRECTORY/pr-merge-cost.sh" "$REPO/.claude/hooks/"
+  for copied_file in verb-arming.sh verb-arming-walk.sh repo-scope.sh hook-payload.sh audit-scope.sh; do
     cp "$HOOKS_DIRECTORY/lib/$copied_file" "$REPO/.claude/hooks/lib/"
   done
   for copied_file in "$HOOKS_DIRECTORY"/../../.gaia/scripts/usage*.sh "$HOOKS_DIRECTORY"/../../.gaia/scripts/token-pricing-lib.sh \
-    "$HOOKS_DIRECTORY"/../../.gaia/scripts/token-rates-local-lib.sh "$HOOKS_DIRECTORY"/../../.gaia/scripts/token-rates-feed-lib.sh \
     "$HOOKS_DIRECTORY"/../../.gaia/scripts/ledger-path-lib.sh "$HOOKS_DIRECTORY"/../../.gaia/scripts/main-root-lib.sh \
-    "$HOOKS_DIRECTORY"/../../.gaia/scripts/branch-name-lib.sh "$HOOKS_DIRECTORY"/../../.gaia/scripts/token-rollup.sh; do
+    "$HOOKS_DIRECTORY"/../../.gaia/scripts/branch-name-lib.sh; do
     cp "$copied_file" "$REPO/.gaia/scripts/"
   done
   cp "$HOOKS_DIRECTORY/../../.gaia/scripts/spec/with-ledger-lock.sh" "$REPO/.gaia/scripts/spec/"
@@ -544,7 +538,7 @@ CEILING_USAGE_MERGE_MS=4000
 
   unset GAIA_USAGE_HOOKS_DISABLE
   export GAIA_USAGE_MERGE_CAP_SECONDS=1
-  time_hook_ms "$REPO/.claude/hooks/token-rollup-merge.sh" "gh pr merge 30 --squash"
-  echo "token-rollup-merge.sh with the usage block live, gh failing, cap 1s: ${REPLY_MS}ms (ceiling ${CEILING_USAGE_MERGE_MS}ms)" >&2
+  time_hook_ms "$REPO/.claude/hooks/pr-merge-cost.sh" "gh pr merge 30 --squash"
+  echo "pr-merge-cost.sh with the usage block live, gh failing, cap 1s: ${REPLY_MS}ms (ceiling ${CEILING_USAGE_MERGE_MS}ms)" >&2
   [ "$REPLY_MS" -le "$CEILING_USAGE_MERGE_MS" ]
 }

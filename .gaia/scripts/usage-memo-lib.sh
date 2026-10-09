@@ -4,9 +4,9 @@
 # shellcheck disable=SC2034
 #
 # GAIA usage-ledger branch-derivation memo: a regenerable cache in the
-# telemetry dir of what the branch-name derivation answers for each raw git
-# branch and each branch key, so a readout derives only the names the stores
-# gained since the last one instead of every name every time.
+# telemetry dir of what the branch-name derivation answers for each branch key
+# in usage.jsonl and links.jsonl, so a readout derives only the names the
+# stores gained since the last one instead of every name every time.
 #
 # Sourced by usage.sh after usage-lib.sh, usage-resolve-lib.sh and
 # usage-render-lib.sh (gaia_usage_memo_view reads their jq defs). Defines
@@ -31,7 +31,7 @@
 # reachable name is missing.
 GAIA_USAGE_MEMO_FUNCTIONS="gaia_usage_branch_map gaia_usage_derive_map _gaia_usage_branch_parents _gaia_usage_pad3 _gaia_usage_capture _gaia_usage_set_branch_key _gaia_usage_hash16 gaia_usage_valid_reference _gaia_usage_load gaia_branch_normalize _gaia_branch_set_normalized gaia_branch_classify _gaia_branch_set_class _gaia_branch_is_members _gaia_branch_is_digits _gaia_branch_set_leading_digits gaia_branch_members _gaia_usage_memo_derive"
 
-_GAIA_USAGE_MEMO_EMPTY='{"bmap":{},"derive":{},"models":[],"stores":{}}'
+_GAIA_USAGE_MEMO_EMPTY='{"derive":{},"models":[],"stores":{}}'
 
 # The head hash covers at most this many bytes, so a store that grows past it
 # keeps matching its recorded hash.
@@ -42,8 +42,6 @@ _GAIA_USAGE_MEMO_SHAPE_JQ='
 def non_negative_integer: type == "number" and . >= 0 and . == floor;
 def store: type == "object" and (.path | type == "string") and (.off | non_negative_integer) and (.hn | non_negative_integer) and (.head | type == "string");
 type == "object"
-and (.bmap | type == "object"
-  and all(.[]; type == "object" and (.norm | type == "string") and has("key") and (.key == null or (.key | type == "string"))))
 and (.derive | type == "object" and all(.[]; type == "array" and all(.[]; type == "string")))
 and (.models | type == "array" and all(.[]; type == "string"))
 and (.stores | type == "object" and all(.[]; store))
@@ -54,29 +52,21 @@ and (.stores | type == "object" and all(.[]; store))
 # for field, so a memo-restricted $keys is equivalent for every consumer.
 # shellcheck disable=SC2034,SC2016  # consumed by sourcing scripts; jq source, no shell expansion
 GAIA_USAGE_MEMO_JQ='
-def usage_present($usage_records; $links; $cost):
+def usage_present($usage_records; $links):
   [$usage_records[] | select(.kind == "segment")] as $segments
-  | {raws: ([$cost[] | select(.kind == "plan" or .kind == "execute") | .git_branch | strings] | unique),
-     bkeys: ([($segments[] | .key), ($links[] | .child, .parent, .key)]
+  | {bkeys: ([($segments[] | .key), ($links[] | .child, .parent, .key)]
        | map(strings | select(startswith("branch:"))) | unique),
      models: (try ([$segments[] | (.by_model // {}) | keys[]] | unique) catch null)};
 
-# The derive keys the readout needs: every present branch key plus the key of
-# each present raw.
-def usage_memo_need($present; $memo):
-  (($present.bkeys + [$present.raws[] | $memo.bmap[.].key | strings]) | unique);
-
 def usage_memo_gap($present; $memo):
-  [$present.raws[] | select($memo.bmap[.] == null)] as $missing_raws
-  | [usage_memo_need($present; $memo)[] | select($memo.derive[.] == null)] as $missing_keys
+  [$present.bkeys[] | select($memo.derive[.] == null)] as $missing_keys
   | ($present.models - $memo.models) as $missing_models
   | ($memo.models - $present.models) as $extra_models
-  | if ($missing_raws | length) == 0 and ($missing_keys | length) == 0 and ($missing_models | length) == 0 and ($extra_models | length) == 0 then null
-    else {raws: $missing_raws, bkeys: $missing_keys, models: $missing_models, models_extra: $extra_models} end;
+  | if ($missing_keys | length) == 0 and ($missing_models | length) == 0 and ($extra_models | length) == 0 then null
+    else {bkeys: $missing_keys, models: $missing_models, models_extra: $extra_models} end;
 
 def usage_memo_keys($present; $memo; $default):
-  {bmap: ($present.raws | map({key: ., value: $memo.bmap[.]}) | from_entries),
-   derive: (usage_memo_need($present; $memo) | map({key: ., value: $memo.derive[.]})
+  {derive: ($present.bkeys | map({key: ., value: $memo.derive[.]})
      | map(select(.value | length > 0)) | from_entries),
    default: $default,
    models: $present.models};
@@ -120,7 +110,9 @@ gaia_usage_memo_stamp() {
       for (i = 1; i <= name_count; i++) { function_name = order[i]; if (body[function_name] == "") bad = 1; printf "%s\n%s", function_name, body[function_name] }
       exit bad
     }' "$library_directory/usage-lib.sh" "$library_directory/usage-resolve-lib.sh" "$library_directory/branch-name-lib.sh" "$library_directory/usage-memo-lib.sh" 2>/dev/null)" || return 1
-  stamp_hash="$(_gaia_usage_hash16 "usage-branch-memo/1"$'\n'"$text" 2>/dev/null)" || return 1
+  # The seed names the memo layout and the stores it covers; a change to either
+  # bumps it, so a memo written under another layout loads cold.
+  stamp_hash="$(_gaia_usage_hash16 "usage-branch-memo/2"$'\n'"$text" 2>/dev/null)" || return 1
   [ -n "$stamp_hash" ] || return 1
   _gaia_usage_memo_stamp="$stamp_hash"
   _gaia_usage_memo_stamp_exit_status=0
@@ -218,7 +210,7 @@ _gaia_usage_memo_slice() {
 }
 
 # _gaia_usage_memo_scan <file> <start> <end> <kind>: one JSON object
-# {k: branch keys, m: models, r: raw branches} from bytes [start, end). Both
+# {k: branch keys, m: models} from bytes [start, end). Both
 # patterns are escape-blind on purpose: a value spelled with a JSON escape is
 # not matched, so the memo lacks it and the readout's coverage check derives it
 # on a miss. The model pattern assumes the flusher's key order (fresh_input
@@ -228,57 +220,42 @@ _gaia_usage_memo_slice() {
 _gaia_usage_memo_scan() {
   local file="$1" start="$2" end="$3" kind="$4" scan_json=""
   case "$kind" in
-    c)
-      scan_json="$({ _gaia_usage_memo_slice "$file" "$start" "$end"; } 2>/dev/null |
-        LC_ALL=C grep -oE '"git_branch":"[^"\\]*"' |
-        LC_ALL=C sort -u |
-        LC_ALL=C sed 's/^"git_branch":"\(.*\)"$/\1/' |
-        jq -Rnc '{k: [], m: [], r: [inputs]}' 2>/dev/null)" || true
-      ;;
     l)
       scan_json="$({ _gaia_usage_memo_slice "$file" "$start" "$end"; } 2>/dev/null |
         LC_ALL=C grep -oE '"(key|child|parent)":"branch:[^"\\]*"' |
         LC_ALL=C sort -u |
         LC_ALL=C sed -E 's/^"[a-z]+":"(branch:.*)"$/K\1/' |
-        jq -Rnc '[inputs] | {k: [.[] | select(startswith("K")) | .[1:]], m: [], r: []}' 2>/dev/null)" || true
+        jq -Rnc '[inputs] | {k: [.[] | select(startswith("K")) | .[1:]], m: []}' 2>/dev/null)" || true
       ;;
     u)
       scan_json="$({ _gaia_usage_memo_slice "$file" "$start" "$end"; } 2>/dev/null |
         LC_ALL=C grep -oE -e '"(key|child|parent)":"branch:[^"\\]*"' -e '("by_model":\{|\},)"[^"\\]*":\{"fresh_input":' |
         LC_ALL=C sort -u |
         LC_ALL=C sed -nE 's/^"(key|child|parent)":"(branch:.*)"$/K\2/p; s/^.*"([^"\\]*)":\{"fresh_input":$/M\1/p' |
-        jq -Rnc '[inputs] | {k: [.[] | select(startswith("K")) | .[1:]], m: [.[] | select(startswith("M")) | .[1:]], r: []}' 2>/dev/null)" || true
+        jq -Rnc '[inputs] | {k: [.[] | select(startswith("K")) | .[1:]], m: [.[] | select(startswith("M")) | .[1:]]}' 2>/dev/null)" || true
       ;;
   esac
   case "$scan_json" in '{'*) printf '%s' "$scan_json" ;; *) return 1 ;; esac
 }
 
-# _gaia_usage_memo_derive <aggregate>: <aggregate> is {k: [branch keys], r: [raw branches]}.
-# Derives what GAIA_USAGE_MEMO lacks and merges it in: new raws through
-# gaia_usage_branch_map, then every key not yet in `derive` (the given keys plus
-# each new raw's key) through gaia_usage_derive_map, recording [] for a key that
-# implies no parent so it counts as processed. Lists cross to bash NUL-delimited
-# because a raw can legitimately be the empty string.
+# _gaia_usage_memo_derive <aggregate>: <aggregate> is {k: [branch keys]}.
+# Derives every key not yet in `derive` through gaia_usage_derive_map and
+# merges it in, recording [] for a key that implies no parent so it counts as
+# processed. The list crosses to bash NUL-delimited, the one byte no key holds.
 _gaia_usage_memo_derive() {
-  local aggregate="$1" item new_branch_map="{}" derive_map="{}" merged
-  local -a new_raws=() new_keys=()
-  while IFS= read -r -d '' item; do new_raws[${#new_raws[@]}]="$item"; done < <(
-    printf '%s\n%s\n' "$GAIA_USAGE_MEMO" "$aggregate" |
-      jq -j -n 'input as $memo | input as $aggregate | $aggregate.r | unique | .[] | select($memo.bmap[.] == null) | ., "\u0000"' 2>/dev/null)
-  if [ "${#new_raws[@]}" -gt 0 ]; then
-    new_branch_map="$(gaia_usage_branch_map ${new_raws[@]+"${new_raws[@]}"} 2>/dev/null)" || return 1
-  fi
+  local aggregate="$1" item derive_map="{}" merged
+  local -a new_keys=()
   while IFS= read -r -d '' item; do new_keys[${#new_keys[@]}]="$item"; done < <(
-    printf '%s\n%s\n%s\n' "$GAIA_USAGE_MEMO" "$aggregate" "$new_branch_map" |
-      jq -j -n 'input as $memo | input as $aggregate | input as $new_branch_map
-        | ($aggregate.k + [$new_branch_map[].key | strings]) | unique | .[] | select($memo.derive[.] == null) | ., "\u0000"' 2>/dev/null)
+    printf '%s\n%s\n' "$GAIA_USAGE_MEMO" "$aggregate" |
+      jq -j -n 'input as $memo | input as $aggregate
+        | $aggregate.k | unique | .[] | select($memo.derive[.] == null) | ., "\u0000"' 2>/dev/null)
   if [ "${#new_keys[@]}" -gt 0 ]; then
     derive_map="$(gaia_usage_derive_map ${new_keys[@]+"${new_keys[@]}"} 2>/dev/null)" || return 1
   fi
-  merged="$(printf '%s\n%s\n%s\n%s\n' "$GAIA_USAGE_MEMO" "$aggregate" "$new_branch_map" "$derive_map" |
-    jq -cS -n 'input as $memo | input as $aggregate | input as $new_branch_map | input as $derive_map
-      | (($aggregate.k + [$new_branch_map[].key | strings]) | unique | map(select($memo.derive[.] == null))) as $new_derive_keys
-      | $memo | .bmap += $new_branch_map | .derive += ($new_derive_keys | map({key: ., value: ($derive_map[.] // [])}) | from_entries)' 2>/dev/null)" || return 1
+  merged="$(printf '%s\n%s\n%s\n' "$GAIA_USAGE_MEMO" "$aggregate" "$derive_map" |
+    jq -cS -n 'input as $memo | input as $aggregate | input as $derive_map
+      | ($aggregate.k | unique | map(select($memo.derive[.] == null))) as $new_derive_keys
+      | $memo | .derive += ($new_derive_keys | map({key: ., value: ($derive_map[.] // [])}) | from_entries)' 2>/dev/null)" || return 1
   [ -n "$merged" ] || return 1
   GAIA_USAGE_MEMO="$merged"
 }
@@ -293,16 +270,15 @@ gaia_usage_memo_warm() {
   local usage_full_scan=0 any=0 unit_separator=$'\x1f' store_records="" aggregate models new
   [ -n "${GAIA_USAGE_MEMO:-}" ] || GAIA_USAGE_MEMO="$_GAIA_USAGE_MEMO_EMPTY"
   before="$GAIA_USAGE_MEMO"
-  store_records="$(jq -r '.stores as $stores | ("u", "l", "c") | ($stores[.] // null)
+  store_records="$(jq -r '.stores as $stores | ("u", "l") | ($stores[.] // null)
       | if . == null then "-" else "\(.path)\u001f\(.off)\u001f\(.hn)\u001f\(.head)" end' <<<"$GAIA_USAGE_MEMO" 2>/dev/null)" || store_records=""
-  local stored_usage_record stored_links_record stored_cost_record
-  { IFS= read -r stored_usage_record; IFS= read -r stored_links_record; IFS= read -r stored_cost_record; } <<<"$store_records" || true
-  local usage_scan="" links_scan="" cost_scan="" usage_update="" links_update="" cost_update=""
-  for store_tag in u l c; do
+  local stored_usage_record stored_links_record
+  { IFS= read -r stored_usage_record; IFS= read -r stored_links_record; } <<<"$store_records" || true
+  local usage_scan="" links_scan="" usage_update="" links_update=""
+  for store_tag in u l; do
     case "$store_tag" in
       u) store_file="$1"; stored_record="${stored_usage_record:--}" ;;
       l) store_file="$2"; stored_record="${stored_links_record:--}" ;;
-      c) store_file="$3"; stored_record="${stored_cost_record:--}" ;;
     esac
     [ -f "$store_file" ] && [ -r "$store_file" ] || continue
     snapshot_size="$(wc -c <"$store_file" 2>/dev/null)" || continue
@@ -336,7 +312,7 @@ gaia_usage_memo_warm() {
     if [ "$new_offset" -gt "$start" ]; then
       scan="$(_gaia_usage_memo_scan "$store_file" "$start" "$new_offset" "$store_tag")" || continue
     else
-      scan='{"k":[],"m":[],"r":[]}'
+      scan='{"k":[],"m":[]}'
     fi
     head_length="$new_offset"
     [ "$head_length" -le "$_GAIA_USAGE_MEMO_HEAD_MAXIMUM" ] || head_length="$_GAIA_USAGE_MEMO_HEAD_MAXIMUM"
@@ -349,13 +325,12 @@ gaia_usage_memo_warm() {
     case "$store_tag" in
       u) usage_scan="$scan"; usage_update="$new"; [ -n "$reason" ] && usage_full_scan=1 ;;
       l) links_scan="$scan"; links_update="$new" ;;
-      c) cost_scan="$scan"; cost_update="$new" ;;
     esac
     any=1
   done
   [ "$any" = 1 ] || return 0
-  aggregate="$(printf '%s\n%s\n%s\n' "$usage_scan" "$links_scan" "$cost_scan" |
-    jq -cn '[inputs] | {k: (map(.k) | add // [] | unique), r: (map(.r) | add // [] | unique)}' 2>/dev/null)" || aggregate=""
+  aggregate="$(printf '%s\n%s\n' "$usage_scan" "$links_scan" |
+    jq -cn '[inputs] | {k: (map(.k) | add // [] | unique)}' 2>/dev/null)" || aggregate=""
   [ -n "$aggregate" ] || return 0
   if ! _gaia_usage_memo_derive "$aggregate"; then
     # Offsets stay where they were, so the next read scans these bytes again.
@@ -364,25 +339,24 @@ gaia_usage_memo_warm() {
   fi
   models="[]"
   if [ -n "$usage_scan" ]; then models="$(jq -c '.m' <<<"$usage_scan" 2>/dev/null)" || models="[]"; fi
-  new="$(printf '%s\n%s\n%s\n%s\n' "$GAIA_USAGE_MEMO" "${usage_update:-null}" "${links_update:-null}" "${cost_update:-null}" |
+  new="$(printf '%s\n%s\n%s\n' "$GAIA_USAGE_MEMO" "${usage_update:-null}" "${links_update:-null}" |
     jq -cS -n --argjson scanned_models "$models" --argjson full "$usage_full_scan" --argjson has_usage_scan "$([ -n "$usage_scan" ] && echo true || echo false)" '
-      input as $memo | input as $usage_update | input as $links_update | input as $cost_update
+      input as $memo | input as $usage_update | input as $links_update
       | $memo
       | (if $usage_update != null then .stores.u = $usage_update else . end)
       | (if $links_update != null then .stores.l = $links_update else . end)
-      | (if $cost_update != null then .stores.c = $cost_update else . end)
       | if $has_usage_scan then .models = (if $full == 1 then $scanned_models else (.models + $scanned_models) end | unique) else . end' 2>/dev/null)" || new=""
   [ -n "$new" ] && GAIA_USAGE_MEMO="$new"
   if [ "$GAIA_USAGE_MEMO" != "$before" ]; then GAIA_USAGE_MEMO_DIRTY=1; fi
   return 0
 }
 
-# Merges a coverage gap ({raws, bkeys, models, models_extra}) into the memo, so
-# the memo ends covering exactly the present set.
+# Merges a coverage gap ({bkeys, models, models_extra}) into the memo, so the
+# memo ends covering exactly the present set.
 gaia_usage_memo_merge_gap() {
   local gap="$1" before="${GAIA_USAGE_MEMO:-}" aggregate new
   [ -n "$before" ] || { GAIA_USAGE_MEMO="$_GAIA_USAGE_MEMO_EMPTY"; before="$GAIA_USAGE_MEMO"; }
-  aggregate="$(jq -c '{k: (.bkeys // []), r: (.raws // [])}' <<<"$gap" 2>/dev/null)" || return 0
+  aggregate="$(jq -c '{k: (.bkeys // [])}' <<<"$gap" 2>/dev/null)" || return 0
   [ -n "$aggregate" ] || return 0
   _gaia_usage_memo_derive "$aggregate" || GAIA_USAGE_MEMO="$before"
   new="$(printf '%s\n%s\n' "$GAIA_USAGE_MEMO" "$gap" |
@@ -427,15 +401,15 @@ gaia_usage_memo_save() {
 # shellcheck disable=SC2016  # jq source, no shell expansion
 _GAIA_USAGE_MEMO_PRELUDE_JQ='
 [inputs | (try fromjson catch null) | select(type == "object" and .schema_version == 1)] as $usage_records
-| usage_rows($_links_raw) as $links | usage_rows($_cost_raw) as $cost
-| usage_present($usage_records; $links; $cost) as $present
+| usage_rows($_links_raw) as $links
+| usage_present($usage_records; $links) as $present
 | if $present.models == null then {legacy: true}
   else ($_memo_raw | fromjson) as $_memo | usage_memo_gap($present; $_memo) as $gap
   | if $gap != null then {miss: $gap}
     else usage_memo_keys($present; $_memo; $_default) as $memo_keys | '
 
-# gaia_usage_memo_view <usage> <links> <cost> <default-branch> <filter> [jq args...]:
-# runs <filter> (a view over $usage_records, $links, $cost and $memo_keys) in one jq process
+# gaia_usage_memo_view <usage> <links> <default-branch> <filter> [jq args...]:
+# runs <filter> (a view over $usage_records, $links and $memo_keys) in one jq process
 # over the stores and GAIA_USAGE_MEMO, printing the view, {"miss":...} or
 # {"legacy":true}. rc 1 when a store cannot be read or jq fails. Cursor rows are
 # dropped before jq, since no view reads them; only the flusher's own spelling
@@ -448,15 +422,14 @@ _GAIA_USAGE_MEMO_PRELUDE_JQ='
 # stays silent too.
 # shellcheck disable=SC2016  # jq source, no shell expansion
 gaia_usage_memo_view() {
-  local usage_store="$1" links_store="$2" cost_store="$3" default_branch="$4" filter="$5" pricing="${GAIA_PRICING_JQ_DEFS-}" pipe_statuses
-  shift 5
+  local usage_store="$1" links_store="$2" default_branch="$3" filter="$4" pricing="${GAIA_PRICING_JQ_DEFS-}" pipe_statuses
+  shift 4
   [ -f "$usage_store" ] || usage_store=/dev/null
   [ -f "$links_store" ] || links_store=/dev/null
-  [ -f "$cost_store" ] || cost_store=/dev/null
   [ -n "$pricing" ] || pricing='def priced_row($row): {dollars: 0, unpriced: []};'
   LC_ALL=C grep -v '^{"schema_version":1,"kind":"cursor",' "$usage_store" 2>/dev/null |
-    jq -nRc --rawfile _links_raw "$links_store" --rawfile _cost_raw "$cost_store" --rawfile _memo_raw /dev/fd/3 \
-      --arg _default "$default_branch" --arg usage_store "" --arg links_store "" --arg cost_store "" --argjson keys '{}' "$@" \
+    jq -nRc --rawfile _links_raw "$links_store" --rawfile _memo_raw /dev/fd/3 \
+      --arg _default "$default_branch" --arg usage_store "" --arg links_store "" --argjson keys '{}' "$@" \
       "$GAIA_USAGE_JQ_DEFS$pricing$GAIA_USAGE_RESOLVE_JQ$GAIA_USAGE_MODEL_JQ$GAIA_USAGE_VIEW_JQ$GAIA_USAGE_MEMO_JQ$_GAIA_USAGE_MEMO_PRELUDE_JQ$filter end end" \
       2>/dev/null 3<<<"${GAIA_USAGE_MEMO:-null}"
   pipe_statuses="${PIPESTATUS[0]} ${PIPESTATUS[1]}"
@@ -464,79 +437,56 @@ gaia_usage_memo_view() {
   case "$pipe_statuses" in "0 0" | "1 0") return 0 ;; *) return 1 ;; esac
 }
 
-# gaia_usage_memo_readout <library-directory> <telemetry-directory> <cost> <main-root> <rate-override>
-# <view> [jq args...]: the memo-path readout. Prints the view JSON, or rc 1 when
+# gaia_usage_memo_readout <telemetry-directory> <main-root> <rate-override> <view>
+# [jq args...]: the memo-path readout. Prints the view JSON, or rc 1 when
 # the caller must run the pre-change sequence instead (a jq or read failure, a
 # model list that cannot be built, or a second coverage miss). The memo is
 # saved before the view runs, so a readout killed at the render cap still
 # leaves the next one warm. Every step discards its stderr.
 gaia_usage_memo_readout() {
-  local library_directory="$1" telemetry_directory="$2" cost="$3" main="$4" table="$5" view="$6" memo default_branch models rates view_output take_gap_exit_status miss_count=0
-  shift 6
+  local telemetry_directory="$1" main="$2" table="$3" view="$4" memo default_branch models rates view_output miss_count=0
+  shift 4
   memo="$(gaia_usage_memo_path "$telemetry_directory")"
   default_branch="$(gaia_usage_default_branch "${main:-.}" 2>/dev/null)"
   gaia_usage_memo_stamp 2>/dev/null
   gaia_usage_memo_reap "$telemetry_directory"
   gaia_usage_memo_load "$memo"
-  gaia_usage_memo_warm "$telemetry_directory/usage.jsonl" "$telemetry_directory/links.jsonl" "$cost"
+  gaia_usage_memo_warm "$telemetry_directory/usage.jsonl" "$telemetry_directory/links.jsonl"
   if [ "$GAIA_USAGE_MEMO_DIRTY" = 1 ]; then gaia_usage_memo_save "$memo"; fi
   models="$(gaia_usage_memo_models)" || return 1
   usage_rates_load "$table" "$main" "$models" 2>/dev/null
   rates="$USAGE_RATES"
   gaia_usage_memo_seam
   while :; do
-    view_output="$(gaia_usage_memo_view "$telemetry_directory/usage.jsonl" "$telemetry_directory/links.jsonl" "$cost" "$default_branch" "$view" \
+    view_output="$(gaia_usage_memo_view "$telemetry_directory/usage.jsonl" "$telemetry_directory/links.jsonl" "$default_branch" "$view" \
       --argjson rates "$rates" "$@")" || return 1
     case "$view_output" in
       '{"miss":'*) [ "$miss_count" = 0 ] || return 1 ;;
       '' | '{"legacy":true}') return 1 ;;
       *) printf '%s\n' "$view_output"; return 0 ;;
     esac
-    miss_count=1 take_gap_exit_status=0
-    gaia_usage_memo_take_gap "$telemetry_directory" "$view_output" || take_gap_exit_status=$?
-    case "$take_gap_exit_status" in
-      0) ;;
-      2) rates="$(gaia_usage_memo_rates_fresh "$library_directory" "$table" "$main")" || return 1 ;;
-      *) return 1 ;;
-    esac
+    miss_count=1
+    gaia_usage_memo_take_gap "$telemetry_directory" "$view_output" || return 1
   done
 }
 
 # Prints the memo's models as compact JSON, the spelling usage_models_of
-# prints, so the rate heal sees the same argument a pre-change readout passes.
+# prints, so the model list matches what a pre-change readout passes.
 gaia_usage_memo_models() { jq -er '.models | tojson' <<<"${GAIA_USAGE_MEMO:-}" 2>/dev/null; }
 
 # gaia_usage_memo_take_gap <telemetry-directory> <view-output>: traces, merges and saves the
-# {"miss": gap} a view printed. rc 0 when done, 2 when the gap names a model so
-# the caller must reload rates, 1 when the output carries no readable gap.
+# {"miss": gap} a view printed. rc 0 when done, 1 when the output carries no
+# readable gap.
 gaia_usage_memo_take_gap() {
   local gap counts
   gap="$(jq -c '.miss | objects' <<<"$2" 2>/dev/null)" || return 1
-  counts="$(jq -r '"raws=\(.raws | length) bkeys=\(.bkeys | length) models=\((.models | length) + (.models_extra | length))"' \
+  counts="$(jq -r '"bkeys=\(.bkeys | length) models=\((.models | length) + (.models_extra | length))"' \
     <<<"$gap" 2>/dev/null)" || return 1
   [ -n "$counts" ] || return 1
   gaia_usage_memo_trace "rerun=miss $counts"
   gaia_usage_memo_merge_gap "$gap"
   if [ "$GAIA_USAGE_MEMO_DIRTY" = 1 ]; then gaia_usage_memo_save "$(gaia_usage_memo_path "$1")"; fi
-  case "$counts" in *" models=0") return 0 ;; esac
-  return 2
-}
-
-# gaia_usage_memo_rates_fresh <lib-dir> <rate-override> <main-root>: prints the
-# rate table a fresh bash loads for the memo's models. The heal tries the feed
-# once per process and the readout's own process already spent that try on the
-# memo's earlier model list, so only a new process can heal the missed model.
-# rc 1 when nothing loads.
-gaia_usage_memo_rates_fresh() {
-  local models rates_json
-  models="$(gaia_usage_memo_models)" || return 1
-  # shellcheck disable=SC2016  # bash source for the child, expanded there
-  rates_json="$("${BASH:-bash}" -c '. "$1/usage-lib.sh" && . "$1/usage-resolve-lib.sh" && . "$1/usage-render-lib.sh" || exit 1
-    . "$1/ledger-path-lib.sh"; . "$1/token-pricing-lib.sh"
-    usage_rates_load "$2" "$3" "$4"; printf "%s" "$USAGE_RATES"' _ "$1" "$2" "$3" "$models" 2>/dev/null </dev/null)" || return 1
-  [ -n "$rates_json" ] || return 1
-  gaia_usage_memo_trace "rates=reload"
-  printf '%s' "$rates_json"
+  return 0
 }
 
 # Test observability for the window between the memo being saved and the view

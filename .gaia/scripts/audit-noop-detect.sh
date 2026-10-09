@@ -142,7 +142,7 @@
 # Clearing the expected path before dispatch (Directive #4) is the calling
 # prose's job, not this helper's.
 #
-# DO NOT add `set -e` (matches plan-archive.sh / token-rollup.sh): this
+# DO NOT add `set -e` (matches plan-archive.sh): this
 # helper's whole logic is intentionally-non-zero-exiting `jq -e` / `grep`
 # checks (a no-op IS exit 1), so `-e` would abort mid-check on the first
 # falsey test instead of returning the boolean. Each predicate is guarded

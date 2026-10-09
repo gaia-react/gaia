@@ -123,88 +123,16 @@
       "source": "SPEC-061 §shared"
     },
     {
-      "id": "telemetry-cost-ledger",
-      "path": "telemetry/cost.jsonl",
+      "id": "telemetry-rate-override",
+      "path": "telemetry/token-rates.override.json",
       "match": "exact",
       "kind": "file",
       "scope": "shared",
-      "keyed_by": "singleton store; a cross-tree file lock plus self-identifying rows (session_id + spec/plan id + seq)",
-      "why": "An append-only cost ledger every tree contributes to; correctness comes from the lock, not from partitioning.",
-      "writer": "code",
+      "keyed_by": "singleton per clone; hand-authored, resolved through the main checkout",
+      "why": "The optional machine-local price override that pricing overlays on the distributed rate table. User-written, never reaped, and never replaced by a sync.",
+      "writer": "hand-authored",
       "reaped_by": null,
-      "source": "SPEC-061 §shared"
-    },
-    {
-      "id": "telemetry-rate-table",
-      "path": "telemetry/token-rates.json",
-      "match": "exact",
-      "kind": "file",
-      "scope": "shared",
-      "keyed_by": "singleton per clone; temp-file-then-rename, last rename wins",
-      "why": "The machine-local rate table pricing reads. It holds adopter-authored prices (an edited row is never replaced by a sync), so it is not regenerable cache and must not be treated as one.",
-      "writer": "code",
-      "reaped_by": null,
-      "source": "SPEC-086 §shared"
-    },
-    {
-      "id": "telemetry-rate-table-base",
-      "path": "telemetry/token-rates.base.json",
-      "match": "exact",
-      "kind": "file",
-      "scope": "shared",
-      "keyed_by": "singleton per clone; temp-file-then-rename, last rename wins",
-      "why": "The per-model merge base: the distributed rows as of the last sync plus feed-written rows. The sync compares the local table against it to tell an edited row from an untouched one.",
-      "writer": "code",
-      "reaped_by": null,
-      "source": "SPEC-086 §shared"
-    },
-    {
-      "id": "telemetry-rate-table-dist-copy",
-      "path": "telemetry/token-rates.dist.json",
-      "match": "exact",
-      "kind": "file",
-      "scope": "shared",
-      "keyed_by": "singleton per clone; temp-file-then-rename, last rename wins",
-      "why": "A byte copy of the main checkout's distributed rate table at the last sync; a difference from the current distributed file is what triggers the next sync.",
-      "writer": "code",
-      "reaped_by": null,
-      "source": "SPEC-086 §shared"
-    },
-    {
-      "id": "telemetry-rate-feed-state",
-      "path": "telemetry/token-rates.feed-state.json",
-      "match": "exact",
-      "kind": "file",
-      "scope": "shared",
-      "keyed_by": "singleton per clone; temp-file-then-rename, last rename wins",
-      "why": "The rate feed's backoff and not-found record, stored as epoch integers so a failed or empty fetch is not retried within the hour.",
-      "writer": "code",
-      "reaped_by": null,
-      "source": "SPEC-086 §shared"
-    },
-    {
-      "id": "telemetry-rate-table-corrupt",
-      "path": "telemetry/token-rates.json.corrupt.*",
-      "match": "glob",
-      "kind": "file",
-      "scope": "shared",
-      "keyed_by": "one copy per recovery, named by epoch seconds plus a mktemp suffix",
-      "why": "Unreadable local rate tables preserved before the table is reseeded, so a hand-edited price is never silently destroyed.",
-      "writer": "code",
-      "reaped_by": "token-rates-local-lib.sh on each new preservation (keeps the 5 newest)",
-      "source": "SPEC-086 §shared"
-    },
-    {
-      "id": "telemetry-rate-table-tmp",
-      "path": "telemetry/.token-rates*.tmp.*",
-      "match": "glob",
-      "kind": "file",
-      "scope": "shared",
-      "keyed_by": "one mktemp name per write, never reused",
-      "why": "In-flight temp files of the rate table writes and the feed response body, present between creation and the rename. A process killed mid-write can leave one behind; it is inert (nothing reads it) and has no reaper.",
-      "writer": "code",
-      "reaped_by": null,
-      "source": "SPEC-086 §shared"
+      "source": "pricing override overlay, added after the frozen classification"
     },
     {
       "id": "telemetry-usage-ledger",
@@ -555,18 +483,6 @@
       "source": "gaia-react/gaia#1447, added after the frozen classification"
     },
     {
-      "id": "audit-window-breadcrumb",
-      "path": "cache/audit-window-*.json",
-      "match": "glob",
-      "kind": "file",
-      "scope": "ephemeral",
-      "keyed_by": null,
-      "why": "A cost-ledger breadcrumb recording whether an adversarial audit ran this SPEC or plan session; deliberately resolved to main, keyed by spec/plan id, read-then-deleted by the cost tally.",
-      "writer": "code",
-      "reaped_by": null,
-      "source": "SPEC-061 §ephemeral"
-    },
-    {
       "id": "react-perf-run-scratch",
       "path": "cache/*/renders.json",
       "match": "glob",
@@ -744,6 +660,55 @@
       "path": "handoff/",
       "match": "prefix",
       "why": "Per-tree session handoff files from the removed handoff and pickup commands; no live writer and no reaper.",
+      "writer": "none-residue"
+    },
+    {
+      "id": "telemetry-cost-ledger-residue",
+      "path": "telemetry/cost.jsonl",
+      "match": "exact",
+      "why": "Retired cost ledger; the file stays on disk unread and has no writer.",
+      "writer": "none-residue"
+    },
+    {
+      "id": "telemetry-rate-table-residue",
+      "path": "telemetry/token-rates.json",
+      "match": "exact",
+      "why": "Retired seeded rate table; the file stays on disk unread and has no writer. Pricing reads the distributed table plus the override.",
+      "writer": "none-residue"
+    },
+    {
+      "id": "telemetry-rate-table-base-residue",
+      "path": "telemetry/token-rates.base.json",
+      "match": "exact",
+      "why": "Retired rate-table merge base; the file stays on disk unread and has no writer.",
+      "writer": "none-residue"
+    },
+    {
+      "id": "telemetry-rate-table-dist-copy-residue",
+      "path": "telemetry/token-rates.dist.json",
+      "match": "exact",
+      "why": "Retired byte copy of the distributed rate table; the file stays on disk unread and has no writer.",
+      "writer": "none-residue"
+    },
+    {
+      "id": "telemetry-rate-feed-state-residue",
+      "path": "telemetry/token-rates.feed-state.json",
+      "match": "exact",
+      "why": "Retired rate-feed backoff record; the file stays on disk unread and has no writer.",
+      "writer": "none-residue"
+    },
+    {
+      "id": "telemetry-rate-table-corrupt-residue",
+      "path": "telemetry/token-rates.json.corrupt.*",
+      "match": "glob",
+      "why": "Retired preserved copies of an unreadable seeded rate table; the files stay on disk unread and have no writer or reaper.",
+      "writer": "none-residue"
+    },
+    {
+      "id": "telemetry-rate-table-tmp-residue",
+      "path": "telemetry/.token-rates*.tmp.*",
+      "match": "glob",
+      "why": "Retired in-flight temp files of the seeded rate table writes; any found is inert and has no writer or reaper.",
       "writer": "none-residue"
     }
   ],

@@ -1,7 +1,0 @@
-{"schema_version":1,"kind":"spec","session_id":"s2","ts":"2026-09-11T11:00:00Z","spec_id":"SPEC-090","plan_id":null,"git_branch":"main"}
-{"schema_version":1,"kind":"spec","session_id":"s4","ts":"2026-09-12T10:00:00Z","spec_id":"SPEC-091","plan_id":null,"git_branch":"main"}
-{"schema_version":1,"kind":"spec","session_id":"s4","ts":"2026-09-12T12:00:00Z","spec_id":"SPEC-090","plan_id":null,"git_branch":"main"}
-{"schema_version":1,"kind":"spec","session_id":"s8","ts":"2026-09-14T11:00:00Z","spec_id":"SPEC-092","plan_id":null,"git_branch":"main"}
-{"schema_version":1,"kind":"spec","session_id":"s8","ts":"2026-09-14T13:00:00Z","spec_id":"SPEC-093","plan_id":null,"git_branch":"main"}
-{"schema_version":1,"kind":"plan","session_id":"s14","ts":"2026-09-16T10:30:00Z","spec_id":"SPEC-090","plan_id":null,"git_branch":"feat/p"}
-{"schema_version":1,"kind":"command","session_id":"s18","ts":"2026-09-18T10:00:00Z","spec_id":null,"plan_id":null,"git_branch":"main","command":"gaia-debt","run_id":"gaia-debt-r1","github":{"type":"pr","number":77,"repo":"o/r"}}

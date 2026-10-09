@@ -4,24 +4,22 @@
 # Sourced by the callers that must agree on one on-disk shape:
 # .claude/hooks/capture-gh-artifact.sh (the sole writer, fires when
 # `gh pr create` succeeds) and its readers, none of which deletes the file.
-# token-tally.sh's `--action execute` path reads it for cost records. Every
-# other cost record, the five prose maintenance commands and the /gaia-wiki
-# chain, binds its artifact by direct pass-through instead: the agent reads the
-# URL `gh pr create` printed into its own tool result and hands the number
-# straight to the tally, because those runs check out and delete their working
-# branch before the run ends, so a branch-keyed breadcrumb could never be
-# reclaimed at that point. Only plan execution has no agent in the loop (its
-# rows come from a PreToolUse hook on `git commit` / `git push`), so among cost
-# records it alone reads this breadcrumb. .claude/hooks/block-main-destructive-git.sh
-# reads it too, as proof that a session owns the branch it holds the main
-# checkout on; it relies on the branch-keyed filename and the session and branch
-# match below, and passes a long ttl because a session id never repeats.
+# .claude/hooks/block-main-destructive-git.sh reads it as proof that a session
+# owns the branch it holds the main checkout on; it relies on the branch-keyed
+# filename and the session and branch match below, and passes a long ttl
+# because a session id never repeats. No cost record reads it: the writing hook
+# links the pull request to its branch with `usage.sh link --pr`. The five
+# prose maintenance commands and the /gaia-wiki chain bind their artifact by
+# direct pass-through instead: the agent reads the URL `gh pr create` printed
+# into its own tool result and hands the number to `usage.sh record`, because
+# those runs check out and delete their working branch before the run ends, so
+# a branch-keyed breadcrumb could never be reclaimed at that point.
 #
 # No side effects at source time; this file defines functions only. Every
 # function below returns 0 and degrades to nothing on failure, never
 # blocking a caller, never fabricating a value, except gaia_gh_artifact_write,
 # which PROPAGATES failure (non-zero when nothing reached disk) so a lost
-# breadcrumb is detectable. Mirrors .gaia/scripts/audit-window-lib.sh.
+# breadcrumb is detectable.
 #
 # There is no consume function: the reader never deletes the file, because
 # every cumulative commit-triggered row on an execution branch must re-read

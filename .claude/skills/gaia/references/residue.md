@@ -214,7 +214,7 @@ Every path that ends a `/gaia-residue` run appends exactly one cost record, the 
 - Publish's non-zero-exit STOP on a `git` or `gh` command.
 - Any other-branch no-op.
 
-Apply the shared tally machinery in `.claude/skills/gaia/references/cost-record.md` with `{{COMMAND}}` = `gaia-residue`.
+Apply the shared record recipe in `.claude/skills/gaia/references/cost-record.md` with `{{COMMAND}}` = `gaia-residue`.
 
 ## Guardrails
 
@@ -237,6 +237,6 @@ Apply the shared tally machinery in `.claude/skills/gaia/references/cost-record.
 - the `residueCandidateCount` field of `.gaia/local/cache/shared/update-check.json`, the statusline cache, rewritten by the end-of-run refresh and no other field of it;
 - the transient reason file under `.gaia/local/audit/`, deleted in its own tool call;
 - the filing recipe's own transient issue-body file under `.gaia/local/audit/`, and the debt-count staleness sentinel that recipe touches;
-- `.gaia/local/telemetry/cost.jsonl`, the shared machine-local telemetry ledger the mandatory cost record appends to. Not this workflow's own file, and its shape is owned by `.gaia/scripts/token-tally.sh`, but a run does write it, so a self-check against this list has to expect it.
+- `.gaia/local/telemetry/usage.jsonl`, the shared machine-local usage ledger the mandatory cost record appends to (written by `usage.sh record`). Not this workflow's own file, but a run does write it, so a self-check against this list has to expect it.
 
 Nothing else. Not a source file, not a configuration file, and above all not a file any residual cites.

@@ -41,17 +41,26 @@ build_repo() {
   git -C "$REPO" -c commit.gpgsign=false commit -q --allow-empty -m init
   mkdir -p "$REPO/.claude/hooks/lib" "$REPO/.gaia/scripts" "$REPO/.gaia/scripts/spec" "$TELEMETRY_DIRECTORY"
   local copied_file
-  cp "$SOURCE_ROOT/.claude/hooks/token-rollup-merge.sh" "$REPO/.claude/hooks/"
-  for copied_file in verb-arming.sh verb-arming-walk.sh repo-scope.sh gaia-active-plan.sh; do
+  cp "$SOURCE_ROOT/.claude/hooks/pr-merge-cost.sh" "$REPO/.claude/hooks/"
+  for copied_file in verb-arming.sh verb-arming-walk.sh repo-scope.sh hook-payload.sh audit-scope.sh; do
     cp "$SOURCE_ROOT/.claude/hooks/lib/$copied_file" "$REPO/.claude/hooks/lib/"
   done
   for copied_file in "$SOURCE_ROOT"/.gaia/scripts/usage*.sh "$SOURCE_ROOT"/.gaia/scripts/token-pricing-lib.sh \
-    "$SOURCE_ROOT"/.gaia/scripts/token-rates-local-lib.sh "$SOURCE_ROOT"/.gaia/scripts/token-rates-feed-lib.sh \
     "$SOURCE_ROOT"/.gaia/scripts/ledger-path-lib.sh "$SOURCE_ROOT"/.gaia/scripts/main-root-lib.sh \
-    "$SOURCE_ROOT"/.gaia/scripts/branch-name-lib.sh "$SOURCE_ROOT"/.gaia/scripts/token-rollup.sh; do
+    "$SOURCE_ROOT"/.gaia/scripts/branch-name-lib.sh; do
     cp "$copied_file" "$REPO/.gaia/scripts/"
   done
   cp "$SOURCE_ROOT/.gaia/scripts/spec/with-ledger-lock.sh" "$REPO/.gaia/scripts/spec/"
+  cat >"$REPO/.gaia/audit-ci.yml" <<'EOF'
+auditors:
+  - name: code-audit-frontend
+    default: true
+    globs:
+      - "frontend/app/**"
+  - name: code-audit-maintainer-shell
+    globs:
+      - ".gaia/scripts/**"
+EOF
   cat >"$REPO/.gaia/scripts/token-rates.json" <<'EOF'
 {
   "cache_multipliers": { "read": 0.1, "write_5m": 1.25, "write_1h": 2.0 },
@@ -88,7 +97,7 @@ payload_for() {
 
 # run_merge <command> [session_id]: the real hook, cwd = the tmp repo.
 run_merge() {
-  run bash -c 'cd "$1" && printf %s "$2" | bash "$3"' _ "$REPO" "$(payload_for "$1" "${2:-s-hook}")" "$REPO/.claude/hooks/token-rollup-merge.sh"
+  run bash -c 'cd "$1" && printf %s "$2" | bash "$3"' _ "$REPO" "$(payload_for "$1" "${2:-s-hook}")" "$REPO/.claude/hooks/pr-merge-cost.sh"
 }
 
 # run_script <script> <command> [session_id]: a usage-merge.sh copy run directly.

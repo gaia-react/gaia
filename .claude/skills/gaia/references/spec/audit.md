@@ -1,8 +1,8 @@
 # /gaia-spec: adversarial SPEC-audit
 
-Step 7 of `/gaia-spec`: gauge the draft, fan out the lens auditors, refute, route each survivor, persist `AUDIT.md`, and close the audit window. `spec.md` routes here at step 7 together with `spec/lens-dispatch.md`, which owns the lens preamble, the findings file schema, the thin digest, and the pre-clear, classify, and re-dispatch rule; this file owns lens selection, refutation, and disposition. Control returns to `spec.md` step 8 (gate 2) at the end of this file.
+Step 7 of `/gaia-spec`: gauge the draft, fan out the lens auditors, refute, route each survivor, and persist `AUDIT.md`. `spec.md` routes here at step 7 together with `spec/lens-dispatch.md`, which owns the lens preamble, the findings file schema, the thin digest, and the pre-clear, classify, and re-dispatch rule; this file owns lens selection, refutation, and disposition. Control returns to `spec.md` step 8 (gate 2) at the end of this file.
 
-Contents: Gauge; 7a. Dispatch the lens auditors; 7b. Refutation pass (7b-i. Refutation, 7b-ii. Completeness critic, 7b-iii. Completeness-critic refuter); 7c. Disposition routing + apply; 7d. Persist AUDIT.md; Close the audit window.
+Contents: Gauge; 7a. Dispatch the lens auditors; 7b. Refutation pass (7b-i. Refutation, 7b-ii. Completeness critic, 7b-iii. Completeness-critic refuter); 7c. Disposition routing + apply; 7d. Persist AUDIT.md.
 
 ## Gauge
 
@@ -19,7 +19,7 @@ Record the gauged tier as `audit_intensity` (`standard` | `deep`) and the select
 
 **Auto-mode.** Auto mode gauges and runs the audit exactly as interactive does; the prompt is gone from both. The two auto-specific differences (Auto-mode rule 12) are in the fold, not the run: auto mode reads **no finding body** during the audit and fold phase (the transcript carries only ids, severities, titles, verdicts, and dispositions), and it applies every disposition non-interactively at 7c. It never skips the audit.
 
-**Fallback (never block).** If the parallel `general-purpose` Agent fan-out is unavailable (a restricted context that cannot spawn subagents), do NOT block save: note the skip (`adversarial audit unavailable, relying on step-6 self-review`), remove the audit cache with `rm -rf .gaia/local/cache/audit-<spec_id>/` (so the step-6 `self-review.json` is not orphaned), and proceed to gate 2. The step-6 self-review already ran and is the safety net. This path writes no `audit-window-<spec_id>.json` breadcrumb; its absence is the step-9 tally's signal that no adversarial audit ran.
+**Fallback (never block).** If the parallel `general-purpose` Agent fan-out is unavailable (a restricted context that cannot spawn subagents), do NOT block save: note the skip (`adversarial audit unavailable, relying on step-6 self-review`), remove the audit cache with `rm -rf .gaia/local/cache/audit-<spec_id>/` (so the step-6 `self-review.json` is not orphaned), and proceed to gate 2. The step-6 self-review already ran and is the safety net.
 
 ## 7a. Dispatch the lens auditors (parallel fan-out)
 
@@ -27,7 +27,7 @@ Announce once, verbatim, naming each lens in full with its id code in parenthese
 
 > Dispatching adversarial SPEC-audit (<audit_intensity>): lenses <selected lens names, each with its id in parentheses>, then refutation (typically a dozen-plus agents, several minutes).
 
-Capture the audit window start for the cost-ledger breadcrumb: `AUDIT_WINDOW_START="$(date -u +%Y-%m-%dT%H:%M:%SZ)"`. Then spawn **one `general-purpose` Agent per selected lens, all in parallel** (one message, one Agent tool call per lens): the four core lenses always, plus each specialist the gauge selected. Each agent audits the working-draft cache (`.gaia/local/cache/draft-<spec_id>.md`, the post-self-review working draft) and is dispatched per `spec/lens-dispatch.md` with the spec column of its caller slots (`<DRAFT_PATH>` = the working-draft cache, `<spec_id>`, `<repo_root>` = `$PWD`, `<LENS>` = the lens id prefix): the shared preamble, then a `LENS: <name> (id prefix <ID>)` line and the lens's focus text below. It **writes its findings to `.gaia/local/cache/audit-<spec_id>/findings/<LENS>.json`** under the findings file schema in `spec/lens-dispatch.md` (writing the file even when its findings array is empty), then returns only the contract's thin digest, no finding bodies.
+Spawn **one `general-purpose` Agent per selected lens, all in parallel** (one message, one Agent tool call per lens): the four core lenses always, plus each specialist the gauge selected. Each agent audits the working-draft cache (`.gaia/local/cache/draft-<spec_id>.md`, the post-self-review working draft) and is dispatched per `spec/lens-dispatch.md` with the spec column of its caller slots (`<DRAFT_PATH>` = the working-draft cache, `<spec_id>`, `<repo_root>` = `$PWD`, `<LENS>` = the lens id prefix): the shared preamble, then a `LENS: <name> (id prefix <ID>)` line and the lens's focus text below. It **writes its findings to `.gaia/local/cache/audit-<spec_id>/findings/<LENS>.json`** under the findings file schema in `spec/lens-dispatch.md` (writing the file even when its findings array is empty), then returns only the contract's thin digest, no finding bodies.
 
 The four core lenses (always dispatched; the set is chosen for low overlap, each reliably finds defects the others miss):
 
@@ -182,22 +182,4 @@ The `## Coverage` section is sourced from `.gaia/local/cache/audit-<spec_id>/cov
 
 When a sibling `AUDIT.md` exists, the step-11 `/gaia-plan` handoff names it so its plan-time directives are discoverable.
 
-## Close the audit window
-
-The audit unit is now complete, the 7c applier has returned. Capture the end and write the audit-window breadcrumb by sourcing `.gaia/scripts/audit-window-lib.sh` and calling its single breadcrumb writer. Do not inline `jq -n` here, the write goes through `gaia_audit_window_write` so the same code path a unit test exercises is the one production runs:
-
-```bash
-AUDIT_WINDOW_END="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-. .gaia/scripts/audit-window-lib.sh 2>/dev/null || true
-AUDIT_CACHE_DIR="$(bash .gaia/scripts/main-root-lib.sh)/.gaia/local/cache"
-gaia_audit_window_write \
-  "$AUDIT_CACHE_DIR/audit-window-$SPEC_ID.json" \
-  "${CLAUDE_CODE_SESSION_ID}" \
-  "$AUDIT_WINDOW_START" "$AUDIT_WINDOW_END" \
-  "<lenses-json-array>" \
-  "<audit_intensity>" || true
-```
-
-`<lenses-json-array>` is a JSON array of the dispatched lens-id set, e.g. built with `jq -cn '$ARGS.positional' --args FG TST COV RT`. `<audit_intensity>` is the tier recorded at the top of step 7 (`standard` | `deep`); passing it as the 6th argument makes the writer include the `intensity` key. `$AUDIT_CACHE_DIR` resolves to the main checkout's cache root via the shared resolver (`.gaia/scripts/main-root-lib.sh`), so the breadcrumb lands there even when authoring runs inside a linked worktree; it never sits inside `.gaia/local/cache/audit-<spec_id>/`, so the step-9.1 teardown does not remove it. The call is best-effort (`|| true`) and never blocks the handoff to gate 2.
-
-After the report is written, any folds are cached, and the breadcrumb is written, proceed to gate 2 (`spec.md` step 8), which renders the hardened draft.
+After the report is written and any folds are cached, proceed to gate 2 (`spec.md` step 8), which renders the hardened draft.

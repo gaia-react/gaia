@@ -30,8 +30,6 @@ setup() {
   . "$BATS_TEST_DIRNAME/helpers/usage-memo-env.sh"
   umemo_setup
   umemo_load_store identity
-  export GAIA_RATES_STATE_DIRECTORY="$BATS_TEST_TMPDIR/rates-state"
-  export GAIA_RATES_FEED_DISABLE=1
   export GAIA_USAGE_MEMO_TRACE="$BATS_TEST_TMPDIR/trace"
   : >"$GAIA_USAGE_MEMO_TRACE"
   PROBES="$UM_FIXTURES/identity/probes.json"
@@ -261,20 +259,21 @@ differs() { if cmp -s "$1" "$2"; then return 1; fi; return 0; }
 # --- 3. escaped key backstop -------------------------------------------------
 
 @test "escaped key: a branch spelled with a JSON escape is found by the coverage check, once" {
-  local row before="$BATS_TEST_TMPDIR/before.out"
-  # The decoded git_branch is the probe's own raw, so the cost row's spec edge
-  # lands on the probe's key; the escape hides it from the warm-up grep.
-  row='{"schema_version":1,"kind":"execute","spec_id":"SPEC-503","plan_id":null,"plan_slug":null,"session_id":"s-esc","total":1000,"seq":0,"final":true,"git_branch":"'"${RAW//\//\\/}"'","ts":"2026-09-29T10:00:00Z","session_cwd":"/work/repo"}'
+  local row before="$BATS_TEST_TMPDIR/before.out" escaped_parent="branch:fix/2999-escparent"
+  # An edge from the probe's key to a branch no store names, whose name implies
+  # issue:2999; the escaped slash hides that branch from the warm-up grep.
+  row='{"schema_version":1,"kind":"edge","child":"'"$KEY"'","parent":"'"${escaped_parent//\//\\/}"'","source":"link-command","ts":"2026-09-29T10:00:00Z","session_id":null,"sidechain":false}'
   warm
   cp "$BATS_TEST_TMPDIR/warm.out" "$before"
-  jq -e --arg raw "$RAW" '.bmap[$raw] == null' <<<"$(memo_body)" >/dev/null
-  printf '%s\n' "$row" >>"$UM_TELEMETRY_DIRECTORY/cost.jsonl"
-  grep -qF "${RAW//\//\\/}" "$UM_TELEMETRY_DIRECTORY/cost.jsonl"
+  jq -e --arg key "$escaped_parent" '.derive[$key] == null' <<<"$(memo_body)" >/dev/null
+  printf '%s\n' "$row" >>"$UM_TELEMETRY_DIRECTORY/links.jsonl"
+  grep -qF "${escaped_parent//\//\\/}" "$UM_TELEMETRY_DIRECTORY/links.jsonl"
 
   check_same pr "$PR"
   differs "$before" "$NEW_OUTPUT_FILE"
-  assert_trace "rerun=miss raws=1 bkeys=0 models=0"
-  jq -e --arg raw "$RAW" --arg key "$KEY" '.bmap[$raw].key == $key' <<<"$(memo_body)" >/dev/null
+  grep -qF '[initiative issue:2999 ' "$NEW_OUTPUT_FILE"
+  assert_trace "rerun=miss bkeys=1 models=0"
+  jq -e --arg key "$escaped_parent" '.derive[$key] == ["issue:2999"]' <<<"$(memo_body)" >/dev/null
 
   check_same pr "$PR"
   assert_no_trace '^rerun=miss'
@@ -282,13 +281,13 @@ differs() { if cmp -s "$1" "$2"; then return 1; fi; return 0; }
 
   rm -f "$MEMO"
   check_same pr "$PR"
-  assert_trace "rerun=miss raws=1 bkeys=0 models=0"
+  assert_trace "rerun=miss bkeys=1 models=0"
 }
 
 # --- 4. torn and rewritten stores --------------------------------------------
 
 @test "stores: a torn final line is left for the next read, and a rewrite inside the hashed head scans in full" {
-  local links_store="$UM_TELEMETRY_DIRECTORY/links.jsonl" cost_store="$UM_TELEMETRY_DIRECTORY/cost.jsonl" initial_size initial_offset initial_head_length torn i
+  local links_store="$UM_TELEMETRY_DIRECTORY/links.jsonl" initial_size initial_offset initial_head_length torn i
   torn='{"schema_version":1,"kind":"edge","child":"'"$KEY"'","parent":"research:torn-extra","source":"link-command","ts":"2026-09-29T00:00:00Z","session_id":null,"sidechain":false'
   warm
   check_same pr "$PR"
@@ -307,32 +306,28 @@ differs() { if cmp -s "$1" "$2"; then return 1; fi; return 0; }
   grep -qF '[initiative research:torn-extra ' "$NEW_OUTPUT_FILE"
   [ "$(jq -r '.stores.l.off' <<<"$(memo_body)")" = "$(wc -c <"$links_store" | tr -d '[:space:]')" ]
 
-  # A cut below the recorded hashed head, regrown past the recorded offset with
-  # different rows.
-  initial_offset="$(jq -r '.stores.c.off' <<<"$(memo_body)")"
-  initial_head_length="$(jq -r '.stores.c.hn' <<<"$(memo_body)")"
+  # A same-length rewrite inside the recorded hashed head: the size stays at
+  # the recorded offset, so only the head hash can notice it.
+  initial_offset="$(jq -r '.stores.l.off' <<<"$(memo_body)")"
+  initial_head_length="$(jq -r '.stores.l.hn' <<<"$(memo_body)")"
   [ "$initial_head_length" -gt 0 ]
-  head -n 2 "$cost_store" >"$BATS_TEST_TMPDIR/cost.cut"
-  [ "$(wc -c <"$BATS_TEST_TMPDIR/cost.cut" | tr -d '[:space:]')" -lt "$initial_head_length" ]
-  cp "$BATS_TEST_TMPDIR/cost.cut" "$cost_store"
-  i=0
-  while [ "$(wc -c <"$cost_store" | tr -d '[:space:]')" -le "$initial_offset" ]; do
-    printf '{"schema_version":1,"kind":"execute","spec_id":"SPEC-503","plan_id":null,"plan_slug":null,"session_id":"s-rw%s","total":1000,"seq":0,"final":true,"git_branch":"%s","ts":"2026-09-26T10:00:00Z","session_cwd":"/work/repo"}\n' "$i" "$RAW" >>"$cost_store"
-    i=$((i + 1))
-  done
+  sed '1s/"source":"gh-pr-create"/"source":"link-command"/' "$links_store" >"$BATS_TEST_TMPDIR/links.rewritten"
+  differs "$links_store" "$BATS_TEST_TMPDIR/links.rewritten"
+  cp "$BATS_TEST_TMPDIR/links.rewritten" "$links_store"
+  [ "$(wc -c <"$links_store" | tr -d '[:space:]')" -ge "$initial_offset" ]
   check_same pr "$PR"
-  assert_trace "scan=full store=c reason=head"
+  assert_trace "scan=full store=l reason=head"
   check_same reconcile
 
   # A plain shrink below the recorded offset.
-  head -n 1 "$cost_store" >"$BATS_TEST_TMPDIR/cost.cut"
-  cp "$BATS_TEST_TMPDIR/cost.cut" "$cost_store"
-  check_same pr "$PR"
-  assert_trace "scan=full store=c reason=shrunk"
+  head -n 1 "$links_store" >"$BATS_TEST_TMPDIR/links.cut"
+  cp "$BATS_TEST_TMPDIR/links.cut" "$links_store"
+  check_same reconcile
+  assert_trace "scan=full store=l reason=shrunk"
 
   # The same sequence under a memo-deleted u_new matches u_old too.
   rm -f "$MEMO"
-  check_same pr "$PR"
+  check_same reconcile
 }
 
 # --- 5. unwritable telemetry dir ---------------------------------------------
@@ -421,7 +416,7 @@ differs() { if cmp -s "$1" "$2"; then return 1; fi; return 0; }
   run_new_tree "$NEW_OUTPUT_FILE" "$NEW_ERROR_FILE" pr 2501
   unset GAIA_USAGE_MEMO_SEAM
   grep -qF '"session_id":"s-seam"' "$UM_TELEMETRY_DIRECTORY/usage.jsonl"
-  assert_trace "rerun=miss raws=0 bkeys=1 models=0"
+  assert_trace "rerun=miss bkeys=1 models=0"
   [ ! -s "$NEW_ERROR_FILE" ]
   assert_priced "$NEW_OUTPUT_FILE"
   grep -qF '[initiative issue:2330 ' "$NEW_OUTPUT_FILE"
@@ -460,111 +455,6 @@ differs() { if cmp -s "$1" "$2"; then return 1; fi; return 0; }
   _paths
   run_old_tree "$OLD_OUTPUT_FILE" "$OLD_ERROR_FILE" pr "$pr"
   differs "$OLD_OUTPUT_FILE" "$edited"
-}
-
-# --- local rate mode (9, 12) -------------------------------------------------
-
-MODEL_XRAY=claude-xray-1
-MODEL_YRAY=claude-yray-1
-
-# The model entry in the flusher's key order, and in another order that the
-# warm-up grep does not match.
-_flusher() { printf '"%s":{"fresh_input":1000000,"cache_write_5m":0,"cache_write_1h":0,"cache_read":0,"output":100000}' "$1"; }
-_reordered() { printf '"%s":{"output":100000,"fresh_input":1000000,"cache_write_5m":0,"cache_write_1h":0,"cache_read":0}' "$1"; }
-
-# append_segment <variant>: a segment on the probe's key priced under models the
-# local table lacks. A: X, visible to the warm-up. B: X, visible only to the
-# coverage check. C: Y visible to the warm-up and X only to the coverage check,
-# so the first rate load attempts the feed for Y alone.
-append_segment() {
-  local by_model
-  case "$1" in
-    A) by_model="{$(_flusher "$MODEL_XRAY")}" ;;
-    B) by_model="{$(_reordered "$MODEL_XRAY")}" ;;
-    C) by_model="{$(_flusher "$MODEL_YRAY"),$(_reordered "$MODEL_XRAY")}" ;;
-    *) return 1 ;;
-  esac
-  printf '{"schema_version":1,"kind":"segment","key":"%s","session_id":"s-xm","inherit":false,"first_ts":"2026-09-12T16:00:00Z","last_ts":"2026-09-12T16:00:00Z","messages":2,"by_model":%s}\n' \
-    "$KEY" "$by_model" >>"$UM_TELEMETRY_DIRECTORY/usage.jsonl"
-}
-
-# run_local_rates <tree> <output-file> <error-file> <state-dir> <args...>: local rate mode. No --rate-table
-# override, the feed enabled and pointed at the stub, and a rates state dir of
-# the caller's choosing (the heal writes the local table, so each tree has its
-# own).
-run_local_rates() {
-  local tree="$1" output_file="$2" error_file="$3" state="$4" exit_status=0
-  shift 4
-  env -u GAIA_RATES_FEED_DISABLE GAIA_RATES_STATE_DIRECTORY="$state" GAIA_RATES_FEED_URL="file://$STUB" \
-    bash "$tree/.gaia/scripts/usage.sh" "$@" --main-root "$UM_MAIN" --telemetry-dir "$UM_TELEMETRY_DIRECTORY" \
-    --projects-root "$UM_PROJECTS_DIRECTORY" >"$output_file" 2>"$error_file" || exit_status=$?
-  return "$exit_status"
-}
-
-# local_scenario <variant> <tree> <state-name>: warms the memo under the shipped
-# tree over the committed stores, appends the variant's segment, and reads it
-# with <tree> and, over a fresh copy of the same local table, with the
-# pre-change scripts. Leaves the captures in $NEW_OUTPUT_FILE $NEW_ERROR_FILE $OLD_OUTPUT_FILE $OLD_ERROR_FILE and the
-# warm-up's output in $BASE_OUTPUT_FILE.
-local_scenario() {
-  local variant="$1" tree="$2" state_name="$3"
-  _paths
-  BASE_OUTPUT_FILE="$BATS_TEST_TMPDIR/base.out"
-  STUB="$BATS_TEST_TMPDIR/feed.json"
-  mkdir -p "$UM_MAIN/.gaia/scripts"
-  cp "$UM_RATES" "$UM_MAIN/.gaia/scripts/token-rates.json"
-  cp "$ROBUST/feed-stub.json" "$STUB"
-  rm -rf "$BATS_TEST_TMPDIR/rates-$state_name" "$BATS_TEST_TMPDIR/rates-old"
-  run_local_rates "$UM_NEW" "$BASE_OUTPUT_FILE" "$BATS_TEST_TMPDIR/base.err" "$BATS_TEST_TMPDIR/rates-$state_name" pr "$PR"
-  assert_priced "$BASE_OUTPUT_FILE"
-  append_segment "$variant"
-  : >"$GAIA_USAGE_MEMO_TRACE"
-  run_local_rates "$tree" "$NEW_OUTPUT_FILE" "$NEW_ERROR_FILE" "$BATS_TEST_TMPDIR/rates-$state_name" pr "$PR"
-  run_local_rates "$UM_OLD" "$OLD_OUTPUT_FILE" "$OLD_ERROR_FILE" "$BATS_TEST_TMPDIR/rates-old" pr "$PR"
-}
-
-# assert_healed: the model's segment is priced and the output is the pre-change
-# one, with nothing on stderr and no lower-bound marker.
-assert_healed() {
-  assert_priced "$NEW_OUTPUT_FILE"
-  assert_priced "$OLD_OUTPUT_FILE"
-  if grep -qF 'unpriced model(s)' "$OLD_OUTPUT_FILE"; then printf 'the pre-change run left a model unpriced, so the fixture proves nothing:\n%s\n' "$(cat "$OLD_OUTPUT_FILE")" >&2; return 1; fi
-  if grep -qF 'unpriced model(s)' "$NEW_OUTPUT_FILE"; then printf 'the readout marks a model unpriced:\n%s\n' "$(cat "$NEW_OUTPUT_FILE")" >&2; return 1; fi
-  differs "$BASE_OUTPUT_FILE" "$NEW_OUTPUT_FILE"
-  assert_same "$OLD_OUTPUT_FILE" "$NEW_OUTPUT_FILE"
-  if [ -s "$NEW_ERROR_FILE" ]; then printf 'the readout printed on stderr:\n%s\n' "$(cat "$NEW_ERROR_FILE")" >&2; return 1; fi
-  return 0
-}
-
-@test "local rates: a model the warm-up grep sees is healed to the pre-change figure" {
-  local_scenario A "$UM_NEW" shipped
-  assert_healed
-  assert_no_trace '^rerun=miss'
-}
-
-@test "local rates: a model only the coverage check finds is healed in a fresh child" {
-  local_scenario B "$UM_NEW" shipped
-  assert_healed
-  assert_trace "rerun=miss raws=0 bkeys=0 models=1"
-  assert_trace "rates=reload"
-}
-
-@test "local rates: a second missing model after a first heal that already fetched is healed too" {
-  local_scenario C "$UM_NEW" shipped
-  assert_healed
-  assert_trace "rerun=miss raws=0 bkeys=0 models=1"
-  assert_trace "rates=reload"
-}
-
-@test "local rates, guard red: a copy that reloads rates in-process leaves the second model unpriced" {
-  make_tree inproc
-  mutate "$MUTANT_TREE/$LIBRARY" '2) rates="$(gaia_usage_memo_rates_fresh "$library_directory" "$table" "$main")" || return 1 ;;' \
-    '2) usage_rates_load "$table" "$main" "$(gaia_usage_memo_models)"; rates="$USAGE_RATES" ;;'
-  local_scenario C "$MUTANT_TREE" inproc
-  assert_priced "$OLD_OUTPUT_FILE"
-  assert_priced "$NEW_OUTPUT_FILE"
-  differs "$OLD_OUTPUT_FILE" "$NEW_OUTPUT_FILE"
-  grep -qF "unpriced model(s) $MODEL_XRAY" "$NEW_OUTPUT_FILE"
 }
 
 # --- 10. cross-shell warmth --------------------------------------------------
@@ -612,7 +502,7 @@ assert_healed() {
 # memo path fails with no coverage miss and the readout takes the fallback.
 forced_failure_tree() {
   make_tree "$1"
-  mutate "$MUTANT_TREE/$LIBRARY" 'def usage_present($usage_records; $links; $cost):' 'def usage_present(($usage_records; $links; $cost):'
+  mutate "$MUTANT_TREE/$LIBRARY" 'def usage_present($usage_records; $links):' 'def usage_present(($usage_records; $links):'
 }
 
 @test "fallback: an unreadable links store prints the pre-change error, status and bytes" {
@@ -661,27 +551,18 @@ forced_failure_tree() {
   differs "$OLD_ERROR_FILE" "$NEW_ERROR_FILE"
 }
 
-# --- 12. legacy fallback in local rate mode ----------------------------------
-
-@test "fallback, local rates: a failed single parse after a first heal still prices the second model" {
-  forced_failure_tree jqfail
-  local_scenario C "$MUTANT_TREE" fallback
-  assert_healed
-  assert_trace "fallback=legacy"
-}
-
 # --- 13. a memo too large for one argument -----------------------------------
 
 # A body past 1 MiB is over both limits a memo on argv would hit: Linux refuses
 # any single argument over 128 KiB, and macOS refuses a whole command line over
-# 1 MiB. The padding is bmap entries for raws no store names, which no view
+# 1 MiB. The padding is derive entries for branch keys no store names, which no view
 # reads. The sum is hashed in a subshell rather than a child bash, whose argv
 # would hit the very limit under test.
 @test "large memo: a body over the argument limits still reads warm and prints the pre-change bytes" {
   local header body size sum
   warm
   header="$(sed -n 1p "$MEMO")"
-  body="$(memo_body | jq -c '.bmap += ([range(0; 6000)] | map({key: "pad/\(.)-\("x" * 80)", value: {norm: "pad/\(.)-\("x" * 80)", key: null}}) | from_entries)')"
+  body="$(memo_body | jq -c '.derive += ([range(0; 6000)] | map({key: "branch:pad/\(.)-\("x" * 160)", value: []}) | from_entries)')"
   size="${#body}"
   [ "$size" -gt 1048576 ] || { printf 'the padded body is %s bytes, want over 1048576\n' "$size" >&2; return 1; }
   sum="$(. "$UM_NEW/.gaia/scripts/usage-lib.sh" && _gaia_usage_hash16 "$body")"
@@ -696,7 +577,7 @@ forced_failure_tree() {
 
 # --- 14. memo model superset -------------------------------------------------
 
-@test "models superset: a model only a non-schema line names is dropped from the memo, with a rate reload" {
+@test "models superset: a model only a non-schema line names is dropped from the memo" {
   local row zeta_model=claude-zeta-1
   row='{"schema_version":2,"kind":"segment","key":"session:s-z","session_id":"s-z","inherit":false,"first_ts":"2026-09-30T00:00:00Z","last_ts":"2026-09-30T00:00:00Z","messages":1,"by_model":{"'"$zeta_model"'":{"fresh_input":10,"cache_write_5m":0,"cache_write_1h":0,"cache_read":0,"output":5}}}'
   warm
@@ -714,8 +595,7 @@ forced_failure_tree() {
   cp "$BATS_TEST_TMPDIR/memo.warm" "$MEMO"
 
   check_same pr "$PR"
-  assert_trace "rerun=miss raws=0 bkeys=0 models=1"
-  assert_trace "rates=reload"
+  assert_trace "rerun=miss bkeys=0 models=1"
   jq -e --arg zeta_model "$zeta_model" '.models | index($zeta_model) == null' <<<"$(memo_body)" >/dev/null
 
   check_same pr "$PR"

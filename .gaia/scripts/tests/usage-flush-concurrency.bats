@@ -28,7 +28,6 @@ setup() {
   USAGE_LIBRARY="$SCRIPTS/usage-lib.sh"
   FIXTURES_DIRECTORY="$BATS_TEST_DIRNAME/fixtures/usage/flush"
   TEMPORARY_DIRECTORY="$(cd "$BATS_TEST_TMPDIR" && pwd -P)"
-  export GAIA_RATES_FEED_DISABLE=1 GAIA_RATES_STATE_DIRECTORY="$BATS_TEST_TMPDIR/rates-state"
   export GAIA_LEDGER_LOCK_FORCE_FALLBACK=1
   unset GITHUB_ACTIONS GAIA_USAGE_TEST_BARRIER GAIA_USAGE_DEBUG_HOLD GAIA_TALLY_PROJECTS_ROOT GAIA_LEDGER_LOCK_TIMEOUT_SECONDS
   ROOT="$TEMPORARY_DIRECTORY/repo"
@@ -122,7 +121,7 @@ holds_within() {
   assert_quiescent 5
 }
 
-@test "COV-006: a parked cold sweep holds no lock; a cost write and a SPEC allocation land meanwhile, and every commit's hold is within 2 s" {
+@test "a parked cold sweep holds no lock; a ledger write and a SPEC allocation land meanwhile, and every commit's hold is within 2 s" {
   install sweep
   local pid started_seconds stderr_file="$TEMPORARY_DIRECTORY/sweep.err"
   GAIA_USAGE_TEST_BARRIER="$TEMPORARY_DIRECTORY/bar" GAIA_USAGE_DEBUG_HOLD=1 \
@@ -132,12 +131,12 @@ holds_within() {
   [ -e "$TEL/usage.jsonl" ] && return 1
 
   started_seconds=$SECONDS
-  GAIA_LEDGER_LOCK_TIMEOUT_SECONDS=2 run --separate-stderr bash "$SCRIPTS/token-tally.sh" --action command --command gaia-audit \
-    --session-id s-sw5 --projects-root "$PROJECTS_DIRECTORY" --ledger "$TEL/cost.jsonl"
+  GAIA_LEDGER_LOCK_TIMEOUT_SECONDS=2 run --separate-stderr bash "$SCRIPTS/usage.sh" link spec:SPEC-001 research:sweep-parent \
+    --main-root "$ROOT" --telemetry-dir "$TEL"
   [ "$status" -eq 0 ]
   [ $((SECONDS - started_seconds)) -le 2 ]
   grep -F 'timed out' <<<"$stderr" && return 1
-  [ "$(jq -s '[.[] | select(.kind == "command" and .command == "gaia-audit")] | length' "$TEL/cost.jsonl")" -eq 1 ]
+  [ "$(jq -s '[.[] | select(.kind == "edge" and .child == "spec:SPEC-001" and .parent == "research:sweep-parent")] | length' "$TEL/links.jsonl")" -eq 1 ]
 
   started_seconds=$SECONDS
   GAIA_LEDGER_LOCK_TIMEOUT_SECONDS=2 run --separate-stderr bash "$REPO_ROOT/.gaia/scripts/spec/spec-allocator.sh" next "$ROOT"

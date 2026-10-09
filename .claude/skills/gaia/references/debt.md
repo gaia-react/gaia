@@ -299,7 +299,7 @@ The **intended close set** is the unit as it stands after every drop: exactly th
 
 ## Drive the PR to merge
 
-Once the PR is up, drive it straight to merge with no confirmation prompt: the fix unit (single issue or confirmed batch) was chosen up front, so this back half runs autonomously, exactly like `/update-deps` merging a dep-bump PR on a `main` run. The only things that stop the flow here are genuine blockers, a rejected push, a marker that never goes green, the audit gate's branch checkpoint or one of the fix round's stops, or any merge-wait arm other than `MERGED` or `CONFLICTING` (the arm list below states what each one does); those are reported, not worked around. On a controlled stop before merge, gate never green, rejected push, or another blocker/observable abort, strip `in-progress` from every claimed member (`gh issue edit <n> --remove-label in-progress`) so the freed issue re-enters the offer and the count. (Run ends here; see `## Cost record (run end)`, passing `--github-*` only if the PR was already opened before the stop.)
+Once the PR is up, drive it straight to merge with no confirmation prompt: the fix unit (single issue or confirmed batch) was chosen up front, so this back half runs autonomously, exactly like `/update-deps` merging a dep-bump PR on a `main` run. The only things that stop the flow here are genuine blockers, a rejected push, a marker that never goes green, the audit gate's branch checkpoint or one of the fix round's stops, or any merge-wait arm other than `MERGED` or `CONFLICTING` (the arm list below states what each one does); those are reported, not worked around. On a controlled stop before merge, gate never green, rejected push, or another blocker/observable abort, strip `in-progress` from every claimed member (`gh issue edit <n> --remove-label in-progress`) so the freed issue re-enters the offer and the count. (Run ends here; see `## Cost record (run end)`, passing `--pr` only if the PR was already opened before the stop.)
 
 Five endings look like that controlled stop and are not it. Each keeps its claim, because the work may still be going somewhere, and `## Cost record (run end)` covers when each one's record is written. The arm list below states what each of them reports, except the branch checkpoint and the fix round's stops, which have no arm of their own. Both of those depend on who is in the session. A run is **interactive** when a human invoked `/gaia-debt` in an interactive session and is there to answer; it is **unattended** when no human is in the session, as in a headless, scheduled, or `/loop` run:
 
@@ -358,15 +358,15 @@ Every path that ends a `/gaia-debt` run appends exactly one cost record, the run
 - The backlog pass exiting non-zero.
 - Claiming the fix unit losing the race to a peer session (single issue, or every batch member).
 - The security screen diverting every member.
-- The staleness screen releasing every member, whether on a body assertion that no longer holds or on a comment recording the fix as already implemented, reverted, or unsafe. This path opened no PR, so it passes no `--github-*` flags.
-- Pre-flight isolation blocked: a member must be fixed on a branch in the main checkout and the session cannot cut one. This path opened no PR, so it passes no `--github-*` flags.
-- The spec screen handing off: the whole-unit-spec-class case stops the run here (a per-member handoff within a surviving batch also records via this same run-end tally). This path opened no PR, so it passes no `--github-*` flags; the record correctly carries no artifact.
+- The staleness screen releasing every member, whether on a body assertion that no longer holds or on a comment recording the fix as already implemented, reverted, or unsafe. This path opened no PR, so it passes no `--pr`.
+- Pre-flight isolation blocked: a member must be fixed on a branch in the main checkout and the session cannot cut one. This path opened no PR, so it passes no `--pr`.
+- The spec screen handing off: the whole-unit-spec-class case stops the run here (a per-member handoff within a surviving batch also records via this same run-end record). This path opened no PR, so it passes no `--pr`; the record correctly carries no artifact.
 - Driving the PR to merge: `MERGED` cleanup, a still-queued `--auto` merge, a failed required check, a pull request closed without merging, a merge wait that refused because it read nothing, a stop at the audit gate's branch checkpoint, or a controlled stop before merge.
 - Worktree mode's isolation-context continuation prompt (`debt/worktree-cleanup.md`).
 
-The parser, validation, named-set, and named-selection claim-time stops above all end the run before a PR exists, so none of them passes `--github-*` flags.
+The parser, validation, named-set, and named-selection claim-time stops above all end the run before a PR exists, so none of them passes `--pr`.
 
-Apply the shared tally machinery in `.claude/skills/gaia/references/cost-record.md` with `{{COMMAND}}` = `gaia-debt`. Pass-through is mode-agnostic: worktree mode reads the same URL from the same tool result, nothing about the worktree changes the call.
+Apply the shared record recipe in `.claude/skills/gaia/references/cost-record.md` with `{{COMMAND}}` = `gaia-debt`. Pass-through is mode-agnostic: worktree mode reads the same URL from the same tool result, nothing about the worktree changes the call.
 
 ## Guardrails
 

@@ -46,7 +46,7 @@ wiki_promote_targets: [modules]
 ---
 # Retention symmetry for spec-less plans
 
-Spec-less plans are reduced to SUMMARY.md and cost.json instead of deleted.
+Spec-less plans are reduced to SUMMARY.md instead of deleted.
 
 ## Divergence
 The age-backstop reap was deferred to a follow-up task.

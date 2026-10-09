@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # spec-archive-abandoned.sh: delete an abandoned SPEC folder once its
-# abandoned_at has aged past the retention window and its cost is fully
-# represented in cost.jsonl. The abandoned-status counterpart to
-# spec-archive-merged.sh.
+# abandoned_at has aged past the retention window. The abandoned-status
+# counterpart to spec-archive-merged.sh.
 #
 # Why this exists: an abandoned SPEC has no implementing PR, so unlike a
 # merged SPEC its folder is the only record of whatever audit findings or
@@ -14,10 +13,9 @@
 #
 # Unlike the merged path, there is no consolidation gate: nothing ever
 # promotes an abandoned SPEC's content into the wiki, so the whole folder
-# reaps as one unit once it clears the age and cost gates. The cost gate
-# stays, unchanged, because an abandoned draft can still have burned real
-# tokens (e.g. an adversarial audit that ran before the premise was falsified)
-# and that accounting must not be lost silently.
+# reaps as one unit once it clears the age gate. There is no usage-ledger gate
+# either: an abandoned draft never closes a run on the ledger, so the age rule
+# alone decides and this script never calls `usage.sh represented`.
 #
 # Sweep criteria, per row: a .gaia/local/specs/ledger.json row is a delete
 # candidate when ALL hold:
@@ -28,16 +26,11 @@
 #     as spec-archive-merged.sh); a missing or unparseable abandoned_at never
 #     reads as infinitely old, so it keeps the folder rather than authorizing
 #     a delete
-#   - the folder's cost is fully represented in cost.jsonl
-#     (cost_folder_represented, the same fail-closed gate
-#     spec-archive-merged.sh uses; a folder with no cost.md/cost.json at all
-#     is automatically represented, nothing to lose)
 # An abandoned row with no active folder is skipped.
 #
 # Best-effort and fail-open, exactly like spec-archive-merged.sh: a missing
-# jq / ledger or an unrepresented cost never blocks a caller. One stdout line
-# summarizes what was deleted; diagnostics
-# go to stderr.
+# jq or ledger never blocks a caller. One stdout line summarizes what was
+# deleted; diagnostics go to stderr.
 #
 # Usage:
 #   spec-archive-abandoned.sh <repo_root> [<spec_id>]
@@ -93,13 +86,6 @@ ledger_path="${specs_directory}/ledger.json"
 [ -f "$ledger_path" ] || exit 0
 command -v jq >/dev/null 2>&1 || exit 0
 
-# shellcheck source=../cost-represented.sh
-. "${repo_root}/.gaia/scripts/cost-represented.sh" 2>/dev/null || true
-
-# Resolve the main-checkout cost ledger from repo_root's own git identity,
-# never the caller's cwd (a subshell cd keeps this script's cwd unchanged).
-cost_ledger="$(cd "$repo_root" 2>/dev/null && gaia_resolve_ledger_path 2>/dev/null || true)"
-
 # Candidate rows (local, cheap): abandoned but possibly still in the active
 # dir. An optional single-id filter narrows the sweep to one row.
 if [ -n "$filter_id" ]; then
@@ -120,25 +106,11 @@ while IFS= read -r spec_id; do
   # Skip abandoned rows with no active folder (already gone, or never had one).
   [ -d "$folder" ] || continue
 
-  # Age gate: cheaper than the representation gate below, and avoids computing
-  # representation for a folder that is kept regardless. A missing/unparseable
-  # abandoned_at keeps the folder (fail-closed).
+  # Age gate: the only gate. A missing/unparseable abandoned_at keeps the
+  # folder (fail-closed).
   abandoned_at="$(jq -r --arg id "$spec_id" '.specs[] | select(.id==$id) | .abandoned_at // ""' "$ledger_path" 2>/dev/null || true)"
   if ! gaia_ledger_age_past_window "$abandoned_at" "$now_epoch" "$retention_days"; then
     echo "spec-archive-abandoned: $spec_id within retention window (or abandoned_at missing/unparseable); kept" >&2
-    continue
-  fi
-
-  # Representation gate: refuse to delete a folder whose cost.md sections are
-  # not fully accounted for in cost.jsonl. Any non-zero verdict, including an
-  # unresolved cost ledger, blocks this id and leaves the folder untouched.
-  gate_status=2
-  if [ -n "$cost_ledger" ] && declare -f cost_folder_represented >/dev/null 2>&1; then
-    cost_folder_represented "$folder" spec_id "$spec_id" "$cost_ledger" >/dev/null 2>&1
-    gate_status=$?
-  fi
-  if [ "$gate_status" -ne 0 ]; then
-    echo "spec-archive-abandoned: cost not fully represented in cost.jsonl; left $spec_id folder for review" >&2
     continue
   fi
 

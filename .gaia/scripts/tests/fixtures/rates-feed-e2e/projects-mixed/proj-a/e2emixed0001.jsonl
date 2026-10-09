@@ -1,2 +1,0 @@
-{"type":"assistant","uuid":"u-o5","timestamp":"2026-09-01T10:00:00.000Z","message":{"id":"o5","model":"claude-opus-5","role":"assistant","usage":{"input_tokens":1000000,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":200000}}}
-{"type":"assistant","uuid":"u-o6","timestamp":"2026-09-01T10:01:00.000Z","message":{"id":"o6","model":"claude-opus-6","role":"assistant","usage":{"input_tokens":1000000,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":100000}}}

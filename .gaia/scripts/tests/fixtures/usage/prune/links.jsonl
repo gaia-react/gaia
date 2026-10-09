@@ -7,3 +7,5 @@
 {"schema_version":1,"kind":"edge","child":"branch:feat/d","parent":"research:topic","source":"link-command","ts":"2026-09-09T00:06:00Z","session_id":null,"sidechain":false}
 {"schema_version":1,"kind":"merge","pr":11,"key":"branch:feat/a","merged_at":"2026-09-12T00:00:00Z","source":"link-command","ts":"2026-09-12T00:00:00Z","session_id":null}
 {"schema_version":1,"kind":"merge","pr":12,"key":"branch:feat/a","merged_at":"2026-09-20T00:00:00Z","source":"link-command","ts":"2026-09-20T00:00:00Z","session_id":null}
+{"schema_version":1,"kind":"edge","child":"branch:feat/p","parent":"spec:SPEC-090","source":"link-command","ts":"2026-09-16T10:30:00Z","session_id":null,"sidechain":false}
+{"schema_version":1,"kind":"edge","child":"pr:77","parent":"command:gaia-debt-r1","source":"link-command","ts":"2026-09-18T10:00:00Z","session_id":null,"sidechain":false}

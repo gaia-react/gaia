@@ -42,9 +42,6 @@
 # every fixture is a real git repository with its files added.
 
 setup() {
-  # Isolate pricing from the developer's real rate table and the network.
-  export GAIA_RATES_STATE_DIRECTORY="$BATS_TEST_TMPDIR/rates-state"
-  export GAIA_RATES_FEED_DISABLE=1
   THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"
   LINTER="$REPO_ROOT/.gaia/scripts/lint-hook-cwd-relative-loads.sh"
@@ -173,7 +170,7 @@ fi'
 
 @test "flags a bare interpreter argument" {
   fixture_repo
-  fixture_hook 'bash .gaia/scripts/token-tally.sh --action review'
+  fixture_hook 'bash .gaia/scripts/usage.sh pr 1'
   run_linter
   [ "$status" -eq 1 ]
   grep -qF -- ".claude/hooks/check.sh:3:" <<<"$output" || return 1
@@ -196,7 +193,7 @@ fi'
   # clean over half its own class, and the tree carried a live quoted instance.
   fixture_repo
   fixture_hook '[ -f ".claude/hooks/lib/red-ledger.sh" ] && . ".claude/hooks/lib/red-ledger.sh"
-bash ".gaia/scripts/token-tally.sh" --action review'
+bash ".gaia/scripts/usage.sh" pr 1'
   run_linter
   [ "$status" -eq 1 ]
   grep -qF -- ".claude/hooks/check.sh:3:" <<<"$output" || return 1
@@ -219,7 +216,7 @@ bash ".gaia/scripts/token-tally.sh" --action review'
   fixture_repo
   fixture_hook '_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _library_directory=""
 [ -f "$_library_directory/red-ledger.sh" ] && . "$_library_directory/red-ledger.sh"
-bash "$_library_directory/../../.gaia/scripts/token-tally.sh"'
+bash "$_library_directory/../../.gaia/scripts/usage.sh"'
   run_linter
   [ "$status" -eq 0 ]
   grep -qF -- "check.sh" <<<"$output" && return 1

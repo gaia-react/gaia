@@ -12,7 +12,7 @@ const TRACKED = [
   '.gaia/cli/gaia-maintainer',
   '.gaia/cli/src/wiki/chain.ts',
   '.gaia/cli/src/wiki/index.ts',
-  '.gaia/cli/test-fixtures/cost.jsonl',
+  '.gaia/cli/test-fixtures/usage.jsonl',
   '.gaia/scripts/lint-hook-jq-availability.sh',
   '.gaia/tests/run-all.sh',
   '.github/CODEOWNERS',
@@ -90,7 +90,7 @@ describe('deriveExcludedRefTokens', () => {
     );
     // A shipped file shares it, and a data fixture adopters also generate.
     expect(basenames).not.toContain('index.ts');
-    expect(basenames).not.toContain('cost.jsonl');
+    expect(basenames).not.toContain('usage.jsonl');
   });
 
   test('subtracts opt-out tokens by exact equality and reports the unused ones', () => {

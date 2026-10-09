@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
 # GAIA usage ledger: record lineage and bindings, and read attributed spend.
 #
-# Exit codes: readouts (pr, pr-branch, initiative, reconcile) exit 0 always.
-# Writes exit 0 written (or nothing owed), 1 refused (a cycle, or no ledger
-# mutex available), 2 usage or grammar error, 75 lock timeout; every non-zero
-# write leaves both stores untouched. With jq absent every subcommand prints
-# the inactive line and exits 0 before touching any file.
+# Exit codes: readouts (pr, pr-branch, initiative, reconcile) exit 0 always,
+# a bad argument included: the error goes to stderr and the readout prints
+# nothing else. Writes exit 0 written (or nothing owed), 1 refused (a cycle, or
+# no ledger mutex available), 2 usage or grammar error, 75 lock timeout; every
+# non-zero write leaves both stores untouched. With jq absent every subcommand
+# prints the inactive line and exits 0 before touching any file, except `record`
+# and `represented`, which exit 2 (usage-record-lib.sh owns their exit codes).
+# A library that cannot be loaded exits non-zero before any of that, naming the
+# file.
 #
 # The merge hook and the PR-create hook call `pr`, `pr-branch`, and `link`;
 # they pass raw branch spellings through --branch and never normalize or key a
@@ -15,23 +19,23 @@
 
 # shellcheck disable=SC2016  # jq programs are single-quoted on purpose
 
-_usage_self="${BASH_SOURCE[0]}"
 _usage_script_directory="${BASH_SOURCE[0]%/*}"
 [ "$_usage_script_directory" = "${BASH_SOURCE[0]}" ] && _usage_script_directory=.
+# Every library loads here, before dispatch, and a missing one is fatal: a
+# readout that silently ran without one would print figures that look whole.
+_usage_missing_library() { printf 'usage: cannot load %s\n' "$1" >&2; exit 1; }
 # shellcheck source=.gaia/scripts/usage-lib.sh
-. "$_usage_script_directory/usage-lib.sh"
+. "$_usage_script_directory/usage-lib.sh" 2>/dev/null || _usage_missing_library "$_usage_script_directory/usage-lib.sh"
 # shellcheck source=.gaia/scripts/usage-resolve-lib.sh
-. "$_usage_script_directory/usage-resolve-lib.sh"
+. "$_usage_script_directory/usage-resolve-lib.sh" 2>/dev/null || _usage_missing_library "$_usage_script_directory/usage-resolve-lib.sh"
 # shellcheck source=.gaia/scripts/usage-render-lib.sh
-. "$_usage_script_directory/usage-render-lib.sh"
-# Absent after a partial update: readouts then take the pre-change sequence.
+. "$_usage_script_directory/usage-render-lib.sh" 2>/dev/null || _usage_missing_library "$_usage_script_directory/usage-render-lib.sh"
 # shellcheck source=.gaia/scripts/usage-memo-lib.sh
-[ -f "$_usage_script_directory/usage-memo-lib.sh" ] && . "$_usage_script_directory/usage-memo-lib.sh" 2>/dev/null
-# shellcheck source=.gaia/scripts/ledger-path-lib.sh
-. "$_usage_script_directory/ledger-path-lib.sh" 2>/dev/null || true
-# Absent after a partial update: readouts then print cost as unavailable.
+. "$_usage_script_directory/usage-memo-lib.sh" 2>/dev/null || _usage_missing_library "$_usage_script_directory/usage-memo-lib.sh"
 # shellcheck source=.gaia/scripts/token-pricing-lib.sh
-. "$_usage_script_directory/token-pricing-lib.sh" 2>/dev/null || true
+. "$_usage_script_directory/token-pricing-lib.sh" 2>/dev/null || _usage_missing_library "$_usage_script_directory/token-pricing-lib.sh"
+# shellcheck source=.gaia/scripts/usage-record-lib.sh
+. "$_usage_script_directory/usage-record-lib.sh" 2>/dev/null || _usage_missing_library "$_usage_script_directory/usage-record-lib.sh"
 
 usage_help() {
   cat <<'EOF'
@@ -43,11 +47,16 @@ usage: bash .gaia/scripts/usage.sh <subcommand> [args]
   lineage <path-to-SPEC.md>                         record a SPEC's lineage: entries
   declare <research:slug|init:slug> [--session <sid>] [--at <iso>]
   pr [<pr>] [--branch <raw> | --key <branch-ref>] [--merged-at <iso>] [--partial] [--unconfirmed]
+     [--auditors <name>[,<name>...]]                adds the Code Audit Team line
   pr-branch <pr>                                    the branch key a PR is linked to
   initiative <ref>                                  spend under each root of <ref>
+  initiative <ref> --line [--json]                  one Cost line for <ref> as the root
   reconcile                                         attributed vs unattributed spend
-common: [--main-root <dir>] [--telemetry-dir <dir>] [--ledger <cost.jsonl>]
-        [--rate-table <path>] [--projects-root <dir>]
+  record <ref> --workflow <w> [--pr <N>] [--issue <N>] [--start <iso>] [--json]
+                                                    close a run, print its Cost line
+  represented <ref> --workflow <w>                  exit 0 when the run's close is on the ledger
+common: [--main-root <dir>] [--telemetry-dir <dir>] [--rate-table <path>]
+        [--projects-root <dir>]
 link, unlink, declare: [--session <sid>] [--sidechain]
 EOF
 }
@@ -65,8 +74,9 @@ _key_ok() {
 }
 _is_iso() { [[ "${1-}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?Z$ ]]; }
 
-MAIN_ROOT="" TELEMETRY_DIRECTORY="" LEDGER="" RATE_TABLE="" PROJECTS_ROOT="" SESSION="" SIDECHAIN=false
+MAIN_ROOT="" TELEMETRY_DIRECTORY="" RATE_TABLE="" PROJECTS_ROOT="" SESSION="" SIDECHAIN=false
 SOURCE="" MERGE="" PR_NUMBER="" BRANCH="" KEY="" MERGED_AT="" AT="" PARTIAL=0 UNCONFIRMED=0
+LINE=0 JSON=0 AUDITORS="" AUDITORS_GIVEN=0 WORKFLOW="" ISSUE_NUMBER="" START_ISO=""
 ARGS=()
 
 # rc 2 on a malformed flag; the caller decides whether that exits 2 or 0.
@@ -78,14 +88,21 @@ _parse() {
       --sidechain) SIDECHAIN=true; shift; continue ;;
       --partial) PARTIAL=1; shift; continue ;;
       --unconfirmed) UNCONFIRMED=1; shift; continue ;;
-      --main-root | --telemetry-dir | --ledger | --rate-table | --projects-root | --session | --source | \
-        --merge | --pr | --branch | --key | --merged-at | --at)
+      --line) LINE=1; shift; continue ;;
+      --json) JSON=1; shift; continue ;;
+      --main-root | --telemetry-dir | --rate-table | --projects-root | --session | --source | \
+        --merge | --pr | --branch | --key | --merged-at | --at | --auditors | --workflow | --issue | --start)
         [ $# -ge 2 ] || { _error "$flag needs a value"; return 2; }
+        # WORKFLOW, ISSUE_NUMBER and START_ISO are read by usage-record-lib.sh, which shell-lint's
+        # chunked lint pass follows only when both files land in one chunk.
+        # shellcheck disable=SC2034
         case "$flag" in
-          --main-root) MAIN_ROOT="$2" ;; --telemetry-dir) TELEMETRY_DIRECTORY="$2" ;; --ledger) LEDGER="$2" ;;
+          --main-root) MAIN_ROOT="$2" ;; --telemetry-dir) TELEMETRY_DIRECTORY="$2" ;;
           --rate-table) RATE_TABLE="$2" ;; --projects-root) PROJECTS_ROOT="$2" ;; --session) SESSION="$2" ;;
           --source) SOURCE="$2" ;; --merge) MERGE="$2" ;; --pr) PR_NUMBER="$2" ;; --branch) BRANCH="$2" ;;
           --key) KEY="$2" ;; --merged-at) MERGED_AT="$2" ;; --at) AT="$2" ;;
+          --auditors) AUDITORS="$2" AUDITORS_GIVEN=1 ;;
+          --workflow) WORKFLOW="$2" ;; --issue) ISSUE_NUMBER="$2" ;; --start) START_ISO="$2" ;;
         esac
         shift 2 ;;
       --) shift; while [ $# -gt 0 ]; do ARGS[${#ARGS[@]}]="$1"; shift; done ;;
@@ -95,38 +112,28 @@ _parse() {
   done
 }
 
-# Resolves the roots every subcommand shares. The ledger follows the one rule
-# the flusher also uses, so a split point and an interval read the same file.
+# Resolves the roots every subcommand shares.
 _resolve_context() {
   if [ -z "$MAIN_ROOT" ]; then MAIN_ROOT="$(gaia_usage_main_root)" || MAIN_ROOT=""; fi
   if [ -z "$TELEMETRY_DIRECTORY" ]; then
     [ -n "$MAIN_ROOT" ] || { _error "no main checkout resolves; pass --main-root"; return 2; }
     TELEMETRY_DIRECTORY="$(gaia_usage_telemetry_directory "$MAIN_ROOT")"
-  elif [ -z "$LEDGER" ]; then
-    LEDGER="$TELEMETRY_DIRECTORY/cost.jsonl"
-  fi
-  if [ -z "$LEDGER" ]; then
-    if declare -F gaia_resolve_ledger_path >/dev/null 2>&1; then
-      LEDGER="$(gaia_resolve_ledger_path "" "$MAIN_ROOT")" || LEDGER=""
-    fi
-    [ -n "$LEDGER" ] || LEDGER="$TELEMETRY_DIRECTORY/cost.jsonl"
   fi
   [ -n "$PROJECTS_ROOT" ] || PROJECTS_ROOT="$(gaia_usage_projects_root "")"
   return 0
 }
 
-_keys() { gaia_usage_keys_json "${MAIN_ROOT:-.}" "$TELEMETRY_DIRECTORY/usage.jsonl" "$TELEMETRY_DIRECTORY/links.jsonl" "$LEDGER" "$@"; }
+_keys() { gaia_usage_keys_json "${MAIN_ROOT:-.}" "$TELEMETRY_DIRECTORY/usage.jsonl" "$TELEMETRY_DIRECTORY/links.jsonl" "$@"; }
 
 # jq refuses to compile a def that names an unbound global, so every call
-# binds all of them: the stores as $usage_store, $links_store, $cost_store, plus $keys, $rates, $pr, $key,
-# and $reference from the shell globals below.
-KEYS='{}' RATES=null PR_JSON=null
+# binds all of them: the stores as $usage_store and $links_store, plus $keys, $rates, $pr, $key,
+# $reference and $auditors from the shell globals below.
+KEYS='{}' RATES=null PR_JSON=null AUDITORS_JSON=null
 _jq_store() {
-  local filter="$1" usage_file="$TELEMETRY_DIRECTORY/usage.jsonl" links_file="$TELEMETRY_DIRECTORY/links.jsonl" cost_file="$LEDGER"
+  local filter="$1" usage_file="$TELEMETRY_DIRECTORY/usage.jsonl" links_file="$TELEMETRY_DIRECTORY/links.jsonl"
   shift
   [ -f "$usage_file" ] || usage_file=/dev/null
   [ -f "$links_file" ] || links_file=/dev/null
-  [ -f "$cost_file" ] || cost_file=/dev/null
   # priced_row is referenced by usage_model, so a missing pricing lib gets a
   # stand-in that prices nothing; RATES stays null and the readout says so.
   local pricing="${GAIA_PRICING_JQ_DEFS-}"
@@ -134,15 +141,15 @@ _jq_store() {
   # $keys grows with the branch history, so it reaches jq on fd 3 rather than
   # argv, where Linux refuses any one argument over 128 KiB. Bound ahead of the
   # defs, it is the $keys their bodies name, as the global was.
-  jq -n --rawfile usage_store "$usage_file" --rawfile links_store "$links_file" --rawfile cost_store "$cost_file" --rawfile _keysraw /dev/fd/3 --argjson rates "$RATES" \
-    --argjson pr "$PR_JSON" --arg key "$KEY" --arg reference "${ARGS[0]-}" "$@" \
+  jq -n --rawfile usage_store "$usage_file" --rawfile links_store "$links_file" --rawfile _keysraw /dev/fd/3 --argjson rates "$RATES" \
+    --argjson pr "$PR_JSON" --arg key "$KEY" --arg reference "${ARGS[0]-}" --argjson auditors "$AUDITORS_JSON" "$@" \
     "(\$_keysraw | fromjson) as \$keys | $GAIA_USAGE_JQ_DEFS$pricing$GAIA_USAGE_RESOLVE_JQ$GAIA_USAGE_MODEL_JQ$GAIA_USAGE_VIEW_JQ $filter" \
     3<<<"$KEYS"
 }
 
 _live_edges() {
   KEYS="$(_keys "$@")" || return 1
-  _jq_store 'usage_edges(usage_rows($links_store); usage_rows($cost_store); $keys)' -c
+  _jq_store 'usage_edges(usage_rows($links_store); $keys)' -c
 }
 
 # _append <target> <rows>: the rows file is removed on every path.
@@ -328,7 +335,7 @@ subcommand_pr_branch() {
   _is_pr "${ARGS[0]-}" || return 0
   PR_JSON="${ARGS[0]}"
   KEYS="$(_keys)" || return 0
-  _jq_store 'usage_rows($links_store) as $links | usage_pr_branch($links; usage_edges($links; []; $keys); $pr) // empty' \
+  _jq_store 'usage_rows($links_store) as $links | usage_pr_branch($links; usage_edges($links; $keys); $pr) // empty' \
     -r 2>/dev/null
   return 0
 }
@@ -348,27 +355,20 @@ _readout_legacy() {
   "$render" "$view_json" "$hooks" "$unflushed" "$@"
 }
 
-# Reruns this command in a fresh bash that takes only the legacy readout: the
-# rate heal tries the feed once per process, and the memo path spent that try.
-_readout_fallback() {
-  gaia_usage_memo_trace "fallback=legacy"
-  _GAIA_USAGE_READOUT_LEGACY=1 "${BASH:-bash}" "$_usage_self" "$SUBCOMMAND" --main-root "$MAIN_ROOT" \
-    --telemetry-dir "$TELEMETRY_DIRECTORY" --ledger "$LEDGER" --projects-root "$PROJECTS_ROOT" ${_USAGE_ARGV[@]+"${_USAGE_ARGV[@]}"}
-}
-
 # _readout <view> <legacy-view> <renderer> [renderer args...]: <view> reads
-# $usage_records, $links, $cost and the memo-restricted $memo_keys; <legacy-view> is the same
+# $usage_records, $links and the memo-restricted $memo_keys; <legacy-view> is the same
 # view for the pre-change sequence. The renderers never read RATES, so the memo
-# path can run in a subshell.
+# path can run in a subshell, and a memo path that fails leaves this shell as
+# it was for the legacy readout to run in.
 _readout() {
   local view="$1" legacy="$2" render="$3" view_json hooks=0 unflushed
   shift 3
-  if [ -n "${_GAIA_USAGE_READOUT_LEGACY:-}" ] || ! declare -F gaia_usage_memo_readout >/dev/null 2>&1; then
+  view_json="$(gaia_usage_memo_readout "$TELEMETRY_DIRECTORY" "$MAIN_ROOT" "$RATE_TABLE" "$view" \
+    --argjson pr "$PR_JSON" --arg key "$KEY" --arg reference "${ARGS[0]-}" --argjson auditors "$AUDITORS_JSON")" || {
+    gaia_usage_memo_trace "fallback=legacy"
     _readout_legacy "$legacy" "$render" "$@"
     return 0
-  fi
-  view_json="$(gaia_usage_memo_readout "$_usage_script_directory" "$TELEMETRY_DIRECTORY" "$LEDGER" "$MAIN_ROOT" "$RATE_TABLE" "$view" \
-    --argjson pr "$PR_JSON" --arg key "$KEY" --arg reference "${ARGS[0]-}")" || { _readout_fallback; return 0; }
+  }
   gaia_usage_hooks_registered "$MAIN_ROOT" && hooks=1
   unflushed="$(usage_unflushed "$PROJECTS_ROOT" "$MAIN_ROOT" "$TELEMETRY_DIRECTORY")"
   "$render" "$view_json" "$hooks" "$unflushed" "$@"
@@ -387,9 +387,25 @@ subcommand_pr() {
   elif [ "$PR_JSON" = null ]; then
     _error "pr needs a PR number, --branch, or --key"; return 0
   fi
-  _readout 'usage_view_pr_of($usage_records; $links; $cost; $pr; (if $key == "" then null else $key end); $memo_keys)' \
-    'usage_view_pr($pr; (if $key == "" then null else $key end))' usage_render_pr \
+  if [ "$AUDITORS_GIVEN" = 1 ]; then
+    AUDITORS_JSON="$(_auditors_json "$AUDITORS")" || { _error "--auditors takes comma-separated names of lowercase letters, digits and dashes"; return 0; }
+  fi
+  _readout 'usage_view_pr_of($usage_records; $links; $pr; (if $key == "" then null else $key end); $memo_keys; $auditors)' \
+    'usage_view_pr($pr; (if $key == "" then null else $key end); $auditors)' usage_render_pr \
     "$PARTIAL" "$UNCONFIRMED" "$BRANCH"
+}
+
+# _auditors_json <list>: the comma-separated names as a JSON array; rc 1 when a
+# name is empty or outside the agent-name grammar.
+_auditors_json() {
+  local name
+  local -a names=()
+  [[ "$1" =~ ^[a-z0-9][a-z0-9,-]*$ ]] || return 1
+  while IFS= read -r -d , name; do
+    [[ "$name" =~ ^[a-z0-9][a-z0-9-]*$ ]] || return 1
+    names[${#names[@]}]="$name"
+  done <<<"$1,"
+  jq -nc '$ARGS.positional' --args "${names[@]}"
 }
 
 subcommand_initiative() {
@@ -397,11 +413,17 @@ subcommand_initiative() {
     _error "initiative takes one valid ref"
     return 0
   fi
-  _readout 'usage_view_initiative_of($usage_records; $links; $cost; $reference; $memo_keys)' 'usage_view_initiative($reference)' \
+  if [ "$LINE" = 1 ]; then
+    _readout 'usage_view_initiative_line_of($usage_records; $links; $reference; $memo_keys)' 'usage_view_initiative_line($reference)' \
+      usage_render_initiative_line "$JSON"
+    return 0
+  fi
+  [ "$JSON" = 0 ] || { _error "--json needs --line"; return 0; }
+  _readout 'usage_view_initiative_of($usage_records; $links; $reference; $memo_keys)' 'usage_view_initiative($reference)' \
     usage_render_initiative
 }
 
-subcommand_reconcile() { _readout 'usage_view_reconcile_of($usage_records; $links; $cost; $memo_keys)' 'usage_view_reconcile' usage_render_reconcile; }
+subcommand_reconcile() { _readout 'usage_view_reconcile_of($usage_records; $links; $memo_keys)' 'usage_view_reconcile' usage_render_reconcile; }
 
 # _pre <write 0|1> [args...]: the shared preamble of every subcommand. Exits
 # on an inactive install or a bad argument; a readout exits 0 either way.
@@ -421,7 +443,6 @@ _pre() {
 
 SUBCOMMAND="${1-}"
 [ $# -gt 0 ] && shift
-_USAGE_ARGV=("$@")
 case "$SUBCOMMAND" in
   link) _pre 1 "$@"; subcommand_link; exit ;;
   unlink) _pre 1 "$@"; subcommand_unlink; exit ;;
@@ -431,6 +452,8 @@ case "$SUBCOMMAND" in
   pr-branch) _pre 0 "$@"; subcommand_pr_branch; exit 0 ;;
   initiative) _pre 0 "$@"; subcommand_initiative; exit 0 ;;
   reconcile) _pre 0 "$@"; subcommand_reconcile; exit 0 ;;
+  record) _record_main "$@"; exit ;;
+  represented) _represented_main "$@"; exit ;;
   "" | -h | --help) usage_help; exit 0 ;;
   *) usage_help >&2; exit 2 ;;
 esac

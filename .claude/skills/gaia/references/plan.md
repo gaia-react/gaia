@@ -4,7 +4,7 @@ Plan a complex feature using the task orchestration pattern. Do not implement an
 
 This command is the plan-specific case of the Workflow Doctrine (`wiki/concepts/Workflow Doctrine.md`), which defines roles, git ownership, checkpoint and resume, and model choice. For plan runs, the plan contract in `.claude/skills/gaia/references/plan/planner.md` (per-phase commits and gates, `PROGRESS.md`, the orchestrator's executor pins) governs where the two differ.
 
-Contents: `## Steps` (0 pre-flight sweep; 1 description, 1a SPEC reference; 2 planner model; 3 plan directory; 4 planning agent; 4.5 verify output; 4.6 decomposition audit; 4.7 token tally; 5 report and kickoff prompt).
+Contents: `## Steps` (0 pre-flight sweep; 1 description, 1a SPEC reference; 2 planner model; 3 plan directory; 4 planning agent; 4.5 verify output; 4.6 decomposition audit; 4.7 record the run; 5 report and kickoff prompt).
 
 ## Steps
 
@@ -165,75 +165,32 @@ A lightweight multi-agent audit of the **decomposition itself**, the one artifac
 
 **The audit runs automatically on a non-trivial plan; the gauge decides.** After step 4.5 confirms the artifacts exist, gauge the plan (below) and act on the gauge with no prompt: run the audit when the plan is non-trivial, skip it when the plan is trivial. There is no user choice; the gauge is the whole decision.
 
-**Gauge the plan (this is the decision).** Read `README.md` and the `task-*.md` files once. A trivial plan (one or two tasks, a single phase, no cross-task interface contract) → **skip the audit** and proceed to step 4.7. Anything with parallel tasks in a phase, multiple phases, or a shared frozen contract → **run the audit**. A skipped trivial plan writes no audit-window breadcrumb; its absence is the correct signal to the step-4.7 tally that no decomposition audit ran.
+**Gauge the plan (this is the decision).** Read `README.md` and the `task-*.md` files once. A trivial plan (one or two tasks, a single phase, no cross-task interface contract) → **skip the audit** and proceed to step 4.7. Anything with parallel tasks in a phase, multiple phases, or a shared frozen contract → **run the audit**.
 
 **Auto-mode.** Identical to interactive: gauge the plan, run the audit if it is non-trivial, apply its dispositions non-interactively. Interactive and auto now differ only in how 4.6b surfaces findings, not in whether the audit runs.
 
-**Fallback (never block).** If the parallel `general-purpose` Agent fan-out is unavailable (a restricted context that cannot spawn subagents), do NOT block the handoff: note the skip (`decomposition audit unavailable`) and proceed to step 4.7. The orchestrator's per-phase quality gates and the non-skippable pre-merge Code Audit Team audit remain the safety net. This path, like a trivial-plan skip, writes no audit-window breadcrumb.
+**Fallback (never block).** If the parallel `general-purpose` Agent fan-out is unavailable (a restricted context that cannot spawn subagents), do NOT block the handoff: note the skip (`decomposition audit unavailable`) and proceed to step 4.7. The orchestrator's per-phase quality gates and the non-skippable pre-merge Code Audit Team audit remain the safety net.
 
 To run the audit, read `.claude/skills/gaia/references/plan/decomposition-audit.md` and `.claude/skills/gaia/references/spec/lens-dispatch.md` now, each whole, and run the audit. A skipped or unavailable audit goes straight to step 4.7.
 
-### 4.7. Token tally
+### 4.7. Record the run
 
-The plan folder is written and verified, so every planner/auditor sub-agent this action spawned has
-flushed its sidecar to disk. Tally the `/gaia-plan` session's ground-truth token cost before the
-handoff. The call sums `message.usage` across the main transcript AND every sub-agent sidecar
-(deduped by message id, so it equals what the API billed), appends one record keyed to the feature
-identity to the durable ledger resolved to the main checkout (so it survives archival of the plan
-folder and a linked worktree), writes the plan folder's `cost.json` sidecar (the `plan` record), and
-prints the four billing buckets plus a total and the elapsed time. The KICKOFF execution phase
-later adds an independent `execute` record to the same `cost.json` (via the git-op hook, on each
-commit); the two records are tracked separately and never overwrite or sum each other. A spec-derived
-plan passes its SPEC id via `--spec-id`; a SPEC-less plan passes its `PLAN-NNN` id via `--plan-id`
-instead, exactly one of the two flags, never both, matching the ledger's `spec_id`-XOR-`plan_id`
-contract:
+The plan folder is written and verified, so every planner and auditor sub-agent this action spawned has flushed its sidecar to disk. Close the `/gaia-plan` run in the usage ledger before the handoff, with the ref that matches the plan's origin:
 
-```bash
-PLAN_SLUG="$(basename "$PLAN_DIR")"
-if [[ -n "${SPEC_PATH:-}" ]]; then
-  TALLY_SPEC_ID="$(basename "$(dirname "$SPEC_PATH")")"   # -> SPEC-NNN
-  bash .gaia/scripts/token-tally.sh \
-    --action plan \
-    --spec-id "$TALLY_SPEC_ID" \
-    --plan-slug "$PLAN_SLUG" \
-    --out-dir "$PLAN_DIR" || true
-else
-  # SPEC-less plan: PLAN_SLUG is the PLAN-NNN id allocated in step 3, so it
-  # doubles as both the feature identity and the cost.json record's plan_slug field.
-  bash .gaia/scripts/token-tally.sh \
-    --action plan \
-    --plan-id "$PLAN_SLUG" \
-    --plan-slug "$PLAN_SLUG" \
-    --out-dir "$PLAN_DIR" || true
-fi
-```
+- **Spec-derived** (`SPEC_PATH` set): `bash .gaia/scripts/usage.sh record spec:<SPEC-NNN> --workflow gaia-plan`, where `<SPEC-NNN>` is the name of `SPEC_PATH`'s parent folder.
+- **Spec-less**: `bash .gaia/scripts/usage.sh record plan:<PLAN-NNN> --workflow gaia-plan`, where `<PLAN-NNN>` is the basename of `$PLAN_DIR`, the id allocated in step 3.
 
-The helper always exits 0, and the trailing `|| true` is defense-in-depth: this **never blocks the
-handoff**, and unreadable input degrades to a partial figure with a marker rather than a fabricated
-number. It is a mechanical helper call, not a prompt, so it runs identically in interactive and auto
-(`AskUserQuestion`-less) mode. The step-5 report surfaces the cost from this tally, using the pinned one-line format defined there. This same
-call reads and deletes the step-4.6 audit-window breadcrumb (the feature-namespaced
-`audit-window-<spec_id>-plan.json` or `audit-window-<plan-id>.json`) if present, nesting an
-`audit.adversarial` annotation into this `plan` record when the window resolves.
+The command flushes the session's token usage into the ledger and prints the Cost line as its last stdout line. It **never blocks the handoff**: on a non-zero exit, keep the one stderr line it prints for the step-5 report and continue. A `/clear` or a resumed session has a new session id, so a plan authored across one is refused with "no unclaimed start"; the stderr line then names the `--start <iso>` recovery, which runs outside a live `gaia-plan` run. The call is a mechanical command, not a prompt, so it runs identically in interactive and auto mode.
 
 ### 5. Report to user
 
-Output a short summary of what's in `$PLAN_DIR/`, then report the cost as exactly one line (do not restate the four-bucket tally block), then emit the copy-paste prompt the user drops into a fresh Claude Code session to start the orchestrator cold.
+Output a short summary of what's in `$PLAN_DIR/`, then report the cost, then emit the copy-paste prompt the user drops into a fresh Claude Code session to start the orchestrator cold.
 
-Cost line: `Cost: ~<total> tokens, $<dollars>, <elapsed>`, where `<total>` is the token count abbreviated to millions with one decimal and a `~` prefix (e.g. `~2.4M`), `<dollars>` is `$X.XX`, and `<elapsed>` is the `<N>h<M>m<S>s` figure. Source the figures by whether the plan derives from a SPEC:
+Cost line: relay the Cost line `record` printed in step 4.7 verbatim (`Cost: ~<total> tokens, $<dollars>, <elapsed>`, plus any partial suffix it carries); it covers this plan's own interval. Never compute or restate a figure yourself. When `record` exited non-zero, relay its one stderr line in its place.
 
-- **Spec-derived** (`SPEC_PATH` set): the step-4.7 tally has already written the `plan` ledger row, so read the running spec+plan cycle from the roll-up reader, substituting the plan's `SPEC-NNN` id (the one derived in step 4.7):
+A spec-derived plan then also prints the full-cycle-to-date line as the next line, verbatim: `bash .gaia/scripts/usage.sh initiative spec:<SPEC-NNN> --line`, with the same `<SPEC-NNN>`. A spec-less plan prints no second line.
 
-  ```bash
-  if [ -x .gaia/scripts/token-rollup.sh ]; then
-    bash .gaia/scripts/token-rollup.sh --spec-id "<SPEC-NNN>" || true
-  fi
-  ```
-
-  Take `<total>`, `<dollars>`, and `<elapsed>` from the reader's grand `Total` and `Est. cost (USD)` total lines, and append a stage breakdown `(spec $X.XX + plan $X.XX)` from its per-stage dollar rows.
-- **Spec-less** (`--plan-id` path): take total and elapsed from the step-4.7 printed tally and read `<dollars>` from the `dollars` field of the `plan` record in `$PLAN_DIR/cost.json`; emit the line with no breakdown.
-
-Never fabricate: if a dollar figure is null or unpriced write `cost unavailable` in its place; if elapsed is unavailable drop that term; if any figure is a partial lower bound append ` (partial: lower bound)`. This line reads identically to the `/gaia-spec` cost line (spec reference, step 9) and the orchestrator's full-cycle line; keep the three in sync.
+This line reads identically to the `/gaia-spec` cost line (spec reference, step 9) and the orchestrator's full-cycle line; keep the three in sync.
 
 The prompt is a single line, exactly:
 

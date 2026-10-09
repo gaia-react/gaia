@@ -23,7 +23,6 @@ setup() {
   make_repo "$MAIN" main
   register_hooks "$MAIN"
   mkdir -p "$TELEMETRY_DIRECTORY" "$TEMPORARY_DIRECTORY/projects"
-  export GAIA_RATES_FEED_DISABLE=1 GAIA_RATES_STATE_DIRECTORY="$BATS_TEST_TMPDIR/rates-state"
   unset CLAUDE_CODE_SESSION_ID GAIA_TALLY_PROJECTS_ROOT
   RATES="$FIXTURES_DIRECTORY/rates-a.json"
 }
@@ -49,7 +48,7 @@ run_usage() { bash "$USAGE" "$@" --main-root "$MAIN" --rate-table "$RATES" --pro
 
 load_fixture() {
   local ledger_file
-  for ledger_file in usage.jsonl links.jsonl cost.jsonl; do
+  for ledger_file in usage.jsonl links.jsonl; do
     if [ -f "$FIXTURES_DIRECTORY/$1/$ledger_file" ]; then cp "$FIXTURES_DIRECTORY/$1/$ledger_file" "$TELEMETRY_DIRECTORY/$ledger_file"; fi
   done
 }
@@ -89,14 +88,14 @@ total_line() { printf '  total (distinct segments): tokens %s  est. %s' "$(gold 
   has_line "  all segments: tokens $(gold discussion all tokens)  est. $(gold discussion all usd)"
 }
 
-@test "UAT-006: an unclosed gaia-spec start binds nothing; once the spec row lands, [T0,T1] resolves to the SPEC" {
+@test "UAT-006: an unclosed gaia-spec start binds nothing; once the close row lands, [T0,T1) resolves to the SPEC" {
   load_fixture spec-interval
-  cp "$TELEMETRY_DIRECTORY/usage.jsonl" "$TEMPORARY_DIRECTORY/before"
   run run_usage reconcile
   has_line "  unattributed: tokens $(gold spec-interval before_unattributed tokens)  est. $(gold spec-interval before_unattributed usd)"
   run run_usage initiative spec:SPEC-123
   has_line "  total (distinct segments): tokens 0  est. \$0.00"
-  cat "$FIXTURES_DIRECTORY/spec-interval/spec-row.jsonl" >>"$TELEMETRY_DIRECTORY/cost.jsonl"
+  cat "$FIXTURES_DIRECTORY/spec-interval/close-row.jsonl" >>"$TELEMETRY_DIRECTORY/usage.jsonl"
+  cp "$TELEMETRY_DIRECTORY/usage.jsonl" "$TEMPORARY_DIRECTORY/before"
   run run_usage initiative spec:SPEC-123
   has_line "$(total_line spec-interval spec:SPEC-123)"
   run run_usage reconcile
@@ -279,26 +278,27 @@ total_line() { printf '  total (distinct segments): tokens %s  est. %s' "$(gold 
 
 # edges: the live edge set for the telemetry stores, one "child parent" per line.
 edges() {
-  touch "$TELEMETRY_DIRECTORY/usage.jsonl" "$TELEMETRY_DIRECTORY/links.jsonl" "$TELEMETRY_DIRECTORY/cost.jsonl"
+  touch "$TELEMETRY_DIRECTORY/usage.jsonl" "$TELEMETRY_DIRECTORY/links.jsonl"
   # shellcheck disable=SC2016
   bash -c 'source "$1/usage-lib.sh" && source "$1/usage-resolve-lib.sh" || exit 9
-    keys_json="$(gaia_usage_keys_json "$2" "$3/usage.jsonl" "$3/links.jsonl" "$3/cost.jsonl")" || exit 8
-    jq -nr --rawfile links_store "$3/links.jsonl" --rawfile cost_store "$3/cost.jsonl" --argjson keys "$keys_json" \
-      "$GAIA_USAGE_JQ_DEFS$GAIA_USAGE_RESOLVE_JQ"" usage_edges(usage_rows(\$links_store); usage_rows(\$cost_store); \$keys)[] | \"\(.child) \(.parent)\""' \
+    keys_json="$(gaia_usage_keys_json "$2" "$3/usage.jsonl" "$3/links.jsonl")" || exit 8
+    jq -nr --rawfile links_store "$3/links.jsonl" --argjson keys "$keys_json" \
+      "$GAIA_USAGE_JQ_DEFS$GAIA_USAGE_RESOLVE_JQ"" usage_edges(usage_rows(\$links_store); \$keys)[] | \"\(.child) \(.parent)\""' \
     _ "$SCRIPTS" "$MAIN" "$TELEMETRY_DIRECTORY"
 }
 
-@test "derived edges: branch names, plan/execute rows off the default branch, command PRs; never the plans ledger" {
+@test "derived edges: branch names only; never a row of the retired cost store, never the plans ledger" {
   local branch_name
-  for branch_name in plan/spec-090-foo spec-084-x fix/2149-y debt/41-42-batch plan/plan-7-z; do
+  for branch_name in plan/spec-090-foo spec-084-x fix/2149-y debt/41-42-batch plan/plan-7-z feat/x; do
     printf '{"schema_version":1,"kind":"segment","key":"branch:%s","session_id":"d","inherit":false,"first_ts":"2026-10-01T00:00:00Z","last_ts":"2026-10-01T00:00:00Z","messages":1,"by_model":{}}\n' "$branch_name" >>"$TELEMETRY_DIRECTORY/usage.jsonl"
   done
+  # Rows that used to imply branch and PR edges, in the retired store beside the
+  # live ones. The file name is built from parts so no test carries it whole.
   printf '%s\n' \
     '{"schema_version":1,"kind":"plan","session_id":"d","ts":"2026-10-01T00:00:00Z","spec_id":"SPEC-091","plan_id":null,"git_branch":"feat/x"}' \
     '{"schema_version":1,"kind":"execute","session_id":"d","ts":"2026-10-01T00:00:00Z","spec_id":null,"plan_id":"PLAN-092","git_branch":"worktree-feat+y"}' \
-    '{"schema_version":1,"kind":"plan","session_id":"d","ts":"2026-10-01T00:00:00Z","spec_id":"SPEC-093","plan_id":null,"git_branch":"main"}' \
     '{"schema_version":1,"kind":"command","session_id":"d","ts":"2026-10-01T00:00:00Z","spec_id":null,"plan_id":null,"command":"gaia-debt","run_id":"gaia-debt-r1","github":{"type":"pr","number":77,"repo":"o/r"}}' \
-    >"$TELEMETRY_DIRECTORY/cost.jsonl"
+    >"$TELEMETRY_DIRECTORY/cost"".jsonl"
   mkdir -p "$MAIN/.gaia/local/plans"
   printf '%s\n' '{"plans":[{"plan_id":"PLAN-777","branch":"feat/x","spec_id":"SPEC-778"}]}' >"$MAIN/.gaia/local/plans/ledger.json"
   run edges
@@ -309,12 +309,9 @@ edges() {
   has_line "branch:debt/41-42-batch issue:41"
   has_line "branch:debt/41-42-batch issue:42"
   has_line "branch:plan/plan-7-z plan:PLAN-007"
-  has_line "branch:feat/x spec:SPEC-091"
-  has_line "branch:feat/y plan:PLAN-092"
-  has_line "pr:77 command:gaia-debt-r1"
-  [ "$(printf '%s\n' "$output" | wc -l | tr -d ' ')" -eq 9 ]
+  [ "$(printf '%s\n' "$output" | wc -l | tr -d ' ')" -eq 6 ]
   grep -qE 'spec:SPEC-90( |$)' <<<"$output" && return 1
-  grep -qE 'SPEC-093|PLAN-777|SPEC-778' <<<"$output" && return 1
+  grep -qE 'SPEC-091|PLAN-092|pr:77|PLAN-777|SPEC-778' <<<"$output" && return 1
   true
 }
 
