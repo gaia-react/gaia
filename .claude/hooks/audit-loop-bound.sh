@@ -51,7 +51,7 @@
 # to misfire. It is sound rather than a coincidence: the workflow requires
 # HEAD to move between rounds, so a genuine new round always presents a new
 # tree. The one hardened re-dispatch of a member that no-op'd (see
-# wiki/concepts/PR Merge Workflow.md, "No-op detection and retry for each
+# wiki/concepts/Audit Round Procedure.md, "No-op detection and retry for each
 # dispatched member", and .claude/rules/subagent-dispatch.md) shares its
 # wave's unmoved tree and is therefore free, which is correct: it is the
 # first round finishing, not a new one. A dispatch on an already-audited tree

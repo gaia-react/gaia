@@ -104,7 +104,7 @@ line_starting() {
 }
 
 @test "quality-gate.md carries the fix-round exception to its STOP clause" {
-  grep -qF -- 'STOP and report before committing, except inside a workflow whose own instructions commit without stopping, such as the fix round of `wiki/concepts/PR Merge Workflow.md` (`#### The fix round: fixer, verifier, gate`);' "$QUALITY_GATE_MD"
+  grep -qF -- 'STOP and report before committing, except inside a workflow whose own instructions commit without stopping, such as the fix round of `wiki/concepts/Audit Round Procedure.md` (`#### The fix round: fixer, verifier, gate`);' "$QUALITY_GATE_MD"
 }
 
 # --- wiki inventories -------------------------------------------------------

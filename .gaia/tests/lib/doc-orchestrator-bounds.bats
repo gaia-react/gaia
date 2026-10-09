@@ -6,7 +6,7 @@
 # What it guards. The orchestrator that disposes findings and applies repairs is
 # held to deterministic checks, so no page may describe it as trusted rather
 # than bounded, and none may lean on a human watching every orchestrator turn.
-# The member definition and the merge workflow page both state the replacement
+# The member definition and the audit round procedure both state the replacement
 # sentence verbatim, so the two cannot drift into saying different things about
 # the same limit (UAT-019).
 #
@@ -17,8 +17,9 @@
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   FRONTEND="${DOC_ORCHESTRATOR_BOUNDS_FRONTEND:-$REPO_ROOT/.claude/agents/code-audit-frontend.md}"
-  PR_MERGE="${DOC_ORCHESTRATOR_BOUNDS_PR_MERGE:-$REPO_ROOT/wiki/concepts/PR Merge Workflow.md}"
-  TARGETS=("$FRONTEND" "$PR_MERGE")
+  ROUND_PROCEDURE="${DOC_ORCHESTRATOR_BOUNDS_ROUND_PROCEDURE:-$REPO_ROOT/wiki/concepts/Audit Round Procedure.md}"
+  RUNBOOK="${DOC_ORCHESTRATOR_BOUNDS_RUNBOOK:-$REPO_ROOT/wiki/concepts/PR Merge Workflow.md}"
+  TARGETS=("$FRONTEND" "$ROUND_PROCEDURE")
 
   SENTENCE='The orchestrator is bounded, not trusted: `audit-dispositions-check.sh` bounds every disposition it makes and `audit-fix-verify.sh` bounds every repair.'
   TRUST_CLAIM='trusted rather than bounded|human watches every|watches every orchestrator turn|orchestrator is trusted|orchestrator itself is trusted'
@@ -51,7 +52,7 @@ has_trust_claim() {
   done
 }
 
-@test "UAT-019: the member definition and the merge workflow page both carry the replacement sentence" {
+@test "UAT-019: the member definition and the audit round procedure both carry the replacement sentence" {
   local target
   for target in "${TARGETS[@]}"; do
     has_sentence "$target" || {
@@ -63,7 +64,7 @@ has_trust_claim() {
 
 @test "UAT-019: neither target says a human watches every orchestrator turn or that the orchestrator is trusted" {
   local target
-  for target in "${TARGETS[@]}"; do
+  for target in "${TARGETS[@]}" "$RUNBOOK"; do
     if has_trust_claim "$target"; then
       echo "trust claim present in: $target" >&2
       return 1
@@ -73,10 +74,10 @@ has_trust_claim() {
 
 @test "UAT-019 non-vacuity: the sentence check fails on a copy with the sentence removed" {
   local content
-  content="$(cat "$PR_MERGE")"
+  content="$(cat "$ROUND_PROCEDURE")"
   printf '%s\n' "${content//"$SENTENCE"/}" >"$BATS_TEST_TMPDIR/without-sentence.md"
   # Control: the real file passes, so the failure below is the mutation's.
-  has_sentence "$PR_MERGE" || return 1
+  has_sentence "$ROUND_PROCEDURE" || return 1
   if has_sentence "$BATS_TEST_TMPDIR/without-sentence.md"; then
     echo "removing the sentence did not make the check fail" >&2
     return 1
@@ -86,11 +87,11 @@ has_trust_claim() {
 @test "UAT-019 non-vacuity: the trust check fails on a copy with the old trust sentence restored" {
   cp "$FRONTEND" "$BATS_TEST_TMPDIR/trusted.md"
   printf '\nThe orchestrator itself is not bound by the gate: it is trusted rather than bounded.\n' >>"$BATS_TEST_TMPDIR/trusted.md"
-  cp "$PR_MERGE" "$BATS_TEST_TMPDIR/watched.md"
+  cp "$ROUND_PROCEDURE" "$BATS_TEST_TMPDIR/watched.md"
   printf '\nA human watches every orchestrator turn.\n' >>"$BATS_TEST_TMPDIR/watched.md"
   # Control: the real files pass, so the failures below are the mutations'.
   has_trust_claim "$FRONTEND" && return 1
-  has_trust_claim "$PR_MERGE" && return 1
+  has_trust_claim "$ROUND_PROCEDURE" && return 1
   has_trust_claim "$BATS_TEST_TMPDIR/trusted.md" || {
     echo "the restored trust sentence was not caught" >&2
     return 1

@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
 # Executable-truth coverage for the shell fences in
-# `wiki/concepts/PR Merge Workflow.md`.
+# the three audit-gate pages: `wiki/concepts/PR Merge Workflow.md` (the runbook),
+# `wiki/concepts/Audit Round Procedure.md` and `wiki/concepts/Audit Gate Reference.md`.
 #
 # Why this suite exists, and how it differs from every other prose suite in
 # this directory. The existing prose suites (doc-machinery-waive-prose.bats,
@@ -65,17 +66,26 @@
 
 setup() {
   REPO_ROOT="$(cd "${BATS_TEST_DIRNAME}/../../.." && pwd)"
-  PAGE="${REPO_ROOT}/wiki/concepts/PR Merge Workflow.md"
-  [ -f "$PAGE" ] || {
-    echo "the audited page is absent: ${PAGE}" >&2
-    return 1
-  }
+  # The fences are read from the three pages as one document: the split moved
+  # fences between pages and the disposition table names each by content.
+  local audited_page
+  PAGE="${BATS_TEST_TMPDIR}/audit-gate-pages.md"
+  : >"$PAGE"
+  for audited_page in "PR Merge Workflow" "Audit Round Procedure" "Audit Gate Reference"; do
+    [ -f "${REPO_ROOT}/wiki/concepts/${audited_page}.md" ] || {
+      echo "the audited page is absent: ${audited_page}" >&2
+      return 1
+    }
+    cat "${REPO_ROOT}/wiki/concepts/${audited_page}.md" >>"$PAGE"
+    printf "\n" >>"$PAGE"
+  done
 }
 
 # ---------------------------------------------------------------------------
 # Disposition table
 #
-# One row per shell fence, `id|anchor|mode|note`. The anchor is a literal
+# One row per shell fence, `id|anchor|mode|note`, with an optional trailing
+# `|N` when the same fence text legitimately appears N times (default 1). The anchor is a literal
 # substring that identifies exactly one fence; lens 1 proves that, so a
 # copy-paste that makes two fences share an anchor stops the suite instead of
 # silently halving its coverage. Line numbers are deliberately not used: they
@@ -109,8 +119,7 @@ residual-enumerate|gh pr list --state merged|exec|the --jq PROGRAM TEXT is extra
 findings-block|post-findings-block.sh --pr|static|posts a comment to a live PR
 post-status|post-audit-status.sh <current-member-marker>|static|posts a commit status to a live PR head
 merge-and-poll|gh pr merge <N> --squash|static|merges a live PR
-merge-poll|pr-wait-merge.sh --pr <N>|static|waits on a live PR's merge state and required checks
-local-sync-confirm|gh pr view <N> --json state|static|reads a live PR's state to tell a failed local sync from a failed merge
+merge-poll|pr-wait-merge.sh --pr <N>|static|waits on a live PR's merge state and required checks; the local-sync confirmation fence repeats the same line|2
 main-checkout-head|rev-parse --abbrev-ref HEAD|exec|read-only git plumbing, runs against a fixture checkout substituted for the placeholder
 cleanup-branch|git checkout main && git pull origin main|static|checks out main and deletes a branch in this checkout
 cleanup-worktree|git worktree remove --force|static|removes a worktree in this checkout
@@ -439,12 +448,16 @@ residue_pr_fixture() {
 @test "fence set: every table anchor names exactly one fence" {
   fence_table | while IFS='|' read -r id anchor mode note; do
     [ -n "$id" ] || continue
+    expected_hits=1
+    case "$note" in
+      *\|[0-9]*) expected_hits="${note##*|}" ;;
+    esac
     # `|| true`: grep -c exits 1 on no match, and under bats' set -e the
     # assignment inherits that status, so the zero case, the rotted anchor
     # this test exists to catch, aborted before printing which anchor rotted.
     hits="$(fence_indices_for "$anchor" | grep -c . || true)"
-    if [ "$hits" -ne 1 ]; then
-      echo "anchor for ${id} matched ${hits} fences, expected exactly one: ${anchor}" >&2
+    if [ "$hits" -ne "$expected_hits" ]; then
+      echo "anchor for ${id} matched ${hits} fences, expected ${expected_hits}: ${anchor}" >&2
       exit 1
     fi
   done

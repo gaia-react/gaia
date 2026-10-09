@@ -142,7 +142,7 @@ audit_step_dispatches_unit() {
   section="$(extract_section "$1/debt.md" '## Drive the PR to merge')"
   [ -n "$section" ] || return 1
   grep -qF -- 'audit-loop-unit' <<<"$section" || return 1
-  grep -qF -- '#### The audit loop unit' <<<"$section" || return 1
+  grep -qF -- '## Dispatch the audit loop unit' <<<"$section" || return 1
   grep -qF -- 'resolve-audit-members.sh' <<<"$section" && return 1
   return 0
 }

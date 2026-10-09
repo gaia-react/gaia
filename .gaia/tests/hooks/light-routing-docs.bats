@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # Doc-grep pins for the light-routing prose the audit-loop unit executes and
-# the PR Merge Workflow page describes.
+# the audit round procedure page describes.
 #
 # Prose-to-prose checks: each literal below is something an orchestrator acts
 # on or a named departure a reader would otherwise infer wrongly. Every
@@ -18,7 +18,7 @@
 
 setup() {
   ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
-  PAGE="${GAIA_LIGHT_ROUTING_PAGE:-$ROOT/wiki/concepts/PR Merge Workflow.md}"
+  PAGE="${GAIA_LIGHT_ROUTING_PAGE:-$ROOT/wiki/concepts/Audit Round Procedure.md}"
   UNIT="${GAIA_LIGHT_ROUTING_UNIT:-$ROOT/.claude/agents/audit-loop-unit.md}"
   DECISION="${GAIA_LIGHT_ROUTING_DECISION:-$ROOT/wiki/decisions/Code Audit Team.md}"
   # Assembled so this file never spells the forbidden flag contiguously.

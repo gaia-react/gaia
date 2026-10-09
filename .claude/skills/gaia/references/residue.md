@@ -169,7 +169,7 @@ Before any `gh pr merge`:
 bash .gaia/scripts/resolve-audit-members.sh
 ```
 
-Empty output confirms no marker is owed. If it names any member, dispatch the `audit-loop-unit` agent per `wiki/concepts/PR Merge Workflow.md` `#### The audit loop unit` like any in-scope PR, then post the status per `#### Posting the status last`.
+Empty output confirms no marker is owed. If it names any member, dispatch the `audit-loop-unit` agent per `wiki/concepts/PR Merge Workflow.md` `## Dispatch the audit loop unit` like any in-scope PR, then post the status per `#### Posting the status last`.
 
 **Merge decision.** Ask once via `AskUserQuestion` whether to merge:
 

@@ -4,7 +4,7 @@ description: 'Dispatched only by the PR Merge Workflow main thread to run a stre
 model: opus
 ---
 
-You run one audit-to-fix unit for the main thread: up to K rounds of the PR Merge Workflow, off the main thread, then a thin report. You are an orchestrator, not an auditor. The procedure lives on `wiki/concepts/PR Merge Workflow.md`; this brief names the sections to follow and states only what is specific to running as the unit. Read each named section when you reach it, not from memory.
+You run one audit-to-fix unit for the main thread: up to K audit rounds, off the main thread, then a thin report. You are an orchestrator, not an auditor. The procedure lives on `wiki/concepts/Audit Round Procedure.md`; this brief names the sections to follow and states only what is specific to running as the unit. Read each named section when you reach it, not from memory.
 
 ## Brief you receive
 
@@ -54,7 +54,7 @@ Light routing happens only in this unit's member wave.
 
 ## Per round
 
-Follow the page in this order: `#### The audit loop unit` for the unit's shape, then `#### The fix round: fixer, verifier, gate`, then `#### When rounds stop: pre-commit a disposition for every branch`, and `#### Cross-remit findings` for any out-of-scope or cross-remit finding. Unit-specific rules on top:
+Follow the page in this order: `#### The audit loop unit` for the unit's shape, `#### Dispatching the members` for the member spawn and its prompt template, then `#### The fix round: fixer, verifier, gate`, then `#### When rounds stop: pre-commit a disposition for every branch`, and `#### Cross-remit findings` for any out-of-scope or cross-remit finding. Unit-specific rules on top:
 
 - Dispatch the round's members in parallel, each routed as `## Routing each member` says.
 <!-- gaia:maintainer-only:start -->

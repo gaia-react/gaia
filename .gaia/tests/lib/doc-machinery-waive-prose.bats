@@ -2,7 +2,7 @@
 # SPEC-064: doc-grep coverage for the widened machinery-path waive rule,
 # stated in two places that no type-checker and no runtime assertion ever
 # reads: the orchestrator's disposition rule in
-# `wiki/concepts/PR Merge Workflow.md`'s `#### Cross-remit findings` section
+# `wiki/concepts/Audit Round Procedure.md`'s `#### Cross-remit findings` section
 # (the rule's owner), and `wiki/concepts/Audit Disposition and Debt Fix.md`'s
 # `### Out-of-scope waive` section. The Code Audit Team members carry no copy
 # of the rule: a member reports every finding and the orchestrator disposes
@@ -39,7 +39,7 @@
 # terminator `^#{3,4} `; the Out-of-scope waive section starts at `### ` (H3)
 # and takes `^#{2,3} `. Both are used verbatim below, never a bare `^## `.
 #
-# Add-then-pin vs sweep-then-pin: `wiki/concepts/PR Merge Workflow.md`
+# Add-then-pin vs sweep-then-pin: `wiki/concepts/Audit Round Procedure.md`
 # carried no machinery-disposition prose at all before this SPEC, so Group 1
 # below pins prose that was newly ADDED to that page, not swept from an
 # older machinery-only phrasing (unlike `code-audit-frontend.md`, whose
@@ -114,7 +114,8 @@ setup() {
   ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
 
   FRONTEND="$ROOT/.claude/agents/code-audit-frontend.md"
-  WIKI="$ROOT/wiki/concepts/PR Merge Workflow.md"
+  WIKI="$ROOT/wiki/concepts/Audit Round Procedure.md"
+  RUNBOOK="$ROOT/wiki/concepts/PR Merge Workflow.md"
   DISPOSITION="$ROOT/wiki/concepts/Audit Disposition and Debt Fix.md"
 }
 
@@ -141,10 +142,10 @@ setup() {
 }
 
 # --- Group 2: no machinery-only phrasing survives ----------------------------
-# wiki/concepts/PR Merge Workflow.md carries no absence checks here: it had
+# wiki/concepts/Audit Round Procedure.md carries no absence checks here: it had
 # no machinery-disposition prose to sweep before this SPEC (see header).
 
-@test "Group 2: the retired offender label is absent from code-audit-frontend.md and PR Merge Workflow.md" {
+@test "Group 2: the retired offender label is absent from code-audit-frontend.md and Audit Round Procedure.md" {
   local document_file
   for document_file in "$FRONTEND" "$WIKI"; do
     grep -qF -- "machinery-waived-not-machinery" "$document_file" && {
@@ -377,7 +378,7 @@ setup() {
   grep -qF -- "and the finding itself clears both disqualifiers" "$DISPOSITION" || return 1
 }
 
-@test "Group 11: the retired path-terms-decide-alone phrasing is absent from PR Merge Workflow.md and Audit Disposition and Debt Fix.md" {
+@test "Group 11: the retired path-terms-decide-alone phrasing is absent from Audit Round Procedure.md and Audit Disposition and Debt Fix.md" {
   grep -qF -- "Either eligibility term alone is sufficient" "$WIKI" && return 1
   grep -qF -- "Either term alone is sufficient," "$DISPOSITION" && return 1
   true
@@ -395,7 +396,7 @@ setup() {
 # sequence including the leading article, never the bare literal, so a
 # stray occurrence cannot satisfy the check by accident.
 #
-# wiki/concepts/PR Merge Workflow.md states the instruction at four sites
+# wiki/concepts/Audit Round Procedure.md states the instruction at four sites
 # across three sections (digest economics, the pre-commit-a-disposition
 # bullet, and two sentences inside the branch checkpoint section); each gets
 # its own scoped assertion. The checkpoint section states the heading twice,
@@ -419,13 +420,13 @@ setup() {
 
 @test "Group A: the branch-checkpoint section carries the accept-and-note heading, with its article, at its 'does not stop a round' bullet" {
   local section
-  section="$(extract_section_or_fail "$WIKI" '^#### The branch checkpoint' '^#{3,4} ')" || return 1
+  section="$(extract_section_or_fail "$RUNBOOK" '^#### The branch checkpoint' '^#{3,4} ')" || return 1
   printf '%s\n' "$section" | grep -qF -- 'is accept-and-note under the heading `## Accepted residuals (recorded, not fixed)` in the PR body, then the same post-and-merge.' || return 1
 }
 
 @test "Group A: the branch-checkpoint section carries the accept-and-note heading, with its article, at its accept paragraph" {
   local section
-  section="$(extract_section_or_fail "$WIKI" '^#### The branch checkpoint' '^#{3,4} ')" || return 1
+  section="$(extract_section_or_fail "$RUNBOOK" '^#### The branch checkpoint' '^#{3,4} ')" || return 1
   printf '%s\n' "$section" | grep -qF -- 'the remaining entries are recorded under the heading `## Accepted residuals (recorded, not fixed)` in the PR body, in the entry format' || return 1
 }
 
@@ -507,7 +508,7 @@ setup() {
   printf '%s\n' "$section" | grep -qE -- 'was changed|previously did|as of ' && return 1
   section="$(extract_section_or_fail "$WIKI" '^#### When rounds stop: pre-commit a disposition for every branch' '^#{3,4} ')" || return 1
   printf '%s\n' "$section" | grep -qE -- 'was changed|previously did|as of ' && return 1
-  section="$(extract_section_or_fail "$WIKI" '^#### The branch checkpoint' '^#{3,4} ')" || return 1
+  section="$(extract_section_or_fail "$RUNBOOK" '^#### The branch checkpoint' '^#{3,4} ')" || return 1
   printf '%s\n' "$section" | grep -qE -- 'was changed|previously did|as of ' && return 1
   section="$(extract_section_or_fail "$DISPOSITION" '^### Out-of-scope waive' '^#{2,3} ')" || return 1
   printf '%s\n' "$section" | grep -qE -- 'was changed|previously did|as of ' && return 1

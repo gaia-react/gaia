@@ -9,8 +9,8 @@
 # is file-tech-debt.bats's subject. Every presence check has a red twin: a
 # scratch copy with the sentence removed must fail the same predicate.
 #
-# GAIA_AUDIT_LOOP_UNIT_AGENT and GAIA_AUDIT_LOOP_PAGE override the two paths
-# so a scratch copy can be driven through the same cases.
+# GAIA_AUDIT_LOOP_UNIT_AGENT, GAIA_AUDIT_LOOP_PAGE (the runbook) and
+# GAIA_AUDIT_LOOP_ROUNDS (the round procedure) override the paths so a scratch copy can be driven through the same cases.
 #
 # Assertion style: .claude/rules/bats-assertions.md. `.gaia/tests/` is
 # release-excluded, so the UAT ids below are traceability, not shipped prose.
@@ -24,6 +24,7 @@ setup() {
   ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   AGENT="${GAIA_AUDIT_LOOP_UNIT_AGENT:-$ROOT/.claude/agents/audit-loop-unit.md}"
   PAGE="${GAIA_AUDIT_LOOP_PAGE:-$ROOT/wiki/concepts/PR Merge Workflow.md}"
+  ROUNDS="${GAIA_AUDIT_LOOP_ROUNDS:-$ROOT/wiki/concepts/Audit Round Procedure.md}"
 }
 
 # scratch_without <file> <literal>: a copy of <file> with every line carrying
@@ -67,6 +68,6 @@ assert_pinned() {
   assert_pinned "$AGENT" 'and the files left in `<run>/filing-retry/` into `filing_pending`'
 }
 
-@test "UAT-005: the runbook states a transient filing never blocks the merge and is retried every later round" {
-  assert_pinned "$PAGE" 'and the `transient` one is retried every later round.'
+@test "UAT-005: the round procedure states a transient filing never blocks the merge and is retried every later round" {
+  assert_pinned "$ROUNDS" 'and the `transient` one is retried every later round.'
 }

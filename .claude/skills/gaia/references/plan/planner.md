@@ -164,7 +164,7 @@ Then write the following files directly to `{PLAN_DIR}/`:
 
           bash .gaia/scripts/resolve-audit-members.sh
 
-      It prints one member (agent) name per line, deduped and sorted. Dispatch the `audit-loop-unit` agent per `wiki/concepts/PR Merge Workflow.md` `#### The audit loop unit`: it spawns the named members, and `code-audit-frontend` fail-closed when the output is empty or an in-scope file no member owns. Post the status per `#### Posting the status last` before `gh pr merge`.
+      It prints one member (agent) name per line, deduped and sorted. Dispatch the `audit-loop-unit` agent per `wiki/concepts/PR Merge Workflow.md` `## Dispatch the audit loop unit`: the unit runs the named members, and `code-audit-frontend` fail-closed when the output is empty or an in-scope file no member owns. Post the status per `#### Posting the status last` before `gh pr merge`.
 
       Skip a spawn for a member already cleared for HEAD: its marker exists, or (for the default member) one of the bypass signals in the marker-handshake table already applies to this PR. The spawn set names who *can* be required, not who is still outstanding.
 

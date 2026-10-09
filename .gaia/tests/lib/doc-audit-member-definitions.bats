@@ -8,8 +8,8 @@
 # its handshake, sidecar, ledger accounting and holistic class list in one
 # shipped protocol file rather than in a copy of its own (UAT-001, UAT-009).
 # The frontend definition stays inside a byte budget so the text is removed,
-# not merely moved (UAT-041). Every definition, the protocol, and the PR Merge
-# Workflow dispatch template make the definition re-read conditional on the
+# not merely moved (UAT-041). Every definition, the protocol, and the audit
+# round procedure's dispatch template make the definition re-read conditional on the
 # scope resolver's `DEFINITION=reread` line (UAT-011). The protocol carries no
 # CI arm and no trailer stamping, and ships without leaking a maintainer-only
 # name outside its marker blocks.
@@ -28,7 +28,7 @@ setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   AGENTS_DIRECTORY="${DOC_MEMBER_DEFINITIONS_AGENTS:-$REPO_ROOT/.claude/agents}"
   PROTOCOL="${DOC_MEMBER_DEFINITIONS_PROTOCOL:-$REPO_ROOT/.claude/hooks/lib/audit-member-protocol.md}"
-  PR_MERGE_WIKI="${DOC_MEMBER_DEFINITIONS_PR_MERGE:-$REPO_ROOT/wiki/concepts/PR Merge Workflow.md}"
+  DISPATCH_TEMPLATE_PAGE="${DOC_MEMBER_DEFINITIONS_DISPATCH_PAGE:-$REPO_ROOT/wiki/concepts/Audit Round Procedure.md}"
   RELEASE_EXCLUDE="${DOC_MEMBER_DEFINITIONS_RELEASE_EXCLUDE:-$REPO_ROOT/.gaia/release-exclude}"
   FRONTEND="$AGENTS_DIRECTORY/code-audit-frontend.md"
   PROTOCOL_PATH='.claude/hooks/lib/audit-member-protocol.md'
@@ -182,12 +182,12 @@ conditional_reread_line() {
   done
 }
 
-@test "UAT-011: the PR Merge Workflow dispatch template makes the re-read conditional, with no unconditional line" {
-  [ -n "$(conditional_reread_line "$PR_MERGE_WIKI")" ] || { echo "the template states no conditional re-read" >&2; return 1; }
+@test "UAT-011: the audit round procedure dispatch template makes the re-read conditional, with no unconditional line" {
+  [ -n "$(conditional_reread_line "$DISPATCH_TEMPLATE_PAGE")" ] || { echo "the template states no conditional re-read" >&2; return 1; }
   local unconditional
-  unconditional="$(grep -F -- 'read your own agent definition' "$PR_MERGE_WIKI" | grep -vF -- 'DEFINITION=reread' || true)"
+  unconditional="$(grep -F -- 'read your own agent definition' "$DISPATCH_TEMPLATE_PAGE" | grep -vF -- 'DEFINITION=reread' || true)"
   [ -z "$unconditional" ] || { echo "unconditional re-read line: $unconditional" >&2; return 1; }
-  grep -qF -- 'MANDATORY SECOND ACTION, still before any review: read your own agent definition' "$PR_MERGE_WIKI" && return 1
+  grep -qF -- 'MANDATORY SECOND ACTION, still before any review: read your own agent definition' "$DISPATCH_TEMPLATE_PAGE" && return 1
   true
 }
 

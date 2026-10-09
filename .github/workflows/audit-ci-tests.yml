@@ -292,6 +292,14 @@ jobs:
               # out-of-scope disposition rule on this page; it is a source the
               # suite guards, and it matches no other pattern here.
               - 'wiki/concepts/PR Merge Workflow.md'
+              # The split pages are sources of the same suites: the out-of-scope
+              # waive rule lives on the round procedure, and the doc-pin and
+              # citation suites open all three pages. Neither matches another
+              # pattern here, so without these lines an edit to one would report
+              # `code=false`, skip every bats step, and green the job having run
+              # those assertions zero times.
+              - 'wiki/concepts/Audit Round Procedure.md'
+              - 'wiki/concepts/Audit Gate Reference.md'
               # The same suite greps this page as the THIRD surface stating
               # the out-of-scope waive rule, and its cross-surface assertions
               # compare all three against each other, so an edit here alone is

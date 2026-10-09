@@ -87,12 +87,12 @@
 #
 # Without every dispatched member's clearance, the hook denies the gh pr merge
 # call. To unblock:
-#   1. Spawn the pending member's agent (code-audit-frontend for the default
-#      member; the specialized member named in the deny reason otherwise) on
-#      the current branch.
-#   2. Address any findings; commit and push.
-#   3. Re-spawn the pending member's agent on the new HEAD; let it write its marker.
-#   4. Retry gh pr merge.
+#   1. Dispatch the audit-loop-unit agent on the current branch; it runs the
+#      pending members (code-audit-frontend for the default member; the
+#      specialized member named in the deny reason otherwise).
+#   2. The unit addresses the findings, commits and pushes, and re-runs the
+#      members on the new HEAD until each writes its marker.
+#   3. Retry gh pr merge.
 #
 # See wiki/concepts/PR Merge Workflow.md for the full contract.
 
@@ -1239,10 +1239,11 @@ None of the accepted signals is present:
                      request's recorded head sha
 
 To unblock:
-  1. Spawn the code-audit-frontend agent locally.
-  2. Address any Critical/Important findings; commit and push.
-  3. Re-spawn the agent on the new HEAD; let it write the marker.
-  4. Retry gh pr merge.
+  1. Dispatch the audit-loop-unit agent on HEAD
+     (wiki/concepts/PR Merge Workflow.md, ## Dispatch the audit loop unit);
+     it runs code-audit-frontend and fixes the findings.
+  2. Let it push the fixes and write the marker on the new HEAD.
+  3. Retry gh pr merge.
 
 LOCAL-SYNC FAILURE NOTE: if a previous gh pr merge exited with
 'fatal: main is already used by worktree at <path>', the GitHub-side merge
@@ -1334,7 +1335,7 @@ reason="PR merge gate: not every dispatched Code Audit Team member has cleared H
 
 ${report}
 To unblock: run the audit loop unit on HEAD (dispatch the audit-loop-unit agent per
-wiki/concepts/PR Merge Workflow.md, #### The audit loop unit) so each PENDING member
+wiki/concepts/PR Merge Workflow.md, ## Dispatch the audit loop unit) so each PENDING member
 writes its marker (code-audit-frontend writes ${root}/.gaia/local/audit/${frontend_digest}.ok; each
 specialized member writes ${root}/.gaia/local/audit/<its-own-digest>.<member>.ok, NOT
 the frontend digest), then retry gh pr merge. Markers are keyed to each

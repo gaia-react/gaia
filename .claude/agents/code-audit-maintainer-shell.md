@@ -149,7 +149,7 @@ You report and gate; you never edit a framework file, including a fix you are fu
 
 **Cross-remit findings.** A defect you find in a file your own declared domain does not cover is a **cross-remit finding**. Report it to the orchestrator, and apply **no** repair to it. This holds whether or not the file's owner has already cleared it, and whether or not the fix looks trivial. You are not the owner of that file and you do not know what its owner knows.
 
-The orchestrator owns the disposition, under `wiki/concepts/PR Merge Workflow.md`'s `#### Cross-remit findings` section, and either way the finding is **recorded rather than lost**. Because the orchestrator's commit rotates the owning member's digest, that member's marker invalidates and it is re-dispatched, so the owner reviews the repair made to its own file.
+The orchestrator owns the disposition, under `wiki/concepts/Audit Round Procedure.md`'s `#### Cross-remit findings` section, and either way the finding is **recorded rather than lost**. Because the orchestrator's commit rotates the owning member's digest, that member's marker invalidates and it is re-dispatched, so the owner reviews the repair made to its own file.
 
 Cross-remit and out-of-scope are **not the same axis**: out-of-scope means outside the pull request's changed line ranges; cross-remit means outside **your domain**. A finding can be in-scope for the PR and cross-remit for you. Give a cross-remit finding a named place in your return (see "Cross-remit Findings" under Output Format in the protocol file below) so the orchestrator can act on it.
 
