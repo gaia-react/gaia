@@ -251,9 +251,9 @@ const readPullRequestRecord = (
 /**
  * Post the `GAIA-Audit` out-of-scope success status on the landing branch's
  * head, for the wiki-only PR the CLI merges itself with auto-merge, outside the
- * Claude Code merge hook that stamps every other bypass PR, then mark the draft
- * PR ready for review. Call it after `gh pr create --draft` and before the
- * auto-merge step.
+ * Claude Code merge hook that stamps every other bypass PR, then mark a draft
+ * PR ready for review (a PR opened ready is left as is). Call it after
+ * `gh pr create` and before the auto-merge step.
  *
  * The subject is the pull request, not the local checkout: both landers cut
  * their branch from a local default branch that can carry commits origin never
@@ -379,6 +379,21 @@ export const postOutOfScopeStamp = (
 
   if (!commandSucceeded(post)) {
     return refusePost(`the status POST failed (${failureDetail(post)})`);
+  }
+
+  // A pull request opened ready (a private repository that refuses drafts) has
+  // nothing to flip; an unreadable draft state falls through to the flip.
+  const draftState = runner(
+    'gh',
+    ['pr', 'view', branch, '--json', 'isDraft', '--jq', '.isDraft'],
+    {cwd}
+  );
+
+  if (
+    commandSucceeded(draftState) &&
+    safeOutput(draftState.stdout).trim() === 'false'
+  ) {
+    return 'ready';
   }
 
   const ready = runner('gh', ['pr', 'ready', branch], {cwd});

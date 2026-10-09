@@ -22,6 +22,7 @@
  * codes are 0 (ok) / 1 (user-correctable refusal) / 2 (unexpected git/gh
  * process failure, stderr piped through).
  */
+import type {SpawnSyncReturns} from 'node:child_process';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {lookupOwn} from '../util/argv.js';
@@ -460,6 +461,59 @@ const emitWikiTally = (options: RunOptions, artifact?: GhArtifact): void => {
   }
 };
 
+const DRAFT_UNSUPPORTED =
+  /draft.*(not supported|unsupported)|(not supported|unsupported).*draft/i;
+
+type OpenPullRequestOptions = {
+  prBody: string;
+  prTitle: string;
+  repoRoot: string;
+  runner: CommandRunner;
+};
+
+type OpenPullRequestResult = {args: string[]; result: SpawnSyncReturns<string>};
+
+/**
+ * Open the PR as a draft, or ready where GitHub refuses drafts. An exact
+ * PRIVATE visibility answer opens it ready (some plans refuse drafts there);
+ * a draft create refused for unsupported drafts is retried once as ready.
+ */
+const openPullRequest = (
+  options: OpenPullRequestOptions
+): OpenPullRequestResult => {
+  const {prBody, prTitle, repoRoot, runner} = options;
+  const createArgs = (draft: boolean): string[] => [
+    'pr',
+    'create',
+    ...(draft ? ['--draft'] : []),
+    '--title',
+    prTitle,
+    '--body',
+    prBody,
+  ];
+  const visibility = runner(
+    'gh',
+    ['repo', 'view', '--json', 'visibility', '--jq', '.visibility'],
+    {cwd: repoRoot}
+  );
+  const isPrivate =
+    stepOk(visibility) && safeOutput(visibility.stdout).trim() === 'PRIVATE';
+  const args = createArgs(!isPrivate);
+  const result = runner('gh', args, {cwd: repoRoot});
+
+  if (
+    stepOk(result) ||
+    isPrivate ||
+    !DRAFT_UNSUPPORTED.test(safeOutput(result.stderr))
+  ) {
+    return {args, result};
+  }
+
+  const readyArgs = createArgs(false);
+
+  return {args: readyArgs, result: runner('gh', readyArgs, {cwd: repoRoot})};
+};
+
 type QueueAutoMergeOptions = {
   branch: string;
   prBody: string;
@@ -471,8 +525,9 @@ type QueueAutoMergeOptions = {
 type QueueAutoMergeResult = {artifact?: GhArtifact; failureCode?: number};
 
 /**
- * Push the chain branch, open its PR as a draft, post the out-of-scope stamp,
- * mark the PR ready, and queue auto-merge. Runs while still on the chain branch
+ * Push the chain branch, open its PR as a draft (ready on a private repository
+ * that refuses drafts), post the out-of-scope stamp, mark the PR ready, and
+ * queue auto-merge. Runs while still on the chain branch
  * so `gh pr merge` targets its PR; once `push` succeeds the branch exists on the
  * remote and is left for the maintainer to resolve rather than force-reverted.
  * A flip that failed stops the land before the merge step with the PR still an
@@ -488,12 +543,10 @@ const queueAutoMerge = (
     args: ['pr', 'merge', '--squash', '--auto', '--delete-branch'],
     command: 'gh',
   };
+  const createStep = {args: ['pr', 'create'], command: 'gh'};
   const remoteSequence: {args: string[]; command: string}[] = [
     {args: ['push', '-u', 'origin', branch], command: 'git'},
-    {
-      args: ['pr', 'create', '--draft', '--title', prTitle, '--body', prBody],
-      command: 'gh',
-    },
+    createStep,
     autoMergeStep,
   ];
 
@@ -520,17 +573,27 @@ const queueAutoMerge = (
       }
     }
 
-    const result = runner(step.command, step.args, {cwd: repoRoot});
+    const outcome: OpenPullRequestResult =
+      step === createStep ?
+        openPullRequest({prBody, prTitle, repoRoot, runner})
+      : {
+          args: step.args,
+          result: runner(step.command, step.args, {cwd: repoRoot}),
+        };
 
-    if (!stepOk(result)) {
+    if (!stepOk(outcome.result)) {
       return {
         artifact,
-        failureCode: passthroughFailure(result, step.command, step.args),
+        failureCode: passthroughFailure(
+          outcome.result,
+          step.command,
+          outcome.args
+        ),
       };
     }
 
-    if (step.command === 'gh' && step.args[1] === 'create') {
-      artifact = parsePrUrl(safeOutput(result.stdout));
+    if (step === createStep) {
+      artifact = parsePrUrl(safeOutput(outcome.result.stdout));
     }
   }
 

@@ -35353,6 +35353,14 @@ var postOutOfScopeStamp = (options) => {
   if (!commandSucceeded(post)) {
     return refusePost(`the status POST failed (${failureDetail(post)})`);
   }
+  const draftState = runner(
+    "gh",
+    ["pr", "view", branch, "--json", "isDraft", "--jq", ".isDraft"],
+    { cwd }
+  );
+  if (commandSucceeded(draftState) && safeOutput2(draftState.stdout).trim() === "false") {
+    return "ready";
+  }
   const ready = runner("gh", ["pr", "ready", branch], { cwd });
   if (!commandSucceeded(ready)) {
     process.stderr.write(
@@ -35636,18 +35644,42 @@ var emitWikiTally = (options, artifact) => {
   } catch {
   }
 };
+var DRAFT_UNSUPPORTED = /draft.*(not supported|unsupported)|(not supported|unsupported).*draft/i;
+var openPullRequest = (options) => {
+  const { prBody, prTitle, repoRoot, runner } = options;
+  const createArgs = (draft) => [
+    "pr",
+    "create",
+    ...draft ? ["--draft"] : [],
+    "--title",
+    prTitle,
+    "--body",
+    prBody
+  ];
+  const visibility = runner(
+    "gh",
+    ["repo", "view", "--json", "visibility", "--jq", ".visibility"],
+    { cwd: repoRoot }
+  );
+  const isPrivate = stepOk(visibility) && safeOutput3(visibility.stdout).trim() === "PRIVATE";
+  const args = createArgs(!isPrivate);
+  const result = runner("gh", args, { cwd: repoRoot });
+  if (stepOk(result) || isPrivate || !DRAFT_UNSUPPORTED.test(safeOutput3(result.stderr))) {
+    return { args, result };
+  }
+  const readyArgs = createArgs(false);
+  return { args: readyArgs, result: runner("gh", readyArgs, { cwd: repoRoot }) };
+};
 var queueAutoMerge = (options) => {
   const { branch, prBody, prTitle, repoRoot, runner } = options;
   const autoMergeStep = {
     args: ["pr", "merge", "--squash", "--auto", "--delete-branch"],
     command: "gh"
   };
+  const createStep = { args: ["pr", "create"], command: "gh" };
   const remoteSequence = [
     { args: ["push", "-u", "origin", branch], command: "git" },
-    {
-      args: ["pr", "create", "--draft", "--title", prTitle, "--body", prBody],
-      command: "gh"
-    },
+    createStep,
     autoMergeStep
   ];
   let artifact;
@@ -35667,15 +35699,22 @@ var queueAutoMerge = (options) => {
         return { artifact, failureCode: EXIT_CODES.UNKNOWN_SUBCOMMAND };
       }
     }
-    const result = runner(step.command, step.args, { cwd: repoRoot });
-    if (!stepOk(result)) {
+    const outcome = step === createStep ? openPullRequest({ prBody, prTitle, repoRoot, runner }) : {
+      args: step.args,
+      result: runner(step.command, step.args, { cwd: repoRoot })
+    };
+    if (!stepOk(outcome.result)) {
       return {
         artifact,
-        failureCode: passthroughFailure2(result, step.command, step.args)
+        failureCode: passthroughFailure2(
+          outcome.result,
+          step.command,
+          outcome.args
+        )
       };
     }
-    if (step.command === "gh" && step.args[1] === "create") {
-      artifact = parsePrUrl(safeOutput3(result.stdout));
+    if (step === createStep) {
+      artifact = parsePrUrl(safeOutput3(outcome.result.stdout));
     }
   }
   return { artifact };

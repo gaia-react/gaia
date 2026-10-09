@@ -1688,15 +1688,40 @@ describe('wiki chain', () => {
     const finishRunner = (
       recorded: RecordedCall[],
       options: {
+        draftState?: SpawnSyncReturns<string>;
         post?: SpawnSyncReturns<string>;
         push?: SpawnSyncReturns<string>;
         ready?: SpawnSyncReturns<string>;
         record?: SpawnSyncReturns<string>;
         resolver?: SpawnSyncReturns<string>;
+        visibility?: SpawnSyncReturns<string>;
       } = {}
     ): CommandRunner =>
       buildRunner(
         [
+          {
+            argv: [
+              'repo',
+              'view',
+              '--json',
+              'visibility',
+              '--jq',
+              '.visibility',
+            ],
+            result: options.visibility ?? okResult('PUBLIC\n'),
+          },
+          {
+            argv: [
+              'pr',
+              'view',
+              BRANCH,
+              '--json',
+              'isDraft',
+              '--jq',
+              '.isDraft',
+            ],
+            result: options.draftState ?? okResult('true\n'),
+          },
           {
             argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
             result: okResult(`${BRANCH}\n`),
@@ -1805,6 +1830,62 @@ describe('wiki chain', () => {
       expect(ordered[createIndex]).toContain(' --draft ');
       expect(readyIndex).toBeGreaterThan(stampIndex);
       expect(mergeIndex).toBeGreaterThan(readyIndex);
+    });
+
+    test('a private repository opens the pull request ready and skips the ready flip', () => {
+      sandbox = setupSandbox();
+      const recorded: RecordedCall[] = [];
+
+      expect(
+        finishLanding(
+          sandbox.root,
+          finishRunner(recorded, {
+            draftState: okResult('false\n'),
+            visibility: okResult('PRIVATE\n'),
+          })
+        )
+      ).toBe(0);
+
+      const createCall = ghCalls(recorded).find(
+        (entry) => entry.args[0] === 'pr' && entry.args[1] === 'create'
+      );
+      expect(createCall?.args).not.toContain('--draft');
+      expect(statusCalls(recorded)).toHaveLength(1);
+      expect(
+        ghCalls(recorded).some(
+          (entry) => entry.args[0] === 'pr' && entry.args[1] === 'ready'
+        )
+      ).toBe(false);
+      expect(mergeCalls(recorded)).toHaveLength(1);
+    });
+
+    test('a draft create refused for unsupported drafts is retried once without --draft', () => {
+      sandbox = setupSandbox();
+      const recorded: RecordedCall[] = [];
+      const inner = finishRunner(recorded, {draftState: okResult('false\n')});
+
+      const runner: CommandRunner = (command, args, spawnOptions) => {
+        if (
+          command === 'gh' &&
+          args[1] === 'create' &&
+          args.includes('--draft')
+        ) {
+          recorded.push({args: [...args], command});
+
+          return failResult(1, 'Draft pull requests are not supported');
+        }
+
+        return inner(command, args, spawnOptions);
+      };
+
+      expect(finishLanding(sandbox.root, runner)).toBe(0);
+
+      const creates = ghCalls(recorded).filter(
+        (entry) => entry.args[0] === 'pr' && entry.args[1] === 'create'
+      );
+      expect(creates).toHaveLength(2);
+      expect(creates[1]?.args).not.toContain('--draft');
+      expect(mergeCalls(recorded)).toHaveLength(1);
     });
 
     test('a pull request whose stamp did not post is never marked ready', () => {
