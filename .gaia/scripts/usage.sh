@@ -93,6 +93,9 @@ _parse() {
       --main-root | --telemetry-dir | --rate-table | --projects-root | --session | --source | \
         --merge | --pr | --branch | --key | --merged-at | --at | --auditors | --workflow | --issue | --start)
         [ $# -ge 2 ] || { _error "$flag needs a value"; return 2; }
+        # WORKFLOW, ISSUE_NUMBER and START_ISO are read by usage-record-lib.sh, which shell-lint's
+        # chunked lint pass follows only when both files land in one chunk.
+        # shellcheck disable=SC2034
         case "$flag" in
           --main-root) MAIN_ROOT="$2" ;; --telemetry-dir) TELEMETRY_DIRECTORY="$2" ;;
           --rate-table) RATE_TABLE="$2" ;; --projects-root) PROJECTS_ROOT="$2" ;; --session) SESSION="$2" ;;
