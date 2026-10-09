@@ -12,7 +12,7 @@ sha() { shasum -a 256 <"$1" | cut -d' ' -f1; }
 make_repo() {
   local directory="$1"
   mkdir -p "$directory"
-  git -C "$directory" init -q
+  git -C "$directory" init -q -b main
   git -C "$directory" config user.email t@example.com
   git -C "$directory" config user.name t
   git -C "$directory" config commit.gpgsign false
@@ -67,21 +67,53 @@ take_digests() {
   BASELINE_SHA="$(sha "$BASELINE_FILE")"
 }
 
-# Commit the real audit roster and digest library into the fixture, so the
-# verifier can resolve member content digests there. The fixture then has
-# member digests a marker's file name can collide with.
+# Install the real audit roster and digest libraries into the fixture, give it
+# a bare origin and a feature branch with one change of its own, so the verifier
+# can resolve branch-own digests there. The fixture then has digests a marker's
+# file name can collide with.
 with_harness() {
-  mkdir -p "$REPO/.gaia" "$REPO/.claude/hooks"
+  mkdir -p "$REPO/.gaia/scripts" "$REPO/.claude/hooks"
   cp "$BATS_TEST_DIRNAME/../../audit-ci.yml" "$REPO/.gaia/audit-ci.yml"
   cp -R "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" "$REPO/.claude/hooks/lib"
+  cp "$BATS_TEST_DIRNAME/../audit-key-lib.sh" "$REPO/.gaia/scripts/audit-key-lib.sh"
   git -C "$REPO" add -A
   git -C "$REPO" commit -q -m harness
+  . "$BATS_TEST_DIRNAME/../../tests/helpers/catchup-fixture.sh"
+  # The fixture removes an existing origin first, and that removal fails under
+  # errexit when none exists.
+  git -C "$REPO" remote add origin "$BATS_TEST_TMPDIR/placeholder-origin.git"
+  catchup_add_origin "$REPO" main --feature feat/fix-verify
+  catchup_branch_commit branch-note.txt 'branch own change'
 }
 
-# member_digest [<ref>]: one member content digest of the fixture at <ref>.
+# with_harness_without_origin: the harness on a feature branch with no origin
+# remote and no cached base name, and a gh that always fails.
+with_harness_without_origin() {
+  mkdir -p "$REPO/.gaia/scripts" "$REPO/.claude/hooks"
+  cp "$BATS_TEST_DIRNAME/../../audit-ci.yml" "$REPO/.gaia/audit-ci.yml"
+  cp -R "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" "$REPO/.claude/hooks/lib"
+  cp "$BATS_TEST_DIRNAME/../audit-key-lib.sh" "$REPO/.gaia/scripts/audit-key-lib.sh"
+  git -C "$REPO" add -A
+  git -C "$REPO" commit -q -m harness
+  git -C "$REPO" switch -q -c feat/fix-verify
+  . "$BATS_TEST_DIRNAME/../../tests/helpers/gh-base-stub.sh"
+  gh_base_stub_install "$BATS_TEST_TMPDIR/stub-bin"
+  export PATH="$BATS_TEST_TMPDIR/stub-bin:$PATH" GH_STUB_FAIL=1 GAIA_AUDIT_GH_DEADLINE_SECONDS=1
+}
+
+# member_digest [<ref>]: one branch-own digest of the fixture at <ref>, over the
+# merge base derived from HEAD.
 member_digest() {
-  bash -c '. "$1/.claude/hooks/lib/audit-digest.sh" && audit_digests_all "$1" "$2"' _ "$REPO" "${1:-HEAD}" |
+  bash -c '. "$1/.claude/hooks/lib/audit-digest.sh" && audit_branch_digests_local "$1" "$2"' _ "$REPO" "${1:-HEAD}" |
     cut -f2 | sort -u | head -1
+}
+
+# working_tree_id: a write-tree id of the fixture's working content.
+working_tree_id() {
+  local index_file="$BATS_TEST_TMPDIR/wt-index"
+  GIT_INDEX_FILE="$index_file" git -C "$REPO" read-tree HEAD
+  GIT_INDEX_FILE="$index_file" git -C "$REPO" add -A
+  GIT_INDEX_FILE="$index_file" git -C "$REPO" write-tree
 }
 
 # forge <name> <body-json>: an audit file written after the baseline.
@@ -516,7 +548,7 @@ enforcement_case() {
   assert_fail_kind audit-artifact-written bad-tree.ok
 }
 
-@test "a foreign-tree marker named by one of this root's member digests fails audit-artifact-written" {
+@test "a foreign-tree marker named by one of this branch's branch-own digests fails audit-artifact-written" {
   with_harness
   prepare
   edit a.txt
@@ -530,17 +562,14 @@ enforcement_case() {
   assert_fail_kind audit-artifact-written "$digest"
 }
 
-@test "a foreign-tree marker named by a member digest of the working content fails audit-artifact-written" {
+@test "a foreign-tree marker named by a branch-own digest of the working content fails audit-artifact-written" {
   with_harness
   prepare
   edit a.txt
   edit b.txt
   # A change to the shared machinery rotates every member digest.
   printf '# fixer edit\n' >>"$REPO/.claude/hooks/lib/audit-digest.sh"
-  index_file="$BATS_TEST_TMPDIR/wt-index"
-  GIT_INDEX_FILE="$index_file" git -C "$REPO" read-tree HEAD
-  GIT_INDEX_FILE="$index_file" git -C "$REPO" add -A
-  worktree_tree="$(GIT_INDEX_FILE="$index_file" git -C "$REPO" write-tree)"
+  worktree_tree="$(working_tree_id)"
   digest="$(member_digest "$worktree_tree")"
   [ -n "$digest" ]
   [ "$digest" != "$(member_digest HEAD)" ]
@@ -550,6 +579,46 @@ enforcement_case() {
   mv "$RESULT_FILE.n" "$RESULT_FILE"
   do_check
   assert_fail_kind audit-artifact-written "$digest"
+}
+
+@test "a sibling branch's marker, named by its own branch-own digest, still passes" {
+  with_harness
+  prepare
+  edit a.txt
+  edit b.txt
+  mine="$(member_digest HEAD)"
+  git -C "$REPO" branch -m feat/fix-verify feat/sibling
+  sibling="$(member_digest HEAD)"
+  git -C "$REPO" branch -m feat/sibling feat/fix-verify
+  [ -n "$sibling" ]
+  [ "$sibling" != "$mine" ]
+  forge "$sibling.ok" "$(printf '{"digest":"%s","tree":"%s","sha":"%s"}' "$sibling" "$(foreign_tree)" "$(printf 'e%.0s' {1..40})")"
+  default_result >"$RESULT_FILE"
+  do_check
+  [ "$status" -eq 0 ]
+}
+
+@test "the HEAD reference and a bare write-tree id each yield a digest set" {
+  with_harness
+  printf '# fixer edit\n' >>"$REPO/.claude/hooks/lib/audit-digest.sh"
+  head_digest="$(member_digest HEAD)"
+  tree_digest="$(member_digest "$(working_tree_id)")"
+  [[ "$head_digest" =~ ^[0-9a-f]{64}$ ]]
+  [[ "$tree_digest" =~ ^[0-9a-f]{64}$ ]]
+  [ "$head_digest" != "$tree_digest" ]
+}
+
+@test "without an origin ref no digest resolves and every new marker is reported" {
+  with_harness_without_origin
+  prepare
+  edit a.txt
+  edit b.txt
+  forge foreign.ok "$(printf '{"tree":"%s","sha":"%s"}' "$(foreign_tree)" "$(printf 'e%.0s' {1..40})")"
+  forge foreign.refused "$(printf '{"tree":"%s","sha":"%s"}' "$(foreign_tree)" "$(printf 'e%.0s' {1..40})")"
+  default_result >"$RESULT_FILE"
+  do_check
+  assert_fail_kind audit-artifact-written foreign.ok
+  jq -e '[.errors[] | select(.kind == "audit-artifact-written")] | length == 2' "$VERIFIER_OUTPUT_FILE" >/dev/null
 }
 
 @test "when member digests cannot be resolved a foreign-tree marker counts" {

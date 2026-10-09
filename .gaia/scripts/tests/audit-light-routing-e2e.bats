@@ -409,3 +409,20 @@ recorded_rounds() {
   [ "$(recorded_rounds)" = "2" ]
   [ "$(jq -r '.history.rounds[1].members | join(",")' "$ALF_STATE")" = "$FRONTEND" ]
 }
+
+@test "after a clean catch-up the base's content is trusted and the small branch commit clears light and passes the gate" {
+  lsb_init
+  lsb_catchup_init
+  lsb_full_clearance "$FRONTEND"
+  lsb_catchup_base_commit frontend/public/sw.js "self.x = 1"
+  lsb_catch_up
+  assert_gate_allows
+  lsb_catchup_branch_commit frontend/app/notes.md "$(printf 'one\ntwo\nthree')"
+  assert_gate_denies
+  lsb_route "$FRONTEND"
+  expect_light_eligible
+  grep -qF 'frontend/public/sw.js' "$(route_input_path)" && return 1
+  clear_through_light
+  expect_line "light-cleared"
+  assert_gate_allows
+}

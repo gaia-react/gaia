@@ -827,6 +827,12 @@ YAML
 }
 
 @test "committed roster: a frontend/app change rotates the default member digest" {
+  # The digest measures the branch's own patch against the base reference, so
+  # the sandbox needs an origin carrying `main`. The fixture removes an existing
+  # origin first, and that removal fails under errexit when there is none.
+  . "$BATS_TEST_DIRNAME/../../tests/helpers/catchup-fixture.sh"
+  git -C "$SANDBOX" remote add origin "$BATS_TEST_TMPDIR/placeholder-origin.git"
+  catchup_add_origin "$SANDBOX" main
   seed_committed_roster
   stage frontend/app/routes/x.tsx
   commit "one"

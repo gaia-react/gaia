@@ -323,3 +323,342 @@ resolve() {
   run bash -c '. "$1"; audit_provenance_empty_is_decisive nonsense' _ "$PROVENANCE_LIBRARY"
   [ "$status" -eq 1 ]
 }
+
+# --- GitHub-sourced trusted base and the local base reference ------------------
+
+# use_gh_stub: installs the gh stub first on PATH and points its log at a fresh
+# file. Every case below drives gh through it, never a real gh.
+use_gh_stub() {
+  . "$REPO_ROOT/.gaia/tests/helpers/gh-base-stub.sh"
+  STUB_BIN="$BATS_TEST_TMPDIR/stub-bin"
+  gh_base_stub_install "$STUB_BIN"
+  export PATH="$STUB_BIN:$PATH"
+  export GH_STUB_LOG="$BATS_TEST_TMPDIR/gh.log"
+  export GH_STUB_PID_LOG="$BATS_TEST_TMPDIR/gh.pids"
+  export GH_STUB_BASE_TIP="1111111111111111111111111111111111111111"
+  : > "$GH_STUB_LOG"
+}
+
+# call_function <function> [args...]: runs a library function with stdout in
+# $output and stderr in $STDERR_FILE.
+call_function() {
+  STDERR_FILE="$BATS_TEST_TMPDIR/stderr.txt"
+  run bash -c '. "$1"; error_file="$2"; shift 2; "$@" 2>"$error_file"' _ "$PROVENANCE_LIBRARY" "$STDERR_FILE" "$@"
+}
+
+# make_feature_repo <name>: a repo on branch feat with refs/remotes/origin/main.
+make_feature_repo() {
+  local repo
+  repo="$(make_repo "$1")"
+  git -C "$repo" update-ref refs/remotes/origin/main refs/heads/main
+  git -C "$repo" checkout -q -b feat
+  commit_file "$repo" "feat.txt" "feat commit"
+  printf '%s' "$repo"
+}
+
+# mutated_library <name> <sed-expression>: a scratch copy of the library with
+# one sed mutation; fails when the mutation did not change the file.
+mutated_library() {
+  local copy="$BATS_TEST_TMPDIR/$1.sh"
+  sed -e "$2" "$PROVENANCE_LIBRARY" > "$copy"
+  if cmp -s "$copy" "$PROVENANCE_LIBRARY"; then
+    echo "mutation $1 did not change the library" >&2
+    return 1
+  fi
+  printf '%s' "$copy"
+}
+
+@test "github_base_tip: prints the stubbed tip and makes exactly one branches call" {
+  use_gh_stub
+  local repo
+  repo="$(make_feature_repo tip-ok)"
+
+  call_function audit_github_base_tip "$repo" owner/repo main
+  [ "$status" -eq 0 ]
+  [ "$output" = "$GH_STUB_BASE_TIP" ]
+  [ "$(grep -c '^api repos/owner/repo/branches/main' "$GH_STUB_LOG")" -eq 1 ]
+}
+
+@test "github_base_tip: a gh failure returns 5 with empty stdout and one stderr line" {
+  use_gh_stub
+  local repo
+  repo="$(make_feature_repo tip-fail)"
+
+  GH_STUB_FAIL=1 call_function audit_github_base_tip "$repo" owner/repo main
+  [ "$status" -eq 5 ]
+  [ -z "$output" ]
+  [ "$(wc -l < "$STDERR_FILE" | tr -d ' ')" -eq 1 ]
+  grep -qi 'gh' "$STDERR_FILE"
+}
+
+@test "github_base_tip: the failure guard can fail (mutated copy answers the stub value and returns 0)" {
+  use_gh_stub
+  local repo mutated
+  repo="$(make_feature_repo tip-fail-mutated)"
+  mutated="$(mutated_library fail-open 's/^  return 5$/  printf "%s\\n" "${GH_STUB_BASE_TIP:-}"; return 0/')"
+
+  GH_STUB_FAIL=1 run bash -c '. "$1"; audit_github_base_tip "$2" owner/repo main 2>/dev/null' _ "$mutated" "$repo"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$GH_STUB_BASE_TIP" ]
+}
+
+@test "github_base_tip: a hung gh returns 5 within the deadline and leaves no process" {
+  use_gh_stub
+  local repo started elapsed pid
+  repo="$(make_feature_repo tip-hang)"
+
+  started="$(date +%s)"
+  GH_STUB_HANG=1 GAIA_AUDIT_GH_DEADLINE_SECONDS=2 call_function audit_github_base_tip "$repo" owner/repo main
+  elapsed=$(( $(date +%s) - started ))
+  [ "$status" -eq 5 ]
+  [ -z "$output" ]
+  [ "$elapsed" -le 4 ]
+  grep -qi 'timed out' "$STDERR_FILE"
+  [ -s "$GH_STUB_PID_LOG" ]
+  for pid in $(cat "$GH_STUB_PID_LOG"); do
+    if kill -0 "$pid" 2>/dev/null; then
+      echo "process $pid survived the deadline" >&2
+      return 1
+    fi
+  done
+  true
+}
+
+@test "github_base_tip: a branches-only hang does not stall other gh calls" {
+  use_gh_stub
+  local repo
+  repo="$(make_feature_repo tip-branches-only)"
+
+  GH_STUB_HANG_BRANCHES=1 GAIA_AUDIT_GH_DEADLINE_SECONDS=2 call_function audit_github_base_tip "$repo" owner/repo main
+  [ "$status" -eq 5 ]
+  GH_STUB_HANG_BRANCHES=1 call_function audit_github_repository "$repo"
+  [ "$status" -eq 0 ]
+  [ "$output" = "owner/repo" ]
+}
+
+@test "github_base_tip: a non-hex answer returns 5" {
+  use_gh_stub
+  local repo
+  repo="$(make_feature_repo tip-nonhex)"
+
+  GH_STUB_BASE_TIP=not-a-sha call_function audit_github_base_tip "$repo" owner/repo main
+  [ "$status" -eq 5 ]
+  [ -z "$output" ]
+  GH_STUB_BASE_TIP=ABCDEF1111111111111111111111111111111111 call_function audit_github_base_tip "$repo" owner/repo main
+  [ "$status" -eq 5 ]
+  GH_STUB_BASE_TIP=11111111 call_function audit_github_base_tip "$repo" owner/repo main
+  [ "$status" -eq 5 ]
+}
+
+@test "github_base_tip: gh absent from PATH returns 5" {
+  local repo
+  repo="$(make_feature_repo tip-no-gh)"
+  mkdir -p "$BATS_TEST_TMPDIR/bare-bin"
+  ln -s "$(command -v git)" "$BATS_TEST_TMPDIR/bare-bin/git"
+  ln -s "$(command -v bash)" "$BATS_TEST_TMPDIR/bare-bin/bash"
+
+  STDERR_FILE="$BATS_TEST_TMPDIR/stderr.txt"
+  PATH="$BATS_TEST_TMPDIR/bare-bin" run bash -c '. "$1"; audit_github_base_tip "$2" owner/repo main 2>"$3"' _ \
+    "$PROVENANCE_LIBRARY" "$repo" "$STDERR_FILE"
+  [ "$status" -eq 5 ]
+  [ -z "$output" ]
+}
+
+@test "github_pr_base_branch: prints the PR base branch the stub reports" {
+  use_gh_stub
+  local repo
+  repo="$(make_feature_repo pr-base)"
+
+  GH_STUB_BASE_BRANCH=release/2 call_function audit_github_pr_base_branch "$repo"
+  [ "$status" -eq 0 ]
+  [ "$output" = "release/2" ]
+  GH_STUB_FAIL=1 call_function audit_github_pr_base_branch "$repo"
+  [ "$status" -ne 0 ]
+  [ -z "$output" ]
+}
+
+@test "github_repository: equals the status poster's own derivation in the same sandbox" {
+  use_gh_stub
+  local repo poster_derivation
+  repo="$(make_feature_repo repository)"
+  export GH_STUB_REPOSITORY="acme/widgets"
+
+  poster_derivation="$(cd "$repo" && gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null || true)"
+  call_function audit_github_repository "$repo"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$poster_derivation" ]
+  [ "$output" = "acme/widgets" ]
+
+  GH_STUB_FAIL=1 call_function audit_github_repository "$repo"
+  [ "$status" -ne 0 ]
+  [ -z "$output" ]
+}
+
+@test "local_base_reference: a cached name answers with no gh call" {
+  use_gh_stub
+  local repo
+  repo="$(make_feature_repo cache-hit)"
+  git -C "$repo" update-ref refs/remotes/origin/release refs/heads/main
+  git -C "$repo" config branch.feat.gaia-audit-base release
+
+  call_function audit_local_base_reference "$repo"
+  [ "$status" -eq 0 ]
+  [ "$output" = "refs/remotes/origin/release" ]
+  [ ! -s "$GH_STUB_LOG" ]
+}
+
+@test "local_base_reference: a cache miss asks gh once, writes the cache, and the second call makes no gh call" {
+  use_gh_stub
+  local repo
+  repo="$(make_feature_repo cache-miss)"
+  git -C "$repo" update-ref refs/remotes/origin/release refs/heads/main
+
+  GH_STUB_BASE_BRANCH=release call_function audit_local_base_reference "$repo"
+  [ "$status" -eq 0 ]
+  [ "$output" = "refs/remotes/origin/release" ]
+  [ "$(git -C "$repo" config --get branch.feat.gaia-audit-base)" = "release" ]
+  [ "$(grep -c '^pr view' "$GH_STUB_LOG")" -eq 1 ]
+
+  : > "$GH_STUB_LOG"
+  GH_STUB_BASE_BRANCH=release call_function audit_local_base_reference "$repo"
+  [ "$status" -eq 0 ]
+  [ "$output" = "refs/remotes/origin/release" ]
+  [ ! -s "$GH_STUB_LOG" ]
+}
+
+@test "local_base_reference: the cache is what removes the network cost (mutated copy without the cache read calls gh again)" {
+  use_gh_stub
+  local repo mutated
+  repo="$(make_feature_repo cache-mutated)"
+  git -C "$repo" update-ref refs/remotes/origin/release refs/heads/main
+  git -C "$repo" config branch.feat.gaia-audit-base release
+  mutated="$(mutated_library no-cache-read 's/^\( *\)cached_name=.*config --get.*$/\1cached_name=""/')"
+
+  GH_STUB_BASE_BRANCH=release run bash -c '. "$1"; audit_local_base_reference "$2" 2>/dev/null' _ "$mutated" "$repo"
+  [ "$status" -eq 0 ]
+  grep -q '^pr view' "$GH_STUB_LOG"
+}
+
+@test "local_base_reference: a gh failure writes no cache key and falls back to the origin HEAD target" {
+  use_gh_stub
+  local repo
+  repo="$(make_feature_repo gh-fails-head)"
+  git -C "$repo" update-ref refs/remotes/origin/trunk refs/heads/main
+  git -C "$repo" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/trunk
+
+  GH_STUB_FAIL=1 call_function audit_local_base_reference "$repo"
+  [ "$status" -eq 0 ]
+  [ "$output" = "refs/remotes/origin/trunk" ]
+  git -C "$repo" config --get branch.feat.gaia-audit-base && return 1
+  true
+}
+
+@test "local_base_reference: with gh failing and no origin HEAD it falls back to origin main" {
+  use_gh_stub
+  local repo
+  repo="$(make_feature_repo gh-fails-main)"
+
+  GH_STUB_FAIL=1 call_function audit_local_base_reference "$repo"
+  [ "$status" -eq 0 ]
+  [ "$output" = "refs/remotes/origin/main" ]
+  git -C "$repo" config --get branch.feat.gaia-audit-base && return 1
+  true
+}
+
+@test "local_base_reference: a detached HEAD skips the cache and gh" {
+  use_gh_stub
+  local repo
+  repo="$(make_feature_repo detached)"
+  git -C "$repo" update-ref refs/remotes/origin/release refs/heads/main
+  git -C "$repo" config branch.feat.gaia-audit-base release
+  git -C "$repo" checkout -q --detach
+
+  GH_STUB_BASE_BRANCH=release call_function audit_local_base_reference "$repo"
+  [ "$status" -eq 0 ]
+  [ "$output" = "refs/remotes/origin/main" ]
+  [ ! -s "$GH_STUB_LOG" ]
+}
+
+@test "local_base_reference: a resolved ref that does not exist returns 1 naming git fetch origin" {
+  use_gh_stub
+  local repo
+  repo="$(make_feature_repo ref-missing)"
+  git -C "$repo" config branch.feat.gaia-audit-base ghost
+
+  call_function audit_local_base_reference "$repo"
+  [ "$status" -eq 1 ]
+  [ -z "$output" ]
+  [ "$(wc -l < "$STDERR_FILE" | tr -d ' ')" -eq 1 ]
+  grep -qF 'git fetch origin' "$STDERR_FILE"
+}
+
+@test "local_base_reference: a local branch named origin/main never stands in for the remote-tracking ref" {
+  use_gh_stub
+  local repo forged_sha real_sha mutated
+  repo="$(make_feature_repo forged)"
+  git -C "$repo" checkout -q main
+  commit_file "$repo" "main-advance.txt" "advance main"
+  git -C "$repo" update-ref refs/remotes/origin/main refs/heads/main
+  git -C "$repo" checkout -q feat
+  git -C "$repo" branch "origin/main" feat
+  real_sha="$(git -C "$repo" rev-parse refs/remotes/origin/main)"
+  forged_sha="$(git -C "$repo" rev-parse refs/heads/origin/main)"
+  [ "$real_sha" != "$forged_sha" ]
+
+  call_function audit_local_base_reference "$repo"
+  [ "$status" -eq 0 ]
+  [ "$output" = "refs/remotes/origin/main" ]
+  [ "$(git -C "$repo" rev-parse "$output")" = "$real_sha" ]
+
+  mutated="$(mutated_library bare-revspec 's@refs/remotes/origin/\${name}@origin/${name}@')"
+  run bash -c '. "$1"; audit_local_base_reference "$2" 2>/dev/null' _ "$mutated" "$repo"
+  [ "$status" -eq 0 ]
+  [ "$(git -C "$repo" rev-parse "$output")" = "$forged_sha" ]
+}
+
+@test "local_base_reference: no remote-tracking ref at all returns 1 even with a local main" {
+  use_gh_stub
+  local repo
+  repo="$(make_repo no-remote)"
+  git -C "$repo" checkout -q -b feat
+  commit_file "$repo" "feat.txt" "feat commit"
+
+  call_function audit_local_base_reference "$repo"
+  [ "$status" -eq 1 ]
+  [ -z "$output" ]
+  grep -qF 'git fetch origin' "$STDERR_FILE"
+}
+
+@test "the new functions never run git fetch" {
+  use_gh_stub
+  local repo real_git
+  repo="$(make_feature_repo no-fetch)"
+  real_git="$(command -v git)"
+  mkdir -p "$BATS_TEST_TMPDIR/git-wrapper"
+  cat > "$BATS_TEST_TMPDIR/git-wrapper/git" <<WRAPPER
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$BATS_TEST_TMPDIR/git.log"
+exec "$real_git" "\$@"
+WRAPPER
+  chmod +x "$BATS_TEST_TMPDIR/git-wrapper/git"
+  export PATH="$BATS_TEST_TMPDIR/git-wrapper:$PATH"
+
+  call_function audit_local_base_reference "$repo"
+  call_function audit_github_repository "$repo"
+  call_function audit_github_pr_base_branch "$repo"
+  GH_STUB_FAIL=1 call_function audit_github_base_tip "$repo" owner/repo main
+  call_function audit_github_base_tip "$repo" owner/repo main
+
+  [ -s "$BATS_TEST_TMPDIR/git.log" ]
+  grep -qE '(^| )fetch( |$)' "$BATS_TEST_TMPDIR/git.log" && return 1
+  true
+}
+
+@test "empty_is_decisive: github is decisive; local and unresolvable still are not" {
+  run bash -c '. "$1"; audit_provenance_empty_is_decisive github' _ "$PROVENANCE_LIBRARY"
+  [ "$status" -eq 0 ]
+  run bash -c '. "$1"; audit_provenance_empty_is_decisive local' _ "$PROVENANCE_LIBRARY"
+  [ "$status" -eq 1 ]
+  run bash -c '. "$1"; audit_provenance_empty_is_decisive unresolvable' _ "$PROVENANCE_LIBRARY"
+  [ "$status" -eq 1 ]
+}

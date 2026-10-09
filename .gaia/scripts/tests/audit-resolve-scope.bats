@@ -25,6 +25,7 @@ setup() {
   printf '#!/usr/bin/env bash\nexit 1\n' > "$BATS_TEST_TMPDIR/no-gh/gh"
   chmod +x "$BATS_TEST_TMPDIR/no-gh/gh"
   REPO_ROOT="$(git -C "$THIS_DIRECTORY" rev-parse --show-toplevel)"
+  . "$REPO_ROOT/.gaia/tests/helpers/catchup-fixture.sh"
   if ! command -v jq >/dev/null 2>&1; then
     if [ -n "${GITHUB_ACTIONS:-}" ]; then
       echo "jq not present on a CI runner; the capture probes here would report green" >&2
@@ -56,6 +57,7 @@ make_repo() {
   cp "$REPO_ROOT/.gaia/audit-ci.yml" "$repository_directory/.gaia/"
   cp "$REPO_ROOT/.claude/hooks/lib/audit-scope.sh" \
     "$REPO_ROOT/.claude/hooks/lib/audit-base-provenance.sh" \
+    "$REPO_ROOT/.claude/hooks/lib/audit-branch-patch.sh" \
     "$REPO_ROOT/.claude/hooks/lib/audit-rules-changed.sh" \
     "$REPO_ROOT/.claude/hooks/lib/audit-clearance.sh" \
     "$REPO_ROOT/.claude/hooks/lib/audit-digest.sh" \
@@ -69,7 +71,25 @@ make_repo() {
   git -C "$repository_directory" config commit.gpgsign false
   git -C "$repository_directory" add -A
   git -C "$repository_directory" commit -q -m init
+  # A bare origin carries the base as refs/remotes/origin/main, the reference
+  # the branch-own patch is measured against. A repo whose initial branch is
+  # not main stays origin-less on purpose: it is the unresolvable-base fixture.
+  [ "$branch" != main ] || catchup_add_origin "$repository_directory" >/dev/null
   printf '%s' "$(cd "$repository_directory" && pwd -P)"
+}
+
+# publish_main <repo>: push what main holds to the origin, so a base commit made
+# before the branch forks is part of the base and not the branch's own patch.
+publish_main() {
+  git -C "$1" push -q origin main 2>/dev/null
+  git -C "$1" fetch -q origin
+}
+
+# start_branch <repo> <name>: check out a new branch and cache main as its
+# audit base, so no probe reaches a real `gh` for the base lookup.
+start_branch() {
+  git -C "$1" checkout -q -b "$2"
+  git -C "$1" config "branch.$2.gaia-audit-base" main
 }
 
 commit_file() {
@@ -124,7 +144,7 @@ value_of() {
   repo="$(make_repo symlinked)"
   link="$BATS_TEST_TMPDIR/link-to-repo"
   ln -s "$repo" "$link"
-  git -C "$repo" checkout -q -b feat
+  start_branch "$repo" feat
   commit_file "$repo" app/a.ts
   run "$link/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-maintainer-shell --root "$link"
   [ "$status" -eq 0 ]
@@ -147,14 +167,14 @@ value_of() {
 @test "prints every scalar, in order, and the two lists on a resolvable feature branch" {
   local repo full_base keys
   repo="$(make_repo resolves)"
-  git -C "$repo" checkout -q -b feat
+  start_branch "$repo" feat
   commit_file "$repo" app/a.ts
   commit_file "$repo" docs/b.md
   full_base="$(git -C "$repo" merge-base HEAD main)"
   run --separate-stderr "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-maintainer-shell --root "$repo"
   [ "$status" -eq 0 ]
   keys="$(printf '%s\n' "$output" | sed -n 's/=.*//p' | awk '!seen[$0]++' | tr '\n' ' ')"
-  [ "$keys" = "AUDIT_ROOT FULL_BASE BASE_REF BASE_REASON KEY_REF ANCHOR_TREE BASE_SHA KEY_BASE AUDIT_KEY D_SCOPE DEFINITION FULL_CHANGED CHANGED " ]
+  [ "$keys" = "AUDIT_ROOT FULL_BASE BASE_REF BASE_REASON KEY_REF ANCHOR_TREE BASE_SHA KEY_BASE AUDIT_KEY D_SCOPE REVIEW_DIFF DEFINITION FULL_CHANGED CHANGED " ]
   [ "$(value_of "$output" FULL_BASE)" = "$full_base" ]
   [ "$(value_of "$output" AUDIT_KEY)" = "$full_base.feat" ]
   [ "$(value_of "$output" BASE_SHA)" = "$full_base" ]
@@ -175,7 +195,8 @@ value_of() {
   done > "$repo/.gaia/scripts/movable.sh"
   git -C "$repo" add -A
   git -C "$repo" commit -q -m "add movable"
-  git -C "$repo" checkout -q -b feat
+  publish_main "$repo"
+  start_branch "$repo" feat
   git -C "$repo" mv .gaia/scripts/movable.sh wiki/movable.md
   git -C "$repo" commit -q -m "move out"
   run --separate-stderr "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-maintainer-shell --root "$repo"
@@ -187,7 +208,7 @@ value_of() {
 @test "KEY_BASE matches what the argument-less resolver yields" {
   local repo reader_reference reader_base
   repo="$(make_repo key-agreement)"
-  git -C "$repo" checkout -q -b feat
+  start_branch "$repo" feat
   commit_file "$repo" app/a.ts
   reader_reference="$(cd "$repo" && ./.github/audit/resolve-audit-base.sh 2>/dev/null)"
   reader_base="$(git -C "$repo" merge-base "$reader_reference" HEAD)"
@@ -219,7 +240,7 @@ value_of() {
 @test "--review-path narrows CHANGED and leaves FULL_CHANGED whole" {
   local repo
   repo="$(make_repo review-path)"
-  git -C "$repo" checkout -q -b feat
+  start_branch "$repo" feat
   commit_file "$repo" app/a.ts
   commit_file "$repo" app/b.tsx
   commit_file "$repo" scripts/c.sh
@@ -235,7 +256,7 @@ value_of() {
 @test "--base-override replaces the review base and leaves the key base to the resolver" {
   local repo first key_reference
   repo="$(make_repo override)"
-  git -C "$repo" checkout -q -b feat
+  start_branch "$repo" feat
   commit_file "$repo" app/a.ts
   first="$(git -C "$repo" rev-parse HEAD)"
   commit_file "$repo" app/b.ts
@@ -253,7 +274,7 @@ value_of() {
 @test "the review list is HEAD's content, not the working tree's" {
   local repo
   repo="$(make_repo head-content)"
-  git -C "$repo" checkout -q -b feat
+  start_branch "$repo" feat
   commit_file "$repo" app/a.ts
   git -C "$repo" rm -q app/a.ts
   mkdir -p "$repo/app"
@@ -268,7 +289,7 @@ value_of() {
   local repo name
   repo="$(make_repo non-ascii)"
   name="$(printf 'app/caf\303\251.ts')"
-  git -C "$repo" checkout -q -b feat
+  start_branch "$repo" feat
   commit_file "$repo" "$name"
   run --separate-stderr "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-maintainer-shell --root "$repo"
   [ "$status" -eq 0 ]
@@ -282,7 +303,8 @@ value_of() {
   local repo
   repo="$(make_repo dirty)"
   commit_file "$repo" other/untouched.md
-  git -C "$repo" checkout -q -b feat
+  publish_main "$repo"
+  start_branch "$repo" feat
   commit_file "$repo" app/a.ts
   printf 'edit\n' >> "$repo/app/a.ts"
   printf 'edit\n' >> "$repo/other/untouched.md"
@@ -299,7 +321,7 @@ value_of() {
   local repo name
   repo="$(make_repo dirty-space)"
   name="$(printf 'app/my caf\303\251.ts')"
-  git -C "$repo" checkout -q -b feat
+  start_branch "$repo" feat
   commit_file "$repo" "$name"
   printf 'edit\n' >> "$repo/$name"
   run --separate-stderr "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-maintainer-shell --root "$repo"
@@ -311,7 +333,7 @@ value_of() {
 @test "a clean review list prints no DIRTY line" {
   local repo
   repo="$(make_repo clean)"
-  git -C "$repo" checkout -q -b feat
+  start_branch "$repo" feat
   commit_file "$repo" app/a.ts
   run --separate-stderr "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-maintainer-shell --root "$repo"
   [ "$status" -eq 0 ]
@@ -321,7 +343,7 @@ value_of() {
 @test "a status that cannot run reports the failure sentinel rather than a clean tree" {
   local repo shim
   repo="$(make_repo status-fails)"
-  git -C "$repo" checkout -q -b feat
+  start_branch "$repo" feat
   commit_file "$repo" app/a.ts
   shim="$BATS_TEST_TMPDIR/shim"
   mkdir -p "$shim"
@@ -343,7 +365,7 @@ EOF
 @test "the capture is the value audit-scope-digest.sh --read returns, and a re-run returns it unchanged" {
   local repo first second read_back key_base
   repo="$(make_repo capture)"
-  git -C "$repo" checkout -q -b feat
+  start_branch "$repo" feat
   commit_file "$repo" app/a.ts
   run --separate-stderr "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-maintainer-shell --root "$repo"
   [ "$status" -eq 0 ]
@@ -361,7 +383,7 @@ EOF
 @test "the stored capture records the printed BASE_REASON and no override" {
   local repo key scope_file
   repo="$(make_repo capture-reason)"
-  git -C "$repo" checkout -q -b feat
+  start_branch "$repo" feat
   commit_file "$repo" app/a.ts
   run --separate-stderr "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-maintainer-shell --root "$repo"
   [ "$status" -eq 0 ]
@@ -377,7 +399,7 @@ EOF
 @test "--base-override stores base_overridden true and still stores the resolver's reason" {
   local repo first key scope_file
   repo="$(make_repo capture-override)"
-  git -C "$repo" checkout -q -b feat
+  start_branch "$repo" feat
   commit_file "$repo" app/a.ts
   first="$(git -C "$repo" rev-parse HEAD)"
   commit_file "$repo" app/b.ts
@@ -396,7 +418,7 @@ EOF
   local repo main_sha tree key scope_file
   repo="$(make_repo capture-member-refusal)"
   main_sha="$(git -C "$repo" rev-parse HEAD)"
-  git -C "$repo" checkout -q -b feat
+  start_branch "$repo" feat
   commit_file "$repo" app/a.ts
   tree="$(git -C "$repo" rev-parse 'HEAD^{tree}')"
   printf '#!/usr/bin/env bash\nprintf "%%s\\n" "%s" member-refusal "%s" "%s"\n' \
@@ -415,33 +437,78 @@ EOF
 @test "AUDIT_KEY is empty on a detached HEAD, where the branch half of the key is undeterminable" {
   local repo
   repo="$(make_repo detached)"
-  git -C "$repo" checkout -q -b feat
+  start_branch "$repo" feat
   commit_file "$repo" app/a.ts
   git -C "$repo" checkout -q --detach HEAD
   run --separate-stderr "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-maintainer-shell --root "$repo"
   [ "$status" -eq 0 ]
   printf '%s\n' "$output" | grep -qxF 'AUDIT_KEY='
   [ -n "$(value_of "$output" KEY_BASE)" ]
+  # Nothing is keyed without an audit key, so no review diff is written either.
+  printf '%s\n' "$output" | grep -qxF 'REVIEW_DIFF='
+  grep -qF -- 'no audit key' <<<"$stderr"
+}
+
+# ---------- the review diff -------------------------------------------------------
+
+@test "REVIEW_DIFF names the member's diff file under the audit store and the file holds the changed hunks" {
+  local repo key
+  repo="$(make_repo review-diff-file)"
+  start_branch "$repo" feat
+  commit_file "$repo" app/a.ts
+  run --separate-stderr "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-maintainer-shell --root "$repo"
+  [ "$status" -eq 0 ]
+  key="$(value_of "$output" AUDIT_KEY)"
+  [ -n "$key" ]
+  [ "$(value_of "$output" REVIEW_DIFF)" = "$repo/.gaia/local/audit/${key}.code-audit-maintainer-shell.review.diff" ]
+  grep -qxF -- 'diff --git a/app/a.ts b/app/a.ts' "$repo/.gaia/local/audit/${key}.code-audit-maintainer-shell.review.diff"
+  grep -qxF -- '+touched' "$repo/.gaia/local/audit/${key}.code-audit-maintainer-shell.review.diff"
+  # No temporary file is left beside it.
+  [ -z "$(find "$repo/.gaia/local/audit" -name '.review-diff.*')" ]
+}
+
+@test "REVIEW_DIFF is empty with one stderr warning when the diff cannot be produced, and the scope still resolves" {
+  local repo shim
+  repo="$(make_repo review-diff-unproducible)"
+  start_branch "$repo" feat
+  commit_file "$repo" app/a.ts
+  git -C "$repo" show -s --remerge-diff --format= HEAD >/dev/null 2>&1 || skip "this git has no --remerge-diff"
+  # Fails only the history walk the review input makes for merge commits, so
+  # the CHANGED listing succeeds and the diff alone cannot be produced.
+  shim="$BATS_TEST_TMPDIR/shim-rev-list"
+  fail_git_subcommand "$shim" rev-list
+  run --separate-stderr env PATH="$shim:$PATH" "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-maintainer-shell --root "$repo" \
+    --base-override "$(git -C "$repo" rev-parse HEAD~1)"
+  [ "$status" -eq 0 ]
+  printf '%s\n' "$output" | grep -qxF 'REVIEW_DIFF='
+  printf '%s\n' "$output" | grep -qxF 'CHANGED=app/a.ts'
+  grep -qF -- 'could not produce the review diff' <<<"$stderr"
 }
 
 # ---------- a diff that cannot list paths ----------------------------------------
 
-# fail_git_diff <dir>: a git shim that fails only `diff`, so the empty list a
-# swallowed failure would leave can only come from the diff under test.
-fail_git_diff() {
+# fail_git_subcommand <dir> <subcommand>: a git shim that fails only that
+# subcommand, so the empty list a swallowed failure would leave can only come
+# from the listing under test.
+fail_git_subcommand() {
   mkdir -p "$1"
   cat > "$1/git" <<EOF
 #!/usr/bin/env bash
-for argument in "\$@"; do [ "\$argument" = diff ] && exit 128; done
+for argument in "\$@"; do [ "\$argument" = $2 ] && exit 128; done
 exec $(command -v git) "\$@"
 EOF
   chmod +x "$1/git"
 }
 
+# fail_git_diff <dir>: a git shim that fails only `diff`.
+fail_git_diff() {
+  fail_git_subcommand "$1" diff
+}
+
 @test "a membership diff that fails exits 1 rather than printing an empty FULL_CHANGED" {
   local repo shim
   repo="$(make_repo full-diff-fails)"
-  git -C "$repo" checkout -q -b feat
+  start_branch "$repo" feat
   commit_file "$repo" app/a.ts
   shim="$BATS_TEST_TMPDIR/shim-full"
   fail_git_diff "$shim"
@@ -455,12 +522,41 @@ EOF
 @test "a review diff that fails exits 1 rather than printing an empty CHANGED" {
   local repo shim
   repo="$(make_repo review-diff-fails)"
-  git -C "$repo" checkout -q -b feat
+  start_branch "$repo" feat
   commit_file "$repo" app/a.ts
   shim="$BATS_TEST_TMPDIR/shim-review"
-  fail_git_diff "$shim"
+  fail_git_subcommand "$shim" diff-tree
   run --separate-stderr env PATH="$shim:$PATH" "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-frontend --root "$repo" --skip-full-base
   [ "$status" -eq 1 ]
+  grep -qF -- 'could not list the review increment' <<<"$stderr"
+  grep -qF -- 'D_SCOPE=' <<<"$output" && return 1
+  true
+}
+
+@test "a pathspec listing that fails exits 1 rather than printing an empty CHANGED" {
+  local repo shim
+  repo="$(make_repo pathspec-diff-fails)"
+  start_branch "$repo" feat
+  commit_file "$repo" app/a.ts
+  shim="$BATS_TEST_TMPDIR/shim-pathspec"
+  fail_git_diff "$shim"
+  run --separate-stderr env PATH="$shim:$PATH" "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-frontend --root "$repo" --skip-full-base --review-path '*.ts'
+  [ "$status" -eq 1 ]
+  grep -qF -- 'could not list the review increment' <<<"$stderr"
+  grep -qF -- 'D_SCOPE=' <<<"$output" && return 1
+  true
+}
+
+@test "an absent local base tip exits 1 naming git fetch origin rather than printing an empty CHANGED" {
+  local repo
+  repo="$(make_repo no-local-base)"
+  start_branch "$repo" feat
+  commit_file "$repo" app/a.ts
+  git -C "$repo" update-ref -d refs/remotes/origin/main
+  run --separate-stderr "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-frontend --root "$repo" \
+    --skip-full-base --base-override "$(git -C "$repo" rev-parse HEAD~1)"
+  [ "$status" -eq 1 ]
+  grep -qF -- 'git fetch origin' <<<"$stderr"
   grep -qF -- 'could not list the review increment' <<<"$stderr"
   grep -qF -- 'D_SCOPE=' <<<"$output" && return 1
   true
@@ -469,7 +565,7 @@ EOF
 @test "a missing base-provenance resolver exits 1 and names it, rather than resolving a private base" {
   local repo
   repo="$(make_repo no-provenance-lib)"
-  git -C "$repo" checkout -q -b feat
+  start_branch "$repo" feat
   commit_file "$repo" app/a.ts
   rm "$repo/.claude/hooks/lib/audit-base-provenance.sh"
   run --separate-stderr "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-maintainer-shell --root "$repo"
@@ -491,9 +587,9 @@ EOF
 stacked_repo() {
   local repo
   repo="$(make_repo "$1")"
-  git -C "$repo" checkout -q -b release
+  start_branch "$repo" release
   commit_file "$repo" app/base-only.ts
-  git -C "$repo" checkout -q -b feat
+  start_branch "$repo" feat
   commit_file "$repo" app/feat-only.ts
   git -C "$repo" update-ref refs/remotes/origin/main refs/heads/main
   git -C "$repo" update-ref refs/remotes/origin/release refs/heads/release
@@ -517,7 +613,7 @@ SHIM
 @test "--eligibility prints ELIG_BASE after AUDIT_KEY and one ELIG_CHANGED line per whole-PR path, unfiltered" {
   local repo keys
   repo="$(make_repo elig-shape)"
-  git -C "$repo" checkout -q -b feat
+  start_branch "$repo" feat
   commit_file "$repo" app/a.ts
   commit_file "$repo" scripts/c.sh
   run --separate-stderr env -u GITHUB_ACTIONS -u GITHUB_BASE_REF PATH="$BATS_TEST_TMPDIR/no-gh:$PATH" \
@@ -525,7 +621,7 @@ SHIM
     --skip-full-base --eligibility --review-path '*.ts'
   [ "$status" -eq 0 ]
   keys="$(printf '%s\n' "$output" | sed -n 's/=.*//p' | awk '!seen[$0]++' | tr '\n' ' ')"
-  [ "$keys" = "AUDIT_ROOT BASE_REF BASE_REASON KEY_REF ANCHOR_TREE BASE_SHA KEY_BASE AUDIT_KEY ELIG_BASE D_SCOPE DEFINITION CHANGED ELIG_CHANGED " ]
+  [ "$keys" = "AUDIT_ROOT BASE_REF BASE_REASON KEY_REF ANCHOR_TREE BASE_SHA KEY_BASE AUDIT_KEY ELIG_BASE D_SCOPE REVIEW_DIFF DEFINITION CHANGED ELIG_CHANGED " ]
   [ "$(value_of "$output" ELIG_BASE)" = "$(git -C "$repo" merge-base HEAD main)" ]
   printf '%s\n' "$output" | grep -qxF 'ELIG_CHANGED=app/a.ts'
   printf '%s\n' "$output" | grep -qxF 'ELIG_CHANGED=scripts/c.sh'
@@ -587,7 +683,7 @@ SHIM
 @test "an eligibility diff that fails prints ELIG_BASE empty at status 0 rather than an empty set on a resolved base" {
   local repo shim
   repo="$(make_repo elig-diff-fails)"
-  git -C "$repo" checkout -q -b feat
+  start_branch "$repo" feat
   commit_file "$repo" app/a.ts
   # Fails only a pathspec-less diff: the review diff always carries `--`.
   shim="$BATS_TEST_TMPDIR/shim-elig"
@@ -615,17 +711,19 @@ SHIM
 linked_worktree() {
   local repo="$1" name="$2" worktree_directory="$BATS_TEST_TMPDIR/$2"
   git -C "$repo" worktree add -q -b "$name" "$worktree_directory"
+  git -C "$repo" config "branch.$name.gaia-audit-base" main
   printf '%s' "$(cd "$worktree_directory" && pwd -P)"
 }
 
-@test "DEFINITION prints right after D_SCOPE and is unchanged when the main checkout's copy is byte-identical" {
+@test "DEFINITION prints right after REVIEW_DIFF and is unchanged when the main checkout's copy is byte-identical" {
   local repo worktree
   repo="$(make_repo definition-same)"
   worktree="$(linked_worktree "$repo" definition-same-wt)"
   run --separate-stderr "$worktree/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-maintainer-shell --root "$worktree" --skip-full-base
   [ "$status" -eq 0 ]
   [ "$(value_of "$output" DEFINITION)" = "unchanged" ]
-  [ "$(printf '%s\n' "$output" | grep -n '^DEFINITION=' | head -1 | cut -d: -f1)" -eq "$(( $(printf '%s\n' "$output" | grep -n '^D_SCOPE=' | head -1 | cut -d: -f1) + 1 ))" ]
+  [ "$(printf '%s\n' "$output" | grep -n '^DEFINITION=' | head -1 | cut -d: -f1)" -eq "$(( $(printf '%s\n' "$output" | grep -n '^REVIEW_DIFF=' | head -1 | cut -d: -f1) + 1 ))" ]
+  [ "$(printf '%s\n' "$output" | grep -n '^REVIEW_DIFF=' | head -1 | cut -d: -f1)" -eq "$(( $(printf '%s\n' "$output" | grep -n '^D_SCOPE=' | head -1 | cut -d: -f1) + 1 ))" ]
 }
 
 @test "DEFINITION names the working root's copy to re-read when it differs from the main checkout's" {

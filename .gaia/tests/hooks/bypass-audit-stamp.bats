@@ -54,6 +54,7 @@ wiki_pr_with_stale_marker() {
   mgf_commit "frontend/app/x.ts" "export const x = 1"
   git -C "$REPO" checkout --quiet main
   git -C "$REPO" merge --quiet --ff-only feature
+  git -C "$REPO" push --quiet origin main
   git -C "$REPO" checkout --quiet feature
   mgf_marker code-audit-frontend >/dev/null
   mgf_commit "wiki/page.md" "doc"
@@ -95,8 +96,8 @@ wiki_pr_with_stale_marker() {
 
 @test "UAT-011 mutation: evaluating the out-of-scope check after frontend_cleared loses the stamp on the marker-present fixture" {
   local mutant
-  mutant="$(mgf_scratch_hook 's/\n  check_out_of_scope_pr && out_of_scope_pr=1\n/\n/; s/(\n  if \[ "\$out_of_scope_pr" -eq 1 \]; then\n    github_status_cleared)/\n  check_out_of_scope_pr && out_of_scope_pr=1$1/')"
-  # Moved, not deleted: the evaluation still runs, after the marker allows.
+  mutant="$(mgf_scratch_hook 's/\n  check_out_of_scope_pr && out_of_scope_pr=1\n/\n  frontend_cleared || { check_out_of_scope_pr && out_of_scope_pr=1; }\n/')"
+  # Not deleted: the evaluation still runs, but only when no marker clears first.
   [ "$(grep -c 'check_out_of_scope_pr && out_of_scope_pr=1' "$mutant")" -eq 1 ]
   wiki_pr_with_stale_marker
 
@@ -122,6 +123,107 @@ wiki_pr_with_stale_marker() {
   mgf_run_merge "gh pr merge 12 --squash"
   assert_allowed_silently
   assert_one_post 'skipped: chore(deps) manifest-only'
+}
+
+# --- a bypass pull request makes no base lookup -----------------------------------
+#
+# Neither bypass reads a branch-own digest, so the gate decides them before it
+# asks GitHub for the base branch tip. Each state below would deny any pull
+# request that did need the tip: the branches endpoint fails, or the tip it
+# reports is a commit this checkout does not hold.
+
+ABSENT_BASE_TIP=0123456789abcdef0123456789abcdef01234567
+
+# assert_no_branches_call: the stub never saw the base branch lookup.
+assert_no_branches_call() {
+  if grep -qF -- '/branches/' "$MGF_GH_LOG"; then
+    printf 'the gate looked up the base branch:\n%s\n' "$(cat "$MGF_GH_LOG")" >&2
+    return 1
+  fi
+  return 0
+}
+
+# assert_branches_call: the stub saw the base branch lookup (non-vacuity for the
+# mutants below).
+assert_branches_call() {
+  grep -qF -- '/branches/' "$MGF_GH_LOG"
+}
+
+out_of_scope_pull_request() {
+  mgf_commit "wiki/page.md" "doc"
+  mgf_record 12 false "docs: page" "wiki/page.md"
+}
+
+chore_deps_pull_request() {
+  cp "$MGF_REPO_ROOT/.gaia/scripts/chore-deps-skip.sh" "$REPO/.gaia/scripts/chore-deps-skip.sh"
+  mkdir -p "$REPO/.claude/hooks/lib"
+  cp "$MGF_REPO_ROOT/.claude/hooks/lib/gaia-packages.sh" "$REPO/.claude/hooks/lib/gaia-packages.sh"
+  mgf_commit "package.json" '{"name":"x","version":"1.0.1"}'
+  mgf_record 12 false "chore(deps): bump x from 1.0.0 to 1.0.1" "package.json"
+}
+
+@test "an out-of-scope pull request is allowed with the branches lookup failing, and the gate never asks for the base" {
+  out_of_scope_pull_request
+  export GH_STUB_FAIL_BRANCHES=1
+
+  mgf_run_merge "gh pr merge 12 --squash"
+  assert_allowed_silently
+  assert_one_post 'skipped: out of scope'
+  assert_no_branches_call
+}
+
+@test "an out-of-scope pull request is allowed with the base tip absent locally, and the gate never asks for the base" {
+  out_of_scope_pull_request
+  export GH_STUB_BASE_TIP="$ABSENT_BASE_TIP"
+
+  mgf_run_merge "gh pr merge 12 --squash"
+  assert_allowed_silently
+  assert_one_post 'skipped: out of scope'
+  assert_no_branches_call
+}
+
+@test "a chore(deps) pull request is allowed with the branches lookup failing, and the gate never asks for the base" {
+  chore_deps_pull_request
+  export GH_STUB_FAIL_BRANCHES=1
+
+  mgf_run_merge "gh pr merge 12 --squash"
+  assert_allowed_silently
+  assert_one_post 'skipped: chore(deps) manifest-only'
+  assert_no_branches_call
+}
+
+@test "a chore(deps) pull request is allowed with the base tip absent locally, and the gate never asks for the base" {
+  chore_deps_pull_request
+  export GH_STUB_BASE_TIP="$ABSENT_BASE_TIP"
+
+  mgf_run_merge "gh pr merge 12 --squash"
+  assert_allowed_silently
+  assert_one_post 'skipped: chore(deps) manifest-only'
+  assert_no_branches_call
+}
+
+@test "mutation: the base lookup moved ahead of the out-of-scope arm denies the out-of-scope pull request" {
+  local mutant
+  mutant="$(mgf_scratch_hook 's/\n  out_of_scope_pr=0\n/\n  gate_require_digests\n  out_of_scope_pr=0\n/')"
+  out_of_scope_pull_request
+  export GH_STUB_FAIL_BRANCHES=1
+
+  mgf_run_merge "gh pr merge 12 --squash" "$mutant"
+  assert_denied_by_json
+  assert_branches_call
+  [ "$(mgf_post_count)" -eq 0 ]
+}
+
+@test "mutation: the base lookup moved ahead of the chore(deps) arm denies the chore(deps) pull request" {
+  local mutant
+  mutant="$(mgf_scratch_hook 's/(  frontend_cleared_by=""\n)(  # The chore\(deps\) waiver reads no digest)/$1  gate_require_digests\n$2/')"
+  chore_deps_pull_request
+  export GH_STUB_FAIL_BRANCHES=1
+
+  mgf_run_merge "gh pr merge 12 --squash" "$mutant"
+  assert_denied_by_json
+  assert_branches_call
+  [ "$(mgf_post_count)" -eq 0 ]
 }
 
 # --- the refusal state ----------------------------------------------------------
@@ -280,6 +382,7 @@ uat_004_fixture() {
   [ -z "$1" ] || printf 'default_mode: %s\n' "$1" >> "$REPO/.gaia/audit-ci.yml"
   git -C "$REPO" add .github/workflows/code-review-audit.yml .gaia/audit-ci.yml
   git -C "$REPO" commit --quiet -m "stale audit lane"
+  git -C "$REPO" push --quiet origin main
   git -C "$REPO" checkout --quiet -B feature main
   mgf_commit "frontend/app/x.ts" "export const x = 1"
   mgf_record 12 false "feat: x" "frontend/app/x.ts"

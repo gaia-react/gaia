@@ -10,18 +10,23 @@
 # applies the caller's own `--jq` expression to it with the real jq, so the
 # fork query, the merge gate's record read and post-audit-status.sh's head read
 # all see one consistent pull request. `gh api` with `-X POST` succeeds and is
-# only logged; any other `gh api` answers from the statuses file through the
+# only logged; `gh api repos/.../branches/<base>` answers with the tip of the
+# sandbox's bare origin (the catch-up fixture) unless GH_STUB_BASE_TIP names one,
+# and GH_STUB_FAIL_BRANCHES / GH_STUB_HANG_BRANCHES fail or hang only that
+# endpoint; any other `gh api` answers from the statuses file through the
 # caller's `--jq`, as GitHub's list endpoint would.
 #
 # The directive below: `status` and `output` are set by bats' own `run`, which
 # the linter cannot see in a `.sh` file.
 # shellcheck disable=SC2154
 
-# mgf_init: build REPO, a `feature` branch off a `main` base commit, with the
-# member resolver and the libraries it loads copied in beside it (untracked,
-# so they never appear in a diff under test), and install the gh stub.
+# mgf_init: build REPO, a `feature` branch off a `main` base commit with a bare
+# origin carrying `main`, with the member resolver and the libraries it loads
+# copied in beside it (untracked, so they never appear in a diff under test),
+# and install the gh stub.
 mgf_init() {
   MGF_REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
+  . "$MGF_REPO_ROOT/.gaia/tests/helpers/catchup-fixture.sh"
   MGF_HOOK="$MGF_REPO_ROOT/.claude/hooks/pr-merge-audit-check.sh"
   MGF_LIBRARY_DIRECTORY="$MGF_REPO_ROOT/.claude/hooks/lib"
   REPO="$BATS_TEST_TMPDIR/repo"
@@ -42,13 +47,14 @@ mgf_init() {
   seed_audit_roster "$REPO"
   git -C "$REPO" add .gaia/VERSION .gaia/audit-ci.yml README.md
   git -C "$REPO" commit --quiet -m "init"
-  git -C "$REPO" checkout --quiet -b feature
+  catchup_add_origin "$REPO" main --feature feature || return 1
 
   mkdir -p "$REPO/.gaia/scripts" "$REPO/.claude/hooks/lib"
+  cp "$MGF_REPO_ROOT/.gaia/scripts/audit-key-lib.sh" "$REPO/.gaia/scripts/"
   cp "$MGF_REPO_ROOT/.gaia/scripts/resolve-audit-members.sh" "$REPO/.gaia/scripts/"
   chmod +x "$REPO/.gaia/scripts/resolve-audit-members.sh"
   local library_file
-  for library_file in audit-scope.sh audit-machinery.sh audit-clearance.sh audit-digest.sh audit-base-provenance.sh; do
+  for library_file in audit-scope.sh audit-machinery.sh audit-clearance.sh audit-digest.sh audit-base-provenance.sh audit-branch-patch.sh; do
     cp "$MGF_LIBRARY_DIRECTORY/$library_file" "$REPO/.claude/hooks/lib/$library_file"
   done
 
@@ -64,6 +70,7 @@ mgf_install_gh_stub() {
   cat > "$MGF_STUB_DIRECTORY/bin/gh" <<EOF
 #!/usr/bin/env bash
 stub_directory="$MGF_STUB_DIRECTORY"
+origin_directory="$CATCHUP_ORIGIN"
 EOF
   cat >> "$MGF_STUB_DIRECTORY/bin/gh" <<'EOF'
 printf '%s\n' "$*" >> "$stub_directory/gh.log"
@@ -115,6 +122,16 @@ case "$1 ${2-}" in
   "api "*)
     case " $* " in
       *" -X POST "*) exit 0 ;;
+      *" repos/"*"/branches/"*)
+        [ -z "${GH_STUB_HANG_BRANCHES:-}" ] || { sleep 4242; exit 1; }
+        [ -z "${GH_STUB_FAIL_BRANCHES:-}" ] || { echo 'gh stub: branches lookup failed' >&2; exit 1; }
+        [ -z "${GH_STUB_BASE_TIP:-}" ] || { printf '%s\n' "$GH_STUB_BASE_TIP"; exit 0; }
+        all_arguments="$*"
+        branch_name="${all_arguments##*/branches/}"
+        branch_name="${branch_name%% *}"
+        git -C "$origin_directory" rev-parse "refs/heads/$branch_name"
+        exit $?
+        ;;
     esac
     answer "$(cat "$stub_directory/statuses.json" 2>/dev/null || printf '[]')"
     exit 0
@@ -141,27 +158,29 @@ mgf_commit() {
 # pull request every `gh pr view` answers with, its head at the CURRENT local
 # HEAD, so call it after the commits that make up the pull request.
 mgf_record() {
-  local number="$1" cross="$2" title="$3" head
+  local number="$1" cross="$2" title="$3" head base_branch="${CATCHUP_BASE_BRANCH:-main}"
   shift 3
   head="$(git -C "$REPO" rev-parse HEAD)"
   printf '%s\n' "$@" | jq -R -s -c \
-    --argjson number "$number" --argjson is_cross_repository "$cross" --arg title "$title" --arg head_object_id "$head" \
-    '{number: $number, isCrossRepository: $is_cross_repository, title: $title, baseRefName: "", headRefOid: $head_object_id,
+    --argjson number "$number" --argjson is_cross_repository "$cross" --arg title "$title" --arg head_object_id "$head" --arg base_branch "$base_branch" \
+    '{number: $number, isCrossRepository: $is_cross_repository, title: $title, baseRefName: $base_branch, headRefOid: $head_object_id,
       files: (split("\n") | map(select(length > 0)) | map({path: .}))}' \
     > "$MGF_STUB_DIRECTORY/record.json"
 }
 
-# mgf_member_digest <member>: the member's content digest for REPO's HEAD,
-# through the real digest engine.
+# mgf_member_digest <member>: the member's branch-own digest for REPO's HEAD
+# against the tip GitHub reports for the base branch (the bare origin's), through the real
+# digest engine.
 mgf_member_digest() {
-  bash -c '. "$1"; audit_member_digest "$2" "$3"' _ "$MGF_LIBRARY_DIRECTORY/audit-digest.sh" "$REPO" "$1"
+  bash -c '. "$1"; merge_base="$(audit_branch_patch_merge_base "$2" "$3")" && audit_branch_member_digest "$2" "$4" "$merge_base"' \
+    _ "$MGF_LIBRARY_DIRECTORY/audit-digest.sh" "$REPO" "$(git -C "$CATCHUP_ORIGIN" rev-parse "refs/heads/$CATCHUP_BASE_BRANCH")" "$1"
 }
 
-# mgf_marker <member>: write an earned clearance for <member> at REPO's HEAD,
-# in the writer's schema-3 shape, and print its path.
+# mgf_marker <member> [<digest>]: write an earned clearance for <member> at REPO's HEAD,
+# in the writer's schema-3 shape (keyed to <digest> when given), and print its path.
 mgf_marker() {
   local member="$1" digest sha tree infix sidecar path
-  digest="$(mgf_member_digest "$member")"
+  digest="${2:-$(mgf_member_digest "$member")}"
   sha="$(git -C "$REPO" rev-parse HEAD)"
   tree="$(git -C "$REPO" rev-parse 'HEAD^{tree}')"
   if [ "$member" = code-audit-frontend ]; then infix=''; sidecar=true; else infix=".$member"; sidecar=false; fi
@@ -173,10 +192,11 @@ mgf_marker() {
 }
 
 # mgf_status_success: make HEAD carry a GAIA-Audit success whose description
-# the gate's commit-status signal accepts for the current frontend digest.
+# the gate's commit-status signal accepts for the current frontend digest (or
+# for <digest> when given).
 mgf_status_success() {
   local description
-  description="1.4.0 $(mgf_member_digest code-audit-frontend) $(git -C "$REPO" rev-parse 'HEAD^{tree}')"
+  description="1.4.0 ${1:-$(mgf_member_digest code-audit-frontend)} $(git -C "$REPO" rev-parse 'HEAD^{tree}')"
   jq -n -c --arg description "$description" '[{context: "GAIA-Audit", state: "success", description: $description}]' \
     > "$MGF_STUB_DIRECTORY/statuses.json"
 }

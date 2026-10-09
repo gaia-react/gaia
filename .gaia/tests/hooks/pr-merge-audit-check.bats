@@ -34,9 +34,10 @@
 # fail rather than false-pass.
 #
 # Setup models a PR: a base commit on `main`, then a `feature` branch carrying
-# the change under test. merge-base(HEAD, main) resolves to the base commit, so
-# the bypass diffs only the feature's files. No remote is needed; the hook
-# falls back from `origin/main` to `main`.
+# the change under test, and a bare `origin` the mocked gh reads the base
+# branch tip from (the catch-up fixture). The gate takes the base branch name
+# from the PR record and its tip from GitHub, so the stubs below answer
+# `gh api repos/.../branches/<base>` from that bare origin.
 #
 # The real .gaia/scripts/resolve-audit-members.sh is copied into REPO
 # (untracked, so it never appears in the diffs under test) so every case below
@@ -52,6 +53,7 @@ setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   . "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/tests/helpers/path.sh"
   . "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/tests/helpers/audit-roster.sh"
+  . "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/tests/helpers/catchup-fixture.sh"
   HOOK_ABSOLUTE_PATH=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/pr-merge-audit-check.sh
   SETTINGS_ABSOLUTE_PATH=$(cd "$BATS_TEST_DIRNAME/../../../.claude" && pwd)/settings.json
   RESOLVER_ABSOLUTE_PATH=$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/resolve-audit-members.sh
@@ -70,7 +72,7 @@ setup() {
   git -C "$REPO" add .gaia/VERSION .gaia/audit-ci.yml README.md
   git -C "$REPO" commit --quiet -m "init"
 
-  git -C "$REPO" checkout --quiet -b feature
+  catchup_add_origin "$REPO" main --feature feature || return 1
 
   mkdir -p "$REPO/.gaia/scripts"
   cp "$RESOLVER_ABSOLUTE_PATH" "$REPO/.gaia/scripts/resolve-audit-members.sh"
@@ -88,6 +90,8 @@ setup() {
   cp "$LIBRARY_DIRECTORY/audit-clearance.sh" "$REPO/.claude/hooks/lib/audit-clearance.sh"
   cp "$LIBRARY_DIRECTORY/audit-digest.sh" "$REPO/.claude/hooks/lib/audit-digest.sh"
   cp "$LIBRARY_DIRECTORY/audit-base-provenance.sh" "$REPO/.claude/hooks/lib/audit-base-provenance.sh"
+  cp "$LIBRARY_DIRECTORY/audit-branch-patch.sh" "$REPO/.claude/hooks/lib/audit-branch-patch.sh"
+  cp "$BATS_TEST_DIRNAME/../../scripts/audit-key-lib.sh" "$REPO/.gaia/scripts/audit-key-lib.sh"
 
   # Every permit this gate issues is bound to the pull request the command
   # names, so every case here needs a pull-request record to be bound TO, not
@@ -129,6 +133,7 @@ seed_base_template() {
     > "$REPO/.gaia/cli/templates/workflows/code-review-audit.yml.tmpl"
   git -C "$REPO" add .gaia/cli/templates/workflows/code-review-audit.yml.tmpl
   git -C "$REPO" commit --quiet -m "seed bundled template on base"
+  git -C "$REPO" push --quiet origin main
   git -C "$REPO" checkout --quiet -B feature main
 }
 
@@ -163,12 +168,26 @@ run_merge_hook_large() {
   run bash -c 'cd "$1" && bash "$3" < "$2"' _ "$REPO" "$jsonfile" "$HOOK_ABSOLUTE_PATH"
 }
 
-# Compute MEMBER's real content digest for REPO's current HEAD, via the real
-# digest engine (never re-derived by hand), so fixtures stay in lockstep with
-# whatever the hook itself would compute.
+# The tip of the base branch as the mocked GitHub reports it: the bare origin's
+# branch, which a test advances without fetching to model a tip this checkout
+# has not seen.
+github_base_tip() {
+  git -C "$CATCHUP_ORIGIN" rev-parse "refs/heads/${1:-main}"
+}
+
+# Compute MEMBER's real branch-own digest for ROOT's current HEAD, via the real
+# digest engine over the merge base with the tip GitHub reports (never
+# re-derived by hand), so fixtures stay in lockstep with whatever the hook
+# itself would compute.
+member_digest_at() {
+  local root="$1" member="$2"
+  bash -c '. "$1"; merge_base="$(audit_branch_patch_merge_base "$2" "$3")" && audit_branch_member_digest "$2" "$4" "$merge_base"' \
+    _ "$LIBRARY_DIRECTORY/audit-digest.sh" "$root" "$(github_base_tip main)" "$member"
+}
+
+# The same call pinned to REPO.
 member_digest_for() {
-  local member="$1"
-  bash -c '. "$1"; audit_member_digest "$2" "$3"' _ "$LIBRARY_DIRECTORY/audit-digest.sh" "$REPO" "$member"
+  member_digest_at "$REPO" "$1"
 }
 
 # Write a Code Audit Team EARNED clearance marker for MEMBER, keyed to
@@ -271,6 +290,39 @@ pool_snapshot() {
   ( cd "$audit_pool_directory" && find . -type f | LC_ALL=C sort | while IFS= read -r pool_file; do printf '%s ' "$pool_file"; shasum "$pool_file" 2>/dev/null; done )
 }
 
+# add_base_lookup_to_stub: splice the base-branch tip answer into the gh stub
+# just written, ahead of its own arms. GitHub's branches endpoint answers with
+# the tip of the bare origin's branch (main when the branch does not exist
+# there), GH_STUB_BASE_TIP overrides it, and GH_STUB_FAIL_BRANCHES /
+# GH_STUB_HANG_BRANCHES fail or hang only that endpoint, so the fork query and
+# the PR record still answer. GH_STUB_LOG receives one line per branches call.
+add_base_lookup_to_stub() {
+  local stub="$STUB_BINARY_DIRECTORY/gh" patched="$BATS_TEST_TMPDIR/gh-with-base-lookup"
+  {
+    sed -n '1p' "$stub"
+    printf 'origin_directory=%q\n' "$CATCHUP_ORIGIN"
+    cat <<'BASE_LOOKUP_ARM'
+case "$*" in
+  *repos/*/branches/*)
+    if [ -n "${GH_STUB_LOG:-}" ]; then printf '%s\n' "$*" >> "$GH_STUB_LOG"; fi
+    if [ -n "${GH_STUB_HANG_BRANCHES:-}" ]; then sleep 4242; exit 1; fi
+    if [ -n "${GH_STUB_FAIL_BRANCHES:-}" ]; then echo 'gh stub: branches lookup failed' >&2; exit 1; fi
+    if [ -n "${GH_STUB_BASE_TIP:-}" ]; then printf '%s\n' "$GH_STUB_BASE_TIP"; exit 0; fi
+    all_arguments="$*"
+    branch_name="${all_arguments##*/branches/}"
+    branch_name="${branch_name%% *}"
+    git -C "$origin_directory" rev-parse "refs/heads/$branch_name" 2>/dev/null \
+      || git -C "$origin_directory" rev-parse refs/heads/main
+    exit 0
+    ;;
+esac
+BASE_LOOKUP_ARM
+    sed -n '2,$p' "$stub"
+  } > "$patched"
+  cp "$patched" "$stub"
+  chmod +x "$stub"
+}
+
 # Install a gh stub on a prepended PATH. `gh issue list` prints $1 (default []).
 # GET statuses return null (so the frontend is NOT cleared via a CI status),
 # `gh pr view` returns the PR record the hook reads once: an empty title (no
@@ -296,13 +348,14 @@ case "$*" in *isCrossRepository*) printf 'false\n'; exit 0 ;; esac
 case "$1" in
   auth) exit 0 ;;
   repo) printf 'gaia-react/gaia\n'; exit 0 ;;
-  pr) printf '{"title":"","baseRefName":"","number":"30"}\n'; exit 0 ;;
+  pr) printf '{"title":"","baseRefName":"main","number":"30"}\n'; exit 0 ;;
   issue) cat "$issues_file"; exit 0 ;;
   api) printf 'null\n'; exit 0 ;;
   *) exit 0 ;;
 esac
 EOF
   chmod +x "$STUB_BINARY_DIRECTORY/gh"
+  add_base_lookup_to_stub
   export PATH="$STUB_BINARY_DIRECTORY:$PATH"
 }
 
@@ -333,7 +386,7 @@ case "$1" in
   auth) exit 0 ;;
   repo) printf 'gaia-react/gaia\n'; exit 0 ;;
   pr) jq -n --arg title "$(cat "$title_file")" --slurpfile files "$files_file" \
-        '{title:$title, baseRefName:"", number:"30", files: $files[0]}'
+        '{title:$title, baseRefName:"main", number:"30", files: $files[0]}'
       exit 0 ;;
   issue) cat "$issues_file"; exit 0 ;;
   api) printf 'null\n'; exit 0 ;;
@@ -341,6 +394,7 @@ case "$1" in
 esac
 EOF
   chmod +x "$STUB_BINARY_DIRECTORY/gh"
+  add_base_lookup_to_stub
 }
 
 # Same stub, but the GAIA-Audit commit status on HEAD is present and matches, so
@@ -367,13 +421,14 @@ case "$*" in *isCrossRepository*) printf 'false\n'; exit 0 ;; esac
 case "$1" in
   auth) exit 0 ;;
   repo) printf 'gaia-react/gaia\n'; exit 0 ;;
-  pr) printf '{"title":"","baseRefName":"","number":"30"}\n'; exit 0 ;;
+  pr) printf '{"title":"","baseRefName":"main","number":"30"}\n'; exit 0 ;;
   issue) cat "$issues_file"; exit 0 ;;
   api) cat "$status_file"; exit 0 ;;
   *) exit 0 ;;
 esac
 EOF
   chmod +x "$STUB_BINARY_DIRECTORY/gh"
+  add_base_lookup_to_stub
 }
 
 # Put a well-formed GAIA-Audit trailer on HEAD: an empty commit whose message
@@ -533,6 +588,7 @@ assert_not_in_set() {
   printf 'export const moved = "a line long enough to be detected as a rename";\n' > "$REPO/frontend/app/moved.ts"
   git -C "$REPO" add frontend/app/moved.ts
   git -C "$REPO" commit --quiet -m "app source on base"
+  git -C "$REPO" push --quiet origin main
   git -C "$REPO" checkout --quiet -B feature main
   git -C "$REPO" mv frontend/app/moved.ts wiki-moved.md
   git -C "$REPO" commit --quiet -m "move app source out of scope"
@@ -1064,13 +1120,6 @@ assert_not_in_set() {
 # could ever match, and the deny message's own remedy ("re-spawn the agents")
 # rewrites the same non-matching marker forever.
 
-# MEMBER's real content digest at an ARBITRARY root's HEAD, via the real
-# digest engine. member_digest_for is the same call pinned to $REPO.
-member_digest_at() {
-  local root="$1" member="$2"
-  bash -c '. "$1"; audit_member_digest "$2" "$3"' _ "$LIBRARY_DIRECTORY/audit-digest.sh" "$root" "$member"
-}
-
 # Provision a linked worktree of REPO on its own branch, carrying its own
 # in-scope change, so its content digest necessarily differs from main's.
 # Mirrors real provisioning: .gaia/local is a SYMLINK to main's, so a marker
@@ -1154,7 +1203,7 @@ teardown_linked_worktree() {
 # foreign and exits before any audit check.
 @test "linked worktree: --repo naming this repository is still gated" {
   commit_files "frontend/app/x.ts" "export const x = 1"
-  git -C "$REPO" remote add origin https://github.com/gaia-react/gaia.git
+  git -C "$REPO" remote set-url origin https://github.com/gaia-react/gaia.git
   setup_linked_worktree
 
   run_merge_hook_in_worktree "gh pr merge 30 --repo gaia-react/gaia --squash --delete-branch"
@@ -1165,7 +1214,7 @@ teardown_linked_worktree() {
 
 @test "linked worktree: a quoted --repo naming this repository is still gated" {
   commit_files "frontend/app/x.ts" "export const x = 1"
-  git -C "$REPO" remote add origin https://github.com/gaia-react/gaia.git
+  git -C "$REPO" remote set-url origin https://github.com/gaia-react/gaia.git
   setup_linked_worktree
 
   run_merge_hook_in_worktree 'gh pr merge 30 --repo "gaia-react/gaia" --squash --delete-branch'
@@ -1176,7 +1225,7 @@ teardown_linked_worktree() {
 
 @test "linked worktree: a brace-expanded --repo naming this repository is still gated" {
   commit_files "frontend/app/x.ts" "export const x = 1"
-  git -C "$REPO" remote add origin https://github.com/gaia-react/gaia.git
+  git -C "$REPO" remote set-url origin https://github.com/gaia-react/gaia.git
   setup_linked_worktree
 
   run_merge_hook_in_worktree 'gh pr merge 30 --repo {gaia-react/gaia,} --squash --delete-branch'
@@ -1187,7 +1236,7 @@ teardown_linked_worktree() {
 
 @test "linked worktree: --repo naming another repository exits before the gate" {
   commit_files "frontend/app/x.ts" "export const x = 1"
-  git -C "$REPO" remote add origin https://github.com/gaia-react/gaia.git
+  git -C "$REPO" remote set-url origin https://github.com/gaia-react/gaia.git
   setup_linked_worktree
 
   run_merge_hook_in_worktree "gh pr merge 30 --repo other-org/other-repo --squash --delete-branch"
@@ -1202,7 +1251,7 @@ teardown_linked_worktree() {
 # (gaia-react/gaia#2081).
 @test "a foreign gh in the same call does not exempt a home merge" {
   commit_files "frontend/app/x.ts" "export const x = 1"
-  git -C "$REPO" remote add origin https://github.com/gaia-react/gaia.git
+  git -C "$REPO" remote set-url origin https://github.com/gaia-react/gaia.git
 
   run_merge_hook "gh pr merge 5 -R other-org/other-repo && gh pr merge 30 --squash"
   [ "$status" -eq 0 ]
@@ -1250,7 +1299,7 @@ gh pr merge 30 --squash"
 
 @test "a call whose every command is foreign exits before the gate" {
   commit_files "frontend/app/x.ts" "export const x = 1"
-  git -C "$REPO" remote add origin https://github.com/gaia-react/gaia.git
+  git -C "$REPO" remote set-url origin https://github.com/gaia-react/gaia.git
 
   run_merge_hook "gh pr merge 5 -R other-org/other-repo && gh pr checks 5 -R other-org/other-repo"
   [ "$status" -eq 0 ]
@@ -1260,7 +1309,7 @@ gh pr merge 30 --squash"
 
 @test "checkout not named for the repository: --repo naming this repository is still gated" {
   commit_files "frontend/app/x.ts" "export const x = 1"
-  git -C "$REPO" remote add origin https://github.com/gaia-react/gaia.git
+  git -C "$REPO" remote set-url origin https://github.com/gaia-react/gaia.git
 
   run_merge_hook "gh pr merge 30 --repo gaia-react/gaia --squash --delete-branch"
   [ "$status" -eq 0 ]
@@ -1406,6 +1455,7 @@ case "$1" in
 esac
 EOF
   chmod +x "$STUB_BINARY_DIRECTORY/gh"
+  add_base_lookup_to_stub
 }
 
 # A `git` earlier on PATH than the real one that fails every `git diff` and
@@ -1522,6 +1572,8 @@ run_recording_hook() {
 @test "an empty range on a locally-derived base denies, and the reason names the local provenance" {
   # No remote-tracking refs at all, so the record's branch cannot verify and
   # the ladder falls to the bare local branch name.
+  git -C "$REPO" update-ref -d refs/remotes/origin/main
+  git -C "$REPO" symbolic-ref --delete refs/remotes/origin/HEAD
   install_gh_stub_with_record "main" "$(git -C "$REPO" rev-parse HEAD)"
 
   run_merge_hook
@@ -1531,10 +1583,33 @@ run_recording_hook() {
   grep -qF 'anchor default-branch' <<<"$output" || return 1
 }
 
+@test "a cached audit base that differs from the record's base denies, naming the git config --unset recovery" {
+  install_gh_stub
+  git -C "$REPO" config branch.feature.gaia-audit-base release
+
+  run_merge_hook
+  assert_denied_by_json
+  grep -qF 'git config --unset branch.feature.gaia-audit-base' <<<"$output" || return 1
+}
+
+@test "a cached audit base equal to the record's base does not trigger the stale-cache deny" {
+  install_gh_stub
+  git -C "$REPO" config branch.feature.gaia-audit-base main
+
+  run_merge_hook
+  grep -qF 'gaia-audit-base' <<<"$output" && return 1
+  true
+}
+
 @test "an unresolvable base denies, and the reason names it as unresolvable" {
   local repo
   repo="$(make_no_base_repo_pr provenance-no-base)"
   install_gh_stub
+  # The base ladder cannot resolve in this repository, but the tip GitHub
+  # reports is a commit it holds, so the digests derive and the legacy deny
+  # (which prints the ladder's answer) is the one reached.
+  export GH_STUB_BASE_TIP
+  GH_STUB_BASE_TIP="$(git -C "$repo" rev-parse HEAD)"
 
   run_merge_hook_at "$repo"
   assert_denied_by_json
@@ -2410,7 +2485,7 @@ run_merge_hook_library_absent() {
 @test "arming: a substitution naming a home merge inside a foreign command's argument reaches the gate" {
   install_gh_stub
   commit_files "frontend/app/x.ts" "export const x = 1"
-  git -C "$REPO" remote add origin https://github.com/gaia-react/gaia.git
+  git -C "$REPO" remote set-url origin https://github.com/gaia-react/gaia.git
 
   run_merge_hook 'gh pr view 5 -R other/x --jq "$(gh pr merge 30 --squash)"'
   assert_denied_by_json

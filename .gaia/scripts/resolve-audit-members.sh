@@ -172,7 +172,7 @@ set -e
 # instead of taking the empty-stdout exit. The last definition is the one probe
 # that needs no reasoning about which internal call goes how deep.
 type audit_owners_for_paths >/dev/null 2>&1 || exit 0
-type audit_provenance_empty_is_decisive >/dev/null 2>&1 || exit 0
+type audit_local_base_reference >/dev/null 2>&1 || exit 0
 
 if ! audit_scope_init "$repo_root" 2>/dev/null; then
   echo "resolve-audit-members: ${repo_root}/.gaia/audit-ci.yml has no auditors: roster; restore the auditors: block from the GAIA template" >&2

@@ -4,7 +4,7 @@
 # reader .claude/hooks/lib/audit-clearance.sh.
 #
 # The writer takes the audited working root as a REQUIRED argument, derives
-# the member's content digest from it via the digest engine
+# the member's branch-own digest from it via the digest engine
 # (.claude/hooks/lib/audit-digest.sh, never from CWD), writes atomically, and
 # records a versioned schema-4 body with a `provenance` field. It is NOT
 # evidence-gated: it takes no --report, calls no detector, and its body
@@ -16,6 +16,7 @@
 
 setup() {
   . "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/tests/helpers/audit-roster.sh"
+  . "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/tests/helpers/catchup-fixture.sh"
   THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   WRITER="$THIS_DIRECTORY/../audit-write-clearance.sh"
   READER="$THIS_DIRECTORY/../../../.claude/hooks/lib/audit-clearance.sh"
@@ -41,16 +42,31 @@ setup() {
   seed_audit_roster "$ROOT"
   git -C "$ROOT" add .gaia/audit-ci.yml .gaia/VERSION README.md
   git -C "$ROOT" commit --quiet -m "init"
+  # A bare origin supplies the local base reference the branch-own digest is
+  # measured against, and the fixture caches `main` as this branch's audit base
+  # so no case reaches a real `gh`.
+  add_origin "$ROOT"
 
   TREE="$(git -C "$ROOT" rev-parse "HEAD^{tree}")"
   HEAD_SHA="$(git -C "$ROOT" rev-parse HEAD)"
   AUDIT_DIRECTORY="$ROOT/.gaia/local/audit"
 }
 
+# add_origin <repository> [<catchup_add_origin arguments>...]: the fixture's
+# origin retrofit removes any existing `origin` first and exits non-zero when
+# there is none, which aborts a bats case, so a placeholder remote precedes it.
+add_origin() {
+  local repository="$1"
+  shift
+  git -C "$repository" remote add origin "$BATS_TEST_TMPDIR/placeholder-origin.git"
+  catchup_add_origin "$repository" "$@"
+}
+
 # member_digest <root> <member> -> 64-hex digest on stdout
 member_digest() {
-  local root="$1" member="$2"
-  bash -c '. "$1"; audit_member_digest "$2" "$3"' _ "$DIGEST_LIBRARY" "$root" "$member"
+  local root="$1" member="$2" merge_base
+  merge_base="$(git -C "$root" merge-base refs/remotes/origin/main HEAD)" || return 1
+  bash -c '. "$1"; audit_branch_member_digest "$2" "$3" "$4"' _ "$DIGEST_LIBRARY" "$root" "$member" "$merge_base"
 }
 
 # Required --root, digest resolved from the root, atomic write, body
@@ -91,6 +107,15 @@ member_digest() {
   seed_audit_roster "$other"
   git -C "$other" add .gaia/audit-ci.yml x.txt
   git -C "$other" commit --quiet -m "other"
+  # The branch-own digest covers only the branch's change against its base, so
+  # the other checkout carries a change of its own for its digest to differ.
+  add_origin "$other"
+  echo "branch-only content" > "$other/y.txt"
+  git -C "$other" add y.txt
+  git -C "$other" commit --quiet -m "other: branch change"
+  echo "root branch-only content" > "$ROOT/z.txt"
+  git -C "$ROOT" add z.txt
+  git -C "$ROOT" commit --quiet -m "root: branch change"
   other_digest="$(member_digest "$other" code-audit-frontend)"
   root_digest="$(member_digest "$ROOT" code-audit-frontend)"
   [ -n "$other_digest" ]
@@ -525,7 +550,7 @@ scrub_maintainer_only() {
   git -C "$ADOPTER" commit --quiet -m "init"
 
   # Feature branch with an app/ change (owned by the default member).
-  git -C "$ADOPTER" checkout --quiet -b feature
+  add_origin "$ADOPTER" main --feature feature
   mkdir -p "$ADOPTER/frontend/app"
   echo "export const x = 1;" > "$ADOPTER/frontend/app/x.ts"
   git -C "$ADOPTER" add frontend/app/x.ts
@@ -552,6 +577,8 @@ scrub_maintainer_only() {
   cp "$_library_directory/audit-clearance.sh" "$ADOPTER/.claude/hooks/lib/audit-clearance.sh"
   cp "$DIGEST_LIBRARY" "$ADOPTER/.claude/hooks/lib/audit-digest.sh"
   cp "$_library_directory/audit-base-provenance.sh" "$ADOPTER/.claude/hooks/lib/audit-base-provenance.sh"
+  cp "$_library_directory/audit-branch-patch.sh" "$ADOPTER/.claude/hooks/lib/audit-branch-patch.sh"
+  cp "$THIS_DIRECTORY/../audit-key-lib.sh" "$ADOPTER/.gaia/scripts/audit-key-lib.sh"
 
   # The roster really did collapse: a .gaia/**/*.sh change (which the scrubbed-
   # away maintainer-shell member would own) resolves to NOBODY now.
@@ -760,6 +787,7 @@ ledger_setup() {
   git -C "$ROOT" add README.md
   git -C "$ROOT" commit --quiet -m "work"
   LEDGER_HEAD_SHA="$(git -C "$ROOT" rev-parse HEAD)"
+  git -C "$ROOT" config "branch.fix/ledger.gaia-audit-base" main
   # gaia_key_slug percent-encodes "/" as "%2F".
   LEDGER="$AUDIT_DIRECTORY/${LEDGER_BASE_SHA}.fix%2Fledger.rerun.json"
 }
@@ -1102,16 +1130,19 @@ resolve_all_open() {
   return 0
 }
 
-@test "ledger: an unresolvable audit key warns and never fails the marker write" {
+@test "ledger: a detached HEAD has no branch key, so the digest cannot be derived and nothing is written" {
+  # The branch-own digest and the audit key share one branch half, so an
+  # undeterminable branch fails both together and the writer stops at the digest.
   ledger_setup
   member="code-audit-maintainer-shell"
   write_sidecar_for "$member" 113
   git -C "$ROOT" checkout --quiet --detach HEAD
-  digest="$(member_digest "$ROOT" "$member")"
-  run bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --base "$LEDGER_BASE_SHA"
-  [ "$status" -eq 0 ]
-  grep -qF "audit key does not resolve" <<<"$output"
-  [ -f "$AUDIT_DIRECTORY/${digest}.${member}.refused" ]
+  run env -u GAIA_AUDIT_KEY_BRANCH bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --base "$LEDGER_BASE_SHA"
+  [ "$status" -eq 2 ]
+  grep -qF "cannot derive a branch-own digest" <<<"$output" || return 1
+  [ -z "$(find "$AUDIT_DIRECTORY" -name '*.refused' 2>/dev/null)" ] || return 1
+  [ -f "$LEDGER" ] && return 1
+  true
 }
 
 @test "ledger: the marker is published BEFORE any ledger work, so a ledger failure cannot lose it" {
@@ -1143,8 +1174,9 @@ resolve_all_open() {
 # and an exit 3 leaves every artifact as it was.
 #
 # Every fixture keeps capture, sidecar, and ledger on one key: the sandbox has
-# no hook libraries, so the writer's resolver degrades to `main`, and the
-# derived key base is `git merge-base main HEAD`, which ledger_setup makes
+# no hook libraries, so the writer's resolver degrades to
+# `refs/remotes/origin/main`, and the derived key base is
+# `git merge-base refs/remotes/origin/main HEAD`, which ledger_setup makes
 # equal to LEDGER_BASE_SHA. A fixture that lost that equality would find no
 # ledger and pass every accounting arm vacuously, so the fixture asserts it.
 # -----------------------------------------------------------------------------
@@ -1173,7 +1205,7 @@ rotate_member_digest() {
 # member's digest (B_DIGEST); the round at B is captured on member-refusal.
 accounting_fixture() {
   ledger_setup
-  [ "$(git -C "$ROOT" merge-base main HEAD)" = "$LEDGER_BASE_SHA" ]
+  [ "$(git -C "$ROOT" merge-base refs/remotes/origin/main HEAD)" = "$LEDGER_BASE_SHA" ]
   member="$ACCOUNTING_MEMBER"
   write_findings_sidecar "$member" \
     "[$(finding_json 113 error),$(finding_json 59 warning "" holistic/swallowed-error)]"
@@ -1445,7 +1477,7 @@ snapshot_ledger() {
   # A commit on the feature branch after the fork point: not the merge-base.
   offset_base="$LEDGER_HEAD_SHA"
   [ "$offset_base" != "$LEDGER_BASE_SHA" ]
-  [ "$(git -C "$ROOT" merge-base main HEAD)" = "$LEDGER_BASE_SHA" ]
+  [ "$(git -C "$ROOT" merge-base refs/remotes/origin/main HEAD)" = "$LEDGER_BASE_SHA" ]
   offset_ledger="$AUDIT_DIRECTORY/${offset_base}.fix%2Fledger.rerun.json"
 
   capture_scope "$member"
@@ -1697,7 +1729,7 @@ EOF
   [ "$status" -eq 2 ]
   grep -qF "scope digest not supplied" <<<"$output" || return 1
   grep -qF "review scope superseded" <<<"$output" && return 1
-  grep -qF "cannot derive a content digest" <<<"$output" && return 1
+  grep -qF "cannot derive a branch-own digest" <<<"$output" && return 1
   return 0
 }
 
@@ -1714,7 +1746,7 @@ EOF
   run env PATH="$shim:$PATH" bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned \
     --scope-digest "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
   [ "$status" -ne 0 ]
-  grep -qF "cannot derive a content digest" <<<"$output" || return 1
+  grep -qF "cannot derive a branch-own digest" <<<"$output" || return 1
   grep -qF "review scope superseded" <<<"$output" && return 1
   grep -qF "scope digest not supplied" <<<"$output" && return 1
   return 0
@@ -2009,4 +2041,361 @@ light_fixture() {
   [ "$status" -eq 2 ]
   grep -qF "review scope superseded" <<<"$output" || return 1
   [ ! -f "$AUDIT_DIRECTORY/${light_digest}.ok" ]
+}
+
+# -----------------------------------------------------------------------------
+# Catch-up merges
+#
+# The branch-own digest and the audit key base are both stable across a clean
+# catch-up merge of the base, so a scope capture taken before one still matches
+# the write-time digest after it and the ledger stays at its key. A merge that
+# edits the branch's own patch (a blend) rotates the digest and supersedes the
+# capture. A ledger written under the key a catch-up used to move (the base tip
+# the merge brought in) is the one migration hole, and the writer refuses
+# rather than read it as an empty open set.
+# -----------------------------------------------------------------------------
+
+CATCHUP_MEMBER="code-audit-frontend"
+
+# catchup_branch_start: the feature branch `fix/catchup` with one branch-own
+# commit, the audit key's base (the branch's fork point) as LEDGER_BASE_SHA,
+# and the hook libraries the sandbox's resolver needs to derive the fork point.
+catchup_branch_start() {
+  local library_directory
+  library_directory="$(dirname "$READER")"
+  mkdir -p "$ROOT/.claude/hooks/lib"
+  cp "$library_directory/audit-branch-patch.sh" "$library_directory/audit-base-provenance.sh" \
+    "$ROOT/.claude/hooks/lib/"
+  git -C "$ROOT" checkout --quiet -b fix/catchup
+  git -C "$ROOT" config "branch.fix/catchup.gaia-audit-base" main
+  LEDGER_BASE_SHA="$(git -C "$ROOT" rev-parse HEAD)"
+  FORK_POINT="$LEDGER_BASE_SHA"
+  LEDGER="$AUDIT_DIRECTORY/${FORK_POINT}.fix%2Fcatchup.rerun.json"
+  catchup_branch_commit feature.txt "feature v1"
+  FIRST_BRANCH_COMMIT="$CATCHUP_HEAD"
+}
+
+# read_scope_digest <member>: the captured scope digest, the way a member reads it back.
+read_scope_digest() {
+  bash "$THIS_DIRECTORY/../audit-scope-digest.sh" --read \
+    --root "$ROOT" --member "$1" --base "$FORK_POINT"
+}
+
+# write_orphan_ledger <path> <base-sha> <member> [<entry_id>]: a schema-1 ledger
+# for the catch-up branch holding one open entry for the member.
+write_orphan_ledger() {
+  mkdir -p "$AUDIT_DIRECTORY"
+  jq -n --arg base "$2" --arg member "$3" --arg id "${4:-r1-1}" '
+    {schema: 1, base_sha: $base, branch: "fix/catchup", round: 1, head_sha: $base,
+     updated_at: "2026-01-01T00:00:00Z",
+     remaining: [{member: $member, entry_id: $id, finding_class: "holistic/secret-exposure",
+                  severity: "important", path: ".claude/hooks/block-secrets-write.sh", line: 113,
+                  title: "the path arm admits arbitrary trailing text",
+                  failure_mode: "a separator unbounds the tail", verified_by: "ran the hook",
+                  suggested_fix: "bound each trailing segment", first_seen_round: 1,
+                  escalated: false}],
+     fixed_last_round: [], notes: "", member_provenance: {}}' > "$1"
+}
+
+# earned_write_with_capture <member>: an earned write carrying the captured digest.
+earned_write_with_capture() {
+  run bash "${WRITER_UNDER_TEST:-$WRITER}" --root "$ROOT" --member "$1" --provenance earned \
+    --scope-digest "$(read_scope_digest "$1")"
+}
+
+# scratch_writer <sed-script>: a copy of the writer with the library tree and the
+# resolver it locates relative to itself, mutated by the sed script. Prints the
+# copy's path and fails when the mutation changed nothing.
+scratch_writer() {
+  local scratch="$BATS_TEST_TMPDIR/scratch-writer"
+  rm -rf "$scratch"
+  mkdir -p "$scratch/.gaia/scripts" "$scratch/.claude/hooks/lib" "$scratch/.github/audit"
+  cp "$THIS_DIRECTORY/../audit-key-lib.sh" "$scratch/.gaia/scripts/"
+  cp "$(dirname "$READER")"/*.sh "$scratch/.claude/hooks/lib/"
+  cp "$THIS_DIRECTORY/../../../.github/audit/resolve-audit-base.sh" "$scratch/.github/audit/"
+  sed "$1" "$WRITER" > "$scratch/.gaia/scripts/audit-write-clearance.sh"
+  cmp -s "$WRITER" "$scratch/.gaia/scripts/audit-write-clearance.sh" && return 1
+  printf '%s\n' "$scratch/.gaia/scripts/audit-write-clearance.sh"
+}
+
+@test "catch-up: a scope capture taken before a clean catch-up merge still publishes the earned marker" {
+  catchup_branch_start
+  member="$CATCHUP_MEMBER"
+  capture_scope "$member"
+  digest_before="$(member_digest "$ROOT" "$member")"
+  [ "$(read_scope_digest "$member")" = "$digest_before" ]
+
+  catchup_base_commit base-only.txt "incoming from the base"
+  catchup_merge_base
+  # The catch-up moved the merge base off the fork point; the digest did not move.
+  [ "$(git -C "$ROOT" merge-base refs/remotes/origin/main HEAD)" != "$FORK_POINT" ]
+  [ "$(member_digest "$ROOT" "$member")" = "$digest_before" ]
+
+  earned_write_with_capture "$member"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$AUDIT_DIRECTORY/${digest_before}.ok" ]
+  [ -f "$AUDIT_DIRECTORY/${digest_before}.ok" ]
+}
+
+@test "catch-up: a blend merge that edits the branch's own patch refuses review scope superseded" {
+  catchup_branch_start
+  member="$CATCHUP_MEMBER"
+  capture_scope "$member"
+  digest_before="$(member_digest "$ROOT" "$member")"
+  scope_digest="$(read_scope_digest "$member")"
+
+  catchup_base_commit base-only.txt "incoming from the base"
+  catchup_merge_base --no-commit
+  printf 'feature v2, rewritten inside the merge\n' > "$ROOT/feature.txt"
+  catchup_commit_merge
+  [ "$(member_digest "$ROOT" "$member")" != "$digest_before" ]
+
+  run bash "$WRITER" --root "$ROOT" --member "$member" --provenance earned --scope-digest "$scope_digest"
+  [ "$status" -eq 2 ]
+  grep -qF "review scope superseded" <<<"$output" || return 1
+  [ -z "$(find "$AUDIT_DIRECTORY" -name '*.ok' 2>/dev/null)" ]
+}
+
+# orphan_fixture: a clean catch-up after a capture, and a ledger written under
+# the key the catch-up used to produce (the base tip it brought in) with one
+# open entry for the member. Sets BASE_TIP and OLD_LEDGER.
+orphan_fixture() {
+  catchup_branch_start
+  member="$ACCOUNTING_MEMBER"
+  capture_scope "$member"
+  catchup_base_commit base-only.txt "incoming from the base"
+  catchup_merge_base
+  BASE_TIP="$(git -C "$ROOT" rev-parse refs/remotes/origin/main)"
+  [ "$BASE_TIP" != "$FORK_POINT" ]
+  OLD_LEDGER="$AUDIT_DIRECTORY/${BASE_TIP}.fix%2Fcatchup.rerun.json"
+  write_orphan_ledger "$OLD_LEDGER" "$BASE_TIP" "$member"
+}
+
+@test "catch-up: an orphaned ledger under an old base-tip key refuses with exit 3, and the printed recovery makes the accounting count it" {
+  orphan_fixture
+  [ ! -f "$LEDGER" ]
+
+  earned_write_with_capture "$member"
+  [ "$status" -eq 3 ]
+  [ -z "$(find "$AUDIT_DIRECTORY" -name '*.ok' 2>/dev/null)" ]
+  grep -qF "$OLD_LEDGER" <<<"$output" || return 1
+  grep -qF "$LEDGER" <<<"$output" || return 1
+  grep -qF "jq --arg base" <<<"$output" || return 1
+
+  # A refusal is a write too: it would otherwise start a fresh ledger and drop the entry.
+  run bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused
+  [ "$status" -eq 3 ]
+  [ -z "$(find "$AUDIT_DIRECTORY" -name '*.refused' 2>/dev/null)" ]
+
+  earned_write_with_capture "$member"
+  recovery="$(grep -F 'jq --arg base' <<<"$output" | head -1 | sed 's/^audit-write-clearance:   //')"
+  [ -n "$recovery" ]
+  eval "$recovery"
+  [ -f "$LEDGER" ]
+  [ "$(jq -r .base_sha "$LEDGER")" = "$FORK_POINT" ]
+
+  # The re-keyed ledger is live: the accounting refuses the unaccounted entry.
+  earned_write_with_capture "$member"
+  [ "$status" -eq 3 ]
+  grep -qF -- "   r1-1  " <<<"$output" || return 1
+  grep -qF "open-finding accounting failed" <<<"$output" || return 1
+
+  write_findings_sidecar "$member" '[]' "$(resolution_json r1-1)"
+  earned_write_with_capture "$member"
+  [ "$status" -eq 0 ]
+  [ -f "$AUDIT_DIRECTORY/$(member_digest "$ROOT" "$member").${member}.ok" ]
+}
+
+@test "catch-up: with the ledger lookup removed the same write publishes over the open finding" {
+  orphan_fixture
+  scratch="$(scratch_writer 's/^\( *orphaned_ledgers=\).*/\1""/')"
+  [ -n "$scratch" ]
+  WRITER_UNDER_TEST="$scratch" earned_write_with_capture "$member"
+  [ "$status" -eq 0 ]
+  [ -f "$AUDIT_DIRECTORY/$(member_digest "$ROOT" "$member").${member}.ok" ]
+}
+
+@test "catch-up: ledgers from earlier rounds of the branch never trigger the orphan refusal" {
+  catchup_branch_start
+  member="$ACCOUNTING_MEMBER"
+  capture_scope "$member"
+  catchup_branch_commit second.txt "second branch commit"
+  catchup_base_commit base-only.txt "incoming from the base"
+  catchup_merge_base
+  BASE_TIP="$(git -C "$ROOT" rev-parse refs/remotes/origin/main)"
+  digest="$(member_digest "$ROOT" "$member")"
+  marker="$AUDIT_DIRECTORY/${digest}.${member}.ok"
+
+  # An earlier round keyed to a branch commit, and one keyed to the merge commit.
+  for keyed_commit in "$FIRST_BRANCH_COMMIT" "$CATCHUP_HEAD"; do
+    rm -f "$AUDIT_DIRECTORY"/*.rerun.json "$marker"
+    write_orphan_ledger "$AUDIT_DIRECTORY/${keyed_commit}.fix%2Fcatchup.rerun.json" "$keyed_commit" "$member"
+    earned_write_with_capture "$member"
+    [ "$status" -eq 0 ] || { echo "ledger keyed to branch commit $keyed_commit refused: $output" >&2; return 1; }
+    [ -f "$marker" ]
+  done
+
+  # A ledger at the old base-tip key holding only a sibling's entry is not this member's to account for.
+  rm -f "$AUDIT_DIRECTORY"/*.rerun.json "$marker"
+  write_orphan_ledger "$AUDIT_DIRECTORY/${BASE_TIP}.fix%2Fcatchup.rerun.json" "$BASE_TIP" "$SIBLING_MEMBER"
+  earned_write_with_capture "$member"
+  [ "$status" -eq 0 ]
+  [ -f "$marker" ]
+
+  # The ledger at the current key with no entry for the member is the ordinary case.
+  rm -f "$AUDIT_DIRECTORY"/*.rerun.json "$marker"
+  write_orphan_ledger "$LEDGER" "$FORK_POINT" "$SIBLING_MEMBER"
+  earned_write_with_capture "$member"
+  [ "$status" -eq 0 ]
+  [ -f "$marker" ]
+
+  # With an open entry for the member it is the ordinary accounting refusal, not the orphan one.
+  rm -f "$AUDIT_DIRECTORY"/*.rerun.json "$marker"
+  write_orphan_ledger "$LEDGER" "$FORK_POINT" "$member"
+  earned_write_with_capture "$member"
+  [ "$status" -eq 3 ]
+  grep -qF -- "   r1-1  " <<<"$output" || return 1
+  grep -qF "jq --arg base" <<<"$output" && return 1
+  true
+}
+
+@test "catch-up: several orphaned ledgers are all listed newest first and the recovery names only the newest" {
+  catchup_branch_start
+  member="$ACCOUNTING_MEMBER"
+  capture_scope "$member"
+  export GIT_COMMITTER_DATE="2020-01-01T00:00:00Z"
+  catchup_base_commit first-incoming.txt "first incoming"
+  unset GIT_COMMITTER_DATE
+  catchup_merge_base
+  older_tip="$(git -C "$ROOT" rev-parse refs/remotes/origin/main)"
+  export GIT_COMMITTER_DATE="2021-01-01T00:00:00Z"
+  catchup_base_commit second-incoming.txt "second incoming"
+  unset GIT_COMMITTER_DATE
+  catchup_merge_base
+  newer_tip="$(git -C "$ROOT" rev-parse refs/remotes/origin/main)"
+  unresolvable="ffffffffffffffffffffffffffffffffffffffff"
+  older_ledger="$AUDIT_DIRECTORY/${older_tip}.fix%2Fcatchup.rerun.json"
+  newer_ledger="$AUDIT_DIRECTORY/${newer_tip}.fix%2Fcatchup.rerun.json"
+  unresolvable_ledger="$AUDIT_DIRECTORY/${unresolvable}.fix%2Fcatchup.rerun.json"
+  write_orphan_ledger "$older_ledger" "$older_tip" "$member"
+  write_orphan_ledger "$newer_ledger" "$newer_tip" "$member"
+  write_orphan_ledger "$unresolvable_ledger" "$unresolvable" "$member"
+
+  earned_write_with_capture "$member"
+  [ "$status" -eq 3 ]
+  newer_line="$(grep -nF "$newer_ledger" <<<"$output" | head -1 | cut -d: -f1)"
+  older_line="$(grep -nF "$older_ledger" <<<"$output" | head -1 | cut -d: -f1)"
+  unresolvable_line="$(grep -nF "$unresolvable_ledger" <<<"$output" | head -1 | cut -d: -f1)"
+  [ -n "$newer_line" ] && [ -n "$older_line" ] && [ -n "$unresolvable_line" ]
+  [ "$newer_line" -lt "$older_line" ]
+  [ "$older_line" -lt "$unresolvable_line" ]
+  recovery="$(grep -F 'jq --arg base' <<<"$output")"
+  [ "$(grep -c . <<<"$recovery")" = "1" ]
+  grep -qF "$newer_ledger" <<<"$recovery" || return 1
+  grep -qF "$older_ledger" <<<"$recovery" && return 1
+  grep -qF "newest" <<<"$output" || return 1
+  true
+}
+
+@test "catch-up: a ledger keyed to a commit a rewrite removed from the history refuses with the rewritten-history wording" {
+  catchup_branch_start
+  member="$ACCOUNTING_MEMBER"
+  catchup_branch_commit second.txt "second branch commit"
+  removed_commit="$CATCHUP_HEAD"
+  write_orphan_ledger "$AUDIT_DIRECTORY/${removed_commit}.fix%2Fcatchup.rerun.json" "$removed_commit" "$member"
+  git -C "$ROOT" commit --quiet --amend -m "second branch commit, reworded"
+  [ "$(git -C "$ROOT" rev-parse HEAD)" != "$removed_commit" ]
+  capture_scope "$member"
+
+  earned_write_with_capture "$member"
+  [ "$status" -eq 3 ]
+  grep -qF "history was rewritten" <<<"$output" || return 1
+  grep -qF "caught up" <<<"$output" || return 1
+  grep -qF "jq --arg base" <<<"$output" || return 1
+}
+
+@test "catch-up: a marker for the member's old content digest does not stand in for the new digest" {
+  catchup_branch_start
+  member="$CATCHUP_MEMBER"
+  capture_scope "$member"
+  digest="$(member_digest "$ROOT" "$member")"
+  old_digest="$(bash -c '. "$1"; command -v audit_member_digest >/dev/null 2>&1 && audit_member_digest "$2" "$3"' _ "$DIGEST_LIBRARY" "$ROOT" "$member" || true)"
+  [ -n "$old_digest" ] || old_digest="0000000000000000000000000000000000000000000000000000000000000001"
+  [ "$old_digest" != "$digest" ]
+  mkdir -p "$AUDIT_DIRECTORY"
+  printf '{}\n' > "$AUDIT_DIRECTORY/${old_digest}.refused"
+
+  # The refusal is keyed to another digest, so a plain earned write neither sees nor touches it.
+  earned_write_with_capture "$member"
+  [ "$status" -eq 0 ]
+  [ -f "$AUDIT_DIRECTORY/${digest}.ok" ]
+  [ -f "$AUDIT_DIRECTORY/${old_digest}.refused" ]
+
+  # And a supersede request has no refusal at the new digest to retire, so it takes the ordinary staleness gate.
+  rm -f "$AUDIT_DIRECTORY/${digest}.ok"
+  run bash "$WRITER" --root "$ROOT" --member "$member" --provenance earned --supersede-refusal "a stated reason"
+  [ "$status" -eq 2 ]
+  grep -qF "scope digest not supplied" <<<"$output" || return 1
+  [ -f "$AUDIT_DIRECTORY/${old_digest}.refused" ]
+}
+
+@test "catch-up: with the first-parent test removed an earlier round's ledger is wrongly refused" {
+  catchup_branch_start
+  member="$ACCOUNTING_MEMBER"
+  capture_scope "$member"
+  catchup_base_commit base-only.txt "incoming from the base"
+  catchup_merge_base
+  write_orphan_ledger "$AUDIT_DIRECTORY/${FIRST_BRANCH_COMMIT}.fix%2Fcatchup.rerun.json" "$FIRST_BRANCH_COMMIT" "$member"
+
+  earned_write_with_capture "$member"
+  [ "$status" -eq 0 ]
+
+  rm -f "$AUDIT_DIRECTORY/$(member_digest "$ROOT" "$member").${member}.ok"
+  scratch="$(scratch_writer '/\${newline}\${candidate_base}\${newline}/s/\${candidate_base}/never-matches/')"
+  [ -n "$scratch" ]
+  WRITER_UNDER_TEST="$scratch" earned_write_with_capture "$member"
+  [ "$status" -eq 3 ]
+  grep -qF "jq --arg base" <<<"$output" || return 1
+  true
+}
+
+@test "catch-up: with the staleness comparison removed a blend write publishes over the superseded scope" {
+  catchup_branch_start
+  member="$CATCHUP_MEMBER"
+  capture_scope "$member"
+  scope_digest="$(read_scope_digest "$member")"
+  catchup_base_commit base-only.txt "incoming from the base"
+  catchup_merge_base --no-commit
+  printf 'feature v2, rewritten inside the merge\n' > "$ROOT/feature.txt"
+  catchup_commit_merge
+
+  scratch="$(scratch_writer 's/^\( *elif \)\[ "\$SCOPE_DIGEST" != "\$digest" \]/\1false/')"
+  [ -n "$scratch" ]
+  run bash "$scratch" --root "$ROOT" --member "$member" --provenance earned --scope-digest "$scope_digest"
+  [ "$status" -eq 0 ]
+  [ -f "$AUDIT_DIRECTORY/$(member_digest "$ROOT" "$member").ok" ]
+}
+
+@test "catch-up: a criss-cross history exits 2 naming the merge that makes the merge base unique" {
+  catchup_branch_start
+  member="$CATCHUP_MEMBER"
+  catchup_criss_cross
+  [ "$(git -C "$ROOT" merge-base --all refs/remotes/origin/main HEAD | grep -c .)" -gt 1 ]
+
+  run bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused
+  [ "$status" -eq 2 ]
+  grep -qF "git merge --no-edit refs/remotes/origin/main" <<<"$output" || return 1
+  [ -z "$(find "$AUDIT_DIRECTORY" -name '*.refused' 2>/dev/null)" ]
+}
+
+@test "catch-up: a base tip that is not present locally exits 2 naming git fetch origin" {
+  catchup_branch_start
+  member="$CATCHUP_MEMBER"
+  # The digest library reports the missing tip with status 4; the stub stands in for it.
+  scratch="$(scratch_writer $'/^command -v audit_branch_digests_local/i\\\naudit_branch_digests_local() { return 4; }')"
+  [ -n "$scratch" ]
+  run bash "$scratch" --root "$ROOT" --member "$member" --provenance refused
+  [ "$status" -eq 2 ]
+  grep -qF "git fetch origin" <<<"$output" || return 1
+  [ -z "$(find "$AUDIT_DIRECTORY" -name '*.refused' 2>/dev/null)" ]
 }

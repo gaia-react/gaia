@@ -67,6 +67,9 @@ lsb_init() {
   lsb_git fetch -q origin || return 1
   LSB_BRANCH="feat/light-sandbox"
   lsb_git checkout -q -b "$LSB_BRANCH" || return 1
+  # Local callers read the branch's audit base from this cache instead of asking
+  # GitHub, so no suite reaches a real `gh`.
+  lsb_git config "branch.$LSB_BRANCH.gaia-audit-base" main || return 1
   # shellcheck source=/dev/null
   LSB_SLUG="$(. "$LSB_ROOT/.gaia/scripts/audit-key-lib.sh" && gaia_branch_slug "$LSB_ROOT")" || return 1
   mkdir -p "$LSB_ROOT/.gaia/local/audit"
@@ -121,6 +124,38 @@ lsb_commit_lines() {
   done
   lsb_git add -- "$1" && lsb_git commit -q -m "lines $1" || return 1
   _lsb_set_head
+}
+
+# lsb_catchup_init: retrofit the catch-up fixture onto the sandbox, so the base
+# can gain commits that arrive through `refs/remotes/origin/main` and the branch
+# can merge them. The helpers below keep LSB_HEAD and LSB_TREE current.
+lsb_catchup_init() {
+  # shellcheck source=.gaia/tests/helpers/catchup-fixture.sh
+  . "$LSB_REPO_ROOT/.gaia/tests/helpers/catchup-fixture.sh" || return 1
+  catchup_add_origin "$LSB_ROOT" main || return 1
+  LSB_ORIGIN="$CATCHUP_ORIGIN"
+}
+
+# lsb_catchup_base_commit <path> <content-file-or-text>: commit on the base.
+lsb_catchup_base_commit() {
+  catchup_base_commit "$@"
+}
+
+# lsb_catchup_branch_commit <path> <content-file-or-text>: commit on the branch.
+lsb_catchup_branch_commit() {
+  catchup_branch_commit "$@" && _lsb_set_head
+}
+
+# lsb_catch_up [--no-commit]: merge the base into the branch with a merge
+# commit, or leave the merge open for the caller to resolve and commit with
+# lsb_commit_merge.
+lsb_catch_up() {
+  catchup_merge_base "$@" && _lsb_set_head
+}
+
+# lsb_commit_merge: commit an open merge with everything in the work tree staged.
+lsb_commit_merge() {
+  catchup_commit_merge && _lsb_set_head
 }
 
 # lsb_member_digest <member>: the member's digest at the sandbox HEAD.
@@ -258,24 +293,16 @@ lsb_seed_loop_state() {
 # from the sandbox root, with a gh stub on PATH for this one run, through
 # bats' `run`.
 lsb_run_merge_hook() {
-  local stub_directory="$BATS_TEST_TMPDIR/lsb-gh-bin"
-  mkdir -p "$stub_directory" || return 1
-  cat >"$stub_directory/gh" <<EOF
-#!/usr/bin/env bash
-pull_request_number="$1"
-EOF
-  cat >>"$stub_directory/gh" <<'EOF'
-case "$*" in *isCrossRepository*) printf 'false\n'; exit 0 ;; esac
-case "$1" in
-  auth) exit 0 ;;
-  repo) printf 'gaia-react/gaia\n'; exit 0 ;;
-  pr) printf '{"title":"","baseRefName":"","number":"%s"}\n' "$pull_request_number"; exit 0 ;;
-  issue) printf '[]\n'; exit 0 ;;
-  api) printf 'null\n'; exit 0 ;;
-  *) exit 0 ;;
-esac
-EOF
-  chmod +x "$stub_directory/gh"
-  run env PATH="$stub_directory:$PATH" bash -c 'cd "$1" && printf %s "$2" | bash "$3"' _ \
+  local stub_directory="$BATS_TEST_TMPDIR/lsb-gh-bin" base_tip
+  # shellcheck source=.gaia/tests/helpers/gh-base-stub.sh
+  . "$LSB_REPO_ROOT/.gaia/tests/helpers/gh-base-stub.sh" || return 1
+  gh_base_stub_install "$stub_directory" || return 1
+  # The gate takes the PR's base branch name and tip from GitHub, so the stub
+  # answers both from the sandbox's own remote-tracking base.
+  base_tip="$(lsb_git rev-parse refs/remotes/origin/main)" || return 1
+  run env PATH="$stub_directory:$PATH" GH_STUB_BASE_BRANCH=main GH_STUB_BASE_TIP="$base_tip" \
+    GH_STUB_REPOSITORY=gaia-react/gaia GH_STUB_STATUSES_JSON='[]' \
+    GH_STUB_PR_JSON="$(jq -n -c --arg number "$1" '{title: "", number: $number}')" \
+    bash -c 'cd "$1" && printf %s "$2" | bash "$3"' _ \
     "$LSB_ROOT" "$(lsb_merge_payload "$1")" "$LSB_ROOT/.claude/hooks/pr-merge-audit-check.sh"
 }

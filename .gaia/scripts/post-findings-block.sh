@@ -162,8 +162,8 @@
 #
 # Filename collision with a clearance marker: PROVABLY NONE
 #   A clearance marker/refusal/dispositions-sidecar is keyed to a member's
-#   CONTENT DIGEST, a 64-hex sha256 (audit-digest.sh). A findings sidecar is
-#   keyed to <base-sha>.<branch-slug> (gaia_audit_key), never a bare 64-hex
+#   BRANCH-OWN DIGEST, a 64-hex sha256 (audit-digest.sh). A findings sidecar is
+#   keyed to <key-base>.<branch-slug> (gaia_audit_key), never a bare 64-hex
 #   value, so a findings sidecar can never be mistaken for, or glob-matched
 #   as, a marker by VALUE. Direction two: no marker reader globs the audit
 #   directory for `.ok`/`.refused` files by pattern.

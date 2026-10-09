@@ -83,6 +83,7 @@ require_jq() {
 setup() {
   THIS_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
   REPO_ROOT="$(git -C "$THIS_DIRECTORY" rev-parse --show-toplevel)"
+  . "$REPO_ROOT/.gaia/tests/helpers/catchup-fixture.sh"
   AGENTS_DIRECTORY="$REPO_ROOT/.claude/agents"
   require_jq
 
@@ -245,6 +246,7 @@ make_repo() {
   cp "$REPO_ROOT/.gaia/audit-ci.yml" "$directory/.gaia/"
   cp "$REPO_ROOT/.claude/hooks/lib/audit-scope.sh" "$directory/.claude/hooks/lib/"
   cp "$REPO_ROOT/.claude/hooks/lib/audit-base-provenance.sh" "$directory/.claude/hooks/lib/"
+  cp "$REPO_ROOT/.claude/hooks/lib/audit-branch-patch.sh" "$directory/.claude/hooks/lib/"
   cp "$REPO_ROOT/.claude/hooks/lib/audit-rules-changed.sh" "$directory/.claude/hooks/lib/"
   cp "$REPO_ROOT/.claude/hooks/lib/audit-clearance.sh" "$directory/.claude/hooks/lib/"
   cp "$REPO_ROOT/.claude/hooks/lib/audit-digest.sh" "$directory/.claude/hooks/lib/"
@@ -259,7 +261,16 @@ make_repo() {
   git -C "$directory" config commit.gpgsign false
   git -C "$directory" add -A
   git -C "$directory" commit -q -m "init"
+  # The branch-own patch is measured against refs/remotes/origin/main.
+  catchup_add_origin "$directory" >/dev/null
   printf '%s' "$directory"
+}
+
+# start_branch <repo> <name>: check out a new branch and cache main as its
+# audit base, so no probe reaches a real `gh` for the base lookup.
+start_branch() {
+  git -C "$1" checkout -q -b "$2"
+  git -C "$1" config "branch.$2.gaia-audit-base" main
 }
 
 # commit_file <repo> <path> <message>: writes a line into <path> and commits.
@@ -371,7 +382,7 @@ base_sha_for() {
 # for the writer's --scope-digest.
 member_digest() {
   local member="$1" repo="$2" library_file="$REPO_ROOT/.claude/hooks/lib/audit-digest.sh"
-  bash -c '. "$1"; audit_member_digest "$2" "$3"' _ "$library_file" "$repo" "$member"
+  bash -c '. "$1"; audit_branch_digests_local "$2" | while IFS=$(printf "\t") read -r name digest; do if [ "$name" = "$3" ]; then printf "%s\n" "$digest"; fi; done' _ "$library_file" "$repo" "$member"
 }
 
 # key_base_for <member> <repo>: the shared, pull-request-wide artifact key
@@ -407,7 +418,7 @@ owners_of() {
 @test "every member resolves the same KEY_BASE and the same audit key, matching the merge-time producer" {
   local repo
   repo="$(make_repo agreement)"
-  git -C "$repo" checkout -q -b feat
+  start_branch "$repo" feat
   commit_file "$repo" "app/a.txt" "commit A"
   commit_file "$repo" "app/b.txt" "commit B"
   stamp_clean_round "$repo"
@@ -479,7 +490,7 @@ owners_of() {
   local repo shell_member workflows_member team_signal_sha member_clearance_sha
 
   repo="$(make_repo two-bases)"
-  git -C "$repo" checkout -q -b feat
+  start_branch "$repo" feat
   commit_file "$repo" "app/a.txt" "commit A"
   stamp_clean_round "$repo"
   team_signal_sha="$(git -C "$repo" rev-parse HEAD)"
@@ -575,7 +586,7 @@ owners_of() {
 @test "the frontend's changed-file list is HEAD's content, not the working tree's" {
   local repo changed
   repo="$(make_repo worktree-scope)"
-  git -C "$repo" checkout -q -b feat
+  start_branch "$repo" feat
 
   # Both probe files must be TRACKED at the base. `git diff` compares tracked
   # content only, so an untracked path appears under neither spelling and an
@@ -624,7 +635,7 @@ owners_of() {
   # BASE_SHA, correctly: a sha at the fork point cannot advance, so only the
   # sibling probe above catches that one. Three-dot resolves its own merge
   # base, so the current form is immune whichever the base turns out to be.
-  git -C "$repo" checkout -q -b feat
+  start_branch "$repo" feat
   mkdir -p "$repo/app"
   printf 'export const mine = 1\n' > "$repo/app/pr-touched.ts"
   git -C "$repo" add -A
@@ -657,7 +668,7 @@ owners_of() {
 @test "post-findings-block.sh finds a specialist's sidecar, and an earlier round's with it" {
   local repo
   repo="$(make_repo findings-block)"
-  git -C "$repo" checkout -q -b feat
+  start_branch "$repo" feat
   commit_file "$repo" "app/a.txt" "commit A"
   stamp_clean_round "$repo"
   commit_file "$repo" "app/c.txt" "advisory prose fix after clean pass"
@@ -772,7 +783,7 @@ STUB
 probe_deadlock() {
   local member="$1" owned="$2" machinery="$3" repo
   repo="$(make_repo "deadlock-${member}")"
-  git -C "$repo" checkout -q -b feat
+  start_branch "$repo" feat
   commit_file "$repo" "$owned" "owned change"
   stamp_clean_round "$repo"
   commit_file "$repo" "$machinery" "machinery change"
@@ -877,7 +888,7 @@ probe_deadlock() {
   local repo member
 
   repo="$(make_repo degraded-arm no)"
-  git -C "$repo" checkout -q -b feat
+  start_branch "$repo" feat
   commit_file "$repo" "app/a.txt" "commit A"
   stamp_clean_round "$repo"
   commit_file "$repo" "app/c.txt" "advisory prose fix after clean pass"
@@ -924,7 +935,7 @@ probe_deadlock() {
 @test "each specialist's whole-PR list survives a non-ASCII path, where the pre-fix spelling does not" {
   local repo member full owners base quoted
   repo="$(make_repo quote-safety)"
-  git -C "$repo" checkout -q -b feat
+  start_branch "$repo" feat
   # One in-remit path per specialist, each carrying non-ASCII bytes.
   commit_file "$repo" ".github/workflows/été.yml" "workflows"
   commit_file "$repo" ".claude/rules/règle.md" "shell"
@@ -996,7 +1007,7 @@ probe_deadlock() {
   local repo expected_base full_base full_changed
 
   repo="$(make_repo elig-presence)"
-  git -C "$repo" checkout -q -b feat
+  start_branch "$repo" feat
   commit_file "$repo" "app/owned.ts" "a file the default member owns"
   commit_file "$repo" ".claude/rules/fixture.md" "a file the default member does not own"
 
@@ -1030,7 +1041,7 @@ probe_deadlock() {
   local repo eligibility review
 
   repo="$(make_repo elig-unfiltered)"
-  git -C "$repo" checkout -q -b feat
+  start_branch "$repo" feat
   commit_file "$repo" "bin/setup.sh" "a shell script"
   commit_file "$repo" "docs/readme.md" "a markdown file"
   commit_file "$repo" ".github/workflows/fixture.yml" "a yaml file"
@@ -1061,7 +1072,7 @@ probe_deadlock() {
   local repo line pathspec_count base expected got
 
   repo="$(make_repo review-scope-untouched)"
-  git -C "$repo" checkout -q -b feat
+  start_branch "$repo" feat
   mkdir -p "$repo/app"
   printf 'export const a = 1\n' > "$repo/app/a.ts"
   git -C "$repo" add -A
@@ -1130,9 +1141,9 @@ probe_deadlock() {
 make_stacked_repo() {
   local repo
   repo="$(make_repo "$1")"
-  git -C "$repo" checkout -q -b release
+  start_branch "$repo" release
   commit_file "$repo" "app/base-only.ts" "a commit the base branch owns"
-  git -C "$repo" checkout -q -b feat
+  start_branch "$repo" feat
   commit_file "$repo" "app/feat-only.ts" "the pull request's own commit"
   git -C "$repo" update-ref refs/remotes/origin/main refs/heads/main
   git -C "$repo" update-ref refs/remotes/origin/release refs/heads/release
@@ -1173,7 +1184,7 @@ make_stacked_repo() {
   local repo ambient line single_quote="'"
   repo="$(make_repo elig-unset-root)"
   ambient="$(make_repo elig-ambient)"
-  git -C "$ambient" checkout -q -b feat
+  start_branch "$ambient" feat
   commit_file "$ambient" "ambient-only.txt" "ambient change"
   line="$(extract_resolver_line "$AGENTS_DIRECTORY/code-audit-frontend.md")"
   grep -qF -- '--eligibility' <<<"$line"
@@ -1320,7 +1331,7 @@ EOF
   git -C "$repo" update-ref refs/remotes/origin/main "$(git -C "$repo" rev-parse HEAD)"
   git -C "$repo" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
   git -C "$repo" branch origin/main HEAD~1
-  git -C "$repo" checkout -q -b feat
+  start_branch "$repo" feat
   commit_file "$repo" "app/feat.ts" "the pull request's own change"
 
   eligibility_changed="$(evaluate_eligibility code-audit-frontend "$repo" ELIG_CHANGED)" || {

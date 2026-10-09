@@ -14,16 +14,25 @@
 # .gaia/local/audit/<digest>.<m>.ok (the sole clearance signal for maintainer
 # members, which are local-only with no commit-status equivalent).
 #
-# Markers are keyed to each member's own CONTENT DIGEST (a sha256 over exactly
-# the files that member owns plus the shared gate machinery, folding in the
-# in-scope-but-ownerless paths for the default member), not the whole tree and
-# not the commit. A marker attests that a member audited the CONTENT its
-# digest covers: an out-of-glob change (a CHANGELOG line, a wiki edit) rotates
-# no member's digest, so every existing marker keeps validating with zero
-# re-dispatch; a change to a file a member owns rotates only that member's
-# digest; a change to any gate-machinery file rotates every member's digest.
-# A commit carrying no content change advances HEAD while leaving every blob
-# byte-identical, so it rotates no digest either.
+# Markers are keyed to each member's own BRANCH-OWN DIGEST: a sha256 over the
+# branch's own patch against the PR's base branch, restricted to the paths that
+# member owns plus the shared gate machinery (folding in the in-scope-but-
+# ownerless paths for the default member) and bound to the branch. The recipe
+# lives in .claude/hooks/lib/audit-branch-patch.sh and audit-digest.sh. A marker
+# attests that a member audited the branch's own change to the paths its digest
+# covers: a path outside that set rotates no member's digest, so every existing
+# marker keeps validating with zero re-dispatch; a change to the branch's own
+# patch on a path a member owns rotates only that member's digest; one on a
+# gate-machinery path rotates every member's digest. Content the base branch
+# brought in through a clean catch-up merge is not part of the branch's patch
+# and rotates nothing, bar a base edit within three lines of a branch hunk
+# on a covered path.
+#
+# The base is the one GitHub reports, never a local ref: the gate reads the PR's
+# base branch name from the PR record and that branch's current tip through
+# `gh`, requires the tip locally and a unique merge base, and denies naming the
+# one next step otherwise. It is derived only once a signal needs a digest, so a
+# bypass PR makes no base lookup.
 #
 # code-audit-frontend / legacy-gate signals:
 #
@@ -230,12 +239,13 @@ if [ -n "$_repository_root_directory" ] && [ -f "$_repository_root_directory/.ga
   . "$_repository_root_directory/.gaia/scripts/main-root-lib.sh"
 fi
 
-# Load the shared ownership classifier + machinery list + digest engine + base
-# provenance resolver from the same on-disk location, together with the fork
-# check and the bypass stamp. check_out_of_scope_pr() below depends on the
-# classifier to know what a changed path is and on the provenance resolver to
-# know what base it is reading a change set against, and every marker check
-# below is keyed to a member's content digest computed by the digest engine; an
+# Load the shared ownership classifier + machinery list + branch-own patch
+# library + digest engine + base provenance resolver from the same on-disk
+# location, together with the fork check and the bypass stamp.
+# check_out_of_scope_pr() below depends on the classifier to know what a changed
+# path is and on the provenance resolver to know what base it is reading a
+# change set against, and every marker check below is keyed to a member's
+# branch-own digest computed by the digest engine over the patch library; an
 # absent or unreadable module means this gate cannot know what it is gating, so
 # it denies rather than fall through to a degraded, uninformed gate. This is a
 # deliberate fail-closed path distinct from every other guard in this hook
@@ -257,13 +267,14 @@ fi
 _repo_scope_library="$_library_directory/audit-scope.sh"
 _machinery_library="$_library_directory/audit-machinery.sh"
 _digest_library="$_library_directory/audit-digest.sh"
+_branch_patch_library="$_library_directory/audit-branch-patch.sh"
 _version_library="$_library_directory/gaia-version.sh"
 _provenance_library="$_library_directory/audit-base-provenance.sh"
 _repo_scope_library="$_library_directory/repo-scope.sh"
 _cross_repo_library="$_library_directory/cross-repo-refusal.sh"
 _bypass_stamp_library="$_library_directory/audit-bypass-stamp.sh"
-if [ -z "$_library_directory" ] || [ ! -f "$_repo_scope_library" ] || [ ! -f "$_machinery_library" ] || [ ! -f "$_digest_library" ] || [ ! -f "$_version_library" ] || [ ! -f "$_provenance_library" ] || [ ! -f "$_repo_scope_library" ] || [ ! -f "$_cross_repo_library" ] || [ ! -f "$_bypass_stamp_library" ]; then
-  jq -n --arg reason "PR merge gate: cannot load the ownership classifier, the digest engine, the version normalizer, the base provenance resolver, the command scanner, the fork check, or the bypass stamp (.claude/hooks/lib/audit-scope.sh, .claude/hooks/lib/audit-machinery.sh, .claude/hooks/lib/audit-digest.sh, .claude/hooks/lib/gaia-version.sh, .claude/hooks/lib/audit-base-provenance.sh, .claude/hooks/lib/repo-scope.sh, .claude/hooks/lib/cross-repo-refusal.sh, and .claude/hooks/lib/audit-bypass-stamp.sh must all exist and be readable). Every marker check below is keyed to a member's content digest and to a version literal this gate compares for equality against the stamped one; this gate's out-of-scope bypass depends on the classifier to know what a changed path is, and on the provenance resolver to know what base its change set is read against; every permit this gate issues is bound to the pull request the merge names, which it reads through the command scanner; a fork pull request is refused through the fork check; and a bypass allow posts its GAIA-Audit status through the stamp. So it denies rather than guess. Restore all eight files (they ship with the framework; a missing or corrupted checkout is the usual cause) and retry.${gate_arm_note}" '{
+if [ -z "$_library_directory" ] || [ ! -f "$_repo_scope_library" ] || [ ! -f "$_machinery_library" ] || [ ! -f "$_digest_library" ] || [ ! -f "$_branch_patch_library" ] || [ ! -f "$_version_library" ] || [ ! -f "$_provenance_library" ] || [ ! -f "$_repo_scope_library" ] || [ ! -f "$_cross_repo_library" ] || [ ! -f "$_bypass_stamp_library" ]; then
+  jq -n --arg reason "PR merge gate: cannot load the ownership classifier, the digest engine, the branch-own patch library, the version normalizer, the base provenance resolver, the command scanner, the fork check, or the bypass stamp (.claude/hooks/lib/audit-scope.sh, .claude/hooks/lib/audit-machinery.sh, .claude/hooks/lib/audit-digest.sh, .claude/hooks/lib/audit-branch-patch.sh, .claude/hooks/lib/gaia-version.sh, .claude/hooks/lib/audit-base-provenance.sh, .claude/hooks/lib/repo-scope.sh, .claude/hooks/lib/cross-repo-refusal.sh, and .claude/hooks/lib/audit-bypass-stamp.sh must all exist and be readable). Every marker check below is keyed to a member's branch-own digest and to a version literal this gate compares for equality against the stamped one; this gate's out-of-scope bypass depends on the classifier to know what a changed path is, and on the provenance resolver to know what base its change set is read against; every permit this gate issues is bound to the pull request the merge names, which it reads through the command scanner; a fork pull request is refused through the fork check; and a bypass allow posts its GAIA-Audit status through the stamp. So it denies rather than guess. Restore every file named above (they ship with the framework; a missing or corrupted checkout is the usual cause) and retry.${gate_arm_note}" '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
@@ -276,6 +287,8 @@ fi
 . "$_repo_scope_library"
 # shellcheck source=/dev/null
 . "$_machinery_library"
+# shellcheck source=/dev/null
+. "$_branch_patch_library"
 # shellcheck source=/dev/null
 . "$_digest_library"
 # shellcheck source=/dev/null
@@ -324,7 +337,7 @@ fi
 
 # Resolve HEAD's TREE. This is now a plain DATA field (surfaced in deny
 # messages only), never a validity key: every marker check below is keyed to
-# a member's own content digest, computed next.
+# a member's branch-own digest, derived on first need.
 tree=$(git rev-parse "HEAD^{tree}" 2>/dev/null || true)
 
 # TWO roots, because this gate spans two different questions and one root
@@ -360,12 +373,12 @@ fi
 tree_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
 # Parse the roster ONCE per run (never once per path); the classifier module
-# was sourced above. audit_digests_all below re-inits the same state
-# internally (its own single-walk contract), so this call is redundant with
-# it in effect but kept explicit: check_out_of_scope_pr() run before any
-# digest-dependent path in a future edit would still find the roster parsed. A config with no auditors:
-# roster fails here with its own named remedy, ahead of the digest-batch deny
-# below, whose text would otherwise blame a missing sha256 tool.
+# was sourced above. audit_branch_digests_all re-inits the same state
+# internally, so this call is redundant with it in effect but kept explicit:
+# check_out_of_scope_pr() run before any digest-dependent path in a future edit
+# would still find the roster parsed. A config with no auditors: roster fails
+# here with its own named remedy, ahead of the digest deny below, whose text
+# would otherwise blame a missing sha256 tool.
 if ! audit_scope_init "$tree_root" 2>/dev/null; then
   jq -n --arg reason "PR merge gate: ${tree_root}/.gaia/audit-ci.yml has no auditors: roster, so no Code Audit Team member can be resolved or cleared for HEAD ${sha:0:12}. There is no fallback roster. Restore the auditors: block from the GAIA template's .gaia/audit-ci.yml, commit it, and retry.${gate_arm_note}" '{
     hookSpecificOutput: {
@@ -377,18 +390,9 @@ if ! audit_scope_init "$tree_root" 2>/dev/null; then
   exit 0
 fi
 
-# Compute every roster member's content digest in ONE walk:
-# audit_digests_all parses the roster, walks the tree once, and
-# classifies every path once, emitting "<member>\t<digest>" per member. This
-# is the sole validity-key derive point for every marker check below,
-# replacing the single HEAD^{tree} marker key. Fail closed: a missing sha256
-# tool, an unloadable classifier, or a git failure returns non-zero here (the
-# same tool-degradation fail-closed posture already applied to an unloadable
-# classifier above), and this gate must never proceed with a partial or empty
-# digest set.
-_digest_batch="$(audit_digests_all "$tree_root" 2>/dev/null)" || _digest_batch=""
-if [ -z "$_digest_batch" ]; then
-  jq -n --arg reason "PR merge gate: cannot derive per-member content digests for HEAD ${sha:0:12} (audit_digests_all failed or returned nothing). This usually means a missing sha256 tool (sha256sum / shasum -a 256), a git failure, or a corrupted checkout. Every Code Audit Team marker is keyed to a member's content digest, so this gate denies rather than match against an empty or partial digest. Restore the missing tool/checkout and retry.${gate_arm_note}" '{
+# gate_emit_deny <reason>: print the deny decision for <reason> and exit.
+gate_emit_deny() {
+  jq -n --arg reason "$1$gate_arm_note" '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
@@ -396,22 +400,23 @@ if [ -z "$_digest_batch" ]; then
     }
   }'
   exit 0
-fi
+}
 
-# Parse the batch into parallel arrays (bash 3.2 has no associative arrays,
-# mirroring the digest engine's own convention).
+# The per-member digests, the frontend marker path and the frontend refusal are
+# derived together, on first need, by gate_require_digests below. Nothing above
+# the first signal that reads a digest touches the network, which is what keeps a
+# bypass pull request (out of scope, chore(deps) manifest-only) from ever
+# looking up the base.
 _DIGEST_MEMBER=()
 _DIGEST_VALUE=()
-while IFS= read -r _digest_line; do
-  [ -n "$_digest_line" ] || continue
-  _DIGEST_MEMBER[${#_DIGEST_MEMBER[@]}]="${_digest_line%%$'\t'*}"
-  _DIGEST_VALUE[${#_DIGEST_VALUE[@]}]="${_digest_line#*$'\t'}"
-done <<EOF
-$_digest_batch
-EOF
+frontend_digest=""
+marker=""
+frontend_refused=0
+refusal_note=""
+gate_digests_resolved=""
 
-# member_digest <member> -> that member's content digest on stdout, exit 0;
-# exit 1 (empty stdout) when the member is absent from the batch above.
+# member_digest <member> -> that member's branch-own digest on stdout, exit 0;
+# exit 1 (empty stdout) when the member is absent from the batch.
 member_digest() {
   local want="$1" i=0
   while [ "$i" -lt "${#_DIGEST_MEMBER[@]}" ]; do
@@ -424,24 +429,88 @@ member_digest() {
   return 1
 }
 
-frontend_digest="$(member_digest code-audit-frontend)" || frontend_digest=""
+# gate_require_digests: derive, once per run, every roster member's branch-own
+# digest against the base GitHub reports, or print the deny decision naming the
+# one next step and exit. Call it directly, never inside a `$( )`, so the memo
+# and the exit both act on the parent shell.
+#
+# The trusted base is the PR record's base branch name plus that branch's tip
+# from the GitHub branches endpoint. It is never read from a local ref: a stale
+# or forged `refs/remotes/origin/*` would otherwise decide what counts as the
+# branch's own change. The tip must be present locally and HEAD must have exactly
+# one merge base with it; each failure has its own next step.
+gate_require_digests() {
+  [ -z "$gate_digests_resolved" ] || return 0
+  gate_digests_resolved=yes
 
-marker="$root/.gaia/local/audit/${frontend_digest}.ok"
+  resolve_pr_record
 
-# A refusal for the frontend's CURRENT digest is checked before any earned
-# signal and is absolute: denies regardless of a same-digest earned
-# marker. Computed once so both the legacy and member-aware deny paths (and
-# frontend_cleared() below) see the same value without re-querying per call.
-frontend_refused=0
-if [ -n "$frontend_digest" ] && clearance_member_refused "$root" "$frontend_digest" code-audit-frontend; then
-  frontend_refused=1
-fi
-refusal_note=""
-if [ "$frontend_refused" -eq 1 ]; then
-  refusal_note="
-A live refusal exists for this exact content: $(clearance_refused_path "$root" "$frontend_digest" code-audit-frontend). A refusal always takes precedence over any earned marker for the same content, and a bare re-spawn does NOT clear it: an ordinary earned write leaves the refusal in place, so re-running the agent against unchanged, still-unaddressed content refuses again. Clear it by resolving the finding (a content change rotates the digest, retiring this refusal), or, when the operator acknowledges an Important with a stated reason and the content does not move, by re-spawning code-audit-frontend so it writes its earned marker with --supersede-refusal \"<reason>\", which removes its own refusal as an explicit, recorded act.
+  local gh_remedy="Check gh (\`gh auth status\`, the network) and retry gh pr merge."
+  local base_error_file base_detail repository tip merge_base lookup_status=0 digest_batch stale_cache_fix
+
+  if [ -z "$pr_record_base" ]; then
+    gate_emit_deny "PR merge gate: cannot verify the base branch for HEAD ${sha:0:12}: gh returned no pull request record naming a base branch for the current branch. Markers are keyed to the branch's own change against the base branch GitHub reports, and this gate never substitutes a local ref for it, so it denies. ${gh_remedy}"
+  fi
+
+  stale_cache_fix="$(audit_stale_cached_base "$tree_root" "$pr_record_base")" || stale_cache_fix=""
+  if [ -n "$stale_cache_fix" ]; then
+    gate_emit_deny "PR merge gate: this branch's cached audit base differs from base branch ${pr_record_base} that GitHub reports (the pull request was retargeted), so markers written locally are keyed to a different base than this gate measures for HEAD ${sha:0:12}. Run \`${stale_cache_fix}\`, re-run the audit writers, and retry gh pr merge."
+  fi
+
+  base_error_file="$(mktemp "${TMPDIR:-/tmp}/gate-base.XXXXXX" 2>/dev/null)" || base_error_file=/dev/null
+  repository="$(audit_github_repository "$tree_root" 2>"$base_error_file")" || lookup_status=$?
+  if [ "$lookup_status" -eq 0 ]; then
+    tip="$(audit_github_base_tip "$tree_root" "$repository" "$pr_record_base" 2>"$base_error_file")" || lookup_status=$?
+  fi
+  if [ "$lookup_status" -ne 0 ]; then
+    base_detail="$(head -n 1 "$base_error_file" 2>/dev/null || true)"
+    [ "$base_error_file" = /dev/null ] || rm -f "$base_error_file"
+    gate_emit_deny "PR merge gate: cannot read the tip of base branch ${pr_record_base} from GitHub for HEAD ${sha:0:12}: ${base_detail:-gh failed}. Markers are keyed to the branch's own change against the base GitHub reports, and this gate never substitutes a local ref for it, so it denies. ${gh_remedy}"
+  fi
+  [ "$base_error_file" = /dev/null ] || rm -f "$base_error_file"
+
+  merge_base="$(audit_branch_patch_merge_base "$tree_root" "$tip" 2>/dev/null)" || lookup_status=$?
+  case "$lookup_status" in
+    0) ;;
+    4)
+      gate_emit_deny "PR merge gate: the tip of base branch ${pr_record_base} that GitHub reports (${tip:0:12}) is not a commit in this checkout, so the branch's own change cannot be measured against it for HEAD ${sha:0:12}. Run \`git fetch origin\` and retry gh pr merge."
+      ;;
+    3)
+      gate_emit_deny "PR merge gate: HEAD ${sha:0:12} has more than one merge base with the tip of base branch ${pr_record_base} (${tip:0:12}), so the branch's own change is ambiguous. Run \`git merge --no-edit refs/remotes/origin/${pr_record_base}\` to make the merge base unique, then retry gh pr merge."
+      ;;
+    *)
+      gate_emit_deny "PR merge gate: cannot derive the merge base of HEAD ${sha:0:12} and the tip of base branch ${pr_record_base} (${tip:0:12}). This usually means a shallow or damaged checkout. Run \`git fetch origin\` and retry gh pr merge."
+      ;;
+  esac
+
+  digest_batch="$(audit_branch_digests_all "$tree_root" "$merge_base" 2>/dev/null)" || digest_batch=""
+  if [ -z "$digest_batch" ]; then
+    gate_emit_deny "PR merge gate: cannot derive per-member branch-own digests for HEAD ${sha:0:12} (audit_branch_digests_all failed or returned nothing). This usually means a missing sha256 tool (sha256sum / shasum -a 256), a git failure, a detached HEAD with no branch name to bind the digest to, or a corrupted checkout. Every Code Audit Team marker is keyed to a member's digest, so this gate denies rather than match against an empty or partial one. Restore the missing tool or checkout and retry."
+  fi
+
+  # Parse the batch into parallel arrays (bash 3.2 has no associative arrays,
+  # mirroring the digest engine's own convention).
+  local digest_line
+  while IFS= read -r digest_line; do
+    [ -n "$digest_line" ] || continue
+    _DIGEST_MEMBER[${#_DIGEST_MEMBER[@]}]="${digest_line%%$'\t'*}"
+    _DIGEST_VALUE[${#_DIGEST_VALUE[@]}]="${digest_line#*$'\t'}"
+  done <<EOF
+$digest_batch
+EOF
+
+  frontend_digest="$(member_digest code-audit-frontend)" || frontend_digest=""
+  marker="$root/.gaia/local/audit/${frontend_digest}.ok"
+
+  # A refusal for the frontend's CURRENT digest is checked before any earned
+  # signal and is absolute: denies regardless of a same-digest earned marker.
+  if [ -n "$frontend_digest" ] && clearance_member_refused "$root" "$frontend_digest" code-audit-frontend; then
+    frontend_refused=1
+    refusal_note="
+A live refusal exists for this exact branch-own digest: $(clearance_refused_path "$root" "$frontend_digest" code-audit-frontend). A refusal always takes precedence over any earned marker for the same digest, and a bare re-spawn does NOT clear it: an ordinary earned write leaves the refusal in place, so re-running the agent against an unchanged, still-unaddressed patch refuses again. Clear it by resolving the finding with an edit to the branch's own patch on that member's paths (that rotates the digest, retiring this refusal); a fix that arrives only through a catch-up merge of the base branch does not rotate it, barring a base edit within three lines of a branch hunk on that member's paths. Or, when the operator acknowledges an Important with a stated reason and the digest does not move, re-spawn code-audit-frontend so it writes its earned marker with --supersede-refusal \"<reason>\", which removes its own refusal as an explicit, recorded act.
 "
-fi
+  fi
+}
 
 # Human-readable state of a local marker file for a deny message. The gate now
 # accepts only a writer-produced clearance, so a file that exists but is not
@@ -483,7 +552,15 @@ _gate_current_version() {
 # version+digest is not treated as cleared. Falls through silently on any
 # error (no gh, no token, no GITHUB_REPOSITORY, API failure), the deny path
 # below fires as normal.
+#
+# With "any-digest" the status's digest field is not compared, which needs no
+# branch-own digest and so no base lookup. Only the bypass stamp decision uses
+# it: it asks whether the head already carries a cleared status, not whether
+# that status clears this gate. A status recorded under another digest recipe
+# does not clear the gate (the default form compares the digest) but still
+# satisfies the status check branch protection waits on.
 check_github_status() {
+  local digest_mode="${1:-}"
   command -v gh >/dev/null 2>&1 || return 1
 
   # Derive repo slug. GITHUB_REPOSITORY is set inside Actions; derive from
@@ -503,7 +580,7 @@ check_github_status() {
   current_version="$(_gate_current_version)"
   [ -n "$current_version" ] || return 1
 
-  [ -n "$frontend_digest" ] || return 1
+  [ "$digest_mode" = any-digest ] || [ -n "$frontend_digest" ] || return 1
 
   status_description=$(gh api \
     "repos/${repo}/commits/${sha}/statuses" \
@@ -517,7 +594,7 @@ check_github_status() {
 
   [ -n "$status_version" ] && [ -n "$status_digest" ] || return 1
   [ "$status_version" = "$current_version" ] || return 1
-  [ "$status_digest" = "$frontend_digest" ] || return 1
+  [ "$digest_mode" = any-digest ] || [ "$status_digest" = "$frontend_digest" ] || return 1
 
   return 0
 }
@@ -804,7 +881,7 @@ gate_command_names_the_record_pr() {
 # issues off a CLEARANCE signal, as opposed to off the pull-request record.
 #
 # A clearance proves a property of THIS CHECKOUT's content: a member's own
-# content-digest marker, a GAIA-Audit commit
+# branch-own digest marker, a GAIA-Audit commit
 # status on HEAD's sha. Not one of them reads the pull-request reference the
 # gated command carries, so on a branch whose dispatched members have all
 # cleared, `gh pr merge <other-number>` used to be permitted and merged a pull
@@ -926,7 +1003,7 @@ flag, is always readable and targets this checkout's own pull request."
   Merge names:      ${named}
   This checkout is on: ${record:-<no pull-request record>}
 
-Every clearance signal, a member's content-digest marker and the GAIA-Audit
+Every clearance signal, a member's branch-own digest marker and the GAIA-Audit
 commit status, proves that a member read THIS
 CHECKOUT's content. None of them says anything about another pull request, so
 merging one on their strength would merge a pull request nothing here audited.
@@ -1079,14 +1156,24 @@ check_out_of_scope_pr() {
   return 0
 }
 
-# code-audit-frontend clearance: a live refusal for the current digest is
-# checked first and is absolute; otherwise any one of the three member
-# signals above (marker, GitHub status, chore(deps)). Reused by both the
-# legacy gate and the member-aware gate below. Records which signal cleared in
-# $frontend_cleared_by, because only the chore(deps) arm earns a bypass stamp.
+# code-audit-frontend clearance: the chore(deps) waiver first, since it needs no
+# digest; then, with the digests derived, a live refusal for the current digest
+# (absolute, ahead of every earned signal), then the marker, then the GitHub
+# status. The waiver therefore outranks a refusal: honoring one needs the digest,
+# hence the GitHub base lookup, which a manifest-only bump never makes. Reused by
+# both the legacy gate and the member-aware gate below.
+# Records which signal cleared in $frontend_cleared_by, because only the
+# chore(deps) arm earns a bypass stamp.
 frontend_cleared_by=""
 frontend_cleared() {
   frontend_cleared_by=""
+  # The chore(deps) waiver reads no digest, so it is asked first: a manifest-only
+  # dependency bump never reaches the base lookup the digest signals below make.
+  if check_chore_deps_pr; then
+    frontend_cleared_by=chore-deps
+    return 0
+  fi
+  gate_require_digests
   [ "$frontend_refused" -eq 1 ] && return 1
   if clearance_member_cleared "$root" "$frontend_digest" code-audit-frontend; then
     frontend_cleared_by=marker
@@ -1096,18 +1183,23 @@ frontend_cleared() {
     frontend_cleared_by=github-status
     return 0
   fi
-  if check_chore_deps_pr; then
-    frontend_cleared_by=chore-deps
-    return 0
-  fi
   return 1
 }
 
-# github_status_cleared: check_github_status, asked at most once per run. The
-# stamp decision below asks it again after frontend_cleared has, and a second
-# `gh api` read would buy nothing.
+# github_status_cleared [any-digest]: check_github_status, asked at most once
+# per run and form. The stamp decision asks the any-digest form, which needs no
+# digest, so a bypass pull request never derives one.
 github_status_answer=""
+github_status_any_digest_answer=""
 github_status_cleared() {
+  if [ "${1:-}" = any-digest ]; then
+    if [ -z "$github_status_any_digest_answer" ]; then
+      github_status_any_digest_answer=no
+      check_github_status any-digest && github_status_any_digest_answer=yes
+    fi
+    [ "$github_status_any_digest_answer" = yes ]
+    return
+  fi
   if [ -z "$github_status_answer" ]; then
     github_status_answer=no
     check_github_status && github_status_answer=yes
@@ -1195,27 +1287,33 @@ if [ -z "$members" ]; then
   # The out-of-scope classification runs FIRST, ahead of every clearance
   # signal, because the bypass stamp depends on it whichever signal allows: a
   # wiki-only pull request cut from audited content still validates the old
-  # marker (an out-of-glob change rotates no digest), so a gate that let the
+  # marker (a path outside every member's set rotates no digest), so a gate that let the
   # marker answer first would allow it and never post the status branch
   # protection waits on. The price is the base resolution and diff on a run a
   # marker would have cleared without them.
+  #
+  # Neither bypass reads a branch-own digest, so both are decided before
+  # gate_require_digests and its GitHub base lookup. Every path that sets
+  # out_of_scope_pr has already bound the merge to the record's pull request
+  # (check_out_of_scope_pr ends on that conjunct, and the empty-range arm routes
+  # through gate_empty_is_decisive), so no permit-binding check follows here.
   out_of_scope_pr=0
   check_out_of_scope_pr && out_of_scope_pr=1
 
+  if [ "$out_of_scope_pr" -eq 1 ]; then
+    github_status_cleared any-digest || gate_post_bypass_stamp 'skipped: out of scope'
+    exit 0
+  fi
+
   if frontend_cleared; then
     gate_permit_binds_to_named_pr || exit 0
-    if [ "$out_of_scope_pr" -eq 1 ]; then
-      github_status_cleared || gate_post_bypass_stamp 'skipped: out of scope'
-    elif [ "$frontend_cleared_by" = chore-deps ]; then
+    if [ "$frontend_cleared_by" = chore-deps ]; then
       gate_post_bypass_stamp 'skipped: chore(deps) manifest-only'
     fi
     exit 0
   fi
 
-  if [ "$out_of_scope_pr" -eq 1 ]; then
-    github_status_cleared || gate_post_bypass_stamp 'skipped: out of scope'
-    exit 0
-  fi
+  gate_require_digests
 
   # check_out_of_scope_pr above already populated the memo on every path that
   # reaches here; call it again anyway so the signal list below can never report
@@ -1271,8 +1369,8 @@ fi
 # Code Audit Team member. Every dispatched member must clear:
 # code-audit-frontend via frontend_cleared() above, each specialized member
 # <m> via its own marker .gaia/local/audit/<digest>.<m>.ok, keyed to that
-# member's OWN content digest. A live refusal for a member's current digest is
-# checked before its earned marker and is absolute.
+# member's OWN branch-own digest. A live refusal for a member's current digest
+# is checked before its earned marker and is absolute.
 
 all_cleared=1
 report=""
@@ -1285,13 +1383,14 @@ while IFS= read -r roster_member; do
 
   member_cleared=0
   if [ "$roster_member" = "code-audit-frontend" ]; then
-    member_content_digest="$frontend_digest"
-    member_refused="$frontend_refused"
     if frontend_cleared; then
       member_cleared=1
       [ "$frontend_cleared_by" != chore-deps ] || frontend_chore_deps_waived=1
     fi
+    member_content_digest="$frontend_digest"
+    member_refused="$frontend_refused"
   else
+    gate_require_digests
     member_content_digest="$(member_digest "$roster_member")" || member_content_digest=""
     member_refused=0
     if [ -n "$member_content_digest" ] && clearance_member_refused "$root" "$member_content_digest" "$roster_member"; then
@@ -1309,7 +1408,7 @@ while IFS= read -r roster_member; do
     all_cleared=0
     if [ "$member_refused" -eq 1 ]; then
       refused_path="$(clearance_refused_path "$root" "$member_content_digest" "$roster_member")"
-      report="${report}  - ${roster_member}: REFUSED (a live refusal exists for this exact content at ${refused_path}; a bare re-spawn does not clear it, the member must supersede it, see below)
+      report="${report}  - ${roster_member}: REFUSED (a live refusal exists for this exact branch-own digest at ${refused_path}; a bare re-spawn does not clear it, the member must supersede it, see below)
 "
     elif [ "$roster_member" = "code-audit-frontend" ]; then
       report="${report}  - code-audit-frontend: PENDING
@@ -1331,6 +1430,8 @@ if [ "$all_cleared" -eq 1 ]; then
   exit 0
 fi
 
+gate_require_digests
+
 reason="PR merge gate: not every dispatched Code Audit Team member has cleared HEAD ${sha:0:12} (tree ${tree:0:12}).
 
 ${report}
@@ -1339,14 +1440,17 @@ wiki/concepts/PR Merge Workflow.md, ## Dispatch the audit loop unit) so each PEN
 writes its marker (code-audit-frontend writes ${root}/.gaia/local/audit/${frontend_digest}.ok; each
 specialized member writes ${root}/.gaia/local/audit/<its-own-digest>.<member>.ok, NOT
 the frontend digest), then retry gh pr merge. Markers are keyed to each
-member's own content digest (the files it owns plus the shared gate
-machinery), so an out-of-glob change never invalidates one.
+member's own branch-own digest (the branch's own patch on the paths it owns plus
+the shared gate machinery), so a path outside that set, or content the base
+branch brought in through a catch-up merge, never invalidates one.
 
 A REFUSED member is not a PENDING one: its refusal outranks any earned marker
-for the same content, and an ordinary re-spawn does not clear it (a plain
-earned write leaves the refusal on disk). Resolve the finding, which rotates
-that member's digest and retires the refusal with it; or, when the operator
-acknowledges an Important with a stated reason and the content does not move,
+for the same digest, and an ordinary re-spawn does not clear it (a plain
+earned write leaves the refusal on disk). Resolve the finding with an edit to
+the branch's own patch on that member's paths, which rotates its digest and
+retires the refusal with it (a fix that arrives only through a catch-up merge of
+the base branch does not rotate it unless the base edited within three lines of a branch hunk); or, when the operator acknowledges an
+Important with a stated reason and the digest does not move,
 re-spawn the member so it writes its earned marker with
 --supersede-refusal \"<reason>\", removing its own refusal as an explicit,
 recorded act.

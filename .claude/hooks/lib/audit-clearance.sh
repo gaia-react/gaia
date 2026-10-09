@@ -3,10 +3,11 @@
 # markers. Sourced, never executed; does no work at source time.
 #
 # A clearance marker is a JSON file under <root>/.gaia/local/audit/, named for
-# the audited MEMBER'S CONTENT DIGEST (a digest over exactly the files that
-# member owns plus the shared gate machinery), that a Code Audit Team member
-# writes (via .gaia/scripts/audit-write-clearance.sh) to attest it reviewed
-# that content. Two provenances, two filename families:
+# the audited MEMBER'S BRANCH-OWN DIGEST (a digest over the branch's own patch
+# to exactly the files that member owns plus the shared gate machinery, bound
+# to the branch), that a Code Audit Team member writes (via
+# .gaia/scripts/audit-write-clearance.sh) to attest it reviewed that change.
+# Two provenances, two filename families:
 #
 #   earned    <digest>.ok        <digest>.<member>.ok
 #   refused   <digest>.refused   <digest>.<member>.refused

@@ -272,7 +272,8 @@ light_mark_main() {
   esac
   shared_reference="$(printf '%s\n' "$resolver_output" | tail -n 1)"
   [ -n "$shared_reference" ] || _light_mark_full sidecar-failed
-  # The answer is a ref; members key their artifacts by its merge-base with HEAD.
+  # The answer is a ref or a fork-point commit; members key their artifacts by
+  # its merge-base with HEAD, which is the commit itself for an ancestor.
   shared_base="$(git -C "$root" merge-base "$shared_reference" HEAD 2>/dev/null)" || _light_mark_full sidecar-failed
   [ -n "$shared_base" ] || _light_mark_full sidecar-failed
   sidecar_path="$(printf '[]' | bash "$root/.gaia/scripts/audit-write-findings.sh" --root "$root" --member "$member" \

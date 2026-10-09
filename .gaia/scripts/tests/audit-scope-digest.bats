@@ -17,14 +17,19 @@
 #
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
+bats_require_minimum_version 1.5.0
+
 setup() {
   . "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/tests/helpers/audit-roster.sh"
+  . "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/tests/helpers/catchup-fixture.sh"
   THIS_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
   SCRIPT="$THIS_DIRECTORY/../audit-scope-digest.sh"
   KEY_LIBRARY="$THIS_DIRECTORY/../audit-key-lib.sh"
   DIGEST_LIBRARY="$THIS_DIRECTORY/../../../.claude/hooks/lib/audit-digest.sh"
   SCOPE_LIBRARY="$THIS_DIRECTORY/../../../.claude/hooks/lib/audit-scope.sh"
   MACHINERY_LIBRARY="$THIS_DIRECTORY/../../../.claude/hooks/lib/audit-machinery.sh"
+  BRANCH_PATCH_LIBRARY="$THIS_DIRECTORY/../../../.claude/hooks/lib/audit-branch-patch.sh"
+  PROVENANCE_LIBRARY="$THIS_DIRECTORY/../../../.claude/hooks/lib/audit-base-provenance.sh"
   [ -x "$SCRIPT" ] || skip "audit-scope-digest.sh not executable"
   [ -f "$KEY_LIBRARY" ] || skip "audit-key-lib.sh not present"
   command -v jq >/dev/null 2>&1 || skip "jq not available"
@@ -39,9 +44,21 @@ setup() {
   seed_audit_roster "$ROOT"
   git -C "$ROOT" add .gaia/audit-ci.yml README.md
   git -C "$ROOT" commit --quiet -m "init"
+  # The digest is the branch's own patch against refs/remotes/origin/main.
+  add_origin "$ROOT"
 
   BASE="$(git -C "$ROOT" rev-parse HEAD)"
   MEMBER="code-audit-frontend"
+}
+
+# add_origin <repository>: a bare origin carrying main as the base reference.
+# Called under `if` because the fixture's remote-removal step exits non-zero
+# when no origin exists yet, which the suite's errexit would otherwise read as
+# a failure.
+add_origin() {
+  if ! catchup_add_origin "$1" >/dev/null; then
+    return 1
+  fi
 }
 
 # audit_key_for <base> <root>: gaia_audit_key computed the same way the
@@ -71,6 +88,8 @@ build_sandbox() {
   cp "$DIGEST_LIBRARY" "$sandbox_root/.claude/hooks/lib/audit-digest.sh"
   cp "$SCOPE_LIBRARY" "$sandbox_root/.claude/hooks/lib/audit-scope.sh"
   cp "$MACHINERY_LIBRARY" "$sandbox_root/.claude/hooks/lib/audit-machinery.sh"
+  cp "$BRANCH_PATCH_LIBRARY" "$sandbox_root/.claude/hooks/lib/audit-branch-patch.sh"
+  cp "$PROVENANCE_LIBRARY" "$sandbox_root/.claude/hooks/lib/audit-base-provenance.sh"
   git -C "$sandbox_root" init --quiet --initial-branch=main
   git -C "$sandbox_root" config user.email "test@example.com"
   git -C "$sandbox_root" config user.name "Test"
@@ -79,6 +98,7 @@ build_sandbox() {
   seed_audit_roster "$sandbox_root"
   git -C "$sandbox_root" add -A
   git -C "$sandbox_root" commit --quiet -m "init"
+  add_origin "$sandbox_root"
 }
 
 # ========== usage / arity ==========
@@ -133,6 +153,50 @@ build_sandbox() {
   run "$SCRIPT" --read --root "$ROOT" --member "$MEMBER" --base "$BASE"
   [ "$status" -eq 0 ]
   [ "$output" = "$captured" ]
+}
+
+# ========== the branch-own digest ==========
+
+# start_feature: check out a feature branch of the fixture, caching main as its
+# audit base so no probe reaches a real `gh`.
+start_feature() {
+  git -C "$ROOT" checkout --quiet -b feat/capture
+  git -C "$ROOT" config branch.feat/capture.gaia-audit-base main
+}
+
+@test "--capture after a clean catch-up of the base returns the digest it returned before" {
+  start_feature
+  mkdir -p "$ROOT/frontend/app"
+  printf 'export const own = 1;\n' >"$ROOT/frontend/app/own.ts"
+  git -C "$ROOT" add frontend/app/own.ts
+  git -C "$ROOT" commit --quiet -m "branch work"
+  before="$("$SCRIPT" --capture --recapture --root "$ROOT" --member "$MEMBER" --base "$BASE")"
+  [ "${#before}" -eq 64 ]
+
+  catchup_base_commit frontend/app/incoming.ts "export const incoming = 1;"
+  catchup_merge_base
+  after="$("$SCRIPT" --capture --recapture --root "$ROOT" --member "$MEMBER" --base "$BASE")"
+  [ "$after" = "$before" ]
+}
+
+@test "--capture fails loudly, naming git fetch origin, when the local base tip is absent" {
+  start_feature
+  git -C "$ROOT" update-ref -d refs/remotes/origin/main
+  run --separate-stderr "$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "$BASE"
+  [ "$status" -ne 0 ]
+  [ -z "$output" ]
+  grep -qF -- 'git fetch origin' <<<"$stderr"
+  [ ! -f "$(scope_file_for "$ROOT" "$BASE" "$MEMBER")" ]
+}
+
+@test "--capture fails loudly, naming the base-branch merge, when the merge base is not unique" {
+  start_feature
+  catchup_criss_cross
+  run --separate-stderr "$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "$BASE"
+  [ "$status" -ne 0 ]
+  [ -z "$output" ]
+  grep -qF -- 'merge the base branch' <<<"$stderr"
+  [ ! -f "$(scope_file_for "$ROOT" "$BASE" "$MEMBER")" ]
 }
 
 @test "--read with no prior capture prints nothing and exits non-zero" {

@@ -29,6 +29,7 @@
 
 setup() {
   . "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/tests/helpers/audit-roster.sh"
+  . "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/tests/helpers/catchup-fixture.sh"
   THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   FINDINGS_WRITER="$THIS_DIRECTORY/../audit-write-findings.sh"
   CLEARANCE_WRITER="$THIS_DIRECTORY/../audit-write-clearance.sh"
@@ -59,8 +60,12 @@ setup() {
   BASE="$(git -C "$ROOT" rev-parse HEAD)"
 
   # The work under review, on its own branch: the audit key's branch half is a
-  # real discriminator rather than trivially "main".
-  git -C "$ROOT" checkout --quiet -b "fix/guard-holes"
+  # real discriminator rather than trivially "main". The bare origin supplies the
+  # local base reference the branch-own digest is measured against.
+  # The fixture's origin retrofit removes any existing `origin` first and exits
+  # non-zero when there is none, so a placeholder remote precedes it.
+  git -C "$ROOT" remote add origin "$BATS_TEST_TMPDIR/placeholder-origin.git"
+  catchup_add_origin "$ROOT" main --feature "fix/guard-holes"
   printf '#!/usr/bin/env bash\necho widened\n' > "$ROOT/.claude/hooks/guard.sh"
   git -C "$ROOT" add .claude/hooks/guard.sh
   git -C "$ROOT" commit --quiet -m "widen the guard"
@@ -73,7 +78,7 @@ setup() {
   SIDECAR="$AUDIT_DIRECTORY/${TAG}.${MEMBER}.findings.json"
   LEDGER="$AUDIT_DIRECTORY/${TAG}.rerun.json"
 
-  DIGEST="$(bash -c '. "$1"; audit_member_digest "$2" "$3"' _ "$DIGEST_LIBRARY" "$ROOT" "$MEMBER")"
+  DIGEST="$(member_digest)"
   [ -n "$DIGEST" ] || skip "cannot derive a member digest in the fixture"
   MARKER="$AUDIT_DIRECTORY/${DIGEST}.${MEMBER}.ok"
   REFUSAL="$AUDIT_DIRECTORY/${DIGEST}.${MEMBER}.refused"
@@ -90,6 +95,14 @@ setup() {
   WAVE_STAMP="$BATS_TEST_TMPDIR/wave.stamp"
   : > "$WAVE_STAMP"
   touch -t 200001010000 "$WAVE_STAMP"
+}
+
+# member_digest: the member's branch-own digest over the merge base with the
+# local base reference.
+member_digest() {
+  local merge_base
+  merge_base="$(git -C "$ROOT" merge-base refs/remotes/origin/main HEAD)" || return 1
+  bash -c '. "$1"; audit_branch_member_digest "$2" "$3" "$4"' _ "$DIGEST_LIBRARY" "$ROOT" "$MEMBER" "$merge_base"
 }
 
 # stage_refusal: what a refusing member does, in the order its remit specifies.
@@ -263,7 +276,7 @@ JSON
   printf '#!/usr/bin/env bash\necho repaired\n' > "$ROOT/.claude/hooks/guard.sh"
   git -C "$ROOT" add .claude/hooks/guard.sh
   git -C "$ROOT" commit --quiet -m "bound the trailing segment"
-  new_digest="$(bash -c '. "$1"; audit_member_digest "$2" "$3"' _ "$DIGEST_LIBRARY" "$ROOT" "$MEMBER")"
+  new_digest="$(member_digest)"
   [ -n "$new_digest" ]
   [ "$new_digest" != "$DIGEST" ]
   # The stale refusal no longer answers for the new content: the classifier for

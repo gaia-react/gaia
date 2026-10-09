@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 # audit-base-provenance.sh: the one place that resolves a diff base together
 # with its provenance for the Code Audit Team. Sourced, never executed; does no
-# work at source time. Bash 3.2 compatible (macOS default). Never `cd`.
+# work at source time. Bash 3.2 compatible (macOS default). Never `cd`, with one
+# stated exception: each gh call here runs inside a subshell that changes into
+# <root>, because gh derives the repository and the current branch's pull
+# request from its working directory, and the repository must equal the status
+# poster's own derivation byte for byte.
 #
-# Three functions:
+# The base-ladder functions:
 #
 #   audit_resolve_base_provenance <root> <anchor-request> [<supplied-base>]
 #                                  [<record-base-branch>]
@@ -23,12 +27,32 @@
 #       has nothing left to audit". The only definition of that predicate
 #       tree-wide.
 #
-# Conflating the trust predicate (function 3) with the anchor (the second
-# field function 1 prints) is a merge-gate bypass: the anchor names which
-# branch the base was taken against, and only the trust predicate says whether
-# an empty range against that base is decisive. A caller that infers
-# decisiveness from the anchor reimplements function 3 badly and can disagree
-# with it.
+#   audit_github_repository <root>
+#   audit_github_pr_base_branch <root>
+#   audit_github_base_tip <root> <repository> <base-branch>
+#       The GitHub-verified base: the repository GAIA-Audit is posted to, the
+#       pull request's base branch name, and that branch's current tip, each
+#       read through gh. The merge gate and the status poster trust nothing
+#       else for the base.
+#
+#   audit_local_base_reference <root>
+#       The fully-qualified local remote-tracking ref every other caller
+#       computes against.
+#
+# Conflating the trust predicate (audit_provenance_empty_is_decisive) with the
+# anchor (the second field audit_resolve_base_provenance prints) is a
+# merge-gate bypass: the anchor names which branch the base was taken against,
+# and only the trust predicate says whether an empty range against that base
+# is decisive. A caller that infers decisiveness from the anchor reimplements
+# the predicate badly and can disagree with it.
+#
+# Why the GitHub-verified base sits beside the ladder and is not one of its
+# rungs: a ladder falls through from a rung that fails to the next, and the
+# gate must never fall through from a failed GitHub lookup to a local ref. A
+# stale or forged local ref would then supply the base the gate trusts. The
+# GitHub functions return a failure the caller turns into a denial, and the
+# ladder stays the answer for callers that deliberately accept a local base.
+# They live in this file so base derivation keeps one home.
 #
 # Why a sibling of audit-scope.sh rather than an addition to it: that file's
 # own header says it holds ownership classification alone and that mixing
@@ -182,7 +206,7 @@ audit_provenance_changed_files() {
 
 # audit_provenance_empty_is_decisive <trust>
 #
-# return: 0 iff <trust> is remote or supplied; 1 otherwise (local,
+# return: 0 iff <trust> is remote, supplied or github; 1 otherwise (local,
 # unresolvable, an empty string, anything unrecognized). Consults no anchor,
 # reads no git, touches no filesystem.
 #
@@ -192,7 +216,203 @@ audit_provenance_changed_files() {
 # opposite verdicts about the same provenance.
 audit_provenance_empty_is_decisive() {
   case "$1" in
-    remote | supplied) return 0 ;;
+    remote | supplied | github) return 0 ;;
     *) return 1 ;;
   esac
+}
+
+# --- GitHub-verified base and the local base reference -------------------------
+
+# _audit_github_fail <message>: the single stderr line of a gh failure, and the
+# gh-failure return code every caller maps to a denial.
+_audit_github_fail() {
+  printf 'audit-base-provenance: %s\n' "$1" >&2
+  return 5
+}
+
+# _audit_github_deadline_seconds: 15 seconds per function call. It sits well
+# under the 60-second hook timeout and leaves room for the two gh calls a gate
+# run makes. GAIA_AUDIT_GH_DEADLINE_SECONDS may only lower it (an integer from
+# 1 to 15; anything else is ignored), which keeps the expiry path testable
+# without a quarter-minute wait.
+_audit_github_deadline_seconds() {
+  local seconds="${GAIA_AUDIT_GH_DEADLINE_SECONDS:-15}"
+  case "$seconds" in
+    '' | *[!0-9]*) seconds=15 ;;
+  esac
+  if [ "$seconds" -lt 1 ] || [ "$seconds" -gt 15 ]; then
+    seconds=15
+  fi
+  printf '%s' "$seconds"
+}
+
+# _audit_github_run <output-file> <gh-argument>...
+#
+# Runs gh prompt-free in its own process group, writes its stdout to
+# <output-file>, and kills the whole group when the deadline passes, so a
+# hung gh and anything it spawned leave no orphan. Job control is switched on
+# inside a subshell only (bash 3.2 gives a background job its own process
+# group that way), never in the caller's shell.
+#
+# return: gh's own exit status; 124 when the deadline expired; 127 when gh is
+# not on PATH.
+_audit_github_run() {
+  local output_file="$1" run_status
+  shift
+  command -v gh >/dev/null 2>&1 || return 127
+  (
+    set -m
+    local tick_limit tick=0 gh_pid
+    tick_limit=$(( $(_audit_github_deadline_seconds) * 10 ))
+    GH_PROMPT_DISABLED=1 GIT_TERMINAL_PROMPT=0 gh "$@" >"$output_file" 2>/dev/null </dev/null &
+    gh_pid=$!
+    while kill -0 "$gh_pid" 2>/dev/null; do
+      if [ "$tick" -ge "$tick_limit" ]; then
+        kill -TERM -- "-$gh_pid" 2>/dev/null
+        sleep 0.2
+        kill -KILL -- "-$gh_pid" 2>/dev/null
+        wait "$gh_pid" 2>/dev/null
+        exit 124
+      fi
+      sleep 0.1
+      tick=$((tick + 1))
+    done
+    wait "$gh_pid"
+  ) 2>/dev/null
+  run_status=$?
+  return "$run_status"
+}
+
+# _audit_github_query <root> <description> <gh-argument>...
+#
+# Runs one gh call from <root> as its working directory (the stated cd
+# exception) and prints its stdout on success. Prints nothing and returns 5
+# with one stderr line otherwise.
+_audit_github_query() {
+  local root="$1" description="$2" output_file run_status answer
+  shift 2
+  output_file="$(mktemp "${TMPDIR:-/tmp}/audit-github.XXXXXX")" \
+    || { _audit_github_fail "cannot create a temporary file for ${description}"; return; }
+  ( cd "$root" 2>/dev/null && _audit_github_run "$output_file" "$@" )
+  run_status=$?
+  answer="$(cat "$output_file" 2>/dev/null)"
+  rm -f "$output_file"
+  case "$run_status" in
+    0) ;;
+    124) _audit_github_fail "gh timed out reading ${description}; run gh auth status and retry"; return ;;
+    *) _audit_github_fail "gh failed reading ${description}; run gh auth status and retry"; return ;;
+  esac
+  [ -n "$answer" ] || { _audit_github_fail "gh returned nothing for ${description}"; return; }
+  printf '%s\n' "$answer"
+}
+
+# audit_github_repository <root>
+#
+# stdout: owner/name of the repository GAIA-Audit is posted to, derived the way
+# the status poster derives it. return: 0, or 5 with nothing on stdout.
+audit_github_repository() {
+  local repository
+  repository="$(_audit_github_query "$1" "the repository" repo view --json nameWithOwner --jq .nameWithOwner)" \
+    || return $?
+  case "$repository" in
+    *[!A-Za-z0-9._/-]* | */*/* | /* | */) _audit_github_fail "gh returned an unusable repository name"; return ;;
+    */*) ;;
+    *) _audit_github_fail "gh returned an unusable repository name"; return ;;
+  esac
+  printf '%s\n' "$repository"
+}
+
+# audit_github_pr_base_branch <root>
+#
+# stdout: the base branch name of the current branch's pull request. return: 0,
+# or 5 with nothing on stdout.
+audit_github_pr_base_branch() {
+  local base_branch
+  base_branch="$(_audit_github_query "$1" "the pull request base branch" pr view --json baseRefName --jq .baseRefName)" \
+    || return $?
+  if ! git check-ref-format "refs/remotes/origin/${base_branch}" 2>/dev/null; then
+    _audit_github_fail "gh returned an unusable base branch name"
+    return
+  fi
+  printf '%s\n' "$base_branch"
+}
+
+# audit_stale_cached_base <root> <github-base-branch>
+#
+# return: 0 when the branch's cached base name (branch.<branch>.gaia-audit-base)
+# differs from the base GitHub reports, with the recovery command on stdout;
+# 1 otherwise. The cache drives the local digest producers and GitHub drives the
+# gate and the status poster, so a retargeted pull request leaves them keyed to
+# different bases until the cache is unset.
+audit_stale_cached_base() {
+  local root="$1" github_base="$2" branch cached_name
+  branch="$(git -C "$root" symbolic-ref --quiet --short HEAD 2>/dev/null)" || return 1
+  cached_name="$(git -C "$root" config --get "branch.${branch}.gaia-audit-base" 2>/dev/null)" || return 1
+  [ -n "$cached_name" ] && [ "$cached_name" != "$github_base" ] || return 1
+  printf 'git config --unset branch.%s.gaia-audit-base\n' "$branch"
+}
+
+# audit_github_base_tip <root> <repository> <base-branch>
+#
+# stdout: the base branch's current tip, 40 lowercase hex. return: 0, or 5 on gh
+# absence, an authentication or network failure, a non-40-hex answer or the
+# deadline expiring, with one stderr line and nothing on stdout.
+audit_github_base_tip() {
+  local root="$1" repository="$2" base_branch="$3" tip
+  if [ -z "$repository" ] || [ -z "$base_branch" ] \
+    || ! git check-ref-format "refs/remotes/origin/${base_branch}" 2>/dev/null; then
+    _audit_github_fail "no repository or usable base branch to look up"
+    return
+  fi
+  tip="$(_audit_github_query "$root" "the base branch tip" api "repos/${repository}/branches/${base_branch}" --jq .commit.sha)" \
+    || return $?
+  case "$tip" in
+    *[!0-9a-f]*) _audit_github_fail "gh returned a base tip that is not a commit id"; return ;;
+  esac
+  if [ "${#tip}" -ne 40 ]; then
+    _audit_github_fail "gh returned a base tip that is not a commit id"
+    return
+  fi
+  printf '%s\n' "$tip"
+}
+
+# audit_local_base_reference <root>
+#
+# stdout: refs/remotes/origin/<name>. The name is the per-branch cache
+# (branch.<branch>.gaia-audit-base), else one gh lookup written back to that
+# key, else the target of refs/remotes/origin/HEAD, else main. A detached HEAD
+# skips the cache and gh. A failed lookup writes nothing, so the next call
+# retries. return: 0, or 1 with one stderr line naming git fetch origin when
+# the resolved ref does not verify.
+#
+# The fully-qualified spelling is the whole guard against a local branch
+# literally named origin/<name> (see the default-branch arm above). There is no
+# local-branch fallback.
+audit_local_base_reference() {
+  local root="$1" branch cached_name name reference
+
+  branch="$(git -C "$root" symbolic-ref --quiet --short HEAD 2>/dev/null)" || branch=""
+  name=""
+  if [ -n "$branch" ]; then
+    cached_name="$(git -C "$root" config --get "branch.${branch}.gaia-audit-base" 2>/dev/null)" || cached_name=""
+    if [ -n "$cached_name" ] && git check-ref-format "refs/remotes/origin/${cached_name}" 2>/dev/null; then
+      name="$cached_name"
+    else
+      name="$(audit_github_pr_base_branch "$root" 2>/dev/null)" || name=""
+      if [ -n "$name" ]; then
+        git -C "$root" config "branch.${branch}.gaia-audit-base" "$name" 2>/dev/null || true
+      fi
+    fi
+  fi
+  if [ -z "$name" ]; then
+    name="$(git -C "$root" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')"
+  fi
+  [ -n "$name" ] || name="main"
+
+  reference="refs/remotes/origin/${name}"
+  if ! git -C "$root" rev-parse --verify --quiet "${reference}^{commit}" >/dev/null 2>&1; then
+    printf 'audit-base-provenance: %s does not exist locally; run git fetch origin\n' "$reference" >&2
+    return 1
+  fi
+  printf '%s\n' "$reference"
 }

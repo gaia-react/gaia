@@ -112,11 +112,13 @@
 #
 #      What makes that a defect is the TWO-DOT comparison it performs, not a
 #      missing `merge-base` call. `git diff <rev> -- <paths>` compares <rev> to
-#      the WORKING TREE, while a member's clearance digest is computed over
-#      `git ls-tree HEAD` (.claude/hooks/lib/audit-digest.sh), so a two-dot
-#      scope lets a member certify a digest over content it never read. It
-#      also widens: when the base is a ref whose tip has advanced past the
-#      fork point, every file the default branch changed enters the list.
+#      the WORKING TREE, while a member's clearance digest is computed over the
+#      branch's own committed patch against the local base reference
+#      (.claude/hooks/lib/audit-digest.sh, branch-own identities from
+#      .claude/hooks/lib/audit-branch-patch.sh), so a two-dot scope lets a
+#      member certify a digest over content it never read. It also widens: when
+#      the base is a ref whose tip has advanced past the fork point, every file
+#      the default branch changed enters the list.
 #
 #      `git diff <rev>...HEAD` resolves its own merge base internally, so the
 #      three-dot form is correct whether <rev> is a sha or a ref, and no
@@ -128,8 +130,8 @@
 #      Same shape as (1): a wide fixed-string net (`diff --name-only`) narrowed
 #      in awk, where the discriminations are expressible. A call is a violation
 #      when it names ANY spelling of a base (`resolve-audit-base.sh`,
-#      `BASE_REF`, `BASE_SHA`, `FULL_BASE`, `KEY_BASE`, `ELIG_BASE`) and
-#      carries no `...` range.
+#      `BASE_REF`, `BASE_SHA`, `FULL_BASE`, `KEY_BASE`, `ELIG_BASE`,
+#      `BASE_TIP`, `SIDE_BASE`) and carries no `...` range.
 #
 #      All of these spellings, not only the pre-merge-base ones, because what
 #      makes a call wrong is the two-dot comparison and NOT which variable
@@ -141,7 +143,13 @@
 #      consumes it in a diff today: what makes a call wrong is the two-dot
 #      comparison, not which variable reached it, so a future two-dot diff on
 #      the new variable must still be caught rather than reaching a spelling
-#      the net does not know. This assertion says nothing about WHICH
+#      the net does not know. `BASE_TIP` (the local base reference's tip) and
+#      `SIDE_BASE` (a side's merge base with that tip, the left end of the
+#      resolver's pathspec listing) are the resolver's two branch-own
+#      variables: neither is a review base, neither is assigned from a bare
+#      `merge-base` call (the library derives the merge base), and both join
+#      the net because the pathspec listing is the one diff in the resolver
+#      that names `SIDE_BASE`. This assertion says nothing about WHICH
 #      spelling a call should use; the three-dot range is the whole
 #      requirement.
 #
@@ -396,7 +404,9 @@ _gaia_keep_unanchored_diff_matches() {
                 || index(window, "BASE_SHA") > 0 \
                 || index(window, "FULL_BASE") > 0 \
                 || index(window, "ELIG_BASE") > 0 \
-                || index(window, "KEY_BASE") > 0
+                || index(window, "KEY_BASE") > 0 \
+                || index(window, "BASE_TIP") > 0 \
+                || index(window, "SIDE_BASE") > 0
 
         # A base-consuming call must carry a `...` range. Position within the
         # window is deliberately not tested: the correct forms put it on either
