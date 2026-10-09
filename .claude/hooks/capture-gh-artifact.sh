@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # PostToolUse Bash hook on `gh pr create`. Records the PR-to-branch edge in the
 # usage ledger (`usage.sh link --pr`), and drops a breadcrumb (the PR number,
-# repo, branch, and session) that only `token-tally.sh --action execute` ever
-# reads, so plan execution can carry the pull request its own commit-triggered
-# rows have no agent in the loop to report. GAIA_USAGE_HOOKS_DISABLE=1 skips
-# the edge; it is a test seam for suites that run this real hook. Every other
-# cost-recording surface (the five prose maintenance commands and the
-# /gaia-wiki chain) binds its artifact by direct pass-through instead and reads
-# no breadcrumb; see .gaia/scripts/gh-artifact-lib.sh for the full rationale.
+# repo, branch, and session) that only block-main-destructive-git.sh's
+# session-ownership check reads, as proof that a session owns the branch it
+# holds the main checkout on. GAIA_USAGE_HOOKS_DISABLE=1 skips the edge; it is
+# a test seam for suites that run this real hook. Every cost-recording surface
+# (the five prose maintenance commands and the /gaia-wiki chain) binds its
+# artifact by direct pass-through instead and reads no breadcrumb; see
+# .gaia/scripts/gh-artifact-lib.sh for the full rationale.
 #
 # Fires on every Bash tool call in every session: stay cheap, degrade
 # silently, never emit a permission decision, never write to stdout, always
@@ -29,7 +29,7 @@ gaia_hook_payload_read "$payload" || exit 0
 
 command=$GAIA_HOOK_COMMAND
 
-# Uses the shared arming decision, the same one token-rollup-merge.sh uses
+# Uses the shared arming decision, the same one pr-merge-cost.sh uses
 # (.claude/hooks/lib/verb-arming.sh). Deliberately does NOT match `gh issue
 # create`: see gh-artifact-lib.sh for why. A quoted verb inside prose still
 # arms here, fail-closed, with no safe narrowing.

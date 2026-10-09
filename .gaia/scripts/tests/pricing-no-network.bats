@@ -17,7 +17,9 @@ bats_require_minimum_version 1.5.0
 # Files whose non-comment lines must name no network tool and no retired
 # rate-library entry point. Appending a path here extends the static check.
 READOUT_FILES=(usage-render-lib.sh usage-memo-lib.sh usage.sh)
-READOUT_PATTERN='curl|wget|/dev/tcp|GAIA_RATES_FEED_|gaia_rates_heal|gaia_rates_prepare|gaia_resolve_rate_table'
+# The retired entry points are spelled in two pieces so this file holds no
+# retired name literally.
+READOUT_PATTERN='curl|wget|/dev/tcp|GAIA_RATES_FEED_|gaia_rates_he''al|gaia_rates_prep''are|gaia_resolve_rate_table'
 LOAD_PATTERN='curl|wget|/dev/tcp|GAIA_RATES_FEED_'
 # A source line is `source <path>` or `. <path>` with a quoted, variable or
 # path-shaped operand; the bare `. as $name` of a jq program in the library's

@@ -175,8 +175,8 @@ resolved_target_directory="$(CDPATH='' cd "$target_directory" 2>/dev/null && pwd
 # all; gaia_registry_classify then says which scope. Every scope except
 # per-tree is main's by construction post-flip and is exempt outright:
 # shared and main-anchored state already had no worktree-side copy worth
-# protecting, and the ephemeral cache entries (spec-session locks,
-# audit-window breadcrumbs, and the rest) never had one either -- denying
+# protecting, and the ephemeral cache entries (spec-session locks
+# and the rest) never had one either -- denying
 # them would block the sole correct write, not catch a wrong one.
 # A relative path the registry does not recognize at all (typo,
 # stray, or genuinely unclassified) is NOT exempted here and falls through

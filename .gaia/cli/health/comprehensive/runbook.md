@@ -116,7 +116,7 @@ find $snap_args -type f -print0 2>/dev/null \
 ```
 
 `shasum -a 256` is present on macOS and most Linux; `sha256sum` is the
-coreutils fallback (same portability pattern as `token-tally.sh`).
+coreutils fallback.
 
 ## Step 1: Pre-flight gauge
 

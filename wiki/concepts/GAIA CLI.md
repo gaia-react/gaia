@@ -3,13 +3,13 @@ type: concept
 title: GAIA CLI
 status: active
 created: 2026-07-14
-updated: 2026-09-30
+updated: 2026-10-09
 tags: [concept, cli]
 ---
 
 # GAIA CLI
 
-GAIA ships a single bundled CLI binary that hooks and slash commands invoke, plus a fire-and-forget adoption ping that reports coarse setup usage back to the GAIA team. The ping is the only unattended call GAIA makes to a GAIA-operated service. Two other unattended network calls exist: a rate-table request to `raw.githubusercontent.com` that fires only on a pricing miss, and a git fetch that reaches nothing but the repository's own configured `origin` (see below).
+GAIA ships a single bundled CLI binary that hooks and slash commands invoke, plus a fire-and-forget adoption ping that reports coarse setup usage back to the GAIA team. The ping is the only unattended call GAIA makes to a GAIA-operated service. The only other unattended network call is a git fetch that reaches nothing but the repository's own configured `origin` (see below). Cost pricing opens no network connection.
 
 ## CLI workspace
 
@@ -29,12 +29,12 @@ The adoption ping exists to steer GAIA's roadmap: knowing which setup options an
 
 The session-start janitor ([[Local Working State]]) makes one bounded `git fetch --prune` of the repository's own configured `origin`. It contacts no GAIA service and sends nothing about the machine or its contents; it is a plain git fetch of the remote the adopter already pushes to. It is gated on a local `wiki/sync-*` (or legacy `wiki-sync/*`) branch being present, so a session with no outstanding wiki landing makes no call at all, and it is bounded at 5 seconds by default and rate-limited between sessions. `GAIA_WIKI_FETCH_TIMEOUT_SECONDS=0` disables it outright.
 
-## The rates feed
+## The wiki chain's cost line
 
-The cost readout prices from a machine-local rate table ([[Token Cost Readout]]). When a run prices a `claude-*` model that table lacks, `.gaia/scripts/token-rates-feed-lib.sh` makes one request to `raw.githubusercontent.com`, fetching the public distributed table on GAIA's `main`, so a newly launched model stops pricing at $0 before a release ships. It fires only on that pricing miss, so a session whose models are all priced makes no call. The request carries no query string or custom header: it discloses your IP address, curl's default User-Agent, and the request time, that a miss happened but never which model or any usage. The timeout, size cap, and backoff after a failure live in the lib. `GAIA_RATES_FEED_DISABLE=1` turns it off; only the value `1` does.
+The `/gaia-wiki` chain ends its run with `bash .gaia/scripts/usage.sh record command:gaia-wiki --workflow gaia-wiki`, passing `--pr` when the chain opened a pull request, and writes the resulting `Cost:` line through to stdout. The call is best-effort: a missing script or a non-zero exit relays its one stderr line and never changes the chain's exit code. See [[Usage Ledger]].
 
 ## Pairs with
 
-- [[Cost Data Contract]]: the token ledger's full record schema.
-- [[Token Cost Readout]]: the pricing surfaces built on top of the token ledger.
+- [[Usage Ledger]]: the cost store `usage.sh record` closes runs into.
+- [[Token Cost Readout]]: the pricing surfaces built on top of the ledger.
 - [[Claude Hooks]]: the hook surface that invokes the CLI binary.

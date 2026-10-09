@@ -41,7 +41,6 @@ The maintainer's copy of this page carries every root file. An adopter's copy ca
 | `audit-noop-detect.sh` | yes | `.claude/rules/subagent-dispatch.md`, the audit fan-out surfaces | Decides whether a dispatched agent's report artifact is a real result or a silent no-op. |
 | `audit-resolve-scope.sh` | yes | every Code Audit Team agent definition | Resolves a member's review scope in one command: diff bases, changed-file lists, the dirty-in-scope check, and the scope digest. |
 | `audit-scope-digest.sh` | yes | agent definitions | Carries a member's own content digest between scope resolution and clearance write, the two Bash calls that must agree. `--release` drops a capture when a round ends without publishing a marker or refusal (a self-healed round), so the next round recaptures fresh. |
-| `audit-window-lib.sh` | yes | sourced | Shared derivation of the audit window a run is accounted against. |
 | `audit-write-clearance.sh` | yes | agent definitions, CI | The one writer for every Code Audit Team clearance marker. |
 | `audit-write-findings.sh` | yes | agent definitions | The one writer for a member's findings sidecar, the report of record the merge workflow reads. |
 
@@ -57,12 +56,6 @@ The maintainer's copy of this page carries every root file. An adopter's copy ca
 | `check-hook-scope-manifest.sh` | yes | GAIA's own invariant harness (maintainer-side) | Scans every hook for a `.gaia/local` path built without a resolved root. |
 | `check-main-root-derivation.sh` | no | GAIA's own invariant harness | Catches a hand-rolled main-checkout derivation inlined into a consumer that declares no resolver at all. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `check-updates.sh` | yes | `SessionStart`, the statusline | Background check, started by the statusline, that feeds its nudges: a newer GAIA release, the outdated-package and open-advisory counts for `/update-deps`, the residue candidate count, and `wikiDriftCount` (commits the wiki trails HEAD by, from `gaia wiki state`). It also sweeps stale per-session context files. |
-
-### `cost-`
-
-| Script | Ships | Invoker | What it is |
-|---|---|---|---|
-| `cost-represented.sh` | yes | the archive scripts | Value-aware, fail-closed gate that a run is represented in the cost ledger before its folder is reduced. |
 
 ### `debt-`
 
@@ -92,12 +85,8 @@ The maintainer's copy of this page carries every root file. An adopter's copy ca
 
 | Script | Ships | Invoker | What it is |
 |---|---|---|---|
-| `token-pricing-lib.sh` | yes | sourced | Shared rate-table resolution and the pricing jq definitions the ledger readers share; sources the two rate-table libs below. |
-| `token-rates-feed-lib.sh` | yes | sourced by the pricing lib | Heals a `claude-*` model the local rate table lacks with one bounded request to the public distributed table on `main`. |
-| `token-rates-local-lib.sh` | yes | sourced by the pricing lib | Seeds and syncs the machine-local rate table the cost ledger prices rows against. |
-| `token-rates.json` | yes | read by the local-table lib | The distributed rate card: the seed for the local table and the table the feed serves from `main`. |
-| `token-rollup.sh` | yes | `token-rollup-merge.sh` hook | Reads the token ledger and rolls it up for reporting. |
-| `token-tally.sh` | yes | the cost-accounting hooks | Appends a run's token and dollar tally to the ledger. |
+| `token-pricing-lib.sh` | yes | sourced | The pricing jq definitions the ledger readers share, and the loader that overlays the optional local price override on the distributed rate card. Sources no other file and opens no network connection. |
+| `token-rates.json` | yes | read by the pricing lib | The distributed rate card every readout prices from. |
 
 ### `verify-`
 
@@ -126,7 +115,7 @@ The maintainer's copy of this page carries every root file. An adopter's copy ca
 | `link-worktree.sh` | yes | `provision-worktree.sh` hook, `/setup-gaia` | Lays the shared-state symlinks a linked worktree needs. |
 | `main-only-lib.sh` | yes | the main-only skills | Refusal helper for a flow that must run in the main checkout, never a linked worktree. |
 | `main-root-lib.sh` | yes | sourced by most hooks and scripts | GAIA's shared main-checkout resolver: the one answer to which checkout am I in. |
-| `plan-archive.sh` | yes | the orchestrator self-cleanup | Reduces or deletes a merged plan folder. |
+| `plan-archive.sh` | yes | the orchestrator self-cleanup | Reduces or deletes a merged plan folder once `usage.sh represented` finds the run's close on the usage ledger; a reduced folder holds `SUMMARY.md` only. |
 | `plan-resume-point.sh` | yes | `/gaia-plan` | Deterministic phase-level resume point for a plan picked up mid-flight. |
 | `post-findings-block.sh` | yes | agent definitions, `post-findings-block-on-merge.sh` hook | Merges every dispatched member's findings sidecar into one machine-readable block and posts it on the pull request. |
 | `pr-wait-merge.sh` | yes | the merge workflow, every flow that merges | The merge wait: polls a pull request to `MERGED` and exits early on every state that means it never will. |
@@ -154,7 +143,7 @@ The root holds the shell layer; each subdirectory holds one thing that is not sh
 
 A new file at the root of `.gaia/scripts/` owes **a row on this page**, in the family its prefix names, with its invoker and what it is. That is every root file, not only the shell: a data file the scripts read is as invisible from the directory as a script is. The index is the only place the directory says what anything is, so a file added without a row is a file nobody can find.
 
-Naming: take the family prefix that matches what the script does (`check-` and `lint-` for a deterministic gate, `audit-` for the Code Audit Team's machinery, `cost-` and `token-` for the accounting ledger, `debt-` for the tech-debt backlog, `verify-` for a drift check against an external authority), and `*-lib.sh` for a file that is sourced rather than run. A script that fits no family takes a plain descriptive name and joins the unprefixed table.
+Naming: take the family prefix that matches what the script does (`check-` and `lint-` for a deterministic gate, `audit-` for the Code Audit Team's machinery, `token-` for the pricing, `debt-` for the tech-debt backlog, `verify-` for a drift check against an external authority), and `*-lib.sh` for a file that is sourced rather than run. A script that fits no family takes a plain descriptive name and joins the unprefixed table.
 
 **Do not reorganize the directory into subfolders.** The single-level glob `.gaia/scripts/*.sh` is a contract several places depend on by value, not a hazard to be tidied away: it is a literal registry entry, and it is what a worktree provisioning step chmods through. A new subdirectory leaves both reading a tree that no longer matches, silently. Reference density compounds it, worst in the family with the cleanest case for a move: its members are each named across dozens of files, so relocating one family is a several-hundred-file rename for no functional gain.
 

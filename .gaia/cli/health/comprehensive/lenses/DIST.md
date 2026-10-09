@@ -48,10 +48,10 @@ Concretely, look for:
   `/update-gaia` would try to sync a phantom path) even though the same fact
   is also visible from TIDY's workspace-hygiene angle — note it from the
   distribution-integrity angle here.
-- Network-egress posture on adopter machines: two calls fire by default, the
-  adoption ping and the rate-table request to `raw.githubusercontent.com` on a
-  pricing miss; is each one's suppression switch (`GAIA_TELEMETRY_PING_DISABLE`
-  and `GAIA_RATES_FEED_DISABLE`) documented and easy to find?
+- Network-egress posture on adopter machines: the adoption ping is the one
+  call to a GAIA-operated service (cost pricing opens no connection); is its
+  suppression switch (`GAIA_TELEMETRY_PING_DISABLE`) documented and easy to
+  find?
 - Pre-tag scrub verification: is there a documented, easy-to-run way to run
   the leak-check (marker-strip + json-strip) against a locally-built staging
   tree before a release tag is cut, or does the only run of it live behind

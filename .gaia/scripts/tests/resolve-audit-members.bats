@@ -528,7 +528,7 @@ YAML
 
 @test "committed roster dispatches maintainer-shell for a bats-only diff" {
   seed_audit_roster "$SANDBOX"
-  stage .gaia/scripts/tests/token-tally.bats
+  stage .gaia/scripts/tests/usage-flush.bats
   commit "test"
   run run_resolver
   [ "$status" -eq 0 ]
@@ -541,7 +541,7 @@ YAML
 
 @test "adopter roster dispatches nothing for a bats-only diff" {
   write_adopter_roster
-  stage .gaia/scripts/tests/token-tally.bats
+  stage .gaia/scripts/tests/usage-flush.bats
   commit "test"
   run run_resolver
   [ "$status" -eq 0 ]

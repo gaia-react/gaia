@@ -2,8 +2,8 @@
 #
 # Bats suite for the SHIPPED rate table, .gaia/scripts/token-rates.json.
 #
-# Every other pricing suite (token-price.bats, token-tally-price.bats) drives
-# the arithmetic through AUTHORED fixture tables, so none of them notices when
+# Every other pricing suite drives the arithmetic through AUTHORED fixture
+# tables, so none of them notices when
 # the shipped table is missing a row for a model GAIA actually runs. That gap
 # is the whole of #1088: an absent key makes `rate_window` yield null,
 # `priced_row` maps a null window to 0, and the row still returns well-formed,

@@ -44,7 +44,7 @@ agent_segment() {
 
 # seed_audit_branch: main-session spend, two roster-member sidecars, a
 # general-purpose sidecar, an `unknown` sidecar, and one segment flushed before
-# the agent fields existed. No cost.jsonl and no cost.json anywhere.
+# the agent fields existed. No cost store of any kind is written.
 seed_audit_branch() {
   {
     agent_segment s-main 2026-09-23T09:00:00Z 100000 10000 main
@@ -59,7 +59,7 @@ seed_audit_branch() {
 
 @test "the audit line sums only the roster members' spend and marks the segment that predates agent fields" {
   seed_audit_branch
-  [ -z "$(find "$REPO" "$TELEMETRY_DIRECTORY" -name 'cost.json*' -print 2>/dev/null)" ]
+  [ -z "$(find "$REPO" "$TELEMETRY_DIRECTORY" -name 'cost.js*' -print 2>/dev/null)" ]
   run_merge "gh pr merge 101"
   [ "$status" -eq 0 ]
   has_line "[PR cost] pr:101 branch:fix/foo"
