@@ -102,7 +102,7 @@ strictPeerDependencies: false
 #     GHSA-2883-xcg3-v3hh, maxTotalMergeKeys not limiting CPU use for empty
 #     merge sources; also clears GHSA-5p4m-2wfm-xmqj, quadratic CPU
 #     consumption in !!omap resolution, fixed in 4.3.1. Both parents arrive
-#     through @gaia-react/lint, which the maintainer CLI depends on.
+#     through @gaia-react/lint.
 #     Written as the two arrival paths rather than a bare `js-yaml` key,
 #     because a workspace override outranks a DIRECT dependency as well as a
 #     transitive one: a bare key would silently clamp any direct js-yaml pin.
