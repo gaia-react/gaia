@@ -77,45 +77,6 @@ publicHoistPattern:
 savePrefix: ''
 strictPeerDependencies: false
 
-# Dependency version overrides. pnpm 11 reads these here; the package.json
-# "pnpm" field is no longer honored. Keys use pnpm's parent>child / version-range
-# syntax.
-#
-# Entries here are usually security floors, not peer-conflict fixes, and they
-# exist for the same reason: the vulnerable package is transitive-only and its
-# parent's declared range ALREADY admits the patched version, but nothing
-# re-resolves it. `pnpm update` addresses direct dependencies only, and
-# `pnpm dedupe` collapses duplicate resolutions that already exist; neither
-# lifts a transitive holding a single satisfying resolution already pinned in
-# the lockfile. A range permitting the fix is not the same as the fix landing,
-# so the override is the only lever. Apply with `pnpm dedupe`, never a bare
-# `pnpm install`, which short-circuits on an overrides-only change
-# (wiki/dependencies/pnpm-overrides.md).
-#
-# Each entry is expected to retire on its own once its parent bumps its own
-# pin. /update-deps Phase 0 and Phase 6 toggle every key here and drop the ones
-# whose removal no longer reintroduces an advisory, so none of these is
-# load-bearing beyond the advisory it names. Document each entry below with the
-# advisory it clears and the parent that reaches it.
-#
-#   - cosmiconfig>js-yaml and @eslint/eslintrc>js-yaml -> 4.3.2:
-#     GHSA-2883-xcg3-v3hh, maxTotalMergeKeys not limiting CPU use for empty
-#     merge sources; also clears GHSA-5p4m-2wfm-xmqj, quadratic CPU
-#     consumption in !!omap resolution, fixed in 4.3.1. Both parents arrive
-#     through @gaia-react/lint.
-#     Written as the two arrival paths rather than a bare `js-yaml` key,
-#     because a workspace override outranks a DIRECT dependency as well as a
-#     transitive one: a bare key would silently clamp any direct js-yaml pin.
-#   - fast-uri -> 3.1.8: GHSA-hrr3-gc8f-f4qj, inconsistent host case
-#     normalization via percent-encoded octets; also clears
-#     GHSA-58mr-gqgx-xq4g, GHSA-qw65-cvwx-89v3, GHSA-7p8r-x3mc-p8w7 and the
-#     earlier host-confusion advisories they supersede. Reached through ajv
-#     (^3.0.1) under stylelint's table dependency, via @gaia-react/lint.
-overrides:
-  'cosmiconfig>js-yaml': 4.3.2
-  '@eslint/eslintrc>js-yaml': 4.3.2
-  fast-uri: 3.1.8
-
 # Build-script approval. pnpm 11 replaces the onlyBuiltDependencies allowlist
 # with the allowBuilds map (true = the package may run install/build scripts).
 # With strictDepBuilds on by default, an unlisted package that needs to build
