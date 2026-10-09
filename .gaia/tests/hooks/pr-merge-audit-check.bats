@@ -1583,6 +1583,24 @@ run_recording_hook() {
   grep -qF 'anchor default-branch' <<<"$output" || return 1
 }
 
+@test "a cached audit base that differs from the record's base denies, naming the git config --unset recovery" {
+  install_gh_stub
+  git -C "$REPO" config branch.feature.gaia-audit-base release
+
+  run_merge_hook
+  assert_denied_by_json
+  grep -qF 'git config --unset branch.feature.gaia-audit-base' <<<"$output" || return 1
+}
+
+@test "a cached audit base equal to the record's base does not trigger the stale-cache deny" {
+  install_gh_stub
+  git -C "$REPO" config branch.feature.gaia-audit-base main
+
+  run_merge_hook
+  grep -qF 'gaia-audit-base' <<<"$output" && return 1
+  true
+}
+
 @test "an unresolvable base denies, and the reason names it as unresolvable" {
   local repo
   repo="$(make_no_base_repo_pr provenance-no-base)"

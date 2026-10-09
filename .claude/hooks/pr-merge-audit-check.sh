@@ -445,10 +445,15 @@ gate_require_digests() {
   resolve_pr_record
 
   local gh_remedy="Check gh (\`gh auth status\`, the network) and retry gh pr merge."
-  local base_error_file base_detail repository tip merge_base lookup_status=0 digest_batch
+  local base_error_file base_detail repository tip merge_base lookup_status=0 digest_batch stale_cache_fix
 
   if [ -z "$pr_record_base" ]; then
     gate_emit_deny "PR merge gate: cannot verify the base branch for HEAD ${sha:0:12}: gh returned no pull request record naming a base branch for the current branch. Markers are keyed to the branch's own change against the base branch GitHub reports, and this gate never substitutes a local ref for it, so it denies. ${gh_remedy}"
+  fi
+
+  stale_cache_fix="$(audit_stale_cached_base "$tree_root" "$pr_record_base")" || stale_cache_fix=""
+  if [ -n "$stale_cache_fix" ]; then
+    gate_emit_deny "PR merge gate: this branch's cached audit base differs from base branch ${pr_record_base} that GitHub reports (the pull request was retargeted), so markers written locally are keyed to a different base than this gate measures for HEAD ${sha:0:12}. Run \`${stale_cache_fix}\`, re-run the audit writers, and retry gh pr merge."
   fi
 
   base_error_file="$(mktemp "${TMPDIR:-/tmp}/gate-base.XXXXXX" 2>/dev/null)" || base_error_file=/dev/null

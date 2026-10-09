@@ -829,6 +829,22 @@ mutated_hook_mirror() {
   assert_no_post || return 1
 }
 
+@test "success with a cached audit base that differs from the one GitHub reports: declines naming git config --unset, no POST" {
+  push_head_to_upstream
+  pushed_sha=$(git -C "$REPO" rev-parse HEAD)
+  install_gh_stub "$pushed_sha"
+  marker=$(write_marker code-audit-frontend)
+  branch=$(git -C "$REPO" symbolic-ref --short HEAD)
+  git -C "$REPO" config "branch.${branch}.gaia-audit-base" release
+
+  cd "$REPO"
+  run "$HOOK_ABSOLUTE_PATH" "$marker"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "status: declined: trusted base unverified, the cached audit base differs from the base GitHub reports; next step: git config --unset branch.${branch}.gaia-audit-base" ]
+  assert_no_post || return 1
+}
+
 @test "refusal with a base tip that is not present locally: still posts the failure status" {
   push_head_to_upstream
   pushed_sha=$(git -C "$REPO" rev-parse HEAD)

@@ -370,6 +370,12 @@ if [ "$post_state" = "success" ]; then
     exit 0
   fi
 
+  stale_cache_fix="$(audit_stale_cached_base "$repo_root" "$base_branch" 2>/dev/null)" || stale_cache_fix=""
+  if [ -n "$stale_cache_fix" ]; then
+    emit_decline "trusted base unverified, the cached audit base differs from the base GitHub reports; next step: ${stale_cache_fix}"
+    exit 0
+  fi
+
   merge_base_status=0
   merge_base="$(audit_branch_patch_merge_base "$repo_root" "$base_tip" HEAD 2>/dev/null)" || merge_base_status=$?
   case "$merge_base_status" in

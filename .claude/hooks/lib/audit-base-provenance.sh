@@ -337,6 +337,21 @@ audit_github_pr_base_branch() {
   printf '%s\n' "$base_branch"
 }
 
+# audit_stale_cached_base <root> <github-base-branch>
+#
+# return: 0 when the branch's cached base name (branch.<branch>.gaia-audit-base)
+# differs from the base GitHub reports, with the recovery command on stdout;
+# 1 otherwise. The cache drives the local digest producers and GitHub drives the
+# gate and the status poster, so a retargeted pull request leaves them keyed to
+# different bases until the cache is unset.
+audit_stale_cached_base() {
+  local root="$1" github_base="$2" branch cached_name
+  branch="$(git -C "$root" symbolic-ref --quiet --short HEAD 2>/dev/null)" || return 1
+  cached_name="$(git -C "$root" config --get "branch.${branch}.gaia-audit-base" 2>/dev/null)" || return 1
+  [ -n "$cached_name" ] && [ "$cached_name" != "$github_base" ] || return 1
+  printf 'git config --unset branch.%s.gaia-audit-base\n' "$branch"
+}
+
 # audit_github_base_tip <root> <repository> <base-branch>
 #
 # stdout: the base branch's current tip, 40 lowercase hex. return: 0, or 5 on gh
