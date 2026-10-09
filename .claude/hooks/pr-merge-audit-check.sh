@@ -1153,7 +1153,9 @@ check_out_of_scope_pr() {
 # code-audit-frontend clearance: the chore(deps) waiver first, since it needs no
 # digest; then, with the digests derived, a live refusal for the current digest
 # (absolute, ahead of every earned signal), then the marker, then the GitHub
-# status. Reused by both the legacy gate and the member-aware gate below.
+# status. The waiver therefore outranks a refusal: honoring one needs the digest,
+# hence the GitHub base lookup, which a manifest-only bump never makes. Reused by
+# both the legacy gate and the member-aware gate below.
 # Records which signal cleared in $frontend_cleared_by, because only the
 # chore(deps) arm earns a bypass stamp.
 frontend_cleared_by=""
