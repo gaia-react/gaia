@@ -4,7 +4,7 @@ status: active
 package: remix-utils
 role: utility-belt
 created: 2026-06-25
-updated: 2026-10-04
+updated: 2026-10-18
 tags: [dependency, claude, decision-map]
 ---
 
@@ -22,7 +22,7 @@ Risk-sorted, footguns first. Each row pairs a trap to hand-roll with the resolva
 | Hand-rolled SSE hook / `EventSource` wiring | `remix-utils/sse/react` (server emitter: `remix-utils/sse/server`) | Manages the connection lifecycle and cleanup; a hand-rolled hook leaks connections | `### Server-Sent Events` |
 | Hand-rolled CSRF token + verification | `remix-utils/middleware/csrf` (classic split `remix-utils/csrf/server` + `remix-utils/csrf/react` for non-middleware routes) | Battle-tested token generation and verification; rolling your own is a security footgun | `#### CSRF Middleware` (classic: `### CSRF`) |
 | Hand-rolled bot/spam honeypot field | `remix-utils/middleware/honeypot` (classic split `remix-utils/honeypot/server` + `remix-utils/honeypot/react` for non-middleware routes) | Correct hidden-field plus timing checks; ad-hoc honeypots miss the timing trap | `#### Honeypot Middleware` (classic: `### Form Honeypot`) |
-| Hand-rolled open-redirect / safe-redirect check | `remix-utils/safe-redirect` | Blocks `//` and `/\` protocol-relative escapes; naive checks miss them. In this app's code, see the redirect divergence below: use `isLocalRedirect` | `### Safe Redirects` |
+| Hand-rolled safe-redirect check | `remix-utils/safe-redirect` | Blocks `//` and `/\` protocol-relative escapes; naive checks miss them. In this app's code, see the redirect divergence below: use `resolveLocalRedirect` | `### Safe Redirects` |
 | Hand-rolled fetcher debounce (timeout wrapping `fetcher.submit`) | `remix-utils/use-debounce-fetcher` | Correct debounced `fetcher.submit`; distinct from a value debounce | `### Debounced Fetcher and Submit` |
 
 **Surface choice (CSRF and honeypot).** The app runs a middleware stack (`frontend/app/middleware/i18next.ts`), so each of those rows points at the v7.9 middleware subpath as the canonical surface for new code, with the classic split named in parentheses for routes that do not run through middleware. They are a different mechanism, not a fallback: middleware wires the check into the request pipeline; the classic split is the per-route hook plus server helper.
@@ -40,7 +40,7 @@ Second-tier candidates weighed against the risk axis (likelihood-of-hand-rolling
 Where the app intentionally does not reach for remix-utils, with the reason:
 
 - **locale** → The app uses `remix-i18next` (full i18next: namespaces, SSR `Accept-Language`), more robust than remix-utils locales. See [[remix-i18next]].
-- **redirect** → The app uses a Zod `.refine()` `isLocalRedirect` guard (`frontend/app/utils/http.ts`). Validate-and-reject fits the app's Conform/Zod architecture better than safe-redirect's sanitize-and-fallback, and the safety is equivalent (both block `//` and `/\`).
+- **redirect** → The app parses the target with `LocalRedirectSchema` (`frontend/app/utils/http.ts`), a Zod `.transform()` over `resolveLocalRedirect`: it resolves the target against a fixed origin with `new URL()`, rejects any target that resolves elsewhere, and the action redirects to the resolved path, never the raw input. Resolve-and-reject fits the app's Conform/Zod architecture better than safe-redirect's sanitize-and-fallback.
 - **responses** → The app uses native React Router `data()`, the modern idiom over remix-utils `responses`.
 - **cookie** → The app uses native `createCookie`; locale is a known string, so a typed-cookie wrapper is low value.
 - **value-debounce** → The app's `useDebounce` is a *value* debounce, which is **not** remix-utils' fetcher-debounce (`use-debounce-fetcher`). No overlap, so both coexist.

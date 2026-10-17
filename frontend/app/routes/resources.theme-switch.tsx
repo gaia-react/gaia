@@ -1,14 +1,11 @@
 import {data, redirect} from 'react-router';
 import {z} from 'zod';
-import {isLocalRedirect} from '~/utils/http';
+import {LocalRedirectSchema} from '~/utils/http';
 import {setTheme} from '~/utils/theme.server';
 import type {Route} from './+types/resources.theme-switch';
 
 export const ThemeFormSchema = z.object({
-  redirectTo: z
-    .string()
-    .refine(isLocalRedirect, {error: 'Redirect must stay on this site'})
-    .optional(),
+  redirectTo: LocalRedirectSchema.optional(),
   theme: z.literal(['dark', 'light', 'system']),
 });
 

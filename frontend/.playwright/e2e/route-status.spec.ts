@@ -64,3 +64,14 @@ test('set-language action redirects and sets the language cookie', async ({
   expect(response.headers().location).toBe('/');
   expect(response.headers()['set-cookie']).toMatch(/^lng=/);
 });
+
+test('set-language action refuses a redirect target on another host', async ({
+  request,
+}) => {
+  const response = await request.post(ACTION_PATHS.setLanguage, {
+    form: {language: 'en', redirectUrl: '//example.com'},
+    maxRedirects: 0,
+  });
+  expect(response.status()).toBe(400);
+  expect(response.headers().location).toBeUndefined();
+});

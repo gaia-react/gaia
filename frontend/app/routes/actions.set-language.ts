@@ -2,17 +2,14 @@ import {data, redirect, replace} from 'react-router';
 import {z} from 'zod';
 import {LANGUAGES} from '~/languages';
 import {languageCookie} from '~/sessions.server/language';
-import {isLocalRedirect} from '~/utils/http';
+import {LocalRedirectSchema} from '~/utils/http';
 import type {Route} from './+types/actions.set-language';
 
 const SetLanguageSchema = z.object({
   language: z.string().refine((language) => LANGUAGES.includes(language), {
     error: 'Unsupported language',
   }),
-  redirectUrl: z
-    .string()
-    .startsWith('/')
-    .refine(isLocalRedirect, {error: 'Redirect must stay on this site'}),
+  redirectUrl: LocalRedirectSchema,
 });
 
 export const action = async ({request}: Route.ActionArgs) => {
