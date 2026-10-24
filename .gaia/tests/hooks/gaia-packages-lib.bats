@@ -269,6 +269,7 @@ check_case() {
   [ "$status" -eq 1 ]
 }
 
+# bats test_tags=whole-tree
 @test "the committed descriptor loads clean through the committed registry" {
   . "$LIBRARY"
   local status=0

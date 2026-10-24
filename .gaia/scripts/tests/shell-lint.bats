@@ -156,6 +156,7 @@ gate_pass_headers() {
 # rather than paying for a run of its own. The stub is a pure always-clean fake
 # with the variable unset, and recording argv changes nothing else it does.
 
+# bats test_tags=whole-tree
 @test "the gate invokes every folded guard pass and stays green on a clean tree" {
   run env PATH="$STUB_DIRECTORY:$PATH" SHELLCHECK_LOG="$STUB_DIRECTORY/argv.log" bash "$GATE"
   [ "$status" -eq 0 ]

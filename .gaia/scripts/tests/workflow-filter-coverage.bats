@@ -30,6 +30,14 @@
 #   every repo-relative path a gated step names LITERALLY must be reachable by
 #   the globs of the filter output that gates it,
 #
+# where a gate that ORs several outputs (`code == 'true' || scoped == 'true'`)
+# is reached when any one of them reaches the path, since any one arms the
+# step, and every other shape (a conjunction, a negation) requires every
+# output to reach it. A step gated on the output of a step that runs
+# `bats-shards.sh plan` is armed through that plan step's own gate, so it is
+# graded against the outputs the plan step reads; a plan step gated on no
+# filter output is reported as a hand-rolled gate.
+#
 # where "names literally" means a git-tracked file appearing as a whitespace-
 # delimited token in the step's `run:` body, after any `$VAR` whose value is a
 # literal string in an `env:` block in scope has been substituted for that value,
@@ -151,7 +159,11 @@ setup() {
 # filter_coverage <mode> <tracked-list-file> <workflow-file>...
 #
 #   pairs       one `<ok|unreached>\t<workflow>\t<job>\t<step>\t<gate>\t<input>`
-#               line per (gated step, literal input) pair
+#               line per (gated step, gate, literal input); an ORed gate is
+#               one gate, its outputs `|`-joined
+#   filtermatch `match` or `no-match` for `<path>` against the named outputs
+#               (comma-separated) of `<workflow>`'s paths-filter step, passed as
+#               `<workflow> <outputs> <path>` after the mode
 #   gated       one `<workflow>\t<job>\t<step>` line per gated step whose gate
 #               resolves to a paths-filter output
 #   handrolled  one `<workflow>` line per workflow gating a step on an output
@@ -281,6 +293,35 @@ if mode == 'glob':
     print('match' if reaches([sys.argv[2]], sys.argv[3]) else 'no-match')
     sys.exit(0)
 
+if mode == 'filtermatch':
+    # filtermatch <workflow> <output>[,<output>...] <path>: `match` when the
+    # path is reached by any named output of the workflow's dorny/paths-filter
+    # step, through the same translator every other verdict here uses.
+    try:
+        with open(sys.argv[2], encoding='utf-8') as handle:
+            document = yaml.safe_load(handle)
+    except (yaml.YAMLError, OSError) as exception:
+        die('%s: unreadable YAML (%s)' % (sys.argv[2], exception.__class__.__name__))
+    found_filters = None
+    for job in ((document or {}).get('jobs') or {}).values():
+        for step in (job or {}).get('steps') or []:
+            if isinstance(step, dict) and 'dorny/paths-filter' in str(step.get('uses', '')):
+                raw = (step.get('with') or {}).get('filters')
+                found_filters = yaml.safe_load(raw) if isinstance(raw, str) else raw
+                break
+        if found_filters is not None:
+            break
+    if not isinstance(found_filters, dict):
+        die('%s: no dorny/paths-filter filters mapping' % sys.argv[2])
+    hit = False
+    for output in sys.argv[3].split(','):
+        globs = found_filters.get(output)
+        if not isinstance(globs, list):
+            die('%s: no filter output %r' % (sys.argv[2], output))
+        hit = hit or reaches(globs, sys.argv[4])
+    print('match' if hit else 'no-match')
+    sys.exit(0)
+
 with open(sys.argv[2], encoding='utf-8') as handle:
     tracked = {line.strip() for line in handle if line.strip()}
 
@@ -394,6 +435,54 @@ def relative_path_of(path):
     return posix[index + 1:] if index >= 0 else os.path.basename(posix)
 
 
+def filter_gates(gate, filters):
+    """The (step id, output) pairs a normalized gate reads from paths-filter
+    steps, deduplicated in order."""
+    seen = []
+    for step_id, output in GATE.findall(gate):
+        if step_id in filters and (step_id, output) not in seen:
+            seen.append((step_id, output))
+    return seen
+
+
+def disjunctive(gate, filters):
+    """True when every paths-filter reference in the gate is a `== 'true'`
+    test and all of them sit in one unnegated `A || B || ...` run, so the
+    step arms when ANY of those outputs matches. Any other shape (a
+    conjunction of outputs, a negation, a comparison other than `== 'true'`)
+    returns False, and the caller then requires an input to be reachable by
+    EVERY output, which is the strict direction: it can only report a path as
+    unreached that a looser reading would bless."""
+    ids = '|'.join(re.escape(step_id) for step_id in filters)
+    if not ids:
+        return False
+    reference = r"steps\.(?:%s)\.outputs\.[A-Za-z0-9_-]+ == 'true'" % ids
+    total = len(re.findall(r'steps\.(?:%s)\.outputs\.' % ids, gate))
+    for run in re.finditer(r'(?:%s)(?: \|\| (?:%s))*' % (reference, reference), gate):
+        before = gate[:run.start()].rstrip()
+        if before.endswith('!') or before.endswith('!('):
+            continue
+        if len(re.findall(reference, run.group(0))) == total:
+            return True
+    return False
+
+
+def plan_steps_in(steps, filters):
+    """Every step whose `run:` body runs `bats-shards.sh plan`, as
+    {step id: (filter gates of its own `if:`, whether those are disjunctive)}.
+    A step gated on such a step's output runs only when the plan step ran, so
+    its arming is derived from the filter outputs the plan step's own `if:`
+    reads."""
+    found = {}
+    for step in steps:
+        if not isinstance(step, dict) or step.get('id') is None:
+            continue
+        if re.search(r'bats-shards\.sh\s+plan\b', str(step.get('run', ''))):
+            gate = normalize(step.get('if', ''))
+            found[str(step['id'])] = (filter_gates(gate, filters), disjunctive(gate, filters))
+    return found
+
+
 rows = []
 for path in sys.argv[3:]:
     workflow_relative_path = relative_path_of(path)
@@ -419,10 +508,12 @@ for path in sys.argv[3:]:
             continue
         job_env = literal_env(doc.get('env'), job.get('env'))
         filters = filters_in(steps)
+        plan_steps = plan_steps_in(steps, filters)
         for step in steps:
             if not isinstance(step, dict):
                 continue
-            gates = GATE.findall(normalize(step.get('if', '')))
+            gate_text = normalize(step.get('if', ''))
+            gates = GATE.findall(gate_text)
             name = str(step.get('name', '')) or str(step.get('uses', ''))
             if mode == 'handrolled':
                 # A step gated on `steps.filter.outputs.*` in a job that runs no
@@ -434,17 +525,52 @@ for path in sys.argv[3:]:
                 # `id: filter` is the repo's convention for the changed-paths
                 # gate specifically, which makes it the precise thing to pin.
                 # Reported per workflow, deduped below.
+                #
+                # A step gated on a plan step's output is derived from the
+                # filter only when that plan step is itself filter-gated; one
+                # that is not is a gate on a changed-paths decision nothing
+                # here can read, the same hole as a hand-rolled `filter`.
                 for step_id, _ in gates:
                     if step_id == 'filter' and step_id not in filters:
                         rows.append(workflow_relative_path)
+                    if step_id in plan_steps and not plan_steps[step_id][0]:
+                        rows.append(workflow_relative_path)
                 continue
-            gates = [(step_id, output) for step_id, output in gates if step_id in filters]
+            own = filter_gates(gate_text, filters)
+            derived = []
+            for step_id, _ in gates:
+                if step_id in plan_steps:
+                    for pair in plan_steps[step_id][0]:
+                        if pair not in derived:
+                            derived.append(pair)
+            gates = own + [pair for pair in derived if pair not in own]
             if not gates:
                 continue
             if mode == 'gated':
                 rows.append('\t'.join([workflow_relative_path, job_id, name]))
                 continue
             inputs = literal_inputs(step, workflow_relative_path, job_env)
+            # Which outputs must reach an input: any one of them when the
+            # gate (or, for a plan-derived gate, the plan step's gate) ORs
+            # them, every one otherwise.
+            if own and not derived:
+                any_output = disjunctive(gate_text, filters)
+            elif derived and not own:
+                plan_ids = {step_id for step_id, _ in GATE.findall(gate_text) if step_id in plan_steps}
+                any_output = all(plan_steps[step_id][1] for step_id in plan_ids)
+            else:
+                any_output = False
+            if any_output and len(gates) > 1:
+                declared = [filters[step_id].get(output) for step_id, output in gates]
+                declared = [[item] if isinstance(item, str) else item for item in declared]
+                gate = '|'.join('%s.%s' % pair for pair in gates)
+                for item in sorted(inputs):
+                    if any(globs is None for globs in declared):
+                        status = 'unreached'
+                    else:
+                        status = 'ok' if any(reaches(globs, item) for globs in declared) else 'unreached'
+                    rows.append('\t'.join([status, workflow_relative_path, job_id, name, gate, item]))
+                continue
             for step_id, output in gates:
                 globs = filters[step_id].get(output)
                 # dorny/paths-filter accepts a filter value as a bare scalar, not
@@ -991,4 +1117,273 @@ YAML
   run filter_coverage glob '.github/actions/**' '.github/actions/gaia-setup-node/action.yml'
   [ "$status" -eq 0 ] || { echo "a supported glob was refused; the check is too broad" >&2; return 1; }
   [ "$output" = "match" ]
+}
+
+@test "negative: a step gated on a plan output whose plan step no filter gates is caught" {
+  require_yaml_parser
+  local directory="$BATS_TEST_TMPDIR/sb"
+  mkdir -p "$directory/.github/workflows"
+  : > "$directory/tracked"
+  cat > "$directory/.github/workflows/fixture.yml" <<'YAML'
+name: Fixture
+on:
+  pull_request:
+jobs:
+  fixture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            code:
+              - '.github/workflows/fixture.yml'
+      - id: selection
+        run: bash .gaia/tests/bats-shards.sh plan lib --full >> "$GITHUB_OUTPUT"
+      - if: steps.selection.outputs.mode == 'full'
+        name: Gated step
+        run: bash scripts/guard.sh
+YAML
+
+  run filter_coverage handrolled "$directory/tracked" "$directory/.github/workflows/fixture.yml"
+  [ "$status" -eq 0 ] || { echo "extractor failed: $output" >&2; return 1; }
+  [ "$output" = ".github/workflows/fixture.yml" ] || {
+    echo "a plan step gated on no filter output was not reported, got: ${output}" >&2
+    return 1
+  }
+}
+
+# The selection derivation and the OR rule, each against the shape it must
+# refuse. A plan step gated on `code || scoped` arms a step that reads a script
+# only `scoped` lists, because either output alone runs the plan; the same
+# script read by a step gated on `code && scoped` is unreached, because a
+# change to it arms one output and the conjunction needs both.
+@test "negative: a plan-derived OR gate is reached by either output, a conjunction only by both" {
+  require_yaml_parser
+  local directory="$BATS_TEST_TMPDIR/sb"
+  mkdir -p "$directory/.github/workflows"
+  printf '%s\n' ".github/workflows/fixture.yml" "scripts/guard.sh" > "$directory/tracked"
+  cat > "$directory/.github/workflows/fixture.yml" <<'YAML'
+name: Fixture
+on:
+  pull_request:
+jobs:
+  fixture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            code:
+              - '.github/workflows/fixture.yml'
+            scoped:
+              - '.github/workflows/fixture.yml'
+              - 'scripts/**'
+      - if: steps.filter.outputs.code == 'true' || steps.filter.outputs.scoped == 'true'
+        id: selection
+        run: bash .gaia/tests/bats-shards.sh plan lib --full >> "$GITHUB_OUTPUT"
+      - if: steps.selection.outputs.mode == 'full'
+        name: Plan-gated step
+        run: bash scripts/guard.sh
+      - if: steps.filter.outputs.code == 'true' && steps.filter.outputs.scoped == 'true'
+        name: Conjunction step
+        run: bash scripts/guard.sh
+YAML
+
+  run filter_coverage pairs "$directory/tracked" "$directory/.github/workflows/fixture.yml"
+  [ "$status" -eq 0 ] || { echo "extractor failed: $output" >&2; return 1; }
+  printf '%s\n' "$output" | grep -qE $'^ok\t.*\tPlan-gated step\tfilter\\.code\\|filter\\.scoped\tscripts/guard\\.sh$' || {
+    echo "the plan-gated step was not graded through the plan step's ORed outputs:" >&2
+    printf '%s\n' "$output" >&2
+    return 1
+  }
+  printf '%s\n' "$output" | grep -qE $'^unreached\t.*\tConjunction step\tfilter\\.code\tscripts/guard\\.sh$' || {
+    echo "a conjunction of outputs was graded as if either one armed it:" >&2
+    printf '%s\n' "$output" >&2
+    return 1
+  }
+}
+
+# 6. The audit workflow's filter outputs, through the same translator. A pull
+#    request runs each bats leg whole only for harness machinery (`code`) and
+#    change-scoped for everything else (`scoped`), so these pin which side of
+#    that line a path falls on.
+
+AUDIT_WORKFLOW_RELATIVE='.github/workflows/audit-ci-tests.yml'
+
+# The `code` entries before harness machinery became the only full-run arm:
+# fixed data, not read from the workflow, so it cannot drift with the edit it
+# guards. Every one must still arm a bats leg, through `code` or `scoped`.
+OLD_CODE_ENTRIES='.github/audit/**
+.github/workflows/audit-ci-tests.yml
+.claude/hooks/**
+.claude/rules/**
+.githooks/**
+.gaia/packages.json
+.gaia/scripts/**
+**/*.sh
+.claude/settings.json
+.gaia/tests/shell-lint.sh
+.gaia/tests/bats-shards.sh
+.gaia/tests/install-bats.sh
+.gaia/tests/vendor/**
+.claude/agents/code-audit-frontend.md
+.gaia/cli/health/taxonomy.md
+.claude/skills/**/*.md
+.claude/commands/**/*.md
+.claude/agents/**/*.md
+.claude/gaia-fitness.json
+.gaia/cli/gaia
+.gaia/templates/spec/**
+.claude/skills/gaia/references/isolation.md
+.claude/skills/gaia/references/debt.md
+.claude/skills/file-tech-debt/SKILL.md
+.claude/skills/gaia/references/cleanse.md
+.claude/agents/code-audit-*.md
+.claude/commands/setup-gaia.md
+.gaia/tests/forensics/**
+.gaia/tests/hooks/**
+.gaia/tests/lib/**
+.gaia/tests/**
+.gaia/tests/helpers/**
+.claude/skills/gaia/references/forensics*
+.github/forensics/**
+.gaia/statusline/**
+.gaia/tests/statusline/**
+.claude/skills/gaia/references/codify.md
+.github/workflows/**
+.github/actions/**
+.github/**
+.gaia/audit-ci.yml
+.gaia/release-exclude
+pnpm-lock.yaml
+pnpm-workspace.yaml
+package.json
+.node-version
+.npmrc
+frontend/package.json
+.gaia/tests/concurrency/**
+.gaia/state-registry.json
+.gaia/cli/src/**
+.claude/commands/gaia-release.md
+.gaia/conventional-commits.json'
+
+# old_code_entries_armed <workflow>: for each old entry, the first tracked file
+# it matches must match `code` or `scoped` in <workflow>. An entry matching no
+# tracked file has nothing left to arm and is named on stderr and skipped; the
+# check fails when every entry skips, which would mean it asserted nothing.
+old_code_entries_armed() {
+  local workflow="$1" entry sample verdict checked=0 gaps=""
+  while IFS= read -r entry; do
+    [ -n "$entry" ] || continue
+    # gaia-lint-ignore whole-tree-mark-guard: both tests that call this helper carry the per-test whole-tree mark.
+    sample="$(git -C "$REPO_ROOT" ls-files -z -- ":(glob)$entry" | tr '\0' '\n' | sed -n 1p)"
+    if [ -z "$sample" ]; then
+      echo "skipped: $entry matches no tracked file" >&2
+      continue
+    fi
+    checked=$((checked + 1))
+    verdict="$(filter_coverage filtermatch "$workflow" code,scoped "$sample")" || return 1
+    [ "$verdict" = "match" ] || gaps="${gaps}  ${entry} (sample ${sample}) arms neither code nor scoped"$'\n'
+  done <<<"$OLD_CODE_ENTRIES"
+  [ "$checked" -gt 0 ] || { echo "every old code entry skipped; nothing was asserted" >&2; return 1; }
+  [ -z "$gaps" ] || { printf '%s' "$gaps" >&2; return 1; }
+}
+
+# bats test_tags=whole-tree
+@test "every entry the code filter used to list still arms code or scoped" {
+  require_yaml_parser
+  old_code_entries_armed "$REPO_ROOT/$AUDIT_WORKFLOW_RELATIVE"
+}
+
+# bats test_tags=whole-tree
+@test "negative: removing a moved entry from scoped leaves its sample unarmed" {
+  require_yaml_parser
+  local doctored="$BATS_TEST_TMPDIR/audit-ci-tests.yml"
+  grep -vxF -- "              - '.githooks/**'" "$REPO_ROOT/$AUDIT_WORKFLOW_RELATIVE" > "$doctored" || true
+  cmp -s "$doctored" "$REPO_ROOT/$AUDIT_WORKFLOW_RELATIVE" && { echo "the doctoring removed nothing" >&2; return 1; }
+  run old_code_entries_armed "$doctored"
+  [ "$status" -ne 0 ] || { echo "a scoped filter without .githooks/** still armed every old entry" >&2; return 1; }
+  printf '%s\n' "$output" | grep -qF -- '.githooks/**' || { echo "the gap was not named: $output" >&2; return 1; }
+}
+
+# One concrete path per glob: each wildcard segment instantiated to `x`.
+instantiate_glob() {
+  printf '%s' "$1" | sed -e 's|\*\*/|x/|g' -e 's|\*\*|x|g' -e 's|\*|x|g'
+}
+
+@test "each harness path arms code, and the sharder and selector arm neither sandbox nor commitlint" {
+  require_yaml_parser
+  local workflow="$REPO_ROOT/$AUDIT_WORKFLOW_RELATIVE" glob path count=0 gaps="" output_name
+  while IFS= read -r glob; do
+    [ -n "$glob" ] || continue
+    count=$((count + 1))
+    path="$(instantiate_glob "$glob")"
+    [ "$(filter_coverage filtermatch "$workflow" code "$path")" = "match" ] || gaps="${gaps}  ${glob} (as ${path}) does not match code"$'\n'
+  done < <(bash "$REPO_ROOT/.gaia/tests/bats-change-scope.sh" --list-harness-paths)
+  [ "$count" -gt 0 ] || { echo "the classifier listed no harness path" >&2; return 1; }
+  for path in .gaia/tests/bats-shards.sh .gaia/scripts/bats-suites-for-change.sh; do
+    for output_name in sandbox commitlint; do
+      [ "$(filter_coverage filtermatch "$workflow" "$output_name" "$path")" = "no-match" ] || gaps="${gaps}  ${path} matches ${output_name}"$'\n'
+    done
+  done
+  [ -z "$gaps" ] || { printf '%s' "$gaps" >&2; return 1; }
+}
+
+@test "a frontend-only change arms no leg" {
+  require_yaml_parser
+  [ "$(filter_coverage filtermatch "$REPO_ROOT/$AUDIT_WORKFLOW_RELATIVE" code,scoped,sandbox,commitlint frontend/app/root.tsx)" = "no-match" ]
+}
+
+@test "the install inputs arm commitlint, and docs, hooks, CLI source and wiki pages are change-scoped" {
+  require_yaml_parser
+  local workflow="$REPO_ROOT/$AUDIT_WORKFLOW_RELATIVE" path gaps=""
+  for path in pnpm-lock.yaml frontend/package.json; do
+    [ "$(filter_coverage filtermatch "$workflow" commitlint "$path")" = "match" ] || gaps="${gaps}  ${path} does not match commitlint"$'\n'
+  done
+  for path in .claude/skills/x/SKILL.md .claude/commands/x.md .claude/agents/x.md .claude/hooks/x.sh .gaia/cli/src/x.ts wiki/x.md; do
+    [ "$(filter_coverage filtermatch "$workflow" scoped "$path")" = "match" ] || gaps="${gaps}  ${path} does not match scoped"$'\n'
+    [ "$(filter_coverage filtermatch "$workflow" code "$path")" = "no-match" ] || gaps="${gaps}  ${path} matches code, which runs every leg whole"$'\n'
+  done
+  [ -z "$gaps" ] || { printf '%s' "$gaps" >&2; return 1; }
+}
+
+@test "a commit changing only a non-helper suite selects that suite, classifies as nothing, and arms scoped" {
+  require_yaml_parser
+  local fixture="$BATS_TEST_TMPDIR/changed-suite" suite='.gaia/tests/lib/example.bats' base head selected classified
+  mkdir -p "$fixture/.gaia/tests/lib"
+  git -C "$fixture" init --quiet
+  git -C "$fixture" config user.email test@example.com
+  git -C "$fixture" config user.name Test
+  git -C "$fixture" config commit.gpgsign false
+  printf '#!/usr/bin/env bats\n' > "$fixture/$suite"
+  printf 'readme\n' > "$fixture/README.md"
+  git -C "$fixture" add -A
+  git -C "$fixture" commit --quiet -m base
+  base="$(git -C "$fixture" rev-parse HEAD)"
+  printf '# edited\n' >> "$fixture/$suite"
+  git -C "$fixture" commit --quiet -am edit
+  head="$(git -C "$fixture" rev-parse HEAD)"
+
+  selected="$(bash "$REPO_ROOT/.gaia/scripts/bats-suites-for-change.sh" --dir "$fixture" "$base" "$head")" || return 1
+  [ "$selected" = "$suite" ] || { echo "the selector printed '${selected}', expected the changed suite" >&2; return 1; }
+  classified="$(bash "$REPO_ROOT/.gaia/tests/bats-change-scope.sh" --dir "$fixture" "$base" "$head")" || return 1
+  [ -z "$classified" ] || { echo "the classifier printed '${classified}' for a suite-only change" >&2; return 1; }
+  [ "$(filter_coverage filtermatch "$REPO_ROOT/$AUDIT_WORKFLOW_RELATIVE" scoped "$suite")" = "match" ]
+}
+
+# bats test_tags=whole-tree
+@test "the audit workflow's selection-gated steps are graded through the selection step's outputs" {
+  require_yaml_parser
+  local tracked="$BATS_TEST_TMPDIR/tracked" rows
+  tracked_list "$tracked"
+  run filter_coverage pairs "$tracked" "$REPO_ROOT/$AUDIT_WORKFLOW_RELATIVE"
+  [ "$status" -eq 0 ] || { echo "extractor failed: $output" >&2; return 1; }
+  rows="$(printf '%s\n' "$output" | awk -F'\t' '$5 == "filter.code|filter.scoped" && $4 ~ /^Run a bats shard/')"
+  printf '%s\n' "$rows" | grep -qF '.gaia/tests/bats-shards.sh' || {
+    echo "no bats run step was graded through the selection step's code|scoped gate:" >&2
+    printf '%s\n' "$output" >&2
+    return 1
+  }
 }

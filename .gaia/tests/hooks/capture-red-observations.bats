@@ -30,6 +30,8 @@
 # shellcheck disable=SC2034 # read by bats itself
 BATS_NO_PARALLELIZE_WITHIN_FILE=true
 
+# bats file_tags=whole-tree,installed-dependencies
+
 setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   . "$BATS_TEST_DIRNAME/helpers/package-fixture.sh"

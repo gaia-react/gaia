@@ -160,6 +160,9 @@ budget_finding_files() {
   [ "$(cache_value cleanseNudge)" = "false" ]
 }
 
+# Rebuilds a bundle from a copy of the whole .gaia/cli/src tree, so a change
+# to any source file it does not name can red it.
+# bats test_tags=whole-tree
 @test "raising the nested budget constant in a rebuilt bundle clears the nudge for the same fixture" {
   local esbuild="$REPO_ROOT/.gaia/cli/node_modules/.bin/esbuild"
   [ -x "$esbuild" ] || skip "esbuild is not installed in .gaia/cli/node_modules"

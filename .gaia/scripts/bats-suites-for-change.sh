@@ -29,8 +29,9 @@
 #
 # The exceptions drop a suite that reaches such a file only by a spelling the
 # match text is not part of (`cd "$REPO_ROOT" && cat package.json`,
-# `"$(cd "$SCRIPTS/../cli" && pwd)/gaia"`). Such a suite is missed here and
-# still runs in CI.
+# `"$(cd "$SCRIPTS/../cli" && pwd)/gaia"`). A suite reaching a file by a
+# spelling the match text is not part of is missed here; the push-to-main full
+# run backstops it.
 #
 # Changed paths are read NUL-delimited. The hand-rolled spelling,
 # `for f in $(git diff --name-only ...)`, word-splits a path holding a space

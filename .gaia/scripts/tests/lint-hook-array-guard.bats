@@ -62,6 +62,7 @@ fixture_test_script() {
 
 # 1. The real scanned tree is clean (regression gate)
 
+# bats test_tags=whole-tree
 @test "the real scanned tree (.claude/hooks + .gaia/scripts + .gaia/tests) passes the lint" {
   run bash -c "cd '$REPO_ROOT' && bash '$LINTER'"
   [ "$status" -eq 0 ]

@@ -123,6 +123,7 @@ regenerate() {
   [ "$(jq -c '.statusLine' "$ROOT_SETTINGS")" = "$(jq -c '.statusLine' "$GENERATED")" ]
 }
 
+# bats test_tags=whole-tree
 @test "the committed tree passes the drift check" {
   run bash "$REPO_ROOT/.gaia/scripts/check-settings-drift.sh" "$REPO_ROOT"
   [ "$status" -eq 0 ]

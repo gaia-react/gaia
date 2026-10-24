@@ -162,18 +162,21 @@ scratch_copy() {
   [ "$missing" -eq 0 ]
 }
 
+# bats test_tags=whole-tree
 @test "each gated file calls the gate once and names pull-gate.md with the exit code" {
   run check_presence "$REPO_ROOT"
   printf '%s\n' "$output"
   [ "$status" -eq 0 ]
 }
 
+# bats test_tags=whole-tree
 @test "each gate follows its earlier step and precedes the first creation marker" {
   run check_order "$REPO_ROOT"
   printf '%s\n' "$output"
   [ "$status" -eq 0 ]
 }
 
+# bats test_tags=whole-tree
 @test "no exempt or resume-path file calls the gate" {
   run check_ungated "$REPO_ROOT"
   printf '%s\n' "$output"

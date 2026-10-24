@@ -84,6 +84,7 @@ commit_fixture() {
   [ "$output" = "OK" ]
 }
 
+# bats test_tags=whole-tree
 @test "real repo: all three scans are clean against tracked source" {
   run gaia_check_main_root_derivation "$REPO_ROOT"
   [ "$status" -eq 0 ]

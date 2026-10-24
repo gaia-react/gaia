@@ -13,8 +13,8 @@
 # .gaia/tests/helpers/verify-harness-bats-lib.sh, read from there, never
 # restated here.
 #
-# Recognized idioms (the ONLY ones this guard recognizes). First the suite's
-# real-root variables are collected: a variable assigned from an expression
+# Recognized idioms and calls (the ONLY ones this guard recognizes). First the
+# suite's real-root variables are collected: a variable assigned from an expression
 # containing $BATS_TEST_DIRNAME or $BATS_TEST_FILENAME, plus any variable whose
 # assignment expression contains one already collected, repeated until no new
 # variable joins. Then a statement, outside comments and outside the fixture
@@ -35,6 +35,39 @@
 # picks the suite when one changes. A glob, a magic pathspec, a variable, a
 # tracked directory or a root-level operand still counts: the selector matches
 # a root-level file as `/<name>`, which a bare operand never contains.
+#
+# A test also reaches the tree through a call that scans it. A real-root
+# variable is read as the root itself when it expands to the scanned root (a
+# path below it is a file the suite names). Each of these is a hit:
+#   5. <root>, exactly, as an argument (`"$ROOT"`, `--root "$ROOT"`,
+#      `-C "$ROOT"`) of a script run through bash, sh or as the command word.
+#      cd, git, a test operator, an assignment, a file-building command or any
+#      other command that is neither a script nor a function is no hop.
+#   6. A script run in a statement that first changes into <root>, a
+#      `bash -c` string included.
+#   7. A tracked script, named through a real-root variable, run with no
+#      argument, when the guard reads that script from the scanned root and
+#      finds that it climbs to its own root (from its location, or through
+#      `git rev-parse --show-toplevel`) and enumerates (ls-files, git grep,
+#      find, a glob loop). A script that builds a temporary repository is a
+#      fixture builder, not a scan.
+#   8. <root> handed to a function the suite defines or a tracked file it
+#      sources defines (by a literal or root-relative path, bats load, or a
+#      file that one sources in turn), when the function applies an idiom,
+#      hop 5 or 6 to that parameter, reads a file under it whose name is a
+#      variable, or hands it on to a function that does. A function whose
+#      definition the guard cannot read is a hit: fail closed.
+#   9. A call to a suite function that prints a path under <root> whose last
+#      segment is a parameter plus a literal suffix: the caller passes a name
+#      the change selector cannot match to the file it reads.
+# A call is not a hop when its statement points it at a fixture tree (an
+# argument, a change of directory or an environment assignment naming a
+# temp-directory path, a fixtures path, mktemp, or the output of a script or
+# function that builds a temporary repository), when an earlier line of the
+# same test or of setup reassigns the root variable to a fixture, or, for a
+# no-argument script, when an earlier line of the same test or setup changes
+# into or exports a fixture tree. A word that names a file (an extension on
+# its last segment) or a PATH list is not a tree.
 #
 # Every hit is attributed to its scope, and the scan runs past the first one:
 #   - Inside a `@test` body, that test needs the test mark, or the suite needs
@@ -66,11 +99,16 @@
 # test mark replaced by a later test tag line before its `@test`, and a test
 # mark with no `@test` after it.
 #
-# NOT claimed: enumeration delegated to a script the suite calls (a lint
-# script, a roster check) is outside this guard. Such a test is marked by
-# hand. There is no call-graph resolution: an idiom in a helper is an
-# outside-body hit whichever tests call the helper. The guard never widens its
-# parser to chase more shapes.
+# Residual limit: a test reaching the tracked tree through
+# a path this guard cannot see is outside its claim, for example a script
+# given a path below the root that it walks, a root assembled at run time, a
+# helper reached through a variable command word, or a library sourced through
+# a path built from values the guard cannot expand.
+# The full run on push to main backstops it.
+# An idiom or call inside a helper is an outside-body hit whichever tests
+# call the helper. The reach of each call is bounded by the shapes above, so
+# a suite calling a tracked script against a fixture tree it points the call
+# at is not flagged.
 #
 # Maintainer-only: .gaia/tests is release-excluded wholesale.
 #
@@ -229,15 +267,676 @@ readonly OWN_AWK='
       return 0
     }
 
+    # ---- calls that reach the tracked tree ---------------------------------
+
+    function normalize_path(path,   part_count, parts, i, kept, kept_count, result) {
+      if (path == FAILED) { return FAILED }
+      part_count = split(path, parts, "/")
+      kept_count = 0
+      for (i = 1; i <= part_count; i++) {
+        if (parts[i] == "" || parts[i] == ".") { continue }
+        if (parts[i] == "..") {
+          if (kept_count == 0) { return FAILED }
+          kept_count--
+          continue
+        }
+        kept[++kept_count] = parts[i]
+      }
+      result = ""
+      for (i = 1; i <= kept_count; i++) { result = result (i > 1 ? "/" : "") kept[i] }
+      return result
+    }
+    function parent_of(path) {
+      if (path == FAILED || path == "") { return FAILED }
+      if (index(path, "/") == 0) { return "" }
+      sub(/\/[^\/]*$/, "", path)
+      return path
+    }
+    function joined_path(base, rest) {
+      if (base == FAILED) { return FAILED }
+      if (rest == "") { return base }
+      if (rest !~ /^\// || rest ~ /[$*?`]/) { return FAILED }
+      return normalize_path(base rest)
+    }
+
+    # The repository-relative path a suite expression names, expanded the way
+    # the shell would from the suite location: the rooting shapes only
+    # ($BATS_TEST_DIRNAME, $BATS_TEST_FILENAME, a variable assigned in the
+    # suite, `$(cd X && pwd)`, `$(dirname X)`, `$(git ... --show-toplevel)`),
+    # each followed by a literal tail. FAILED for anything else, and for every
+    # shape when the suite sits outside the scanned root.
+    function evaluated_path(expression, depth,   level, i, character, inner, rest, base, name) {
+      if (depth > 8) { return FAILED }
+      gsub(/["\047]/, "", expression)
+      sub(/^[ \t]+/, "", expression)
+      sub(/[ \t]+$/, "", expression)
+      if (substr(expression, 1, 2) == "$(") {
+        level = 0
+        for (i = 2; i <= length(expression); i++) {
+          character = substr(expression, i, 1)
+          if (character == "(") { level++ } else if (character == ")") { level--; if (level == 0) { break } }
+        }
+        if (level != 0) { return FAILED }
+        inner = substr(expression, 3, i - 3)
+        rest = substr(expression, i + 1)
+        sub(/^[ \t]+/, "", inner)
+        sub(/[ \t]+$/, "", inner)
+        if (inner ~ /^cd[ \t]/ && match(inner, /&&[ \t]*pwd([ \t]+-P)?$/)) {
+          inner = substr(inner, 1, RSTART - 1)
+          sub(/^cd[ \t]+(--[ \t]+)?(-P[ \t]+)?/, "", inner)
+          base = evaluated_path(inner, depth + 1)
+        } else if (inner ~ /^dirname[ \t]/) {
+          sub(/^dirname[ \t]+(--[ \t]+)?/, "", inner)
+          base = parent_of(evaluated_path(inner, depth + 1))
+        } else if (inner ~ /rev-parse[ \t]+--show-toplevel$/) {
+          base = ""
+        } else {
+          return FAILED
+        }
+        return joined_path(base, rest)
+      }
+      # ${NAME:-default}: the default, the value a suite run without the
+      # override sees.
+      if (match(expression, /^\$\{[A-Za-z_][A-Za-z0-9_]*:?-/)) {
+        level = 0
+        for (i = 2; i <= length(expression); i++) {
+          character = substr(expression, i, 1)
+          if (character == "{") { level++ } else if (character == "}") { level--; if (level == 0) { break } }
+        }
+        if (level != 0) { return FAILED }
+        inner = substr(expression, RLENGTH + 1, i - RLENGTH - 1)
+        return joined_path(evaluated_path(inner, depth + 1), substr(expression, i + 1))
+      }
+      if (!match(expression, /^\$\{?[A-Za-z_][A-Za-z0-9_]*\}?/)) { return FAILED }
+      name = substr(expression, RSTART, RLENGTH)
+      rest = substr(expression, RLENGTH + 1)
+      gsub(/[${}]/, "", name)
+      if (name == "BATS_TEST_DIRNAME") { base = suite_known ? suite_directory : FAILED }
+      else if (name == "BATS_TEST_FILENAME") { base = suite_known ? suite_relative : FAILED }
+      else if (name in first_value) { base = evaluated_path(first_value[name], depth + 1) }
+      else { return FAILED }
+      return joined_path(base, rest)
+    }
+
+    # The literal text after the last expansion in an expression: the part a
+    # path keeps however its variables expand. Empty when the tail is itself
+    # computed.
+    function literal_tail(expression,   rest) {
+      gsub(/["\047\\]/, "", expression)
+      sub(/[ \t]+$/, "", expression)
+      rest = expression
+      while (match(rest, /\$\{[^}]*\}|\$[A-Za-z_][A-Za-z0-9_]*|\)/)) { rest = substr(rest, RSTART + RLENGTH) }
+      if (rest ~ /[$*?` \t(]/) { return "" }
+      return rest
+    }
+
+    function load_tracked(   path) {
+      if (tracked_loaded) { return }
+      tracked_loaded = 1
+      tracked_count = 0
+      while ((getline path < tracked_list) > 0) { is_tracked[path] = 1; tracked_order[++tracked_count] = path }
+      close(tracked_list)
+    }
+
+    # Fills resolved[1..resolved_count] with the tracked files an expression
+    # can name: its exact expansion when the rooting shapes give one, else its
+    # literal tail read from the directory it is written in and each directory
+    # above, else every tracked file ending in that tail.
+    function resolve_paths(expression, from_directory, as_load,   path, tail, stripped, directory, candidate, p, suffix_length) {
+      load_tracked()
+      resolved_count = 0
+      if (expression ~ /^["\047]?\$/) {
+        path = evaluated_path(expression, 0)
+        if (path != FAILED && (path in is_tracked)) { resolved[++resolved_count] = path; return resolved_count }
+        if (as_load && path != FAILED && ((path ".bash") in is_tracked)) { resolved[++resolved_count] = path ".bash"; return resolved_count }
+      }
+      # A path held in a suite variable reads through to the value of that variable.
+      gsub(/["\047]/, "", expression)
+      for (p = 0; p < 5 && match(expression, /^\$\{?[A-Za-z_][A-Za-z0-9_]*\}?/); p++) {
+        candidate = substr(expression, RSTART, RLENGTH)
+        gsub(/[${}]/, "", candidate)
+        if (!(candidate in first_value)) { break }
+        stripped = first_value[candidate]
+        gsub(/["\047]/, "", stripped)
+        expression = stripped substr(expression, RLENGTH + 1)
+      }
+      tail = literal_tail(expression)
+      if (tail == "") { return 0 }
+      directory = from_directory
+      while (directory != FAILED) {
+        candidate = normalize_path(directory "/" tail)
+        if (candidate != FAILED && (candidate in is_tracked)) { resolved[++resolved_count] = candidate; return resolved_count }
+        if (as_load && candidate != FAILED && ((candidate ".bash") in is_tracked)) { resolved[++resolved_count] = candidate ".bash"; return resolved_count }
+        directory = parent_of(directory)
+      }
+      stripped = tail
+      while (sub(/^(\.\.?\/|\/)/, "", stripped)) { }
+      if (stripped == "") { return 0 }
+      suffix_length = length(stripped) + 1
+      for (p = 1; p <= tracked_count; p++) {
+        path = tracked_order[p]
+        if (path == stripped || (length(path) > suffix_length && substr(path, length(path) - suffix_length + 1) == "/" stripped)) {
+          resolved[++resolved_count] = path
+        }
+      }
+      return resolved_count
+    }
+
+    # 1 when the tracked script finds its own root without an argument and
+    # enumerates the tree from it.
+    # A script that makes a temporary repository builds a fixture tree, so
+    # calling it is not a scan of the real one.
+    function scans_own_tree(path,   line, own_root, enumerates, file_path, temporary, initializes) {
+      if (path in scans_cache) { return scans_cache[path] }
+      own_root = 0
+      enumerates = 0
+      temporary = 0
+      initializes = 0
+      file_path = root "/" path
+      while ((getline line < file_path) > 0) {
+        if (line ~ /^[ \t]*#/) { continue }
+        # Its own root: an assignment that climbs from its own location or
+        # asks git for the top level, not a library sourced beside it.
+        if (line ~ /[A-Za-z_][A-Za-z0-9_]*=/ && (line ~ /--show-toplevel/ \
+            || (line ~ /BASH_SOURCE|dirname[ \t]+(--[ \t]+)?["\047]?\$\{?0|\$\{0%/ && line ~ /\/\.\./))) { own_root = 1 }
+        if (line ~ /git[ \t].*[ \t]ls-files([ \t]|$)|git[ \t].*[ \t]grep([ \t]|$)|(^|[^A-Za-z0-9_.-])find[ \t]+[^ \t-]|(^|[^A-Za-z0-9_])for[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]+in[ \t][^;]*\*/) { enumerates = 1 }
+        if (line ~ /mktemp/) { temporary = 1 }
+        if (line ~ /(^|[^A-Za-z0-9_-])git[ \t]+(.*[ \t])?init([ \t]|$)/) { initializes = 1 }
+      }
+      close(file_path)
+      builds_fixture_cache[path] = (temporary && initializes)
+      scans_cache[path] = (own_root && enumerates && !builds_fixture_cache[path])
+      return scans_cache[path]
+    }
+
+    # Function definitions, from the suite and from every tracked file it
+    # sources (by a literal or root-relative path, or bats load), followed into
+    # the files those source in turn. A definition the suite makes wins.
+    function read_functions(file_path, directory, is_suite, depth,   line, in_body, body, function_name, indent, rest, definition, heredoc_end, heredoc_dash, operand, queue_count, queue, q, r, closing, heredoc_text) {
+      if (depth > 3 || (file_path in functions_read)) { return }
+      functions_read[file_path] = 1
+      in_body = 0
+      heredoc_end = ""
+      queue_count = 0
+      while ((getline line < file_path) > 0) {
+        sub(/\r$/, "", line)
+        if (heredoc_end != "") {
+          heredoc_text = line
+          if (heredoc_dash) { sub(/^\t+/, "", heredoc_text) }
+          if (heredoc_text == heredoc_end) { heredoc_end = "" }
+          if (in_body) { body = body line "\n" }
+          continue
+        }
+        if (line !~ /^[ \t]*#/) {
+          heredoc_end = heredoc_word(line)
+          heredoc_dash = heredoc_word_dash
+          if (match(line, (is_suite ? "(^|&&|;|\\$\\(|\\()[ \t]*(source|\\.|load)[ \t]+[^ \t;&|)]+" : "(^|&&|;|\\$\\(|\\()[ \t]*(source|\\.)[ \t]+[^ \t;&|)]+"))) {
+            operand = substr(line, RSTART, RLENGTH)
+            sub(/^.*(source|\.|load)[ \t]+/, "", operand)
+            if (operand != "" && operand != ".") {
+              resolve_paths(operand, directory, is_suite && line ~ /(^|[ \t;&])load[ \t]/)
+              for (r = 1; r <= resolved_count; r++) { queue[++queue_count] = resolved[r] }
+            }
+          }
+        }
+        if (in_body) {
+          if (line ~ ("^" indent closing "[ \t]*$")) {
+            if (!(function_name in function_body)) { function_body[function_name] = body; function_suite[function_name] = is_suite }
+            in_body = 0
+          } else {
+            body = body line "\n"
+          }
+          continue
+        }
+        if (line ~ /^[ \t]*#/) { continue }
+        if (match(line, /^[ \t]*(function[ \t]+)?[A-Za-z_][A-Za-z0-9_:.-]*[ \t]*\(\)/) || (line ~ /^[ \t]*function[ \t]+[A-Za-z_][A-Za-z0-9_:.-]*[ \t]*(\{|$)/ && match(line, /^[ \t]*function[ \t]+[A-Za-z_][A-Za-z0-9_:.-]*/))) {
+          definition = substr(line, RSTART, RLENGTH)
+          rest = substr(line, RSTART + RLENGTH)
+          indent = definition
+          sub(/[^ \t].*$/, "", indent)
+          function_name = definition
+          sub(/^[ \t]*(function[ \t]+)?/, "", function_name)
+          sub(/[ \t]*\(\)$/, "", function_name)
+          closing = (rest ~ /^[ \t]*\(/) ? ")" : "}"
+          if (rest ~ /[{(]/ && rest ~ /[})][ \t]*(;[ \t]*)?$/ && rest !~ /^[ \t]*[{(][ \t]*$/) {
+            if (!(function_name in function_body)) { function_body[function_name] = rest "\n"; function_suite[function_name] = is_suite }
+          } else {
+            in_body = 1
+            body = ""
+          }
+        }
+      }
+      close(file_path)
+      for (q = 1; q <= queue_count; q++) { read_functions(root "/" queue[q], parent_of(queue[q]), 0, depth + 1) }
+    }
+
+    # The delimiter of a heredoc this line opens, or empty; sets
+    # heredoc_word_dash for the <<- form. A << inside a quoted literal (a
+    # fixture line) opens nothing.
+    function heredoc_word(text,   stripped, word, before, single_count, double_count) {
+      heredoc_word_dash = 0
+      stripped = text
+      gsub(/<<</, "", stripped)
+      if (!match(stripped, /<<-?[ \t]*\\?["\047]?[A-Za-z_][A-Za-z0-9_]*["\047]?/)) { return "" }
+      before = substr(stripped, 1, RSTART - 1)
+      single_count = gsub(/\047/, "", before)
+      double_count = gsub(/"/, "", before)
+      if (single_count % 2 || double_count % 2) { return "" }
+      word = substr(stripped, RSTART, RLENGTH)
+      if (word ~ /^<<-/) { heredoc_word_dash = 1 }
+      sub(/^<<-?[ \t]*/, "", word)
+      gsub(/["\047\\]/, "", word)
+      return word
+    }
+
+    # 1 when the variable holds the scanned root itself, not a path below it.
+    # Read from the expansion when the rooting shapes give one; otherwise (a
+    # suite outside the scanned root) from the shape alone: a `cd ... && pwd`
+    # or `--show-toplevel` capture, or a variable followed only by `..` steps.
+    function names_root(name,   path, value) {
+      if (name in root_cache) { return root_cache[name] }
+      root_cache[name] = 0
+      if (!(name in first_value)) { return 0 }
+      value = first_value[name]
+      path = evaluated_path(value, 0)
+      if (path != FAILED) {
+        root_cache[name] = (path == "")
+      } else {
+        gsub(/["\047]/, "", value)
+        sub(/[ \t]+$/, "", value)
+        root_cache[name] = (value ~ /(&&[ \t]*pwd([ \t]+-P)?|--show-toplevel)[ \t]*\)$/ \
+          || value ~ /^\$\{?[A-Za-z_][A-Za-z0-9_]*\}?(\/\.\.)+\/?$/)
+      }
+      return root_cache[name]
+    }
+
+    # The text with every single-quoted literal outside double quotes blanked:
+    # the shell expands nothing inside one, so no separator or variable there
+    # belongs to the statement.
+    function masked_single_quotes(text,   result, i, character, in_double, in_single) {
+      result = ""
+      in_double = 0
+      in_single = 0
+      for (i = 1; i <= length(text); i++) {
+        character = substr(text, i, 1)
+        if (in_single) {
+          if (character == "\047") { in_single = 0; result = result character } else { result = result "_" }
+          continue
+        }
+        if (character == "\\" && i < length(text)) { result = result character substr(text, i + 1, 1); i++; continue }
+        if (character == "\"") { in_double = !in_double }
+        if (character == "\047" && !in_double) { in_single = 1 }
+        result = result character
+      }
+      return result
+    }
+
+    function fixture_expression(value,   command, r) {
+      if (value ~ /\$\{?(BATS_TEST_TMPDIR|BATS_FILE_TMPDIR|BATS_RUN_TMPDIR|BATS_SUITE_TMPDIR|TMPDIR)([^A-Za-z0-9_]|$)/ \
+          || value ~ /mktemp/ || value ~ /(^|\/)fixtures(\/|$)/) { return 1 }
+      if (value !~ /^\$\(/) { return 0 }
+      command = substr(value, 3)
+      sub(/^[ \t]*(bash[ \t]+)?/, "", command)
+      sub(/[ \t)].*$/, "", command)
+      if (command in function_body) {
+        if (function_body[command] ~ /mktemp|BATS_TEST_TMPDIR|BATS_FILE_TMPDIR/ \
+            && function_body[command] ~ /(^|[^A-Za-z0-9_-])git[ \t]+(.*[ \t])?init([ \t]|$)|(^|[ \t])cp[ \t]+-[A-Za-z]*[rRa]/) { return 1 }
+        # A wrapper whose body runs a fixture-building script.
+        command = function_body[command]
+        sub(/^[ \t\n]*/, "", command)
+        sub(/[ \t\n].*$/, "", command)
+        gsub(/"/, "", command)
+      }
+      if (command !~ /^\$/) { return 0 }
+      resolve_paths(command, suite_known ? suite_directory : FAILED, 0)
+      for (r = 1; r <= resolved_count; r++) {
+        scans_own_tree(resolved[r])
+        if (builds_fixture_cache[resolved[r]]) { return 1 }
+      }
+      return 0
+    }
+
+    # A word that starts at a fixture: a temp-directory variable or mktemp, a
+    # path with a fixtures segment, or a variable assigned one of those.
+    function fixture_reference(value,   known) {
+      if (value ~ /^\$\{?(BATS_TEST_TMPDIR|BATS_FILE_TMPDIR|BATS_RUN_TMPDIR|BATS_SUITE_TMPDIR|TMPDIR)([^A-Za-z0-9_]|$)/) { return 1 }
+      if (value ~ /^\$\(mktemp/ || value ~ /(^|\/)fixtures(\/|$)/) { return 1 }
+      for (known in is_fixture) {
+        if (value ~ ("^\\$\\{?" known "([^A-Za-z0-9_]|$)")) { return 1 }
+      }
+      return 0
+    }
+    # A fixture word that names a tree: not a PATH list, not a file.
+    function fixture_tree(value) {
+      if (!fixture_reference(value) || value ~ /:/) { return 0 }
+      sub(/\/+$/, "", value)
+      return value !~ /\/[^\/]*\.[A-Za-z0-9]+$/
+    }
+
+    # 1 when a word of the statement (an argument, a cd target, an
+    # environment assignment) points at a fixture tree.
+    function statement_points_at_fixture(text,   word_count, words, w, word, skip_next) {
+      word_count = split(text, words, /[ \t]+/)
+      skip_next = 0
+      for (w = 1; w <= word_count; w++) {
+        word = words[w]
+        if (skip_next) { skip_next = 0; continue }
+        if (word ~ /^([0-9]*|&)[<>]+$/) { skip_next = 1; continue }
+        if (word ~ /^([0-9]*|&)[<>]/) { continue }
+        gsub(/["\047\\();]/, "", word)
+        sub(/^(export)?[A-Za-z_][A-Za-z0-9_]*=/, "", word)
+        sub(/^-[-A-Za-z]*=/, "", word)
+        if (fixture_tree(word)) { return 1 }
+      }
+      return 0
+    }
+
+    # 1 when an earlier line of the same test, or of setup or setup_file,
+    # changes into a fixture tree or exports one.
+    function earlier_points_at_fixture(i,   block, j, text, target) {
+      block = line_block[i]
+      for (j = 1; j < i; j++) {
+        if (line_block[j] != block && line_block[j] != "function:setup" && line_block[j] != "function:setup_file") { continue }
+        if (logical_heredoc[j] || is_comment(logical_text[j])) { continue }
+        text = logical_text[j]
+        if (match(text, /(^|;|&&)[ \t]*(cd|pushd)[ \t]+(--[ \t]+)?[^ \t;&|)]+/)) {
+          target = substr(text, RSTART, RLENGTH)
+          sub(/^.*(cd|pushd)[ \t]+(--[ \t]+)?/, "", target)
+          gsub(/["\047]/, "", target)
+          if (fixture_tree(target)) { return 1 }
+        }
+        if (match(text, /(^|[ \t;])export[ \t]+[A-Za-z_][A-Za-z0-9_]*=[^ \t;]+/)) {
+          target = substr(text, RSTART, RLENGTH)
+          sub(/^.*export[ \t]+[A-Za-z_][A-Za-z0-9_]*=/, "", target)
+          gsub(/["\047]/, "", target)
+          if (fixture_tree(target)) { return 1 }
+        }
+      }
+      return 0
+    }
+
+    # 1 when an earlier line of the same test, or of setup, reassigns the root
+    # variable to a fixture or builds a repository or copy at it.
+    function root_reassigned(i, name,   block, j, text, value) {
+      block = line_block[i]
+      for (j = 1; j < i; j++) {
+        if (line_block[j] != block && line_block[j] != "function:setup" && line_block[j] != "function:setup_file") { continue }
+        text = logical_text[j]
+        if (!refers(text, name) || logical_heredoc[j] || is_comment(text)) { continue }
+        if (match(text, ("(^|[ \t;])" name "="))) {
+          value = substr(text, RSTART + RLENGTH)
+          gsub(/["\047]/, "", value)
+          if (fixture_reference(value)) { return 1 }
+        }
+        if (text ~ ("git[ \t].*init.*\\$\\{?" name) || text ~ ("(^|[ \t])cp[ \t]+-[A-Za-z]*[rRa].*\\$\\{?" name "\\}?[\"\047]?[ \t]*$")) { return 1 }
+      }
+      return 0
+    }
+
+    # For the first occurrence of the variable as a whole argument word that
+    # is handed to a script or a function: 1 a script, 2 a function (name in
+    # handed_command, argument position in handed_position); 0 for none. A
+    # command that is neither (cd, git, a test, an assignment, a file-building
+    # command) is not a hand-off.
+    function handed_to(text, name,   pattern, rest, offset, segment, word_count, words, w, word, command, position, after_prefix, original, inline, inline_name, string_word) {
+      pattern = "(^|[ \t=])\\\\?[\"\047]?\\$\\{?" name "\\}?\\\\?[\"\047]?([ \t;|&)]|$)"
+      original = text
+      text = masked_single_quotes(text)
+      rest = text
+      offset = 0
+      while (match(rest, pattern)) {
+        segment = substr(text, 1, offset + RSTART)
+        offset += RSTART + RLENGTH - 1
+        rest = substr(text, offset + 1)
+        while (match(segment, /;|&&|\|\||\||\$\(|`|(^|[^\\$])\(|-c[ \t]+\\?"/)) { segment = substr(segment, RSTART + RLENGTH) }
+        word_count = split(segment, words, /[ \t]+/)
+        command = ""
+        position = 0
+        after_prefix = 0
+        string_word = 0
+        for (w = 1; w <= word_count; w++) {
+          word = words[w]
+          if (word == "") { continue }
+          if (command == "") {
+            if (word ~ /^(run|!|if|then|do|else|elif|while|until|command|exec|time|builtin|env|timeout)$/) { after_prefix = 1; continue }
+            if (after_prefix && (word ~ /^-/ || word ~ /^[0-9]+[smh]?$/)) { continue }
+            if (word ~ /^[A-Za-z_][A-Za-z0-9_]*=/) { continue }
+            command = word
+            continue
+          }
+          position++
+          if (word == "-c" && position == 1) { string_word = 1 }
+        }
+        if (command == "") { continue }
+        gsub(/["\047\\]/, "", command)
+        # bash -c <string> <$0> <args>: the string is an inline helper, and
+        # the root is its positional parameter; read it as a helper body.
+        if (command ~ /(^|\/)(bash|sh|zsh|dash|ksh)$/ && string_word && position >= 3 \
+            && match(substr(original, 1, offset), /-c[ \t]+\047[^\047]*\047/)) {
+          inline = substr(original, RSTART, RLENGTH)
+          sub(/^-c[ \t]+\047/, "", inline)
+          sub(/\047$/, "", inline)
+          inline_name = "\001inline" (++inline_count)
+          function_body[inline_name] = inline "\n"
+          if (helper_reaches(inline_name, position - 2, 1)) { return 1 }
+          continue
+        }
+        # A variable command word is a script only when it holds a path from
+        # the real root; one holding a function name is outside the claim.
+        if (command ~ /^(bash|sh|zsh|dash|ksh)$/ || command ~ /\//) { return 1 }
+        if (command ~ /^\$/) {
+          word = command
+          gsub(/[${}]/, "", word)
+          if (word in is_root) { return 1 }
+        }
+        if (command ~ /^[A-Za-z_][A-Za-z0-9_]*$/ && ((command in function_body) || index(command, "_"))) {
+          handed_command = command
+          handed_position = position + (segment ~ /=$/ ? 0 : 1)
+          return 2
+        }
+      }
+      return 0
+    }
+
+    # A script run after the statement changes into the variable.
+    function runs_from(text, name,   pattern, rest) {
+      pattern = "(cd|pushd)[ \t]+(--[ \t]+)?\\\\?[\"\047]?\\$\\{?" name "\\}?\\\\?[\"\047]?[ \t]*(&&|;)"
+      if (!match(text, pattern)) { return 0 }
+      rest = substr(text, RSTART + RLENGTH)
+      return rest ~ /(^|[ \t;&|(])(bash|sh|zsh)[ \t]+[^- \t]/ || rest ~ /(^|[ \t;&|(])\.\/[A-Za-z0-9_]/ \
+        || rest ~ /^[ \t]*\\?["\047]?\$\{?[A-Za-z_]/ || rest ~ /git[ \t].*[ \t](ls-files|grep)([ \t]|$)/
+    }
+
+    # The names a function body binds its n-th positional parameter to,
+    # the parameter itself included, space-separated.
+    function parameter_aliases(body, n,   names, rest, name, pattern) {
+      names = " " n " "
+      pattern = "[A-Za-z_][A-Za-z0-9_]*=[\"\047]?\\$\\{?" n "([^0-9A-Za-z_]|$)"
+      rest = body
+      while (match(rest, pattern)) {
+        name = substr(rest, RSTART, RLENGTH)
+        sub(/=.*/, "", name)
+        names = names name " "
+        rest = substr(rest, RSTART + RLENGTH)
+      }
+      return names
+    }
+
+    # 1 when the function applies an idiom, a script hand-off or a change of
+    # directory to its n-th parameter, reads a file under it whose name is a
+    # variable (`"$root/$path"`, a name no caller spells), or hands it to a
+    # function that does (followed a few calls deep; a function it cannot
+    # read counts, failing closed).
+    function helper_reaches(function_name, n, depth,   key, alias_count, alias_list, a, line_count, lines, l, text, saved_command, saved_position, kind) {
+      key = function_name SUBSEP n
+      if (key in reach_cache) { return reach_cache[key] }
+      reach_cache[key] = 0
+      if (depth > 4) { return 0 }
+      saved_command = handed_command
+      saved_position = handed_position
+      alias_count = split(parameter_aliases(function_body[function_name], n), alias_list, " ")
+      line_count = split(function_body[function_name], lines, "\n")
+      for (l = 1; l <= line_count; l++) {
+        text = lines[l]
+        if (is_comment(text)) { continue }
+        for (a = 1; a <= alias_count; a++) {
+          if (!refers(text, alias_list[a])) { continue }
+          if (idiom_priority(text, alias_list[a]) > 0 || runs_from(text, alias_list[a]) \
+              || text ~ ("\\$\\{?" alias_list[a] "\\}?/\\$\\{?[A-Za-z_]")) {
+            reach_cache[key] = 1
+            break
+          }
+          kind = handed_to(text, alias_list[a])
+          if (kind == 1 || (kind == 2 && (!(handed_command in function_body) \
+              || (handed_command != function_name && helper_reaches(handed_command, handed_position, depth + 1))))) {
+            reach_cache[key] = 1
+            break
+          }
+        }
+        if (reach_cache[key]) { break }
+      }
+      handed_command = saved_command
+      handed_position = saved_position
+      return reach_cache[key]
+    }
+
+    # A script run through bash or as the command word with no argument after
+    # it, which reads its own tree.
+    function default_tree_script(text, name,   pattern, matched, after, tail, value, r) {
+      pattern = "(bash|sh|zsh)[ \t]+(-[A-Za-z]+[ \t]+)*\\\\?[\"\047]?\\$\\{?" name "\\}?(/[^ \t\"\047;|&)]*)?\\\\?[\"\047]?"
+      if (!match(text, pattern)) {
+        pattern = "(^[ \t]*|[;&|][ \t]*|(^|[^=])\\([ \t]*|(^|[ \t])(run|exec|then|do)[ \t]+)\\\\?[\"\047]?\\$\\{?" name "\\}?(/[^ \t\"\047;|&)]*)?\\\\?[\"\047]?"
+        if (!match(text, pattern)) { return 0 }
+      }
+      matched = substr(text, RSTART, RLENGTH)
+      after = substr(text, RSTART + RLENGTH)
+      # -c runs a string, not the file; -n only parses it.
+      if (matched ~ /[ \t]-[cn][ \t]/) { return 0 }
+      if (after !~ /^[ \t]*($|[;|&)]|[0-9]*[<>]|&>|["\047][ \t]*($|[;|&)]))/) { return 0 }
+      # A change of directory earlier in the statement, to anything but a real
+      # root, points a script that reads its root from the working directory
+      # away from the real tree.
+      if (moves_away(substr(text, 1, RSTART - 1))) { return 0 }
+      match(matched, ("\\$\\{?" name "\\}?"))
+      tail = substr(matched, RSTART + RLENGTH)
+      gsub(/["\047\\]/, "", tail)
+      value = first_value[name]
+      gsub(/["\047]/, "", value)
+      resolve_paths(value tail, suite_known ? suite_directory : FAILED, 0)
+      for (r = 1; r <= resolved_count; r++) {
+        if (resolved[r] ~ /\/[^\/.]+\.[A-Za-z0-9]+$/ && resolved[r] !~ /\.(sh|bash)$/) { continue }
+        if (scans_own_tree(resolved[r])) { return 1 }
+      }
+      return 0
+    }
+
+    function moves_away(prefix,   target, known) {
+      if (!match(prefix, /(^|[;&|(\"])[ \t]*(cd|pushd)[ \t]+(--[ \t]+)?[^ \t;&|)]+/)) { return 0 }
+      target = substr(prefix, RSTART, RLENGTH)
+      sub(/^.*(cd|pushd)[ \t]+(--[ \t]+)?/, "", target)
+      gsub(/["\047\\]/, "", target)
+      for (known in is_root) {
+        if (target ~ ("^\\$\\{?" known "\\}?$") && names_root(known)) { return 0 }
+      }
+      return 1
+    }
+
+    # 1 when a suite function prints a path under the real root whose last
+    # segment is a parameter plus a literal suffix.
+    function builds_suffix_path(function_name,   line_count, lines, l, text, aliases, alias_count, alias_list, a, n, known, has_root) {
+      line_count = split(function_body[function_name], lines, "\n")
+      aliases = ""
+      for (n = 1; n <= 3; n++) { aliases = aliases parameter_aliases(function_body[function_name], n) }
+      alias_count = split(aliases, alias_list, " ")
+      for (l = 1; l <= line_count; l++) {
+        text = lines[l]
+        if (is_comment(text) || text !~ /(^|[ \t;&|(])(printf|echo)[ \t]/) { continue }
+        has_root = 0
+        for (known in is_root) {
+          if (names_root(known) && refers(text, known)) { has_root = 1; break }
+        }
+        if (!has_root) { continue }
+        for (a = 1; a <= alias_count; a++) {
+          if (!refers(text, alias_list[a])) { continue }
+          if (text ~ /%s\/[^ \t"\047]*%s\.[A-Za-z0-9_]+/ || text ~ ("\\$\\{?" alias_list[a] "\\}?\\.[A-Za-z0-9_]+")) { return 1 }
+        }
+      }
+      return 0
+    }
+
+    # The call hop a logical line makes, as an idiom_label index; 0 for none.
+    function call_hop(i,   text, best, name, kind, fired, word_name) {
+      text = logical_text[i]
+      best = 0
+      fired = ""
+      for (name in is_root) {
+        if (!refers(text, name) || (name in is_fixture)) { continue }
+        if (names_root(name)) {
+          if (runs_from(text, name) && (best == 0 || best > 5)) { best = 5; fired = name }
+          kind = handed_to(text, name)
+          if (kind == 1 && (best == 0 || best > 6)) { best = 6; fired = name }
+          if (kind == 2) {
+            if (!(handed_command in function_body)) {
+              if (best == 0 || best > 8) { best = 8; fired = name }
+            } else if (helper_reaches(handed_command, handed_position, 0) && (best == 0 || best > 7)) {
+              best = 7; fired = name
+            }
+          }
+        }
+        if ((best == 0 || best > 9) && default_tree_script(text, name)) { best = 9; fired = name }
+      }
+      if (best == 0) {
+        for (word_name in suffix_builder) {
+          if (line_block[i] == ("function:" word_name)) { continue }
+          if (text ~ ("(^|[ \t;&|(])" word_name "([ \t;)|&\"]|$)") && text !~ ("(^|[ \t])" word_name "[ \t]*\\(\\)")) { best = 10; break }
+        }
+      }
+      if (best == 0 || statement_points_at_fixture(text)) { return 0 }
+      if (best == 9 && earlier_points_at_fixture(i)) { return 0 }
+      if (fired != "" && root_reassigned(i, fired)) { return 0 }
+      return best
+    }
+
+    # Which block each logical line sits in: a test, a function, or the top
+    # level. Read over logical lines, skipping heredoc bodies.
+    function assign_blocks(   i, text, block, definition, name) {
+      block = ""
+      for (i = 1; i <= logical_count; i++) {
+        text = logical_text[i]
+        if (logical_heredoc[i]) { line_block[i] = block; continue }
+        if (block == "") {
+          if (text ~ /^@test[ \t]/) {
+            block = "test:" i
+          } else if (match(text, /^(function[ \t]+)?[A-Za-z_][A-Za-z0-9_:.-]*[ \t]*\(\)/) || (text ~ /^function[ \t]+[A-Za-z_][A-Za-z0-9_:.-]*[ \t]*(\{|$)/ && match(text, /^function[ \t]+[A-Za-z_][A-Za-z0-9_:.-]*/))) {
+            name = substr(text, RSTART, RLENGTH)
+            sub(/^(function[ \t]+)?/, "", name)
+            sub(/[ \t]*\(\)$/, "", name)
+            block = "function:" name
+            line_block[i] = block
+            if (text ~ /[})][ \t]*(;[ \t]*)?$/ && text !~ /[{(][ \t]*$/) { block = "" }
+            continue
+          }
+          line_block[i] = block
+          continue
+        }
+        line_block[i] = block
+        if (text ~ /^[})][ \t]*$/) { block = "" }
+      }
+    }
+
     # End of pass 1: the real-root fixpoint, then every hit keyed by the first
     # physical line of its logical line.
-    function find_hits(   i, statement, equals_position, assigned_count, assigned_name, assigned_value, a, name, value, joins, known, changed, best, priority) {
+    function find_hits(   i, statement, equals_position, assigned_count, assigned_name, assigned_value, a, name, value, joins, known, changed, best, priority, function_name) {
       if (pending != "") {
         logical_count++
         logical_text[logical_count] = pending
         logical_start[logical_count] = pending_start
         pending = ""
       }
+      if (heredoc_open != "") {
+        for (i = heredoc_open_line; i <= FNR_last; i++) { delete line_is_heredoc[i] }
+      }
+      for (i = 1; i <= logical_count; i++) { logical_heredoc[i] = (logical_start[i] in line_is_heredoc) }
       assigned_count = 0
       for (i = 1; i <= logical_count; i++) {
         if (is_comment(logical_text[i])) { continue }
@@ -249,6 +948,9 @@ readonly OWN_AWK='
         assigned_count++
         assigned_name[assigned_count] = substr(statement, 1, equals_position - 1)
         assigned_value[assigned_count] = substr(statement, equals_position + 1)
+        if (!(assigned_name[assigned_count] in first_value)) {
+          first_value[assigned_name[assigned_count]] = assigned_value[assigned_count]
+        }
       }
       changed = 1
       while (changed) {
@@ -277,6 +979,47 @@ readonly OWN_AWK='
           priority = idiom_priority(logical_text[i], name)
           if (priority > 0 && (best == 0 || priority < best)) { best = priority }
         }
+        if (best > 0) { hit_idiom[logical_start[i]] = idiom_label[best] }
+      }
+      assign_blocks()
+      read_functions(FILENAME, suite_known ? suite_directory : FAILED, 1, 0)
+      # Fixture variables: assigned a temp directory, mktemp, a fixtures path,
+      # the output of a script or function that builds a temporary
+      # repository, or a variable already collected. A real-root variable
+      # joins only when every non-empty assignment it has is one of those; a
+      # single fixture reassignment is local to its test, which
+      # root_reassigned reads.
+      changed = 1
+      while (changed) {
+        changed = 0
+        delete fixture_assignments
+        delete other_assignments
+        for (a = 1; a <= assigned_count; a++) {
+          name = assigned_name[a]
+          if (name in is_fixture) { continue }
+          value = assigned_value[a]
+          gsub(/["\047]/, "", value)
+          if (value == "") { continue }
+          joins = fixture_expression(value)
+          if (!joins) {
+            for (known in is_fixture) {
+              if (refers(value, known)) { joins = 1; break }
+            }
+          }
+          if (joins) { fixture_assignments[name]++ } else { other_assignments[name]++ }
+        }
+        for (name in fixture_assignments) {
+          if ((name in is_root) && (name in other_assignments)) { continue }
+          is_fixture[name] = 1
+          changed = 1
+        }
+      }
+      for (function_name in function_body) {
+        if (function_suite[function_name] && builds_suffix_path(function_name)) { suffix_builder[function_name] = 1 }
+      }
+      for (i = 1; i <= logical_count; i++) {
+        if (is_comment(logical_text[i]) || logical_heredoc[i] || (logical_start[i] in hit_idiom)) { continue }
+        best = call_hop(i)
         if (best > 0) { hit_idiom[logical_start[i]] = idiom_label[best] }
       }
       hits_found = 1
@@ -361,6 +1104,17 @@ readonly OWN_AWK='
       idiom_label[2] = "git -C <root> grep"
       idiom_label[3] = "find <root>"
       idiom_label[4] = "glob loop over <root>"
+      idiom_label[5] = "a script run from <root>"
+      idiom_label[6] = "<root> handed to a script"
+      idiom_label[7] = "<root> handed to a helper that scans it"
+      idiom_label[8] = "<root> handed to a helper this guard cannot read"
+      idiom_label[9] = "a script that scans its own tree, run with no argument"
+      idiom_label[10] = "a path built from <root> and a name"
+      FAILED = "\001"
+      heredoc_open = ""
+      tracked_loaded = 0
+      suite_known = (suite_relative != "")
+      suite_directory = suite_known ? parent_of(suite_relative) : FAILED
       pending = ""; logical_count = 0; hits_found = 0; findings = 0
       test_count = 0; current_test = ""; current_test_marked = 0
       every_test_marked = 1; every_test_file_marked = 1
@@ -368,7 +1122,23 @@ readonly OWN_AWK='
       file_tag_whole_tree = 0; file_mark_line = 0
       hit_count = 0
     }
-    NR == FNR { gaia_scan_prepass($0); collect_line($0); next }
+    NR == FNR {
+      gaia_scan_prepass($0)
+      FNR_last = FNR
+      if (heredoc_open != "") {
+        line_is_heredoc[FNR] = 1
+        heredoc_line_text = $0
+        sub(/\r$/, "", heredoc_line_text)
+        if (heredoc_open_dash) { sub(/^\t+/, "", heredoc_line_text) }
+        if (heredoc_line_text == heredoc_open) { heredoc_open = "" }
+      } else if (!is_comment($0)) {
+        heredoc_open = heredoc_word($0)
+        heredoc_open_dash = heredoc_word_dash
+        heredoc_open_line = FNR + 1
+      }
+      collect_line($0)
+      next
+    }
     FNR == 1 && !hits_found { find_hits() }
     {
       gaia_scan_feed($0, 1)
@@ -427,11 +1197,18 @@ readonly OWN_AWK='
 # Every directory holding a tracked file, so a literal ls-files operand naming
 # one still counts as enumeration. Empty when the root is not a repository.
 directory_list="$(mktemp)" || { echo "whole-tree-mark-guard: cannot create a temporary file" >&2; exit 2; }
-trap 'rm -f "$directory_list"' EXIT
+tracked_list="$(mktemp)" || { rm -f "$directory_list"; echo "whole-tree-mark-guard: cannot create a temporary file" >&2; exit 2; }
+trap 'rm -f "$directory_list" "$tracked_list"' EXIT
 git -C "$root" ls-files -z 2>/dev/null \
   | tr '\0' '\n' \
   | awk -F/ '{ path = $1; for (i = 2; i <= NF; i++) { print path; path = path "/" $i } }' \
   | sort -u >"$directory_list"
+# The files a called script or a sourced library is read from. A root that is
+# not a repository (a fixture tree) lists its files instead.
+git -C "$root" ls-files -z 2>/dev/null | tr '\0' '\n' >"$tracked_list"
+if [ ! -s "$tracked_list" ] && [ -d "$root" ]; then
+  (cd "$root" && find . -type f ! -path './.git/*' 2>/dev/null) | sed 's|^\./||' >"$tracked_list"
+fi
 
 flagged=0
 for suite_path in ${scan_paths[@]+"${scan_paths[@]}"}; do
@@ -440,11 +1217,16 @@ for suite_path in ${scan_paths[@]+"${scan_paths[@]}"}; do
     exit 2
   fi
   display="$suite_path"
+  suite_relative=""
   case "$suite_path" in
-    "$root"/*) display="${suite_path#"$root"/}" ;;
+    "$root"/*)
+      display="${suite_path#"$root"/}"
+      suite_relative="$display"
+      ;;
   esac
   "$GAIA_AWK" -v file="$display" -v is_bats=1 -v scripts_directory="$_gaia_guard_library_directory" \
-    -v directory_list="$directory_list" \
+    -v directory_list="$directory_list" -v tracked_list="$tracked_list" \
+    -v root="$root" -v suite_relative="$suite_relative" \
     -v file_mark_pattern="$verify_whole_tree_file_mark_pattern" \
     -v test_mark_pattern="$verify_whole_tree_test_mark_pattern" \
     "$GAIA_GUARD_AWK$OWN_AWK" "$suite_path" "$suite_path"
@@ -460,9 +1242,9 @@ for suite_path in ${scan_paths[@]+"${scan_paths[@]}"}; do
 done
 
 if [ "$flagged" -gt 0 ]; then
-  echo "whole-tree-mark-guard: $flagged suite(s) flagged. Only the idioms in this script's header are recognized (git -C <root> listing tracked files or grep, find <root>, a glob loop over <root>); enumeration delegated to a script the suite calls is outside this guard's claim and needs the mark by hand."
+  echo "whole-tree-mark-guard: $flagged suite(s) flagged. Only the idioms and calls in this script's header are recognized (git -C <root> listing tracked files or grep, find <root>, a glob loop over <root>; <root> handed to a script or a scanning helper, a script run from <root>, a no-argument script that scans its own tree, a path built from <root> and a name); a test reaching the tracked tree through a path this guard cannot see is outside its claim, and the full run on push to main backstops it."
   exit 1
 fi
 
-echo "whole-tree-mark-guard: no unmarked test uses a recognized enumeration idiom (enumeration delegated to a called script is outside this guard's claim)"
+echo "whole-tree-mark-guard: no unmarked test uses a recognized idiom or call (a test reaching the tracked tree through a path this guard cannot see is outside its claim; the full run on push to main backstops it)"
 exit 0

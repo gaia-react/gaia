@@ -1216,8 +1216,23 @@ own_awk_functions() {
   expected="$(printf '%s\n' arm check_desync eat_word feed has_status_read pragma_offsurface report reset_state walk yaml_feed)"
   [ "$actual" = "$expected" ]
 
+  # Deviation from the library-only rule, recorded rather than silently
+  # absorbed: heredoc_word and masked_single_quotes are quote and heredoc
+  # scanning the library also does, kept because no frozen entry point can
+  # answer what they answer. heredoc_word marks heredoc bodies, quoted and
+  # unquoted, in pass 1, before find_hits computes every hit; the library
+  # exposes heredoc state only through gaia_scan_skip, which is set only in
+  # pass 2 and only for a QUOTED body. read_functions also uses it over the
+  # sourced helper files, a second stream that feeding through the library
+  # would mix into the suite scan state and its pragma bookkeeping.
+  # masked_single_quotes blanks single-quoted text inside one statement so
+  # handed_to splits it at separators the shell sees; the library keeps its
+  # quote state per line, never per character. Exposing either needs a new
+  # gaia_scan_* entry point, a library change this pin does not make. The
+  # rest of the set is path and hop resolution (call_hop, helper_reaches,
+  # resolve_paths and the functions they call), not tokenizing.
   actual="$(own_awk_functions "$REPO_ROOT/.gaia/tests/whole-tree-mark-guard.sh")"
-  expected="$(printf '%s\n' bats_applies_whole_tree collect_line find_hits finding idiom_priority is_comment names_only read_tag_line refers test_name_of)"
+  expected="$(printf '%s\n' assign_blocks bats_applies_whole_tree builds_suffix_path call_hop collect_line default_tree_script earlier_points_at_fixture evaluated_path find_hits finding fixture_expression fixture_reference fixture_tree handed_to helper_reaches heredoc_word idiom_priority is_comment joined_path literal_tail load_tracked masked_single_quotes moves_away names_only names_root normalize_path parameter_aliases parent_of read_functions read_tag_line refers resolve_paths root_reassigned runs_from scans_own_tree statement_points_at_fixture test_name_of)"
   [ "$actual" = "$expected" ]
 
   actual="$(own_awk_functions "$REPO_ROOT/.gaia/scripts/tests/fixtures/stub-guard.sh")"

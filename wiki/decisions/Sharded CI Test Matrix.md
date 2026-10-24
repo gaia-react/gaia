@@ -4,13 +4,13 @@ status: active
 priority: 2
 date: 2026-08-13
 created: 2026-08-13
-updated: 2026-10-21
+updated: 2026-10-25
 tags: [decision, ci, performance, github-actions, bats]
 ---
 
 # Decision: Sharded CI Test Matrix
 
-The `GAIA: Audit CI Tests` workflow is the whole pull-request critical path. It runs as a fan-out matrix of legs plus a thin aggregator that carries the declared-required check name, because the bats work saturates a single runner's cores and the remaining lever is more runners.
+The `GAIA: Audit CI Tests` workflow is the whole pull-request critical path. It runs as a fan-out matrix of legs plus a thin aggregator that carries the declared-required check name, because the bats work saturates a single runner's cores and the remaining lever is more runners. A pull request runs each bats leg change-scoped unless it touches harness machinery; every push to `main` and every manual dispatch runs every leg whole.
 
 ## Shape
 
@@ -18,6 +18,7 @@ The `GAIA: Audit CI Tests` workflow is the whole pull-request critical path. It 
 
 - `shards`, a matrix whose legs are named in the workflow's `matrix.shard` list: the bats shards (assigned by `.gaia/tests/bats-shards.sh`), the `.gaia/tests/sandbox` conformance tree, the INV-7 concurrency meter, and the `commitlint` leg, which installs only the root workspace and runs the `.gaia/tests/commitlint/` suites against the real commitlint binary.
 - `audit-ci-tests`, the aggregator, which reads `shards`'s result and exits non-zero for anything other than `success`.
+- `report-main-status`, which runs on a push to `main` only and keeps a red-main issue current (see [[#Main is re-tested on every push]]).
 
 Splitting the required check name off the work is what lets `fail-fast: false` stop one failing shard from cancelling its siblings without also cancelling the check. The aggregator compares against `success` rather than enumerating failure states, so a conclusion GitHub adds later fails closed, and `always()` on its `if:` stops a skip-on-dependency-failure from satisfying a required context that ran nothing.
 
@@ -31,13 +32,13 @@ The group is the right granularity for anything that must survive a reshuffle. T
 
 ## The job caps
 
-Every job declares an integer-literal `timeout-minutes` cap, and `audit-ci-shards.bats` W5 checks it: an expression-valued cap reads as uncapped and reds, so caps stay integer literals. A matrix takes one cap for every leg, so the shard cap is sized to the heaviest leg, `concurrency`, and the lighter shards inherit it. The aggregator carries its own small cap. The workflow's own comments hold the sizing reasoning for each number.
+Every job declares an integer-literal `timeout-minutes` cap, and every `run:` step of the `shards` job declares its own, and `audit-ci-shards.bats` W5 checks both: an expression-valued cap reads as uncapped and reds, so caps stay integer literals, and each step cap sits strictly below the job cap. A matrix takes one job cap for every leg, so it is the outer bound sized to the heaviest leg's whole run, installs included. What fails a hung leg at its own bound is the step cap, and because a step literal cannot come from the matrix, the bats run is split into one step per group of legs: the hooks group at 9 minutes, the scripts group and the single-shard legs at 12, and the sandbox, concurrency meter and commitlint steps at 2. Each literal is sized from the measured whole-shard p95 of its group on pull-request runs; the hooks group has about 1.25 times headroom, while the scripts group and the single-shard legs sit near 1.07 times and are accepted at that margin until a shard rebalance lands. The aggregator and the reporter carry their own small caps. The workflow's own comments hold the sizing reasoning for each number.
 
 ## Measuring this workflow
 
 Two traps make naive measurement useless:
 
-- **Push-to-`main` runs skip.** The job's `if:` admits only `pull_request` and `workflow_dispatch`, so a push run completes in about a second with no duration and no logs. `gh run list --branch main` yields nothing usable; source baselines from `--event pull_request`.
+- **Event mixes the baseline.** A push-to-`main` run and a dispatch run every leg whole, while a pull request usually runs a change-scoped share, so a duration is comparable only within one event and one scope. Push runs are the clean whole-matrix baseline (`gh run list --branch main --event push`); read a pull-request duration against the scope of its change.
 - **`Per-suite results:` reports exit codes, not counts.** The `0 in Ns` figure is the suite's exit status plus elapsed seconds. Assertion counts come from the TAP plan lines (`1..N`) that follow each `##[group]` header, or by counting `ok ` lines per job.
 
 A useful reconciliation is the sum of per-shard TAP plans against the pre-existing per-directory totals: a partition change that loses a file shows up as a count drop, where every check still greens.
@@ -48,11 +49,26 @@ A useful reconciliation is the sum of per-shard TAP plans against the pre-existi
 
 ## Change-scoped legs
 
-The workflow's paths filter has two outputs that arm the bats legs. `code` runs every leg whole. `scoped` names files whose readers the change selector (`.gaia/scripts/bats-suites-for-change.sh`) can find: each suite that reads one names it, or carries the whole-tree mark. A pull request matching `scoped` and nothing in `code` runs each leg through `bats-shards.sh run-for-change`, which hands bats the leg's suites the selector picks, in full, and the leg's other whole-tree-marked suites filtered to the whole-tree tag. That is the set `verify-harness.sh` runs in branch mode, split across the same legs the full run uses, so the weighted partition still balances it. The install steps and the concurrency meter run as they do for `code`. The dependency install inputs (root `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `package.json`, `.node-version`, `.npmrc`, and `frontend/package.json`) stay in `code`: a dependency bump can break any suite, including the Chromium ones that name none of those files, so it runs the full matrix. The filter's own comments say which files belong in `scoped` and why.
+The workflow's paths filter has two outputs that arm the bats legs. `code` holds harness machinery only, the files that decide which suites run and how, and runs every leg whole; its list equals the change classifier's static harness list (`bash .gaia/tests/bats-change-scope.sh --list-harness-paths`). `scoped` names files whose readers the change selector (`.gaia/scripts/bats-suites-for-change.sh`) can find: each suite that reads one names it, or carries the whole-tree mark. A pull request matching `scoped` and nothing in `code` runs each leg through `bats-shards.sh run-for-change`, which hands bats the leg's suites the selector picks, in full, and the leg's other whole-tree-marked suites filtered to the whole-tree tag. That is the set `verify-harness.sh` runs in branch mode, split across the same legs the full run uses, so the weighted partition still balances it. The concurrency meter runs as it does for `code`. A dependency install input is not harness machinery: it is in `scoped`, and it additionally arms the suites marked as reading installed dependencies, which the Chromium and workspace-package suites carry because they name none of those inputs. The classifier owns which paths are install inputs. A leg plans its suites before it installs anything, and each install step is gated on that plan, so a leg whose selection is empty installs nothing and a leg installs the root workspace only when a suite it runs needs it. The filter's own comments say which files belong in `scoped` and why.
 
 Keeping the fan-out is the point. The whole-tree tests alone take minutes on one runner, so a single "changed suites" leg would trade the full matrix's critical path for one nearly as long. Split across the legs, a wiki sync or a frontend component change owes each leg a fraction of its suites.
 
-A selector that cannot read the change makes the leg run its whole shard, the direction that costs time rather than coverage. The limit is the mark itself: a whole-tree test the mark guard cannot see, one that reaches the tracked tree through a script it calls, runs on a scoped change only if its author marked it by hand. Left unmarked, it next runs on a pull request that arms `code`, and its red lands there.
+A selector that cannot read the change makes the leg run its whole shard, the direction that costs time rather than coverage. The limit is what neither the selector nor the mark guard can see: the guard follows a test into a script or helper it calls, but a test that reaches the tracked tree by a path it builds at run time is invisible to both, so it runs on a scoped change only if its author marked it by hand. The full run on every push to `main` is the backstop, and its red lands there rather than on the pull request. The guard header owns the idioms and hops it recognizes.
+
+## Main is re-tested on every push
+
+A push to `main` runs every leg whole, so each merge gets a verdict on exactly the tree it produced. The workflow's concurrency group is the commit for a push and the ref for a pull request: a push run is never cancelled or dropped as pending behind a later merge, and a pull request still cancels its superseded run.
+
+The `report-main-status` job turns a red verdict into one open issue labeled `ci-red-main`. Its logic lives in `.gaia/tests/report-main-status.sh`, tested under bats with a stubbed `gh`; the job only hands it the run's facts through `env:`.
+
+- A failed push run opens the issue when none is open, naming the run, the commit range and the failing legs from the jobs listing.
+- A failed push run with an issue already open comments on it.
+- A green push run closes the issue with a link when its commit is the red commit or a descendant of it.
+- A cancelled or skipped run does nothing, and a green run with no open issue writes nothing.
+
+The job's group is one static, non-cancelling group, so two red runs finishing together cannot both open an issue. GitHub keeps one pending run per group, so a pending reporter replaced by a newer one reports nothing for the replaced run; the newer run tests a superset of that commit and reports in its place. The job holds the workflow's only write scope, `issues: write`, with `actions: read` for the jobs listing and a checkout that persists no credentials.
+
+The label name and the workflow name are stable names other tooling reads; renaming either breaks that tooling silently.
 
 ## Where the time goes
 
@@ -93,7 +109,7 @@ Widening the matrix is not free, and two costs are measured rather than theoreti
 - **Shared-host bursts.** The legs that install a package run `apt-get update` within seconds of each other, and a mirror hash-sum mismatch on any one of them reds a declared-required context. The bats archive is vendored rather than fetched for exactly this reason: fetching it puts a second host in the same burst, and GitHub's codeload answers that burst with `503`s costing an affected leg roughly two minutes of backoff. Any change that adds legs, or that puts a fetch back on an install path, widens what is left.
 - **Fixed overhead multiplies.** Each leg pays provisioning, checkout, and install. Below roughly a minute of real work, a leg is mostly overhead.
 
-Total machine time rises with fan-out even as wall-clock falls. The thing being optimized here is human-facing latency on the critical path, not runner minutes.
+Total machine time rises with fan-out even as wall-clock falls. Fan-out optimizes human-facing latency on the critical path, not runner minutes; change-scoped selection is the lever on runner minutes and timeout exposure.
 
 ## Related
 

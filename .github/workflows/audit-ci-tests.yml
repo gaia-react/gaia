@@ -20,13 +20,20 @@ name: 'GAIA: Audit CI Tests'
 #   pnpm/action-setup   @ ea17c68df8912ef543352723c149a84f56e3d413 (v6.1.0)
 #   actions/setup-node  @ 820762786026740c76f36085b0efc47a31fe5020 (v7.0.0)
 
-# `workflow_dispatch:` is the manual re-run lane. A push made with a
-# GITHUB_TOKEN fires no `pull_request` event, so a head moved that way carries
-# no `Audit CI Tests` run. `Audit CI Tests` below is a declared-required
-# context, so dispatching this workflow, with the job admitting the event in its
-# `if:`, is how a maintainer produces the check on such a head. Same shape as
-# cli-tests.yml. GitHub honors the trigger only for the default-branch copy of
-# this file, so a dispatch fails with 422 until it lands on main.
+# A pull request runs each bats leg change-scoped (the suites its diff can
+# affect, plus the whole-tree-marked tests) unless it touches harness machinery.
+# Every push to main runs every leg whole: it is the backstop for whatever the
+# change-scoped selection cannot see, and `report-main-status` below keeps one
+# `ci-red-main` issue open while main is red.
+#
+# `workflow_dispatch:` is the manual re-run lane, and also runs every leg whole.
+# A push made with a GITHUB_TOKEN fires no `pull_request` event, so a head moved
+# that way carries no `Audit CI Tests` run. `Audit CI Tests` below is a
+# declared-required context, so dispatching this workflow, with the job
+# admitting the event in its `if:`, is how a maintainer produces the check on
+# such a head. Same shape as cli-tests.yml. GitHub honors the trigger only for
+# the default-branch copy of this file, so a dispatch fails with 422 until it
+# lands on main.
 on:
   push:
     branches: [ main ]
@@ -34,9 +41,13 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+# A push run's group is its own commit, so no merge's run is cancelled or
+# dropped as pending behind a later merge, and each merge gets its own verdict.
+# A pull request keeps one group per ref with in-progress cancellation, so a
+# superseded push to the same branch stops paying for the old head.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name == 'push' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Default-deny, so a job added later inherits no scope rather than the
 # repository default. Each job below grants exactly what it needs.
@@ -52,13 +63,14 @@ jobs:
   # itself.
   shards:
     name: Shard (${{ matrix.shard }})
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    # 13 minutes is sized to the heaviest leg, `concurrency`: it runs the two
-    # full pnpm workspace installs and the meter's real worktrees. A matrix
-    # takes ONE integer cap for every leg, so the lighter shards inherit it too.
-    # `.gaia/tests/lib/audit-ci-shards.bats` W5 checks every job declares an
-    # integer literal cap.
+    # The outer bound only. A matrix takes ONE integer job cap for every leg,
+    # so this one is sized to the heaviest leg's whole run, installs included.
+    # What fails a hung leg at its own bound is the integer literal
+    # `timeout-minutes` on each run step below, each sized to that step's own
+    # measured runtime and kept strictly below this one.
+    # `.gaia/tests/lib/audit-ci-shards.bats` W5 checks both.
     timeout-minutes: 13
     # Read-only token: the job checks out, resolves changed files via
     # dorny/paths-filter, and runs bats or the sandbox/concurrency runners; it
@@ -89,289 +101,198 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 2
-      # PRs that don't touch the audit scripts report this check green
-      # without installing or running anything.
+      # A pull request that touches nothing these filters list reports this
+      # check green without installing or running anything.
       #
       # paths-filter resolves changed files from the pull-request context, which
-      # a `workflow_dispatch` run does not have, so the dispatch lane skips this
-      # step and every step below falls back to running unconditionally. That is
-      # the intent of a manual re-run: it exists to produce a real green on the
-      # dispatched HEAD, and a full run is the only thing that proves one.
+      # a push or `workflow_dispatch` run does not have, so those lanes skip this
+      # step and every filter-gated step below admits the event directly. A push
+      # to main or a manual re-run exists to produce a real verdict on that
+      # commit, and a full run is the only thing that proves one: the selection
+      # step below plans every bats leg whole for both.
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         if: github.event_name == 'pull_request'
         id: filter
         with:
           filters: |
+            # Harness machinery: the files that decide which suites run and how
+            # they run, so a change to one can alter any suite's outcome while
+            # being named by none of them. Matching any of these plans every
+            # bats leg whole. This list equals the change classifier's static
+            # harness list (`bash .gaia/tests/bats-change-scope.sh
+            # --list-harness-paths`), entry for entry; audit-ci-shards.bats
+            # holds the two in lockstep.
             code:
-              - '.github/audit/**'
-              # This job's own definition. The filter above, the step conditions
-              # below and the bats invocations they arm all live here, so an edit
-              # to this file changes what every suite in this job runs.
-              # Redundant today: the `.github/workflows/**` catch-all below
-              # already matches it. Listed deliberately anyway, so that
-              # narrowing that glob later cannot silently drop this file. It is
-              # documentation of the self-coverage, not the thing arming it.
+              # This job's own definition: the filters, the step gates and the
+              # commands they arm.
               - '.github/workflows/audit-ci-tests.yml'
-              # '.claude/hooks/**' is the superset of the specific hooks this
-              # suite used to filter on (repo-scope.sh, pr-merge-audit-check.sh,
-              # post-audit-status.sh); it now also covers every hook exercised
-              # by the .gaia/tests/hooks/ suites below.
+              # The sharder every bats leg's plan and run steps invoke.
+              - '.gaia/tests/bats-shards.sh'
+              # The classifier the sharder asks whether a change is harness
+              # scope, which is what decides whole shard or change-scoped.
+              - '.gaia/tests/bats-change-scope.sh'
+              # The selector that picks the change-scoped suites.
+              - '.gaia/scripts/bats-suites-for-change.sh'
+              # The installer every leg's bats install step calls (also listed
+              # in `sandbox:` and `commitlint:`, whose legs call it too).
+              - '.gaia/tests/install-bats.sh'
+              # The vendored archive that install extracts; the digest check
+              # that would catch a swapped blob runs inside that install.
+              - '.gaia/tests/vendor/**'
+              # The shared bats helpers, sourced by suites across directories.
+              # A suite names the helper it sources, not every file that helper
+              # reaches, so a helper change can move any suite's outcome.
+              - '.gaia/tests/helpers/**'
+              - '.gaia/tests/**/helpers/**'
+              - '.gaia/scripts/tests/helpers/**'
+              # The composite actions the Node setup steps use: their node
+              # version, install arms and cache key are every Node leg's
+              # environment.
+              - '.github/actions/**'
+              # The release boundary. Its readers mostly reach it through a
+              # script they call (the rooting, array-guard, vendored-skill,
+              # bundle-freshness and telemetry checks) and never name it, so no
+              # selection could find them; a file that changes this rarely costs
+              # little as a full-run trigger.
+              - '.gaia/release-exclude'
+              # Shared shell libraries. A suite names the script it tests, not
+              # the library that script loads, so a library change reaches
+              # suites none of which name it. The classifier also treats any
+              # file another tracked script sources as harness scope; these
+              # globs are the static half of that rule.
+              - '.claude/hooks/**/lib/**'
+              - '.gaia/scripts/**/lib/**'
+              - '**/*-lib.sh'
+            # Everything else that arms the bats legs. A pull request matching
+            # these, and nothing in `code` above, runs each bats leg
+            # change-scoped (`bats-shards.sh run-for-change`): the suites the
+            # change selector picks, in full, plus the leg's whole-tree-marked
+            # tests, plus, for a change to an install input, the suites marked
+            # as reading installed dependencies. The concurrency meter runs as it
+            # does for `code`.
+            #
+            # A path belongs in `code` only when it is harness machinery;
+            # everything else is change-scoped. That is safe because a suite
+            # whose outcome a file can change either names it, which is what
+            # the selector picks on, or reads a tree-wide property and carries
+            # the whole-tree mark, which .gaia/tests/whole-tree-mark-guard.sh
+            # enforces for tests that enumerate the tree directly or through a
+            # script or helper they call; and a shared library fails closed
+            # through the classifier. The residual limit, a test that reaches a
+            # file by a path neither the selector nor the guard can see, is
+            # backstopped by the full run on every push to main.
+            scoped:
+              # LOAD-BEARING: the steps the selection step gates, and the
+              # concurrency meter, name these as inputs, and
+              # workflow-filter-coverage.bats holds each gated step's literal
+              # inputs reachable by the outputs its `if:` reads.
+              # meter-gate.sh is reached by this output alone; the rest are in
+              # `code` too, and stay here so this output reaches every input of
+              # the steps it arms without leaning on the other.
+              - '.github/workflows/audit-ci-tests.yml'
+              - '.github/actions/**'
+              - '.gaia/tests/install-bats.sh'
+              - '.gaia/tests/bats-shards.sh'
+              - '.gaia/tests/concurrency/meter-gate.sh'
+              # The audit helpers under .github/audit/ and their suites.
+              - '.github/audit/**'
+              # Every hook. Each hook suite under .gaia/tests/hooks/ names the
+              # hook it runs; the hook-tree scans carry the whole-tree mark.
               - '.claude/hooks/**'
-              # Many suites here read rule files under .claude/rules/. A pull
-              # request editing a rule file and nothing else matches no other
-              # pattern here, so without this line it reports `code=false`,
-              # skips every bats step, and greens the job on a broken suite --
-              # the red then lands on the next unrelated pull request that
-              # happens to touch .claude/hooks/** or .gaia/scripts/**.
+              # Rule files. A suite asserting on one rule names it; a suite
+              # asserting a property of every rule carries the whole-tree mark.
               - '.claude/rules/**'
-              # githooks-pre-commit.bats (.gaia/tests/hooks/) runs the real
-              # .githooks/pre-commit and asserts which staged paths reach the
-              # Quality Gate floor. That hook lives outside every other path
-              # here, so without this line the edit the suite exists to catch --
-              # an arm added to or dropped from the change-detection guard --
-              # would report `code=false`, skip every bats step, and green the
-              # job having run the suite zero times.
+              # The git hooks. githooks-pre-commit.bats names .githooks/pre-commit
+              # and asserts which staged paths reach the Quality Gate floor.
               - '.githooks/**'
-              # The frontend files a suite reads (the lint-staged config, the
-              # package descriptor, the generated settings, the Dockerfile
-              # pair, the package manifest, the rules router and the frontend
-              # .claude tree) are armed by the `scoped` output below instead:
-              # each is read by a suite that names it, or by a whole-tree suite,
-              # so a change to one owes those suites and not the full matrix.
               - '.gaia/packages.json'
               - '.gaia/scripts/**'
-              # The shell lint suites (.gaia/scripts/tests/lint-*.bats) scan
-              # the real tree's tracked shell, lint-errexit-status-read.bats
-              # among them. A tracked shell file matching no narrower pattern
-              # here, outside '.gaia/cli/src/**' further down, would otherwise
-              # report `code=false`, skip every bats step, and green the job
-              # having run none of those suites. The glob is the suites' own
-              # input rather than an enumeration of the files it currently
-              # reaches, so it self-maintains when shell appears somewhere new.
+              # Every tracked shell file. The shell lint suites
+              # (.gaia/scripts/tests/lint-*.bats) scan the real tree's tracked
+              # shell and carry the whole-tree mark; a suite testing one script
+              # names it. The glob is the scans' own input rather than an
+              # enumeration of the files it reaches today, so it self-maintains
+              # when shell appears somewhere new.
               - '**/*.sh'
-              # check-main-root-derivation.bats (.gaia/scripts/tests/) scans
-              # tracked source for a hand-rolled main-checkout derivation, and
-              # settings.json is one of the files that scan reads: hook commands
-              # live there as inline shell. It matches no other pattern here, so
-              # without this line a change that inlines a derivation into
-              # settings.json alone would skip every bats step and green the job
-              # having run that scan zero times.
+              # check-main-root-derivation.bats scans tracked source for a
+              # hand-rolled main-checkout derivation, and hook commands live in
+              # settings.json as inline shell; the suites reading it name it.
               - '.claude/settings.json'
-              # shell-lint.bats (.gaia/scripts/tests/) asserts the wiring of the
-              # local shell gate .gaia/tests/shell-lint.sh -- its .githooks/*
-              # discovery pass and its lint-hook-array-guard.sh invocation. The
-              # gate sits at the top of .gaia/tests/, matching none of the four
-              # .gaia/tests/*/ globs below, so without this line an edit dropping
-              # one of those passes would report `code=false`, skip every bats
-              # step, and green the job having run the assertions written to catch
-              # that edit zero times. shell-lint.yml does not backstop it: a gate
-              # that lints fewer files reports fewer findings, so a dropped pass
-              # looks identical to a clean tree. Same test-dir/source-dir pairing
-              # as the entries above.
+              # shell-lint.bats names the local shell gate it asserts the wiring
+              # of; its real-tree pass carries the whole-tree mark.
               - '.gaia/tests/shell-lint.sh'
-              # bats-shards.sh is what every non-sandbox, non-concurrency
-              # shard's bats step below invokes, and it sits at the top of
-              # .gaia/tests/ too, matching none of the four .gaia/tests/*/
-              # globs below, the same reasoning as the two entries above.
-              # Without this line an edit to the sharder -- its weighted
-              # split, its directory seam, its pinned-hook check -- would
-              # report `code=false`, skip every shard's bats step, and green
-              # the job having run the suites zero times.
-              - '.gaia/tests/bats-shards.sh'
-              # install-bats.sh is what the two install steps below call.
-              # Listed here for the `code` output; it is ALSO required in
-              # `sandbox:` below, because that output names only the files the
-              # sandbox suite reads and the sandbox leg's own install step
-              # calls this script too. Without this line here, an edit to the
-              # pinned bats version or digest would report `code=false` and
-              # skip every non-sandbox leg's install.
-              - '.gaia/tests/install-bats.sh'
-              # The vendored archive that install extracts. Redundant today:
-              # the `.gaia/tests/**` catch-all below already matches it.
-              # Listed deliberately anyway, the same convention the entry
-              # above uses, because that catch-all
-              # carries a standing motive to be narrowed -- its own comment
-              # records that it arms the full matrix, two pnpm installs
-              # included, on any `.gaia/tests` change. A narrowing that
-              # dropped the archive would leave a vendor-only edit skipping
-              # every non-sandbox install, and the digest check that would
-              # have caught a swapped blob runs inside exactly that install.
-              - '.gaia/tests/vendor/**'
-              # The audit-guard-structural suite (.gaia/scripts/tests/) greps
-              # code-audit-frontend.md's own no-op-guard wiring. An
-              # instruction-only edit touches none of the source dirs above, so
-              # without this path the suite would not re-trigger on drift of the
-              # surface it guards.
+              # audit-guard-structural.bats names code-audit-frontend.md, whose
+              # no-op-guard wiring it greps.
               - '.claude/agents/code-audit-frontend.md'
               # doc-noop-terminal-contract.bats (.gaia/tests/lib/) derives its
-              # carriers by searching the whole tree, so a statement or
-              # paragraph added to a new dispatch prompt reds it. Each glob
-              # below is a root that holds dispatch prompts:
-              # the .claude skills, commands and agents, and
-              # the spec workflow templates. The three .claude roots are supersets of
-              # the narrower file entries around them, which stay listed so each
-              # suite's own sources remain armed if a root is ever narrowed; the
-              # spec-template root matches no other entry (the spec
-              # prose templates and runbooks live under .claude/skills/, so the
-              # skills root already covers them). Without these
-              # roots, adding a carrier there skips every bats step and greens the
-              # required check with the carrier test unrun. These are the roots
-              # that hold prompts today, not a proof that no other can; a carrier
-              # added anywhere else still reds the suite on the next pull request
-              # that arms the `lib` leg.
-              # The workflow-doctrine suite's pin-site scan reads the health
-              # taxonomy page for model pins, so an edit to that one file arms
-              # the legs whose suites scan it.
+              # dispatch-prompt carriers by searching the whole tree, and its
+              # tests carry the whole-tree mark. Each glob below is a root that
+              # holds dispatch prompts: the .claude skills, commands and agents,
+              # and the spec workflow templates. The three .claude roots are
+              # supersets of the narrower file entries around them, which stay
+              # listed so each suite's own sources remain armed if a root is ever
+              # narrowed.
+              # The workflow-doctrine suite's pin-site scan names the health
+              # taxonomy page it reads for model pins.
               - '.gaia/cli/health/taxonomy.md'
               - '.claude/skills/**/*.md'
               - '.claude/commands/**/*.md'
               - '.claude/agents/**/*.md'
               # The fitness-ci-command suite lints the whole tracked tree with
-              # the committed bundle and the base suppressions, so the
-              # suppression file and the bundle arm the `lib` leg like any
-              # harness file it grades.
+              # the committed bundle and the base suppressions, and names both.
+              # setup-decision-nudge.bats and the other statusline suites that
+              # record through the real bundle name it too.
               - '.claude/gaia-fitness.json'
               - '.gaia/cli/gaia'
               - '.gaia/templates/spec/**'
-              # The doc-isolation suite (.gaia/tests/lib/) renders the prompt out
-              # of the shared isolation reference and greps both callers' pointer
-              # wiring, so the fragment and debt.md are sources it guards too.
+              # The doc-isolation suite (.gaia/tests/lib/) renders the prompt
+              # out of the shared isolation reference and greps both callers'
+              # pointer wiring, naming each.
               - '.claude/skills/gaia/references/isolation.md'
               - '.claude/skills/gaia/references/debt.md'
-              # `.claude/skills/file-tech-debt/SKILL.md` carries the
-              # difficulty-grading rubric and `.claude/skills/gaia/references/cleanse.md`
-              # is one of its filing routes; code-audit-frontend.md and debt.md
-              # are already listed above, add the other two. The
-              # `.claude/agents/**/*.md` root above already covers
-              # `.claude/agents/code-audit-*.md`, the roster several
-              # `.gaia/tests/lib/` doc-conformance suites derive from; this
-              # glob names it explicitly so that narrowing that root cannot
-              # silently drop it. It is a superset of the code-audit-frontend.md
-              # entry above (patterns OR together) and self-maintains when a
-              # new member joins the roster.
+              # The difficulty-grading rubric and one of its filing routes, and
+              # the code-audit roster several .gaia/tests/lib/ doc-conformance
+              # suites derive from. The `.claude/agents/**/*.md` root above
+              # already covers the roster; this glob names it so that narrowing
+              # that root cannot silently drop it, and it self-maintains when a
+              # new member joins.
               - '.claude/skills/file-tech-debt/SKILL.md'
               - '.claude/skills/gaia/references/cleanse.md'
               - '.claude/agents/code-audit-*.md'
-              # Wiki pages, the executed ones included, are armed by the
-              # `scoped` output below: every suite that asserts on a page names
-              # it, which is what the change selector picks on, and an invariant
-              # over every page lives in a whole-tree suite.
               # main-only-lib.bats (.gaia/scripts/tests/) renders this doc's
-              # fenced block. The `.claude/commands/**/*.md` root above also
-              # matches it; this entry keeps the suite's own source named.
+              # fenced block and names it.
               - '.claude/commands/setup-gaia.md'
+              # The suites themselves. A changed suite always selects itself.
+              # The catch-all also reaches the gate scripts at the top of
+              # .gaia/tests/ and every .gaia/tests/**/*.sh the array-guard lint
+              # scans; the narrower entries stay listed so each documents its own
+              # test-dir/source-dir pairing.
               - '.gaia/tests/forensics/**'
               - '.gaia/tests/hooks/**'
               - '.gaia/tests/lib/**'
-              # lint-hook-array-guard.bats (.gaia/scripts/tests/) asserts the
-              # real scanned tree is clean, and that scan walks every
-              # .gaia/tests/**/*.sh, so the WHOLE tree is a source this suite
-              # guards rather than one it merely runs from. A PR touching a part
-              # of it that no glob names -- reintroducing the bash-3.2
-              # empty-array class the gate exists to catch -- would report
-              # `code=false`, skip every bats step, and green this required
-              # check having run that assertion zero times. `GAIA: Shell Lint` runs
-              # the same scan on any tracked *.sh, but it is advisory rather
-              # than a declared-required context, so it reports such a
-              # regression without blocking the merge.
-              #
-              # One self-maintaining glob rather than a subtree list, matching
-              # what `.claude/hooks/**` and `.gaia/scripts/**` above already do
-              # for the scan's other two roots. An itemized list has to be
-              # extended the first time a new subdirectory gains a `.sh`, and
-              # nothing forces that edit: adding a file to a new subtree does
-              # not read as widening the scan, so the omission would be silent
-              # and would reopen exactly this gap. The cost is that any
-              # `.gaia/tests` change arms the full matrix, including the two
-              # pnpm installs on the concurrency leg. The entries above stay as
-              # they are: each documents its own test-dir/source-dir pairing,
-              # which this glob does not express, and the file already keeps
-              # redundant-but-documented entries for that reason.
               - '.gaia/tests/**'
-              # The cross-directory bats helper (.gaia/tests/helpers/) is sourced
-              # by suites in .gaia/scripts/tests/, .gaia/tests/lib/ and
-              # .gaia/tests/hooks/, and it holds the byte-identity assertion
-              # those suites depend on. It sits at the top of .gaia/tests/,
-              # matching none of the .gaia/tests/*/ globs above, so without this
-              # line an edit that weakened the helper alone would report
-              # `code=false`, skip every bats step, and green the job having run
-              # the assertions it broke zero times.
-              - '.gaia/tests/helpers/**'
-              # The .gaia/tests/lib/ suites exercise the SPEC-ledger scripts
-              # under .gaia/scripts/spec/ (spec-archive-merged.sh, the
-              # allocators, ledger-update, etc.). That dir sits under the
-              # .gaia/scripts/** glob above, so a source-only edit already runs
-              # the suite, matching the test-dir + source-dir pairing the
-              # filters above use (.gaia/tests/hooks/** + .claude/hooks/**;
-              # .gaia/tests/forensics/** + .github/forensics/**).
-              # The .claude/skills/**/*.md glob above also covers the
-              # skill reference pages that the spec-ledger suites read.
+              # The forensics reference pages and scripts the forensics suites
+              # read, naming each.
               - '.claude/skills/gaia/references/forensics*'
               - '.github/forensics/**'
-              # The statusline suite (.gaia/tests/statusline/) exercises the
-              # shipped .gaia/statusline/gaia-statusline.sh worktree gate and
-              # segment rendering, and it runs real copies of the two
-              # refreshers that feed those segments:
-              # .gaia/scripts/check-updates.sh (the codifyUnclassifiedCount and
-              # codifyNudgeReason segments -- the latter driven by
-              # codify-nudge-reason.bats) and
-              # .gaia/scripts/debt-count-refresh.sh. Both refreshers are already covered by
-              # the .gaia/scripts/** glob above, so only the statusline dirs
-              # and codify.md need listing here -- but narrowing that glob
-              # would stop arming this suite on two of its sources.
-              # codify.md is the third source it reads as real repo text,
-              # read by the unclassified-signal tests and the review-record
-              # prose tests, and the .claude/skills/gaia/references/ entries
-              # above name other files only, so without this line an edit to
-              # it alone skips every code-gated shard, where those suites
-              # live, and greens having run those assertions zero times.
+              # The statusline suites (.gaia/tests/statusline/) exercise the
+              # shipped statusline and real copies of the refreshers that feed
+              # it (.gaia/scripts/check-updates.sh, debt-count-refresh.sh, under
+              # the .gaia/scripts/** glob above), and read codify.md as real
+              # repo text. Each names the file it copies or reads.
               - '.gaia/statusline/**'
               - '.gaia/tests/statusline/**'
               - '.claude/skills/gaia/references/codify.md'
-              # workflow-filter-coverage.bats (.gaia/scripts/tests/) reads every
-              # workflow in .github/workflows/, so without this line an edit to
-              # one alone matches no pattern here, every bats step skips, and
-              # the job greens having run that suite's assertions zero times.
-              # The glob self-maintains as workflows are added, the same
-              # reasoning as the code-audit-*.md glob above.
+              # workflow-filter-coverage.bats reads every workflow in
+              # .github/workflows/; its live-tree tests carry the whole-tree
+              # mark. The glob self-maintains as workflows are added.
               - '.github/workflows/**'
-              # The composite action the Node setup step below `uses:`. It lives
-              # outside .github/workflows/, so it matches nothing else here, and
-              # without this line a pull request changing only the action -- its
-              # node version, its install arms, its cache key -- would report
-              # `code=false`, skip every step gated on this filter, and green a
-              # declared-required context having run nothing. A glob rather than
-              # the one path: the directory is where shared composite actions go,
-              # so an itemized entry would silently stop covering the next one.
-              - '.github/actions/**'
-              # lint-errexit-status-read.sh scans every tracked `*.sh`,
-              # including the ones under `.github` (its audit, actions and
-              # forensics scripts). Redundant today: `**/*.sh` above already
-              # matches every one of those under this directory. Listed
-              # deliberately anyway, the same convention the redundant
-              # `.github/workflows/` entries at the top of this filter use, so
-              # that narrowing `**/*.sh` later cannot silently unarm this
-              # directory. The
-              # widening it costs is small and worth naming: the only files
-              # this newly matches are the six under
-              # .github/ that no glob above reaches -- CODEOWNERS, FUNDING.yml,
-              # the pull request template and the three issue
-              # templates -- so a PR touching one of those, and nothing else, now
-              # runs the full bats matrix. Only CODEOWNERS used to run no step at
-              # all: it carries no extension, so it matches none of the four
-              # broad type globs at the end of the filter below, while the other
-              # five already armed that filter's leg alone through its '**/*.yml'
-              # and '**/*.md' entries, which reach into .github/ because the
-              # matcher runs with dot-matching on (see the note at those globs).
+              # The rest of .github/: lint-errexit-status-read.sh scans every
+              # tracked `*.sh` under it (whole-tree marked), and the issue
+              # templates, pull request template, CODEOWNERS and FUNDING.yml are
+              # read by the suites that name them.
               - '.github/**'
               - '.gaia/audit-ci.yml'
-              # .gaia/release-exclude is read directly by several suites under
-              # .gaia/scripts/tests/ and .gaia/tests/ (assert-no-release-leak.bats
-              # among them) that assert release-boundary properties against it;
-              # a change to it alone touches no other pattern here, so without
-              # this line those suites would skip on the very change that could
-              # break them.
-              - '.gaia/release-exclude'
               # The INV-7 concurrency meter (.gaia/tests/concurrency/) and the
               # sources it drives. Most are already listed above -- it copies
               # .claude/hooks/**, .gaia/scripts/**, .gaia/statusline/** and
@@ -385,64 +306,36 @@ jobs:
               #     greps the wiki and release command surfaces.
               #   .claude/commands/gaia-release.md  the other surface C5-03
               #     greps for a resolver consult.
-              # The install inputs (the root lockfile, workspace file,
-              # manifest, .node-version and .npmrc, and frontend/package.json)
-              # are below: a dependency bump touches only them, and it must
-              # run every suite against the new install, not a selected few.
+              # The install inputs (the root lockfile, workspace file and
+              # manifest, .node-version and .npmrc, and the frontend and CLI
+              # manifests) are below, the same list as
+              # `bash .gaia/tests/bats-change-scope.sh --list-install-inputs`. A
+              # dependency bump touches only them, and it runs the selector's
+              # picks plus every suite marked as reading installed dependencies
+              # against the new install, the concurrency meter among the legs it
+              # arms.
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
               - 'package.json'
               - '.node-version'
               - '.npmrc'
               - 'frontend/package.json'
+              - '.gaia/cli/package.json'
               - '.gaia/tests/concurrency/**'
               - '.gaia/state-registry.json'
               - '.gaia/cli/src/**'
               - '.claude/commands/gaia-release.md'
               # branch-name-lib.bats and usage-resolve.bats pin the branch
               # validator's and the issue-link regex's type lists to the shared
-              # type file. The file matches no other entry here, so without
-              # this line a pull request that edits only the type list resolves
-              # `code=false`, skips every bats step, and greens the job having
-              # run both lockstep suites zero times.
+              # type file, and name it.
               - '.gaia/conventional-commits.json'
-            # The files whose readers the change selector can name. A pull
-            # request matching only these, and nothing in `code` above, runs
-            # each bats leg in change-scoped mode (`bats-shards.sh
-            # run-for-change`): the leg's suites the selector picks for the
-            # change, in full, plus the leg's whole-tree-marked tests, the same
-            # set .gaia/tests/verify-harness.sh runs in branch mode, split
-            # across the legs. The concurrency meter and every install step run
-            # as they do for `code`. A file belongs here only when every suite
-            # whose outcome it can change names it or carries the whole-tree
-            # mark; a file read some other way (a directory walk, a path a
-            # script builds) stays in `code`.
-            #
-            # The honest limit: a whole-tree test the mark guard cannot see
-            # (one that reaches the tracked tree through a script it calls)
-            # and that its author left unmarked does not run here. It runs on
-            # the next pull request that arms `code`, which is where such a
-            # red would surface.
-            scoped:
-              # This job's own definition, and what every step this output
-              # gates names as an input. workflow-filter-coverage.bats holds
-              # each gated step's literal inputs reachable by every output its
-              # `if:` reads, so these are LOAD-BEARING even though `code` above
-              # lists each of them too: a change to any of them arms `code`
-              # and runs the full matrix.
-              - '.github/workflows/audit-ci-tests.yml'
-              - '.github/actions/**'
-              - '.gaia/tests/install-bats.sh'
-              - '.gaia/tests/bats-shards.sh'
-              - '.gaia/tests/concurrency/meter-gate.sh'
               # githooks-pre-commit.bats reads the lint-staged config (every
               # pre-commit arm matched by an ESLint glob) and the package
               # descriptor's preCommitSource globs; settings-drift.bats reads
               # the generated settings and the overlay it is built from;
-              # dockerfile-contract.bats reads the Dockerfile pair (and the
-              # package manifest, which `code` arms) and pins every dotenv
-              # file out of the image context. Each suite names the file it
-              # reads.
+              # dockerfile-contract.bats reads the Dockerfile pair and the
+              # package manifests, and pins every dotenv file out of the image
+              # context. Each suite names the file it reads.
               - 'frontend/.lintstagedrc.json'
               - 'frontend/gaia.package.json'
               - 'frontend/.claude/settings.json'
@@ -549,15 +442,19 @@ jobs:
               - '.claude/settings.json'
               - '.gaia/tests/helpers/hook-registration.sh'
               - '.gaia/scripts/hook-registration-lib.sh'
-              # The install inputs: commitlint and its shared config are root
-              # devDependencies, so a bump of either, of the toolchain, or of the
-              # workspace settings the frozen install obeys changes what the
-              # suite runs against.
+              # The install inputs, every one the change classifier lists:
+              # commitlint and its shared config are root devDependencies, so a
+              # bump of either, of the toolchain, or of the workspace settings
+              # the frozen install obeys changes what the suite runs against,
+              # and a member manifest is part of the lockfile the frozen install
+              # checks.
               - 'package.json'
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
               - '.npmrc'
               - '.node-version'
+              - 'frontend/package.json'
+              - '.gaia/cli/package.json'
               # The composite action the Node setup step uses.
               - '.github/actions/**'
               # What the leg's own steps invoke: the bats installer and its
@@ -565,6 +462,31 @@ jobs:
               - '.gaia/tests/install-bats.sh'
               - '.gaia/tests/vendor/**'
               - '.gaia/scripts/bats5.sh'
+      # What this bats leg will run, decided before anything is installed:
+      # `mode` (full, scoped or none) and whether that set needs Node or
+      # Chromium. Every bats-leg install step and the run step below gate on it,
+      # so a leg with nothing selected installs nothing and greens, and a skipped
+      # selection step (a pull request that arms neither `code` nor `scoped`)
+      # skips them too. `code`, a push and a manual dispatch plan the whole
+      # shard (`--full`); `scoped` alone plans the pull request's net change, the
+      # merge commit the checkout holds against its first parent. A non-zero
+      # `plan` fails the leg rather than greening it empty.
+      - if: matrix.shard != 'sandbox' && matrix.shard != 'concurrency' && matrix.shard != 'commitlint' && (steps.filter.outputs.code == 'true' || steps.filter.outputs.scoped == 'true' || github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        id: selection
+        name: Plan this shard's suites
+        env:
+          SHARD: ${{ matrix.shard }}
+          FULL_RUN: ${{ steps.filter.outputs.code == 'true' || github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+          MERGE_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$FULL_RUN" = true ]; then
+            plan="$(bash .gaia/tests/bats-shards.sh plan "$SHARD" --full)"
+          else
+            plan="$(bash .gaia/tests/bats-shards.sh plan "$SHARD" "$MERGE_COMMIT^1" "$MERGE_COMMIT")"
+          fi
+          printf '%s\n' "$plan"
+          printf '%s\n' "$plan" >> "$GITHUB_OUTPUT"
       # python3-yaml pins the parser (python3+pyyaml) that every
       # `require_yaml_parser` gate on this runner needs. How many suites carry
       # one is deliberately not written down here: a hand-kept count drifts as
@@ -594,19 +516,25 @@ jobs:
       # into a checked invariant -- the same move W9 already makes for the
       # sandbox leg's empty package set.
       #
-      # The bats install stays on every non-sandbox leg; only apt is narrowed.
-      # This step covers the `code` and `scoped` outputs, and not `sandbox`:
-      # the `sandbox` leg installs bats through its own step below, with no apt
-      # line at all, because .gaia/tests/sandbox/*.bats needs neither package
-      # (W9 pins that too). Splitting the install this way, rather than
-      # admitting the sandbox output on one shared step as the pre-shard job
-      # did, is what keeps a docs-only PR (which arms `sandbox` alone) from
-      # running `apt-get update` -- the flakiest operation in this job -- on
-      # every leg. `workflow-filter-coverage.bats` holds install-bats.sh
-      # reachable by each output the step reads, which is why `scoped` lists
-      # it as well as `code`.
-      - if: matrix.shard != 'sandbox' && matrix.shard != 'commitlint' && (steps.filter.outputs.code == 'true' || steps.filter.outputs.scoped == 'true' || github.event_name == 'workflow_dispatch')
+      # The bats install runs on every bats leg whose plan selected something,
+      # and on the concurrency leg through its own step below; only apt is
+      # narrowed by leg. The `sandbox` and `commitlint` legs install bats through
+      # their own steps, with no apt line at all, because their suites need
+      # neither package (W9 pins that for sandbox). Splitting the install this
+      # way, rather than one shared step, is what keeps a docs-only pull request
+      # (which arms `sandbox` alone) from running `apt-get update` -- the
+      # flakiest operation in this job -- on every leg, and what keeps a bats
+      # leg with nothing selected from installing anything.
+      # `workflow-filter-coverage.bats` holds install-bats.sh reachable by the
+      # outputs that arm the selection step.
+      - if: matrix.shard != 'sandbox' && matrix.shard != 'concurrency' && matrix.shard != 'commitlint' && contains(fromJSON('["full","scoped"]'), steps.selection.outputs.mode)
         name: Install pinned bats
+        run: bash .gaia/tests/install-bats.sh
+      # The concurrency leg has no selection step: its meter runs whole on
+      # every armed pull request, a push and a dispatch, and `meter-gate.sh`
+      # needs bats.
+      - if: matrix.shard == 'concurrency' && (steps.filter.outputs.code == 'true' || steps.filter.outputs.scoped == 'true' || github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        name: Install pinned bats for the concurrency meter
         run: bash .gaia/tests/install-bats.sh
       # python3-yaml pins the parser (python3+pyyaml) rather than resting on
       # whatever the runner image happens to preinstall, and it is installed
@@ -646,7 +574,7 @@ jobs:
       # suite's dependency changed or a group's membership did, and the repair
       # is to copy the set W10 names, which it derives from the suites and the
       # sharder's own groups rather than from here.
-      - if: contains(fromJSON('["lib", "scripts-1", "scripts-2", "scripts-3", "scripts-4"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || steps.filter.outputs.scoped == 'true' || github.event_name == 'workflow_dispatch')
+      - if: contains(fromJSON('["lib", "scripts-1", "scripts-2", "scripts-3", "scripts-4"]'), matrix.shard) && contains(fromJSON('["full","scoped"]'), steps.selection.outputs.mode)
         name: Install the YAML parser and zsh
         # Sized for fast failure and honest attribution, NOT to the leg. When
         # this cap fires is the budget paragraph's subject, not this one's,
@@ -735,7 +663,7 @@ jobs:
       # zsh (W9 above), so this leg only needs the pinned bats binary. A PR
       # that arms `sandbox` alone therefore runs no apt at all, instead of the
       # exposure a single shared install step on every leg would carry.
-      - if: matrix.shard == 'sandbox' && (steps.filter.outputs.sandbox == 'true' || github.event_name == 'workflow_dispatch')
+      - if: matrix.shard == 'sandbox' && (steps.filter.outputs.sandbox == 'true' || github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         name: Install bats
         run: bash .gaia/tests/install-bats.sh
       # The commitlint leg: no apt (the suite needs neither python3-yaml nor
@@ -744,7 +672,7 @@ jobs:
       # so a PR touching only a file this suite reads runs it without arming
       # the other legs. A `workflow_dispatch` run has no filter output and runs
       # every step, as on the other legs.
-      - if: matrix.shard == 'commitlint' && (steps.filter.outputs.commitlint == 'true' || github.event_name == 'workflow_dispatch')
+      - if: matrix.shard == 'commitlint' && (steps.filter.outputs.commitlint == 'true' || github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         name: Install pinned bats for the commitlint suite
         run: bash .gaia/tests/install-bats.sh
       # `install: none` and a filtered install of our own, because the
@@ -754,13 +682,13 @@ jobs:
       # config are root devDependencies); the lockfile stays frozen. The
       # composite is still the right caller: the next step runs pnpm itself, so
       # the store its cache step saves exists.
-      - if: matrix.shard == 'commitlint' && (steps.filter.outputs.commitlint == 'true' || github.event_name == 'workflow_dispatch')
+      - if: matrix.shard == 'commitlint' && (steps.filter.outputs.commitlint == 'true' || github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         name: Setup Node for the commitlint suite
         uses: ./.github/actions/gaia-setup-node
         with:
           install: none
           cache-dependency-path: pnpm-lock.yaml
-      - if: matrix.shard == 'commitlint' && (steps.filter.outputs.commitlint == 'true' || github.event_name == 'workflow_dispatch')
+      - if: matrix.shard == 'commitlint' && (steps.filter.outputs.commitlint == 'true' || github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         name: Install the root workspace only
         run: pnpm install --frozen-lockfile --filter .
       # One root install on THIS leg provisions both things the meter needs:
@@ -785,110 +713,118 @@ jobs:
       # gaia-react/gaia#1748. The step below this one is what they need; keep
       # the two separate rather than widening this one's `if:`, because they
       # install different things for different reasons.
-      - if: matrix.shard == 'concurrency' && (steps.filter.outputs.code == 'true' || steps.filter.outputs.scoped == 'true' || github.event_name == 'workflow_dispatch')
+      - if: matrix.shard == 'concurrency' && (steps.filter.outputs.code == 'true' || steps.filter.outputs.scoped == 'true' || github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         name: Setup Node and install the workspace
         uses: ./.github/actions/gaia-setup-node
         with:
           install: root
           cache-dependency-path: pnpm-lock.yaml
-      # The root workspace for the node-dependent RED suites: red-ledger-lib,
-      # capture-red-observations, red-verify-commit-check, red-verify-e2e and
-      # worthiness-presence-check. Each drives
-      # .gaia/scripts/red-ledger/extract-test-signals.mjs and/or
-      # .gaia/scripts/classifier/classify-determinism.mjs, and both resolve
-      # `typescript` through createRequire against the repo root. The root
-      # install also provisions the CLI member, though none of them reaches
-      # into .gaia/cli. The list is spelled out rather
-      # than counted; the suites are the authority on how many there are.
+      # The root workspace for the suites marked as reading installed
+      # dependencies (`# bats file_tags=installed-dependencies`): the RED
+      # signal and determinism suites, which resolve `typescript` through
+      # createRequire against the repo root, and the two Chromium suites, which
+      # run the frontend's Vitest and Playwright. The plan's `needs_node` is set
+      # when the set this leg will run holds one of them, so a change-scoped leg
+      # that owes none of them skips the install. The suites are the authority
+      # on the set; `.gaia/tests/installed-dependencies-mark-guard.sh` derives it
+      # from what they run and fails on a stale or missing mark.
       #
       # THE LEG LIST IS A WHOLE EXCHANGE GROUP, which is what makes it safe to
-      # write here. Every one of them lives in HOOKS_DIRECTORY and none is pinned, so
-      # bats-shards.sh assigns them across HOOKS_GREEDY_IDS -- hooks-2, hooks-3
-      # and hooks-4 -- and a reshuffle moves a file BETWEEN those three and
-      # never out of them. The apt step above rounds its list up to whole
-      # groups for exactly this reason and needs W10 to recompute it; this one
-      # is already at that closure, so it cannot drift under a reshuffle.
+      # write here. Every such suite the guard lists as unprovisioned elsewhere
+      # lives in HOOKS_DIRECTORY and none is pinned, so bats-shards.sh assigns
+      # them across HOOKS_GREEDY_IDS -- hooks-2, hooks-3 and hooks-4 -- and a
+      # reshuffle moves a file BETWEEN those three and never out of them. A
+      # marked suite another workflow provisions (its backstop line names that
+      # workflow) needs no install here. audit-ci-shards.bats derives the list
+      # from the guard's `--list-derived` minus `--list-backstopped`, rounded up
+      # to whole exchange groups, and reds when this one disagrees.
       #
-      # AND IT HAS NO W-CHECK OF ITS OWN, DELIBERATELY. W10's header states the
-      # criterion: it exists because zsh-gated tests skip silently, while "the
-      # parser-gated suites fail loudly under GITHUB_ACTIONS, so a leg that
-      # lost python3-yaml reds. Only the first is invisible." The suites named
-      # above now fail loudly too --
+      # The suites fail loudly without the install:
       # .gaia/tests/hooks/helpers/require-node-typescript.sh returns non-zero
-      # rather than skipping when GITHUB_ACTIONS is set -- so a leg that needs
-      # this step and does not get it reds on its own, and a derived list would
-      # be checking something already self-announcing. Dropping this step reds
-      # the legs named above; that is the intended direction.
+      # rather than skipping when GITHUB_ACTIONS is set, and both Chromium
+      # suites fail rather than skip when the browser is absent.
       #
       # The cost is bounded by something already on this job rather than by an
       # estimate: it is the same composite action the `concurrency` leg runs,
-      # the same install, with the pnpm store cached the same way. Those legs' own runtimes sit far enough under this
-      # job's `timeout-minutes` that adding one install plus the suites it
-      # unblocks does not approach it. The leg that is genuinely close to the
-      # cap is scripts-1, and it draws neither this step nor any of these
-      # suites.
-      - if: contains(fromJSON('["hooks-2", "hooks-3", "hooks-4"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || steps.filter.outputs.scoped == 'true' || github.event_name == 'workflow_dispatch')
+      # the same install, with the pnpm store cached the same way.
+      - if: contains(fromJSON('["hooks-2", "hooks-3", "hooks-4"]'), matrix.shard) && contains(fromJSON('["full","scoped"]'), steps.selection.outputs.mode) && steps.selection.outputs.needs_node == '1'
         name: Setup Node for the node-dependent RED suites
         uses: ./.github/actions/gaia-setup-node
         with:
           install: root
-          # The root install now also provisions the CLI member, and the cache
-          # key stays the root lockfile: the CLI member has no lockfile of its own.
+          # The root install also provisions the CLI member, and the cache key
+          # stays the root lockfile: the CLI member has no lockfile of its own.
           cache-dependency-path: pnpm-lock.yaml
       # Two suites run a real Chromium: the story-name equality suite (the
       # storybook Vitest project) and the UAT lifecycle suite (Playwright over
-      # a rendered spec), so the leg that holds either owes a browser install.
-      # The condition is derived from the sharder, not written as a shard name:
-      # a suite moves between legs as the weighted split re-balances, and a
-      # hard-coded shard name would arm the install on the wrong leg. Only the legs that install the root workspace can hold them,
-      # and both suites fail rather than skip when Chromium is absent. A
-      # change-scoped leg asks for the suites it will run, so a narrow change
-      # that owes neither suite skips the browser install.
-      - if: contains(fromJSON('["hooks-2", "hooks-3", "hooks-4"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || steps.filter.outputs.scoped == 'true' || github.event_name == 'workflow_dispatch')
-        id: needs-chromium
-        name: Ask the sharder whether this shard holds a Chromium suite
-        env:
-          SHARD: ${{ matrix.shard }}
-          FULL_RUN: ${{ steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch' }}
-          MERGE_COMMIT: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          if [ "$FULL_RUN" = true ]; then
-            shard_files="$(bash .gaia/tests/bats-shards.sh files "$SHARD")"
-          else
-            shard_files="$(bash .gaia/tests/bats-shards.sh files-for-change "$SHARD" "$MERGE_COMMIT^1" "$MERGE_COMMIT")"
-          fi
-          if grep -qF -e 'extract-test-signals-stories-reporter.bats' -e 'uat-lifecycle-e2e.bats' <<<"$shard_files"; then
-            printf 'needed=1\n' >> "$GITHUB_OUTPUT"
-          else
-            printf 'needed=0\n' >> "$GITHUB_OUTPUT"
-          fi
+      # a rendered spec). The plan's `needs_chromium` is derived from the set
+      # this leg will run, not written as a shard name: a suite moves between
+      # legs as the weighted split re-balances, and a hard-coded shard name
+      # would arm the install on the wrong leg. Only the legs that install the
+      # root workspace can hold them.
+      #
       # No `--with-deps`: the ubuntu-latest image already carries every shared
       # library headless Chromium loads, so the flag only upgrades a few of them
       # and adds fonts, through an apt mirror that can stall for minutes and
       # take this leg past `timeout-minutes` with every test green.
-      - if: steps.needs-chromium.outputs.needed == '1'
+      - if: contains(fromJSON('["hooks-2", "hooks-3", "hooks-4"]'), matrix.shard) && contains(fromJSON('["full","scoped"]'), steps.selection.outputs.mode) && steps.selection.outputs.needs_chromium == '1'
         name: Install Chromium for the Chromium suites
         run: pnpm -C frontend exec playwright install chromium
-      # `${{ matrix.shard }}` reaches the script only through `env:`, never
-      # interpolated into the run: body text itself -- the shape this repo's
-      # workflows auditor checks, and what keeps it true when a future edit
-      # drives the matrix from an expression rather than a literal list.
+      # One run step per exchange group, because each group's runtime differs
+      # and a step's `timeout-minutes` has to be an integer literal (W5 refuses
+      # an expression, so a per-leg value cannot come from the matrix). Each
+      # literal is the group's measured whole-shard p95 with headroom, so a
+      # hung leg fails at its own bound rather than at the job's. The three leg
+      # lists partition the sharder's shards; audit-ci-shards.bats checks that
+      # every bats leg reaches exactly one of them.
       #
-      # `code` (or a manual dispatch, which has no filter) runs the whole
-      # shard; `scoped` alone runs the shard's change-scoped share. On a
-      # pull_request event github.sha is the merge commit the checkout holds,
-      # and its first parent is the base it merges into, so that pair is the
-      # pull request's net change as it would land.
-      - if: matrix.shard != 'sandbox' && matrix.shard != 'concurrency' && matrix.shard != 'commitlint' && (steps.filter.outputs.code == 'true' || steps.filter.outputs.scoped == 'true' || github.event_name == 'workflow_dispatch')
-        name: Run a bats shard
+      # `${{ matrix.shard }}` and the plan's mode reach the script only through
+      # `env:`, never interpolated into the run: body text itself -- the shape
+      # this repo's workflows auditor checks.
+      #
+      # `full` runs the whole shard; `scoped` runs the shard's change-scoped
+      # share. On a pull_request event github.sha is the merge commit the
+      # checkout holds, and its first parent is the base it merges into, so
+      # that pair is the pull request's net change as it would land, the same
+      # pair the selection step planned.
+      - if: contains(fromJSON('["hooks-2", "hooks-3", "hooks-4"]'), matrix.shard) && contains(fromJSON('["full","scoped"]'), steps.selection.outputs.mode)
+        name: Run a bats shard (hooks group)
+        timeout-minutes: 9
         env:
           SHARD: ${{ matrix.shard }}
-          FULL_RUN: ${{ steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch' }}
+          PLAN_MODE: ${{ steps.selection.outputs.mode }}
           MERGE_COMMIT: ${{ github.sha }}
         run: |
           set -euo pipefail
-          if [ "$FULL_RUN" = true ]; then
+          if [ "$PLAN_MODE" = full ]; then
+            bash .gaia/tests/bats-shards.sh run "$SHARD"
+          else
+            bash .gaia/tests/bats-shards.sh run-for-change "$SHARD" "$MERGE_COMMIT^1" "$MERGE_COMMIT"
+          fi
+      - if: contains(fromJSON('["scripts-1", "scripts-2", "scripts-3", "scripts-4"]'), matrix.shard) && contains(fromJSON('["full","scoped"]'), steps.selection.outputs.mode)
+        name: Run a bats shard (scripts group)
+        timeout-minutes: 12
+        env:
+          SHARD: ${{ matrix.shard }}
+          PLAN_MODE: ${{ steps.selection.outputs.mode }}
+          MERGE_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$PLAN_MODE" = full ]; then
+            bash .gaia/tests/bats-shards.sh run "$SHARD"
+          else
+            bash .gaia/tests/bats-shards.sh run-for-change "$SHARD" "$MERGE_COMMIT^1" "$MERGE_COMMIT"
+          fi
+      - if: contains(fromJSON('["hooks-1", "audit", "lib", "misc"]'), matrix.shard) && contains(fromJSON('["full","scoped"]'), steps.selection.outputs.mode)
+        name: Run a bats shard (single-shard legs)
+        timeout-minutes: 12
+        env:
+          SHARD: ${{ matrix.shard }}
+          PLAN_MODE: ${{ steps.selection.outputs.mode }}
+          MERGE_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$PLAN_MODE" = full ]; then
             bash .gaia/tests/bats-shards.sh run "$SHARD"
           else
             bash .gaia/tests/bats-shards.sh run-for-change "$SHARD" "$MERGE_COMMIT^1" "$MERGE_COMMIT"
@@ -898,20 +834,23 @@ jobs:
       # only a file this tree reads runs it without arming the Node install or
       # the concurrency meter's leg. Invoked through run-all.sh, matching the
       # contract that script documents in its own header.
-      - if: matrix.shard == 'sandbox' && (steps.filter.outputs.sandbox == 'true' || github.event_name == 'workflow_dispatch')
+      - if: matrix.shard == 'sandbox' && (steps.filter.outputs.sandbox == 'true' || github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         name: Run .gaia/tests/sandbox bats suites
+        timeout-minutes: 2
         run: bash .gaia/tests/sandbox/run-all.sh
       # Runs the WHOLE suite and fails on any scenario that does not report
       # an unconditional `ok` (a `skip` counts as a failure).
-      - if: matrix.shard == 'concurrency' && (steps.filter.outputs.code == 'true' || steps.filter.outputs.scoped == 'true' || github.event_name == 'workflow_dispatch')
+      - if: matrix.shard == 'concurrency' && (steps.filter.outputs.code == 'true' || steps.filter.outputs.scoped == 'true' || github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         name: Run the INV-7 concurrency meter
+        timeout-minutes: 2
         run: bash .gaia/tests/concurrency/meter-gate.sh
       # The suites fail in setup_file when commitlint is absent rather than
       # skipping, so a leg whose install silently produced nothing reds here.
       # The directory is run whole: the non-shard allowlist excuses every
       # suite under it on the strength of this step.
-      - if: matrix.shard == 'commitlint' && (steps.filter.outputs.commitlint == 'true' || github.event_name == 'workflow_dispatch')
+      - if: matrix.shard == 'commitlint' && (steps.filter.outputs.commitlint == 'true' || github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         name: Run the commitlint suites
+        timeout-minutes: 2
         run: bash .gaia/scripts/bats5.sh .gaia/tests/commitlint/
 
   # The declared-required check. `needs: [shards]` makes it the second hop of
@@ -922,7 +861,7 @@ jobs:
   audit-ci-tests:
     name: Audit CI Tests
     needs: [shards]
-    if: always() && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch')
+    if: always() && (github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     timeout-minutes: 2
     # No checkout and no scopes: this job reads its `needs:` results and
@@ -932,10 +871,10 @@ jobs:
     steps:
       # The `shards` result is the aggregate over every matrix leg: it reads
       # `success` only when every leg concluded `success`. A leg whose steps
-      # all skipped because the filter resolved false still concludes
-      # `success`, which is correct and matches today's pre-shard behavior --
-      # a PR touching nothing relevant should report this check green having
-      # run nothing.
+      # all skipped, because the filter resolved false or its plan selected
+      # nothing, still concludes `success`, which is correct -- a PR touching
+      # nothing a leg's suites read should report this check green having run
+      # nothing there.
       # `skipped` and `cancelled` both fail this check, along with
       # `failure`, because each comparison is `!= "success"` rather than a
       # `case` enumerating the failure states it knows about, so a conclusion
@@ -949,3 +888,54 @@ jobs:
             echo "::error::at least one shard did not conclude success: $SHARDS_RESULT" >&2
             exit 1
           fi
+
+  # Keeps one `ci-red-main` issue open while main is red: a failed push run
+  # opens it or comments on it, and a green push run on the red commit or a
+  # descendant closes it. Push to main only; a pull request or a dispatch
+  # verdict is not main's. The logic, and its tests with a stubbed `gh`, live
+  # in .gaia/tests/report-main-status.sh; this job only hands it the run's
+  # facts.
+  report-main-status:
+    name: Report main status
+    needs: [shards]
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    # The only write scope in this workflow. `contents: read` for the
+    # checkout, `issues: write` to open, comment on and close the issue, and
+    # `actions: read` for the jobs listing that names the failing legs, since
+    # `needs.shards.result` is one aggregate value.
+    permissions:
+      contents: read
+      issues: write
+      actions: read
+    # One static group serializes the reporters, so two red runs finishing
+    # together cannot both see no open issue and both open one. GitHub keeps
+    # one pending run per group, so a pending reporter replaced by a newer
+    # one loses only an intermediate verdict: the newer run tests a superset
+    # of that commit, and its result opens, comments on or closes the issue
+    # in its place.
+    concurrency:
+      group: audit-ci-tests-main-status-report
+      cancel-in-progress: false
+    steps:
+      # The reporter is the only file this job needs, and the token never has
+      # to reach git, so the checkout persists no credentials.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      # Every value reaches the script through `env:`, and none of them is
+      # free text from the event: the issue's title and body are built from
+      # SHAs, run ids and the jobs listing only.
+      - name: Open, update or close the red-main issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          BEFORE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+          SHARDS_RESULT: ${{ needs.shards.result }}
+        run: bash .gaia/tests/report-main-status.sh

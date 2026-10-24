@@ -9,8 +9,8 @@ it down; no reliance on the real project's notebook catalog.
 
 This directory also carries **doc-conformance** suites, which grep instruction
 markdown rather than exercising a script. They live here because this is the
-bats directory `.github/workflows/audit-ci-tests.yml` actually runs (`bats
-.gaia/tests/lib/`); a doc-conformance suite landed in `.gaia/tests/sandbox/`,
+bats directory `.github/workflows/audit-ci-tests.yml` actually runs (the `lib`
+leg); a doc-conformance suite landed in `.gaia/tests/sandbox/`,
 which no workflow runs, would gate nothing.
 
 ## Coverage

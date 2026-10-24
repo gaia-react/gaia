@@ -13,6 +13,8 @@
 #
 # Assertion style follows .claude/rules/bats-assertions.md.
 
+# bats file_tags=installed-dependencies
+
 setup_file() {
   REPO_ROOT_REAL="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   PLAYWRIGHT_BIN="$REPO_ROOT_REAL/frontend/node_modules/.bin/playwright"

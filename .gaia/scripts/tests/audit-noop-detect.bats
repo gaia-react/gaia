@@ -40,6 +40,7 @@ setup() {
   [ "$status" -eq 2 ]
 }
 
+# bats test_tags=whole-tree
 @test "usage error: no arguments exits 2" {
   run "$SCRIPT"
   [ "$status" -eq 2 ]

@@ -744,6 +744,7 @@ literal_hits() {
     -- .claude .gaia/scripts/spec ':!**/*.bats' || true
 }
 
+# bats test_tags=whole-tree
 @test "no instruction surface spells a GAIA branch literal for git to create" {
   # Every flow that cuts a branch or a worktree takes its name from
   # gaia_branch_name, so a literal name handed to git or to EnterWorktree is a
@@ -989,6 +990,7 @@ unmintable_kinds() {
   done < <(name_call_kinds "$1")
 }
 
+# bats test_tags=whole-tree
 @test "every branch-name-lib.sh name call in the instruction surface names a kind that mints" {
   local kinds kind unmintable
   kinds="$(name_call_kinds "$REPO_ROOT")"

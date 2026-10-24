@@ -91,6 +91,7 @@ sub_references_routed_and_listed() {
   return 0
 }
 
+# bats test_tags=whole-tree
 @test "b. every sub-reference spec.md names exists, is indexed, and each moved one is routed" {
   sub_references_routed_and_listed "$PLAYBOOK_ROOT"
 }
@@ -181,6 +182,7 @@ sections_owned() {
   return 0
 }
 
+# bats test_tags=whole-tree
 @test "c. each moved section lives in exactly one sub-reference" {
   sections_owned "$PLAYBOOK_ROOT"
 }
@@ -251,6 +253,7 @@ menus_fit() {
   [ "$bad" -eq 0 ]
 }
 
+# bats test_tags=whole-tree
 @test "d. no closed-set menu lists Other, the save escape, or more than four entries" {
   menus_fit "$PLAYBOOK_ROOT"
 }

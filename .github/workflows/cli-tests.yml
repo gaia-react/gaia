@@ -92,7 +92,8 @@ jobs:
               # `.npmrc`, and neither matches anything else here, so a bump to
               # either would resolve `code=false` and green this required check
               # having run the suite zero times under the new pin.
-              # audit-ci-tests.yml lists the same two for the same reason.
+              # audit-ci-tests.yml lists the same two, in its change-scoped
+              # output, for the same reason.
               # Hand-maintained, and not covered by the coverage guard: it
               # checks that the action file itself is reachable but does not
               # descend into the action's body, so another file the action

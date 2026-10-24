@@ -226,6 +226,7 @@ unfence_first_pointer() {
 
 # --- red twins: scratch copies, each helper must fail ------------------------------
 
+# bats test_tags=whole-tree
 @test "red twin: a row naming a substring no enforcer test line contains fails" {
   local row
   row="$(cut_rows | head -n 1)"

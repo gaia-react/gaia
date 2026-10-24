@@ -404,6 +404,8 @@ EOF
     grep -qE "$verify_whole_tree_mark_pattern" "$own_suite" && { printf 'marked: %s\n' "$own_suite" >&2; return 1; }
   done
   [ -f "$REPO_ROOT/.gaia/tests/whole-tree-mark-guard.sh" ] || skip "the whole-tree mark guard is not in this tree"
+  # gaia-lint-ignore whole-tree-mark-guard: the operand is not the tracked tree; the guard
+  # scans only the two suites named below, and this suite names both
   run bash "$REPO_ROOT/.gaia/tests/whole-tree-mark-guard.sh" --root "$REPO_ROOT" \
     "$BATS_TEST_DIRNAME/verify-harness.bats" "$BATS_TEST_DIRNAME/verify-harness-baseline.bats"
   [ "$status" -eq 0 ]

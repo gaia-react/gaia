@@ -23,11 +23,10 @@
 # selector picks runs once, in full, under bats selected. Round mode selects
 # over the round's delta (the uncommitted tracked changes when there are any,
 # else the HEAD commit) and never runs the marked set: branch mode ran it
-# before the first audit dispatch and CI runs every suite on each harness push
-# before the merge, so a round fix that breaks a whole-tree invariant still
-# turns red before merge, and re-running the set every round would cost minutes
-# each round. A marked suite the round's own selection picks still runs, under
-# bats selected.
+# before the first audit dispatch, and pre-merge CI covers the marked set, so
+# re-running it every round would cost minutes each round (the rationale is the
+# maintainer block in wiki/concepts/Audit Round Procedure.md). A marked suite
+# the round's own selection picks still runs, under bats selected.
 #
 # A failing check is re-run on the merge base with refs/remotes/origin/main, in
 # a temporary worktree. A failure that reproduces there prints PRE-EXISTING

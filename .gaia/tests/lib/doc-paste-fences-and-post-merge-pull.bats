@@ -96,6 +96,7 @@ main_checkout_paragraph_uses_digest() {
   fi
 }
 
+# bats test_tags=whole-tree
 @test "the worktree arm pulls the default branch only when the main checkout holds it, and never forces" {
   worktree_arm_pulls "$REPO_ROOT"
 }
@@ -110,6 +111,7 @@ main_checkout_paragraph_uses_digest() {
   [ "$status" -ne 0 ]
 }
 
+# bats test_tags=whole-tree
 @test "the worktree arms' fences still carry no git checkout" {
   worktree_arm_has_no_checkout "$REPO_ROOT"
 }
@@ -124,6 +126,7 @@ main_checkout_paragraph_uses_digest() {
   [ "$status" -ne 0 ]
 }
 
+# bats test_tags=whole-tree
 @test "the in-session worktree removal reads the main checkout's HEAD and pulls" {
   in_session_removal_pulls "$REPO_ROOT"
 }
@@ -138,6 +141,7 @@ main_checkout_paragraph_uses_digest() {
   [ "$status" -ne 0 ]
 }
 
+# bats test_tags=whole-tree
 @test "the post-merge verification section keys on the member digest, not the marker tree field" {
   main_checkout_paragraph_uses_digest "$REPO_ROOT"
 }

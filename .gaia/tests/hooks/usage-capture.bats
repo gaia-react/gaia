@@ -288,6 +288,7 @@ wait_cursor() {
   hook_registered "$REPO_ROOT/.claude/settings.json" '.hooks.SessionStart[] | select(.matcher == "startup|resume")' usage-capture.sh
 }
 
+# bats test_tags=whole-tree
 @test "registration: the rooting, scope-manifest, and cwd-relative-load gates pass" {
   run bash "$REPO_ROOT/.gaia/scripts/check-hook-command-rooting.sh" "$REPO_ROOT"
   [ "$status" -eq 0 ]

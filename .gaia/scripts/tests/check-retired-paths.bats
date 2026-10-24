@@ -39,6 +39,7 @@ run_gate() {
   run bash "$1/.gaia/scripts/check-retired-paths.sh" "${@:2}"
 }
 
+# bats test_tags=whole-tree
 @test "the real working tree is clean" {
   run bash "$SCRIPT_DIRECTORY/check-retired-paths.sh" --root "$REPO_ROOT"
   [ "$status" -eq 0 ]

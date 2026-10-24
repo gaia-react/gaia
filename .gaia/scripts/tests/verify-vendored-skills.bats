@@ -82,11 +82,13 @@ make_fixture() {
   [ "$status" -eq 2 ]
 }
 
+# bats test_tags=whole-tree
 @test "the real repository passes" {
   run "$SCRIPT" --root "$REPO_ROOT"
   [ "$status" -eq 0 ]
 }
 
+# bats test_tags=whole-tree
 @test "the real repository passes with the network unreachable" {
   npm_config_offline=true HTTP_PROXY=http://127.0.0.1:9 HTTPS_PROXY=http://127.0.0.1:9 \
     run "$SCRIPT" --root "$REPO_ROOT"

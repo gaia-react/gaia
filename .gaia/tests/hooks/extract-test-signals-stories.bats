@@ -8,6 +8,8 @@
 # The fixtures are two files because a meta-level play is inherited by every
 # story in its file: the render-only story cannot share a file with it.
 
+# bats file_tags=installed-dependencies
+
 setup() {
   HOME_ROOT=$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)
   . "$BATS_TEST_DIRNAME/helpers/require-node-typescript.sh"

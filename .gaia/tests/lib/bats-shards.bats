@@ -35,6 +35,18 @@ setup() {
   LIB_DIR_DEFAULT='.gaia/tests/lib'
   FORENSICS_DIRECTORY_DEFAULT='.gaia/tests/forensics'
   STATUSLINE_DIR_DEFAULT='.gaia/tests/statusline'
+  # The change-scoped commands run the classifier against the diff arguments
+  # first. A fixture diff names nothing the real classifier could read, so every
+  # case gets a stub that prints $STUB_CLASSIFIER_OUTPUT and exits
+  # $STUB_CLASSIFIER_STATUS, and says nothing by default.
+  cat >"$BATS_TEST_TMPDIR/classifier.sh" <<'STUB'
+#!/usr/bin/env bash
+if [ -n "${STUB_CLASSIFIER_OUTPUT:-}" ]; then
+  printf '%s\n' "$STUB_CLASSIFIER_OUTPUT"
+fi
+exit "${STUB_CLASSIFIER_STATUS:-0}"
+STUB
+  export CHANGE_SCOPE_SCRIPT="$BATS_TEST_TMPDIR/classifier.sh"
 }
 
 teardown() {
@@ -266,6 +278,7 @@ write_trivial_bats() {
   grep -qF -- 'misc' <<<"$output"
 }
 
+# bats test_tags=whole-tree
 @test "S8: usage errors" {
   run bash "$SCRIPT" files nope
   [ "$status" -eq 2 ]
@@ -1300,12 +1313,247 @@ run_for_change_fixture() {
   local copy directory="$BATS_TEST_TMPDIR/a12"
   copy="$(copy_sharder)"
   grep -qF 'subcommand_run "$id"' "$copy" || return 1
-  sed 's/^\( *\)subcommand_run "\$id" # selector fallback$/\1exit 0/' "$copy" >"$copy.new"
+  sed 's/^\( *\)subcommand_run "\$id" # whole-shard fallback$/\1exit 0/' "$copy" >"$copy.new"
   mv "$copy.new" "$copy"
-  grep -qF '# selector fallback' "$copy" && return 1
+  grep -qF '# whole-shard fallback' "$copy" && return 1
   write_change_fixture "$directory"
 
   STUB_SELECTOR_FAILS=1 run run_for_change_fixture "$copy" "$directory" run-for-change
   grep -qE '^ok [0-9]+ unrelated$' <<<"$output" && return 1
   true
+}
+
+# The shard plan. The fixture shard holds a suite carrying the
+# installed-dependencies mark, one carrying the whole-tree mark, a plain one,
+# and a Chromium suite by name; a stub selector picks only what
+# $STUB_SELECTOR_PICKS names. Tag lines are assembled at run time, as above.
+write_plan_fixture() {
+  local directory="$1" at_test='@test'
+  mkdir -p "$directory/lib"
+  {
+    printf '#!/usr/bin/env bats\n'
+    printf '# bats %s\n' 'file_tags=installed-dependencies'
+    printf '%s "dependency one" {\n  true\n}\n' "$at_test"
+    printf '%s "dependency two" {\n  true\n}\n' "$at_test"
+  } >"$directory/lib/dependent.bats"
+  {
+    printf '#!/usr/bin/env bats\n'
+    printf '# bats %s\n' 'test_tags=whole-tree'
+    printf '%s "marked whole-tree" {\n  true\n}\n' "$at_test"
+    printf '%s "marked plain" {\n  true\n}\n' "$at_test"
+  } >"$directory/lib/marked.bats"
+  {
+    printf '#!/usr/bin/env bats\n'
+    printf '%s "unrelated" {\n  true\n}\n' "$at_test"
+  } >"$directory/lib/unrelated.bats"
+  {
+    printf '#!/usr/bin/env bats\n'
+    printf '%s "lifecycle" {\n  true\n}\n' "$at_test"
+  } >"$directory/lib/uat-lifecycle-e2e.bats"
+  cat >"$directory/selector.sh" <<'STUB'
+#!/usr/bin/env bash
+[ -z "${STUB_SELECTOR_FAILS:-}" ] || exit 3
+if [ -n "${STUB_SELECTOR_PICKS:-}" ]; then
+  printf '%s\n' "$STUB_SELECTOR_PICKS"
+fi
+exit 0
+STUB
+}
+
+# plan_fixture <sharder> <fixture-directory> <subcommand> <args>...: the
+# subcommand over the fixture shard, stderr left in $BATS_TEST_TMPDIR/stderr.
+plan_fixture() {
+  local sharder="$1" directory="$2"
+  shift 2
+  LIBRARY_DIRECTORY="$directory/lib" SUITES_FOR_CHANGE_SCRIPT="$directory/selector.sh" \
+    bash "$sharder" "$@" 2>"$BATS_TEST_TMPDIR/stderr"
+}
+
+@test "P1: a harness change runs the whole shard and says why on one stderr line" {
+  local directory="$BATS_TEST_TMPDIR/p1"
+  write_plan_fixture "$directory"
+  STUB_CLASSIFIER_OUTPUT=$(printf 'harness\t.claude/hooks/lib/x.sh')
+  export STUB_CLASSIFIER_OUTPUT
+
+  run plan_fixture "$SCRIPT" "$directory" files-for-change lib base-ref head-ref
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s\n' "$output" | grep -c '\.bats$')" -eq 4 ]
+  [ "$(cat "$BATS_TEST_TMPDIR/stderr")" = "bats-shards: harness-change; running all of lib" ]
+
+  run plan_fixture "$SCRIPT" "$directory" plan lib base-ref head-ref
+  [ "$status" -eq 0 ]
+  [ "$(sed -n '1,2p' <<<"$output" | tr '\n' ' ')" = "mode=full reason=harness-change " ]
+}
+
+@test "P2: an unreadable change runs the whole shard even when a dependency path was printed" {
+  local directory="$BATS_TEST_TMPDIR/p2"
+  write_plan_fixture "$directory"
+
+  STUB_CLASSIFIER_STATUS=3 run plan_fixture "$SCRIPT" "$directory" files-for-change lib base-ref head-ref
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s\n' "$output" | grep -c '\.bats$')" -eq 4 ]
+  [ "$(cat "$BATS_TEST_TMPDIR/stderr")" = "bats-shards: change-unreadable; running all of lib" ]
+  STUB_CLASSIFIER_STATUS=3 run plan_fixture "$SCRIPT" "$directory" plan lib base-ref head-ref
+  grep -qx 'reason=change-unreadable' <<<"$output"
+
+  STUB_CLASSIFIER_OUTPUT=$(printf 'dependency\tpnpm-lock.yaml')
+  export STUB_CLASSIFIER_OUTPUT
+  STUB_SELECTOR_FAILS=1 run plan_fixture "$SCRIPT" "$directory" files-for-change lib base-ref head-ref
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s\n' "$output" | grep -c '\.bats$')" -eq 4 ]
+  [ "$(cat "$BATS_TEST_TMPDIR/stderr")" = "bats-shards: change-unreadable; running all of lib" ]
+  STUB_SELECTOR_FAILS=1 run plan_fixture "$SCRIPT" "$directory" plan lib base-ref head-ref
+  grep -qx 'mode=full' <<<"$output"
+  grep -qx 'reason=change-unreadable' <<<"$output"
+}
+
+@test "P3: a dependency change runs the installed-dependencies suites in full beside the whole-tree ones" {
+  local directory="$BATS_TEST_TMPDIR/p3"
+  write_plan_fixture "$directory"
+  STUB_CLASSIFIER_OUTPUT=$(printf 'dependency\tpnpm-lock.yaml')
+  export STUB_CLASSIFIER_OUTPUT
+
+  run plan_fixture "$SCRIPT" "$directory" files-for-change lib base-ref head-ref
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s\n' "$output" | LC_ALL=C sort)" = "$(printf '%s\n%s' "$directory/lib/dependent.bats" "$directory/lib/marked.bats")" ]
+
+  run plan_fixture "$SCRIPT" "$directory" run-for-change lib base-ref head-ref
+  [ "$status" -eq 0 ]
+  grep -qE '^ok [0-9]+ dependency one$' <<<"$output"
+  grep -qE '^ok [0-9]+ dependency two$' <<<"$output"
+  grep -qE '^ok [0-9]+ marked whole-tree$' <<<"$output"
+  grep -qE 'marked plain$' <<<"$output" && return 1
+  grep -qE 'unrelated$' <<<"$output" && return 1
+
+  run plan_fixture "$SCRIPT" "$directory" plan lib base-ref head-ref
+  [ "$status" -eq 0 ]
+  grep -qx 'mode=scoped' <<<"$output"
+  grep -qx 'reason=selected' <<<"$output"
+  grep -qx 'needs_node=1' <<<"$output"
+  grep -qx 'needs_chromium=0' <<<"$output"
+}
+
+@test "P4: without a dependency line the installed-dependencies suite is not listed" {
+  local directory="$BATS_TEST_TMPDIR/p4"
+  write_plan_fixture "$directory"
+
+  run plan_fixture "$SCRIPT" "$directory" files-for-change lib base-ref head-ref
+  [ "$status" -eq 0 ]
+  [ "$output" = "$directory/lib/marked.bats" ]
+  run plan_fixture "$SCRIPT" "$directory" plan lib base-ref head-ref
+  grep -qx 'needs_node=0' <<<"$output"
+}
+
+@test "P5: a change that owes nothing selects nothing and installs nothing" {
+  local directory="$BATS_TEST_TMPDIR/p5"
+  write_plan_fixture "$directory"
+  rm "$directory/lib/dependent.bats" "$directory/lib/marked.bats" "$directory/lib/uat-lifecycle-e2e.bats"
+
+  run plan_fixture "$SCRIPT" "$directory" files-for-change lib base-ref head-ref
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  run plan_fixture "$SCRIPT" "$directory" run-for-change lib base-ref head-ref
+  [ "$status" -eq 0 ]
+  grep -qF 'lib holds no suite this change owes' <<<"$output"
+  run plan_fixture "$SCRIPT" "$directory" plan lib base-ref head-ref
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(printf 'mode=none\nreason=nothing-selected\nneeds_node=0\nneeds_chromium=0')" ]
+}
+
+@test "P6: the Chromium need follows the set the leg will run" {
+  local directory="$BATS_TEST_TMPDIR/p6"
+  write_plan_fixture "$directory"
+
+  STUB_SELECTOR_PICKS="$directory/lib/uat-lifecycle-e2e.bats" run plan_fixture "$SCRIPT" "$directory" plan lib base-ref head-ref
+  grep -qx 'needs_chromium=1' <<<"$output"
+  run plan_fixture "$SCRIPT" "$directory" plan lib base-ref head-ref
+  grep -qx 'needs_chromium=0' <<<"$output"
+  run plan_fixture "$SCRIPT" "$directory" plan lib --full
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(printf 'mode=full\nreason=requested\nneeds_node=1\nneeds_chromium=1')" ]
+}
+
+@test "P7: plan prints exactly four key=value lines in order, on every arm" {
+  local directory="$BATS_TEST_TMPDIR/p7" arm
+  write_plan_fixture "$directory"
+
+  for arm in full harness unreadable selected none; do
+    unset STUB_CLASSIFIER_OUTPUT STUB_CLASSIFIER_STATUS STUB_SELECTOR_PICKS
+    case "$arm" in
+      full) set -- --full ;;
+      harness)
+        STUB_CLASSIFIER_OUTPUT="$(printf 'harness\tx.sh')"
+        set -- base-ref head-ref
+        ;;
+      unreadable)
+        STUB_CLASSIFIER_STATUS=3
+        set -- base-ref head-ref
+        ;;
+      selected)
+        STUB_SELECTOR_PICKS="$directory/lib/unrelated.bats"
+        set -- base-ref head-ref
+        ;;
+      none)
+        rm -f "$directory/lib/marked.bats" "$directory/lib/dependent.bats"
+        set -- base-ref head-ref
+        ;;
+    esac
+    export STUB_CLASSIFIER_OUTPUT STUB_CLASSIFIER_STATUS STUB_SELECTOR_PICKS
+    run plan_fixture "$SCRIPT" "$directory" plan lib "$@"
+    [ "$status" -eq 0 ]
+    [ "$(printf '%s\n' "$output" | wc -l | tr -d ' ')" -eq 4 ]
+    [ "$(sed -n '1p' <<<"$output" | cut -d= -f1)" = mode ]
+    [ "$(sed -n '2p' <<<"$output" | cut -d= -f1)" = reason ]
+    [ "$(sed -n '3p' <<<"$output" | cut -d= -f1)" = needs_node ]
+    [ "$(sed -n '4p' <<<"$output" | cut -d= -f1)" = needs_chromium ]
+    [ "$(grep -cE '^[a-z_]+=[a-z0-9-]+$' <<<"$output")" -eq 4 ]
+  done
+}
+
+@test "P8: plan refuses a call with no shard, an unknown shard, or no change" {
+  run bash "$SCRIPT" plan
+  [ "$status" -eq 2 ]
+  grep -q '^bats-shards:' <<<"$output"
+  run bash "$SCRIPT" plan no-such-shard --full
+  [ "$status" -eq 2 ]
+  grep -q '^bats-shards:' <<<"$output"
+  run bash "$SCRIPT" plan lib
+  [ "$status" -eq 2 ]
+  grep -q '^bats-shards:' <<<"$output"
+}
+
+# bats test_tags=whole-tree
+@test "P9: a lockfile-only change owes every real shard its installed-dependencies and whole-tree suites" {
+  local derived shard_id shard_file expected actual union=''
+  derived="$(bash "$REPO_ROOT/.gaia/tests/installed-dependencies-mark-guard.sh" --list-derived)"
+  [ -n "$derived" ]
+  STUB_CLASSIFIER_OUTPUT=$(printf 'dependency\tpnpm-lock.yaml')
+  export STUB_CLASSIFIER_OUTPUT
+  export SUITES_FOR_CHANGE_SCRIPT="$BATS_TEST_TMPDIR/silent-selector.sh"
+  printf '#!/usr/bin/env bash\nexit 0\n' >"$SUITES_FOR_CHANGE_SCRIPT"
+
+  for shard_id in $(bash "$SCRIPT" shards); do
+    expected=''
+    for shard_file in $(bash "$SCRIPT" files "$shard_id"); do
+      if grep -qxF -- "$shard_file" <<<"$derived" ||
+        grep -qE '^# bats (file|test)_tags=([^,]*,)*whole-tree(,|$)' "$REPO_ROOT/$shard_file"; then
+        expected="$expected$shard_file"$'\n'
+      fi
+    done
+    actual="$(bash "$SCRIPT" files-for-change "$shard_id" base-ref head-ref | sed "s|^$REPO_ROOT/||")"
+    [ "$(printf '%s' "$actual" | LC_ALL=C sort)" = "$(printf '%s' "$expected" | sed '/^$/d' | LC_ALL=C sort)" ]
+    union="$union$actual"$'\n'
+    run bash "$SCRIPT" plan "$shard_id" base-ref head-ref
+    [ "$status" -eq 0 ]
+    grep -qx 'mode=full' <<<"$output" && return 1
+  done
+  for shard_file in capture-red-observations red-ledger-lib red-verify-commit-check red-verify-e2e worthiness-presence-check extract-test-signals-stories-reporter uat-lifecycle-e2e; do
+    grep -q "/$shard_file\.bats\$" <<<"$union"
+  done
+}
+
+# bats test_tags=whole-tree
+@test "P10: the default classifier and selector seams resolve over the real tree" {
+  run env -u CHANGE_SCOPE_SCRIPT -u SUITES_FOR_CHANGE_SCRIPT bash "$SCRIPT" files-for-change lib HEAD HEAD
+  [ "$status" -eq 0 ]
 }

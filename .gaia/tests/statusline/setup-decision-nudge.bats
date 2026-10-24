@@ -18,6 +18,9 @@
 setup() {
   STATUSLINE_SOURCE=$(cd "$BATS_TEST_DIRNAME/../../statusline" && pwd)
   SCRIPTS_SOURCE=$(cd "$BATS_TEST_DIRNAME/../../scripts" && pwd)
+  # The committed CLI bundle, .gaia/cli/gaia. The change selector matches it by
+  # its trailing path, which the built path below does not spell, so this line
+  # is what selects the suite when the bundle changes.
   GAIA_COMMAND="$(cd "$BATS_TEST_DIRNAME/../../cli" && pwd)/gaia"
 
   MAIN=$(mktemp -d -t gaia-sl-setup-XXXXXX)

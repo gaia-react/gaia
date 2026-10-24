@@ -254,6 +254,7 @@ budget_constant_owners() {
   } | sort -u
 }
 
+# bats test_tags=whole-tree
 @test "the budget constants are assigned in exactly one file, the scorer" {
   # Read the scorer directly as well, so an empty owner list (an unstaged
   # scorer, a git failure) cannot pass for "exactly one".

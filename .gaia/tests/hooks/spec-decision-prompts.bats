@@ -267,6 +267,7 @@ copy_swept_trees_into_scratch() {
     relative="${file#"$REPO_ROOT"/}"
     mkdir -p "$(dirname "$SCRATCH_ROOT/$relative")"
     cp "$file" "$SCRATCH_ROOT/$relative"
+  # gaia-lint-ignore whole-tree-mark-guard: every test that calls this helper carries the test mark
   done < <(swept_files "$REPO_ROOT")
 }
 
@@ -280,6 +281,7 @@ copy_tree_into_scratch() {
   done
 }
 
+# bats test_tags=whole-tree
 @test "real tree: every converted site asks through AskUserQuestion, and review lists ask once" {
   sites_ok "$REPO_ROOT"
 }

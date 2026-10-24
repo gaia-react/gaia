@@ -17,6 +17,11 @@ verify_whole_tree_file_mark_pattern='^# bats file_tags=([^,]*,)*whole-tree(,|$)'
 verify_whole_tree_test_mark_pattern='^# bats test_tags=([^,]*,)*whole-tree(,|$)'
 verify_whole_tree_mark_pattern='^# bats (file|test)_tags=([^,]*,)*whole-tree(,|$)'
 
+# The installed-dependencies mark, file-level only: a suite whose tests read the
+# installed node_modules carries it, and the change-scoped legs run such a suite
+# in full on a dependency bump. The mark guard derives the set and reads this.
+verify_installed_dependencies_mark_pattern='^# bats file_tags=([^,]*,)*installed-dependencies(,|$)'
+
 # verify_junit <mode> <suites-file> <report-file>
 #   failures: "<suite path>\t<test name>" per failing testcase
 #   passes:   "<suite path>\t<test name>" per testcase that ran and passed

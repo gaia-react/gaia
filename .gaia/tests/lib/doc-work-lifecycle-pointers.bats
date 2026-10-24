@@ -140,18 +140,21 @@ scratch_copy() {
 
 # --- the checks on the real tree -----------------------------------------
 
+# bats test_tags=whole-tree
 @test "issue-claim.md carries one pointer line naming the trigger and an existing path" {
   run check_1 "$REPO_ROOT"
   printf '%s\n' "$output"
   [ "$status" -eq 0 ]
 }
 
+# bats test_tags=whole-tree
 @test "execution.md carries one pointer line naming merge and cleanup, within the hook's byte cap" {
   run check_2 "$REPO_ROOT"
   printf '%s\n' "$output"
   [ "$status" -eq 0 ]
 }
 
+# bats test_tags=whole-tree
 @test "no lifecycle instruction holds a fence with git worktree add" {
   run check_3 "$REPO_ROOT"
   printf '%s\n' "$output"

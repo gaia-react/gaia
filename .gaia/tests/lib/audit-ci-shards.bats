@@ -197,6 +197,27 @@ teardown() {
 #                         without its comparison reds. 'no' on a job with an
 #                         empty `needs:`, so the coverage claim can never
 #                         pass over an empty set.
+#   capvalue <job-id>      that job's integer cap; exits 2 when it has none
+#   filterlist <job-id> <output>
+#                         one glob per line of that output of the job's
+#                         dorny/paths-filter step
+#   permissions [job-id]   canonical JSON of the top-level or that job's
+#                         `permissions:`, `absent` when the key is missing
+#   concurrency [job-id]   `group\t<value>` and `cancel\t<value>` lines for the
+#                         top-level or that job's `concurrency:`, or `absent`
+#   stepcaps <job-id>      one `<step-name>\t<cap-kind>\t<value>` line per step
+#                         whose `run:` executes bats or a runner that does
+#   scriptinterp           one `<job-id>\t<step-name>` line per step that runs a
+#                         script from its `with:` inputs and interpolates an
+#                         expression into one of them
+#   usesfield <job-id> <action> <key>
+#                         `with.<key>` on the first step using <action>
+#   runsteps <job-id>      one `<step-name>\t<env-keys>\t<run-body>` line per
+#                         `run:` step, the body flattened to one line
+#   evalgates <job-id> <shard> [<key>=<value>...]
+#   evalenv <job-id> <env-name> <shard> [<key>=<value>...]
+#                         each step's `if:` (or <env-name> value) evaluated for
+#                         one leg; the assignments are described at the mode
 #
 # Exits 2 when the file will not parse, declares no jobs mapping, or names no
 # such job. A caller must check the status.
@@ -316,6 +337,11 @@ elif mode == 'needs':
 elif mode == 'capkind':
     require_job(rest[0])
     print(cap_kind(rest[0]))
+elif mode == 'capvalue':
+    require_job(rest[0])
+    if cap_kind(rest[0]) != 'int':
+        die('job %r has no integer timeout-minutes' % rest[0])
+    print(jobs[rest[0]]['timeout-minutes'])
 elif mode == 'matrix':
     require_job(rest[0])
     shard = ((jobs[rest[0]].get('strategy') or {}).get('matrix') or {}).get('shard')
@@ -482,6 +508,274 @@ elif mode == 'stepshards':
             print(item)
     if not seen:
         die('no step named %r in job %r' % (wanted, rest[0]))
+elif mode == 'filterlist':
+    # The glob list of one output of that job's dorny/paths-filter step.
+    require_job(rest[0])
+    filters_raw = (filter_step_for(rest[0]).get('with') or {}).get('filters')
+    try:
+        filters_doc = yaml.safe_load(filters_raw) if isinstance(filters_raw, str) else None
+    except yaml.YAMLError:
+        die('job %r filters: block is not valid YAML' % rest[0])
+    globs = (filters_doc or {}).get(rest[1])
+    if not isinstance(globs, list):
+        die('job %r filters: block has no %r list' % (rest[0], rest[1]))
+    for item in globs:
+        print(str(item))
+elif mode == 'permissions':
+    # Canonical JSON of the workflow's top-level `permissions:` (no job id) or
+    # of one job's, `absent` when the key is missing. Sorted keys, so two
+    # equal maps print the same text whatever order the file lists them in.
+    if rest:
+        require_job(rest[0])
+        holder = jobs[rest[0]]
+    else:
+        holder = document
+    if 'permissions' not in holder:
+        print('absent')
+    else:
+        print(json.dumps(holder['permissions'], sort_keys=True))
+elif mode == 'concurrency':
+    # `group\t<value>` and `cancel\t<value>` for the top-level `concurrency:`
+    # (no job id) or one job's, each value normalized; `absent` when missing.
+    if rest:
+        require_job(rest[0])
+        holder = jobs[rest[0]]
+    else:
+        holder = document
+    value = holder.get('concurrency')
+    if value is None:
+        print('absent')
+    elif isinstance(value, dict):
+        print('group\t%s' % normalize(value.get('group', '')))
+        print('cancel\t%s' % normalize(value.get('cancel-in-progress', '')))
+    else:
+        print('group\t%s' % normalize(value))
+        print('cancel\t')
+elif mode == 'stepcaps':
+    # One `<step-name>\t<cap-kind>\t<value>` line per step in that job whose
+    # `run:` body executes bats or a runner that does: a shard run, the sandbox
+    # runner, the concurrency meter or the bats5 wrapper.
+    require_job(rest[0])
+    runner = re.compile(r'bats-shards\.sh\s+(run|run-for-change)\b|run-all\.sh|meter-gate\.sh|bats5\.sh')
+    for step in jobs[rest[0]].get('steps') or []:
+        if not isinstance(step, dict) or not runner.search(str(step.get('run', ''))):
+            continue
+        name = str(step.get('name', '')) or str(step.get('uses', ''))
+        print('%s\t%s\t%s' % (name, kind_of(step), step.get('timeout-minutes', '')))
+elif mode == 'scriptinterp':
+    # One `<job-id>\t<step-name>` line per step that executes a script from
+    # its `with:` inputs (actions/github-script, or any action given a
+    # `script` input) and interpolates an expression into one of them. Such
+    # an input is code the same way a `run:` body is.
+    for job_id, job in jobs.items():
+        for step in job.get('steps') or []:
+            if not isinstance(step, dict):
+                continue
+            inputs = step.get('with') if isinstance(step.get('with'), dict) else {}
+            executes = 'actions/github-script' in str(step.get('uses', '')) or 'script' in inputs
+            if executes and any('${{' in str(value) for value in inputs.values()):
+                name = str(step.get('name', '')) or str(step.get('uses', ''))
+                print('%s\t%s' % (job_id, name))
+elif mode == 'usesfield':
+    # The scalar value of `with.<key>` on the first step of that job whose
+    # `uses:` names the action in rest[1]; empty when absent. Exits 2 when no
+    # step uses it.
+    require_job(rest[0])
+    for step in jobs[rest[0]].get('steps') or []:
+        if isinstance(step, dict) and rest[1] in str(step.get('uses', '')):
+            value = (step.get('with') or {}).get(rest[2])
+            if value is not None:
+                print(str(value).lower() if isinstance(value, bool) else str(value))
+            break
+    else:
+        die('job %r has no step using %r' % (rest[0], rest[1]))
+elif mode == 'runsteps':
+    # One `<step-name>\t<env-keys>` line per `run:` step in that job, the env
+    # keys comma-joined and sorted, and its run: body on the next line
+    # flattened to one line.
+    require_job(rest[0])
+    for step in jobs[rest[0]].get('steps') or []:
+        if not isinstance(step, dict) or 'run' not in step:
+            continue
+        name = str(step.get('name', '')) or str(step.get('uses', ''))
+        environment = step.get('env') if isinstance(step.get('env'), dict) else {}
+        print('%s\t%s\t%s' % (name, ','.join(sorted(str(key) for key in environment)), ' '.join(str(step['run']).split())))
+elif mode in ('evalgates', 'evalenv'):
+    # evalgates <job-id> <shard> [<key>=<value>...]
+    #   one `<step-name>\t<run|skip>` line per step, in document order
+    # evalenv <job-id> <env-name> <shard> [<key>=<value>...]
+    #   one `<step-name>\t<value>` line per step that sets <env-name>
+    #
+    # Evaluates each step's `if:` (and env expression) the way GitHub would
+    # for one leg of the matrix, from these assignments:
+    #   event=<event_name>  ref=<ref>  <step-id>.<output>=<value>
+    # A `<step-id>.<output>` value is what that step emits when it runs; a
+    # step whose `if:` evaluates false emits nothing, so a later gate reading
+    # its output sees the empty string, exactly as a skipped step behaves.
+    # Fails closed: an identifier, function or operator outside the small
+    # grammar these gates use exits 2 naming it, rather than guessing.
+    require_job(rest[0])
+    if mode == 'evalenv':
+        env_name, shard, assignments = rest[1], rest[2], rest[3:]
+    else:
+        env_name, shard, assignments = None, rest[1], rest[2:]
+    context = {'github.event_name': '', 'github.ref': '', 'github.sha': 'commit-sha',
+               'github.workflow': 'workflow', 'matrix.shard': shard}
+    emitted = {}
+    for assignment in assignments:
+        key, _, value = assignment.partition('=')
+        if key == 'event':
+            context['github.event_name'] = value
+        elif key == 'ref':
+            context['github.ref'] = value
+        else:
+            step_id, _, output = key.partition('.')
+            emitted.setdefault(step_id, {})[output] = value
+    step_outputs = {}
+
+    def tokenize(text):
+        tokens, index = [], 0
+        while index < len(text):
+            character = text[index]
+            if character.isspace():
+                index += 1
+            elif text.startswith(('&&', '||', '==', '!='), index):
+                tokens.append(('op', text[index:index + 2]))
+                index += 2
+            elif character in '(),!':
+                tokens.append(('op', character))
+                index += 1
+            elif character == "'":
+                end, value = index + 1, ''
+                while True:
+                    if end >= len(text):
+                        die('unterminated string in %r' % text)
+                    if text[end] == "'":
+                        if text.startswith("''", end):
+                            value, end = value + "'", end + 2
+                            continue
+                        break
+                    value, end = value + text[end], end + 1
+                tokens.append(('str', value))
+                index = end + 1
+            else:
+                found = re.match(r'[A-Za-z_][A-Za-z0-9_.\-]*|[0-9]+', text[index:])
+                if found is None:
+                    die('unexpected character %r in %r' % (character, text))
+                tokens.append(('word', found.group(0)))
+                index += len(found.group(0))
+        return tokens
+
+    def truthy(value):
+        return value not in ('', None, False, 0)
+
+    def lookup(word):
+        if word in context:
+            return context[word]
+        found = re.match(r'^steps\.([A-Za-z0-9_-]+)\.outputs\.([A-Za-z0-9_-]+)$', word)
+        if found:
+            return step_outputs.get(found.group(1), {}).get(found.group(2), '')
+        if word in ('true', 'false'):
+            return word == 'true'
+        if word == 'null':
+            return None
+        if re.match(r'^[0-9]+$', word):
+            return int(word)
+        die('unknown identifier %r' % word)
+
+    def evaluate(text):
+        tokens = tokenize(text)
+        position = [0]
+
+        def peek():
+            return tokens[position[0]] if position[0] < len(tokens) else (None, None)
+
+        def take(expected=None):
+            token = peek()
+            if token[0] is None or (expected is not None and token[1] != expected):
+                die('expected %r in %r' % (expected, text))
+            position[0] += 1
+            return token
+
+        def parse_or():
+            value = parse_and()
+            while peek() == ('op', '||'):
+                take()
+                right = parse_and()
+                value = value if truthy(value) else right
+            return value
+
+        def parse_and():
+            value = parse_unary()
+            while peek() == ('op', '&&'):
+                take()
+                right = parse_unary()
+                value = right if truthy(value) else value
+            return value
+
+        def parse_unary():
+            if peek() == ('op', '!'):
+                take()
+                return not truthy(parse_unary())
+            left = parse_primary()
+            if peek() in (('op', '=='), ('op', '!=')):
+                operator = take()[1]
+                right = parse_primary()
+                same = (left.lower() == right.lower()) if isinstance(left, str) and isinstance(right, str) else left == right
+                return same if operator == '==' else not same
+            return left
+
+        def parse_primary():
+            kind, value = take()
+            if kind == 'str':
+                return value
+            if kind == 'op' and value == '(':
+                inner = parse_or()
+                take(')')
+                return inner
+            if kind == 'word':
+                if peek() == ('op', '('):
+                    take()
+                    arguments = []
+                    if peek() != ('op', ')'):
+                        arguments.append(parse_or())
+                        while peek() == ('op', ','):
+                            take()
+                            arguments.append(parse_or())
+                    take(')')
+                    if value in ('always', 'success') and not arguments:
+                        return True
+                    if value == 'fromJSON' and len(arguments) == 1:
+                        return json.loads(arguments[0])
+                    if value == 'contains' and len(arguments) == 2:
+                        haystack, needle = arguments
+                        if isinstance(haystack, list):
+                            return any(str(item).lower() == str(needle).lower() for item in haystack)
+                        return str(needle).lower() in str(haystack).lower()
+                    die('unsupported function %r in %r' % (value, text))
+                return lookup(value)
+            die('unexpected token %r in %r' % (value, text))
+
+        result = parse_or()
+        if position[0] != len(tokens):
+            die('trailing tokens in %r' % text)
+        return result
+
+    for step in jobs[rest[0]].get('steps') or []:
+        if not isinstance(step, dict):
+            continue
+        name = str(step.get('name', '')) or str(step.get('uses', ''))
+        gate = normalize(step.get('if', '')) if 'if' in step else 'success()'
+        runs = truthy(evaluate(gate))
+        if mode == 'evalgates':
+            print('%s\t%s' % (name, 'run' if runs else 'skip'))
+        else:
+            environment = step.get('env') if isinstance(step.get('env'), dict) else {}
+            if env_name in environment:
+                value = evaluate(normalize(environment[env_name]))
+                print('%s\t%s' % (name, str(value).lower() if isinstance(value, bool) else value))
+        if runs and step.get('id') is not None:
+            step_outputs[str(step['id'])] = emitted.get(str(step['id']), {})
 else:
     die('unknown mode %r' % mode)
 PY
@@ -671,6 +965,82 @@ with open(output_path, 'w', encoding='utf-8') as handle:
 PY
 }
 
+# doctor_section <source> <section-line> <old-line> <new-text> <output>
+#
+# Writes a copy of <source> to <output> with the FIRST line equal to <old-line>
+# after the line equal to <section-line> replaced by <new-text> (several lines
+# when it holds newlines; deleted when it is empty). The section ends at the
+# next line indented no deeper than <section-line> itself, so a doctoring
+# aimed at one job, one step or one filter output cannot land on an equal line
+# in a sibling, which every line these cases doctor has. Exits 2 when the
+# section or the line is not found, so an inert transform never writes a copy
+# of the healthy workflow.
+doctor_section() {
+  local source_path="$1" section="$2" old="$3" new="$4" output_path="$5"
+  SECTION_LINE="$section" OLD_LINE="$old" NEW_TEXT="$new" python3 - "$source_path" "$output_path" <<'PY'
+import os
+import sys
+
+source_path, output_path = sys.argv[1], sys.argv[2]
+section, old, new = os.environ['SECTION_LINE'], os.environ['OLD_LINE'], os.environ['NEW_TEXT']
+with open(source_path, encoding='utf-8') as handle:
+    lines = handle.read().split('\n')
+try:
+    start = lines.index(section)
+except ValueError:
+    sys.stderr.write('doctor_section: section line not found: %r\n' % section)
+    sys.exit(2)
+depth = len(section) - len(section.lstrip())
+for index in range(start + 1, len(lines)):
+    line = lines[index]
+    if line.strip() and not line.lstrip().startswith('#') and len(line) - len(line.lstrip()) <= depth:
+        break
+    if line == old:
+        lines[index:index + 1] = new.split('\n') if new else []
+        with open(output_path, 'w', encoding='utf-8') as handle:
+            handle.write('\n'.join(lines))
+        sys.exit(0)
+sys.stderr.write('doctor_section: %r not found under %r\n' % (old, section))
+sys.exit(2)
+PY
+}
+
+# delete_step <source> <step-name> <output>: a copy of <source> without the
+# step whose `name:` is <step-name>, from its opening `- ` list item through
+# the line before the next item at that depth (or the end of its job).
+delete_step() {
+  local source_path="$1" step="$2" output_path="$3"
+  STEP_NAME="$step" python3 - "$source_path" "$output_path" <<'PY'
+import os
+import sys
+
+source_path, output_path = sys.argv[1], sys.argv[2]
+wanted = os.environ['STEP_NAME']
+with open(source_path, encoding='utf-8') as handle:
+    lines = handle.read().split('\n')
+name_indexes = [index for index, line in enumerate(lines) if line.strip() == 'name: %s' % wanted]
+if len(name_indexes) != 1:
+    sys.stderr.write('delete_step: %d steps named %r\n' % (len(name_indexes), wanted))
+    sys.exit(2)
+start = name_indexes[0]
+while not lines[start].lstrip().startswith('- '):
+    start -= 1
+depth = len(lines[start]) - len(lines[start].lstrip())
+end = start + 1
+while end < len(lines):
+    line = lines[end]
+    if line.strip() and len(line) - len(line.lstrip()) <= depth:
+        break
+    end += 1
+# Comments directly above the next step belong to it, not to this one.
+while end - 1 > start and lines[end - 1].lstrip().startswith('#'):
+    end -= 1
+del lines[start:end]
+with open(output_path, 'w', encoding='utf-8') as handle:
+    handle.write('\n'.join(lines))
+PY
+}
+
 # Shared checks for W13, W14 and W15 (SPEC-078 lever one). Each is a plain
 # function rather than a script, so the healthy assertion and its adversarial
 # case run the identical code against a healthy and a doctored input, the
@@ -823,30 +1193,50 @@ w1_check() {
   [ "$status" -eq 1 ]
 }
 
-# W2. The aggregator runs on a dependency failure and on a dispatch.
+# W2. The aggregator runs on a dependency failure, on a push to main and on a
+# dispatch: the push run is main's verdict, and a dispatch is the manual way to
+# produce the required check on a head no pull request event reached.
 
-@test "W2: the aggregator's if: admits always() and workflow_dispatch, never negated" {
-  require_yaml_parser
-  local expression
-  expression="$(read_workflow if "$WORKFLOW" audit-ci-tests)"
+# w2_check <workflow>: 0 when the aggregator's if: admits always(), push and
+# workflow_dispatch and negates neither event.
+w2_check() {
+  local workflow="$1" expression event
+  expression="$(read_workflow if "$workflow" audit-ci-tests)" || return 1
   printf '%s' "$expression" | grep -qF "always()" || { echo "aggregator if: missing always(): ${expression}" >&2; return 1; }
-  printf '%s' "$expression" | grep -qF "workflow_dispatch" || { echo "aggregator if: missing workflow_dispatch: ${expression}" >&2; return 1; }
-  printf '%s' "$expression" | grep -qF -- "!= 'workflow_dispatch'" && { echo "aggregator if: negates workflow_dispatch: ${expression}" >&2; return 1; }
+  for event in push workflow_dispatch; do
+    printf '%s' "$expression" | grep -qF -- "github.event_name == '$event'" || { echo "aggregator if: missing $event: ${expression}" >&2; return 1; }
+    printf '%s' "$expression" | grep -qF -- "!= '$event'" && { echo "aggregator if: negates $event: ${expression}" >&2; return 1; }
+  done
   true
+}
+
+@test "W2: the aggregator's if: admits always(), push and workflow_dispatch, never negated" {
+  require_yaml_parser
+  w2_check "$WORKFLOW"
 }
 
 @test "W2 adversarial: stripping always() from the aggregator's if: is caught" {
   require_yaml_parser
-  local doctored="$BATS_TEST_TMPDIR/w2.yml"
-  replace_line "$WORKFLOW" \
-    "    if: always() && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch')" \
-    "    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'" \
-    "$doctored"
+  local doctored="$BATS_TEST_TMPDIR/w2.yml" line mutated
+  line="$(sole_line_matching "$WORKFLOW" '^    if: always\(\) && \(')" || return 1
+  mutated="$(printf '%s' "$line" | sed 's/always() && //')"
+  assert_doctored "$line" "$mutated" "stripping always()" || return 1
+  replace_line "$WORKFLOW" "$line" "$mutated" "$doctored"
 
-  local expression
-  expression="$(read_workflow if "$doctored" audit-ci-tests)"
-  printf '%s' "$expression" | grep -qF "always()" && { echo "doctoring failed to strip always()" >&2; return 1; }
-  true
+  run w2_check "$doctored"
+  [ "$status" -ne 0 ] || { echo "an aggregator if: without always() passed W2" >&2; return 1; }
+}
+
+@test "W2 adversarial: dropping push from the aggregator's if: is caught" {
+  require_yaml_parser
+  local doctored="$BATS_TEST_TMPDIR/w2-push.yml" line mutated
+  line="$(sole_line_matching "$WORKFLOW" '^    if: always\(\) && \(')" || return 1
+  mutated="$(printf '%s' "$line" | sed "s/ || github.event_name == 'push'//")"
+  assert_doctored "$line" "$mutated" "dropping the push admission" || return 1
+  replace_line "$WORKFLOW" "$line" "$mutated" "$doctored"
+
+  run w2_check "$doctored"
+  [ "$status" -ne 0 ] || { echo "an aggregator if: without push passed W2" >&2; return 1; }
 }
 
 # W3. The aggregator actually adjudicates every entry in its own needs: list:
@@ -886,10 +1276,12 @@ w1_check() {
   dependency="$(read_workflow needs "$WORKFLOW" audit-ci-tests | grep '.' | tail -1)"
   [ -n "$dependency" ] || { echo "the aggregator declares no needs: to doctor" >&2; return 1; }
 
-  binding="$(sole_line_matching "$WORKFLOW" "needs\.${dependency}\.result")" || return 1
-  delete_line "$WORKFLOW" "$binding" "$doctored"
-  assert_doctored "$binding" "$(sole_line_matching "$doctored" "needs\.${dependency}\.result" 2>/dev/null || true)" \
-    "dropping the ${dependency} binding" || return 1
+  # The reporter job binds the same result for its own use, so the binding is
+  # dropped inside the aggregator only; doctor_section fails when it is not
+  # there, so the case cannot assert against an undoctored aggregator.
+  binding="$(grep -E "needs\.${dependency}\.result" "$WORKFLOW" | sed -n 1p)"
+  [ -n "$binding" ] || { echo "no line binds needs.${dependency}.result" >&2; return 1; }
+  doctor_section "$WORKFLOW" "  audit-ci-tests:" "$binding" "" "$doctored" || return 1
 
   [ "$(read_workflow aggok "$doctored" audit-ci-tests)" = "no" ] || {
     echo "needs entry ${dependency} still read as adjudicated with nothing reading its result" >&2
@@ -897,52 +1289,132 @@ w1_check() {
   }
 }
 
-# W4. No step anywhere in the workflow is gated on a dispatch-skipped filter
-# alone, across every shard leg.
+# W4. A push or dispatch run has no paths-filter output (the filter step runs
+# on pull_request only), so every step and job gated on one has to admit both
+# events itself, or a push to main or a manual re-run silently skips it. And
+# every FULL_RUN expression has to read true for both, or they plan
+# change-scoped from a filter that never ran.
+#
+# Exempt, and not read here: steps whose `if:` reads only
+# steps.selection.outputs. Push and dispatch reach them through the selection
+# step's own `if:` and its `--full` arm, which W27 evaluates. And the
+# `report-main-status` job, which is push-to-main only by design and is pinned
+# exactly by W22.
 
-@test "W4: no step in the workflow is gated on steps.filter.outputs. without also admitting workflow_dispatch" {
-  require_yaml_parser
-  local job_id expression gaps="" count=0
+# w4_check <workflow>: 0 when every filter-gated step and every job but the
+# reporter admit push and workflow_dispatch, negating neither, and every
+# FULL_RUN expression on the bats legs evaluates true for both events.
+w4_check() {
+  local workflow="$1" job_id expression gaps="" count=0 event shard step value full_run_count
   while IFS=$'\t' read -r job_id expression; do
     [ -n "$job_id" ] || continue
     count=$((count + 1))
-    if printf '%s' "$expression" | grep -qF -- "!= 'workflow_dispatch'"; then
-      gaps="${gaps}${job_id}: negates workflow_dispatch -> ${expression}"$'\n'
-      continue
-    fi
-    printf '%s' "$expression" | grep -qF -- "workflow_dispatch" || gaps="${gaps}${job_id}: excludes workflow_dispatch -> ${expression}"$'\n'
-  done < <(read_workflow filterifs "$WORKFLOW")
-
+    for event in push workflow_dispatch; do
+      if printf '%s' "$expression" | grep -qF -- "!= '$event'"; then
+        gaps="${gaps}${job_id}: negates $event -> ${expression}"$'\n'
+        continue
+      fi
+      printf '%s' "$expression" | grep -qF -- "github.event_name == '$event'" || gaps="${gaps}${job_id}: excludes $event -> ${expression}"$'\n'
+    done
+  done < <(read_workflow filterifs "$workflow")
   [ "$count" -gt 0 ] || {
-    echo "no step in the workflow is gated on steps.filter.outputs.; this test asserted nothing" >&2
+    echo "no step in the workflow is gated on steps.filter.outputs.; W4 asserted nothing" >&2
     return 1
   }
+
+  for job_id in $(read_workflow jobs "$workflow"); do
+    [ "$job_id" = "report-main-status" ] && continue
+    expression="$(read_workflow if "$workflow" "$job_id")" || return 1
+    [ -n "$expression" ] || continue
+    for event in push workflow_dispatch; do
+      printf '%s' "$expression" | grep -qF -- "github.event_name == '$event'" || gaps="${gaps}job ${job_id}: excludes $event -> ${expression}"$'\n'
+    done
+  done
+
+  full_run_count=0
+  for shard in $(bash "$BATS_SHARDS" shards); do
+    for event in push workflow_dispatch; do
+      while IFS=$'\t' read -r step value; do
+        [ -n "$step" ] || continue
+        full_run_count=$((full_run_count + 1))
+        [ "$value" = "true" ] || gaps="${gaps}${step} on ${shard}: FULL_RUN reads ${value} for ${event}"$'\n'
+      done < <(read_workflow evalenv "$workflow" shards FULL_RUN "$shard" "event=$event")
+    done
+  done
+  [ "$full_run_count" -gt 0 ] || {
+    echo "no step sets FULL_RUN on any bats leg; the full-run half of W4 asserted nothing" >&2
+    return 1
+  }
+  # And only those, plus `code`: a pull request arming `scoped` alone plans
+  # change-scoped, which is the whole point of the arm.
+  for shard in $(bash "$BATS_SHARDS" shards); do
+    while IFS=$'\t' read -r step value; do
+      [ -n "$step" ] || continue
+      [ "$value" = "false" ] || gaps="${gaps}${step} on ${shard}: FULL_RUN reads ${value} for a scoped-only pull request"$'\n'
+    done < <(read_workflow evalenv "$workflow" shards FULL_RUN "$shard" event=pull_request filter.scoped=true)
+    while IFS=$'\t' read -r step value; do
+      [ -n "$step" ] || continue
+      [ "$value" = "true" ] || gaps="${gaps}${step} on ${shard}: FULL_RUN reads ${value} for a pull request arming code"$'\n'
+    done < <(read_workflow evalenv "$workflow" shards FULL_RUN "$shard" event=pull_request filter.code=true)
+  done
   [ -z "$gaps" ] || { printf '%s' "$gaps" >&2; return 1; }
 }
 
-@test "W4 adversarial: dropping the dispatch admission from one shard step is caught" {
+@test "W4: every filter-gated step and job admits push and workflow_dispatch, and FULL_RUN reads true for both" {
+  require_yaml_parser
+  w4_check "$WORKFLOW"
+}
+
+@test "W4 adversarial: dropping the dispatch admission from one filter-gated step is caught" {
   require_yaml_parser
   local doctored="$BATS_TEST_TMPDIR/w4.yml" line mutated
 
-  line="$(gate_line_for_step "$WORKFLOW" 'Run a bats shard')" || return 1
+  line="$(gate_line_for_step "$WORKFLOW" "Plan this shard's suites")" || return 1
   # Removes the disjunct wherever it sits in the line, not anchored on
   # end-of-line, so this survives a later conjunct appended after it.
   mutated="$(printf '%s' "$line" | sed "s/ || github.event_name == 'workflow_dispatch'//")"
   assert_doctored "$line" "$mutated" "dropping the dispatch admission" || return 1
-  # replace_line replaces every line equal to the search text, so any other
-  # step carrying this exact gate is doctored too. That still produces the gap
-  # this test asserts.
   replace_line "$WORKFLOW" "$line" "$mutated" "$doctored"
 
-  local job_id expression found_gap=""
-  while IFS=$'\t' read -r job_id expression; do
-    [ -n "$job_id" ] || continue
-    printf '%s' "$expression" | grep -qF -- "workflow_dispatch" || found_gap="x"
-  done < <(read_workflow filterifs "$doctored")
-  [ -n "$found_gap" ] || { echo "doctoring the step's if: did not produce a gap" >&2; return 1; }
+  run w4_check "$doctored"
+  [ "$status" -ne 0 ] || { echo "a filter-gated step without the dispatch admission passed W4" >&2; return 1; }
 }
 
-# W5. Every job is capped with an integer literal.
+@test "W4 adversarial: dropping the push admission from one filter-gated step is caught" {
+  require_yaml_parser
+  local doctored="$BATS_TEST_TMPDIR/w4-push.yml" line mutated
+
+  line="$(gate_line_for_step "$WORKFLOW" 'Run the INV-7 concurrency meter')" || return 1
+  mutated="$(printf '%s' "$line" | sed "s/ || github.event_name == 'push'//")"
+  assert_doctored "$line" "$mutated" "dropping the push admission" || return 1
+  replace_line "$WORKFLOW" "$line" "$mutated" "$doctored"
+
+  run w4_check "$doctored"
+  [ "$status" -ne 0 ] || { echo "a filter-gated step without the push admission passed W4" >&2; return 1; }
+  printf '%s\n' "$output" | grep -qF -- "excludes push" || { echo "W4 did not name the missing push admission: $output" >&2; return 1; }
+}
+
+@test "W4 adversarial: a FULL_RUN that ignores push is caught" {
+  require_yaml_parser
+  local doctored="$BATS_TEST_TMPDIR/w4-full-run.yml" line mutated
+
+  line="$(sole_line_matching "$WORKFLOW" '^ *FULL_RUN: ')" || return 1
+  mutated="$(printf '%s' "$line" | sed "s/ || github.event_name == 'push'//")"
+  assert_doctored "$line" "$mutated" "dropping push from FULL_RUN" || return 1
+  replace_line "$WORKFLOW" "$line" "$mutated" "$doctored"
+
+  run w4_check "$doctored"
+  [ "$status" -ne 0 ] || { echo "a FULL_RUN false on push passed W4" >&2; return 1; }
+  printf '%s\n' "$output" | grep -qF -- "FULL_RUN reads false for push" || { echo "W4 did not name the FULL_RUN gap: $output" >&2; return 1; }
+}
+
+# W5. Every job is capped with an integer literal, and every run step that
+# executes bats, the sandbox runner, the concurrency meter or the commitlint
+# suites carries its own integer literal cap strictly below its job's. The job
+# cap is the outer bound a matrix shares across legs; the step cap is what
+# fails a hung leg at its own bound instead of the heaviest leg's. An
+# expression-valued cap is refused because it is not a bound anything here can
+# read.
 
 @test "W5: every job declares an integer cap" {
   require_yaml_parser
@@ -951,6 +1423,55 @@ w1_check() {
     [ "$(read_workflow capkind "$WORKFLOW" "$job_id")" = "int" ] || gaps="${gaps}${job_id} "
   done
   [ -z "$gaps" ] || { echo "job(s) without an integer timeout-minutes:${gaps}" >&2; return 1; }
+}
+
+# w5_step_caps <workflow>: 0 when every runner step in every job declares an
+# integer cap strictly below that job's integer cap, over a non-empty set.
+w5_step_caps() {
+  local workflow="$1" job_id job_cap name kind value gaps="" count=0
+  for job_id in $(read_workflow jobs "$workflow"); do
+    while IFS=$'\t' read -r name kind value; do
+      [ -n "$name" ] || continue
+      count=$((count + 1))
+      job_cap="$(read_workflow capvalue "$workflow" "$job_id" 2>/dev/null)" || {
+        gaps="${gaps}${job_id}: no integer job cap above step ${name}"$'\n'
+        continue
+      }
+      if [ "$kind" != "int" ]; then
+        gaps="${gaps}${job_id} [${name}]: step cap is ${kind} (${value})"$'\n'
+      elif [ "$value" -ge "$job_cap" ]; then
+        gaps="${gaps}${job_id} [${name}]: step cap ${value} is not below the job cap ${job_cap}"$'\n'
+      fi
+    done < <(read_workflow stepcaps "$workflow" "$job_id")
+  done
+  [ "$count" -gt 0 ] || { echo "no runner step found in any job; W5's step half asserted nothing" >&2; return 1; }
+  [ -z "$gaps" ] || { printf '%s' "$gaps" >&2; return 1; }
+}
+
+@test "W5: every runner step declares an integer cap strictly below its job's" {
+  require_yaml_parser
+  w5_step_caps "$WORKFLOW"
+}
+
+@test "W5 adversarial: a runner step with no cap, an expression cap, or a cap equal to the job's is caught" {
+  require_yaml_parser
+  local section line doctored="$BATS_TEST_TMPDIR/w5-step.yml" job_cap
+  section="$(gate_line_for_step "$WORKFLOW" 'Run a bats shard (hooks group)')" || return 1
+  line="$(read_workflow stepcaps "$WORKFLOW" shards | awk -F'\t' '$1 == "Run a bats shard (hooks group)" { print "        timeout-minutes: " $3 }')"
+  [ -n "$line" ] || { echo "the hooks group run step has no cap to doctor" >&2; return 1; }
+  job_cap="$(read_workflow capvalue "$WORKFLOW" shards)" || return 1
+
+  doctor_section "$WORKFLOW" "$section" "$line" "" "$doctored" || return 1
+  run w5_step_caps "$doctored"
+  [ "$status" -ne 0 ] || { echo "a runner step with its cap removed passed W5" >&2; return 1; }
+
+  doctor_section "$WORKFLOW" "$section" "$line" "        timeout-minutes: \${{ 5 }}" "$doctored" || return 1
+  run w5_step_caps "$doctored"
+  [ "$status" -ne 0 ] || { echo "an expression-valued step cap passed W5" >&2; return 1; }
+
+  doctor_section "$WORKFLOW" "$section" "$line" "        timeout-minutes: ${job_cap}" "$doctored" || return 1
+  run w5_step_caps "$doctored"
+  [ "$status" -ne 0 ] || { echo "a step cap equal to the job cap passed W5" >&2; return 1; }
 }
 
 @test "W5 adversarial: a job with no timeout-minutes is caught" {
@@ -1068,15 +1589,44 @@ w1_check() {
   local doctored="$BATS_TEST_TMPDIR/w8.yml" line mutated
 
   # Anchored on the script's own path, not on the surrounding if:, so this
-  # stays stable across the if: edits later phases make; those never touch
-  # an existing step's run: body.
-  line="$(sole_line_matching "$WORKFLOW" 'bats-shards\.sh run "\$SHARD"')" || return 1
+  # stays stable across edits to the step gates. The selection step's full
+  # arm is the one line that spells it once.
+  line="$(sole_line_matching "$WORKFLOW" 'bats-shards\.sh plan "\$SHARD" --full')" || return 1
   mutated="$(printf '%s' "$line" | sed 's/"\$SHARD"/"${{ matrix.shard }}"/')"
   assert_doctored "$line" "$mutated" "interpolating matrix.shard" || return 1
   replace_line "$WORKFLOW" "$line" "$mutated" "$doctored"
 
   [ -n "$(read_workflow runinterp "$doctored")" ] || {
     echo "interpolating matrix.shard into the run: body was not caught" >&2
+    return 1
+  }
+}
+
+# The same rule for code an action runs from its inputs: an
+# actions/github-script `script:` (or any action's `script` input) with an
+# expression in it is a run: body by another name. The reporter's shape,
+# every value through `env:` into a `run:` that names none, passes both halves.
+@test "W8: no script-executing action interpolates an expression into its inputs" {
+  require_yaml_parser
+  local hits
+  hits="$(read_workflow scriptinterp "$WORKFLOW")" || return 1
+  [ -z "$hits" ] || {
+    echo "a script-executing action interpolates an expression into its inputs:" >&2
+    printf '%s\n' "$hits" >&2
+    return 1
+  }
+}
+
+@test "W8 adversarial: a github-script step interpolating the head commit message is caught" {
+  require_yaml_parser
+  local doctored="$BATS_TEST_TMPDIR/w8-script.yml"
+  # insert_after lands on the first `    steps:`, the shards job's; the check
+  # reads every job, so which one holds the step is not what this is about.
+  insert_after "$WORKFLOW" "    steps:" \
+    $'      - uses: actions/github-script@0000000000000000000000000000000000000000\n        with:\n          script: ${{ github.event.head_commit.message }}' \
+    "$doctored"
+  [ -n "$(read_workflow scriptinterp "$doctored")" ] || {
+    echo "a github-script step interpolating the head commit message was not caught" >&2
     return 1
   }
 }
@@ -1368,6 +1918,7 @@ EOF
   printf '%s' "$legs" | LC_ALL=C sort -u
 }
 
+# bats test_tags=whole-tree
 @test "W10: the apt step's shard list equals the exchange groups that need zsh or a YAML parser" {
   local declared legs
   # read_workflow's reader imports yaml unconditionally, so without this gate a box
@@ -1396,6 +1947,7 @@ EOF
   }
 }
 
+# bats test_tags=whole-tree
 @test "W10 adversarial: dropping a needed shard from the apt step is caught" {
   local doctored="$BATS_TEST_TMPDIR/dropped.yml" declared needed line mutated
   require_yaml_parser
@@ -1940,12 +2492,14 @@ concurrency_tree_needs_packages() {
   }
 }
 
-# W11. workflow-filter-coverage.bats only reaches a repo-relative path a gated
-# step names literally in its run: body, and none of the literal tokens in
-# shards' gated steps is or implies .gaia/release-exclude (each names a
-# runner, an installer, or a composite action, never the files those read),
-# so it is a transitive input that guard never reaches. These two tests are
-# the regression guard for the lines SPEC-072 added to close that hole.
+# W11. .gaia/release-exclude stays a full-run trigger in `code`. Its readers
+# mostly reach it through a script they call and never name it, so the change
+# selector cannot find them, and workflow-filter-coverage.bats cannot either:
+# it only reaches a repo-relative path a gated step names literally in its
+# run: body, and none of the literal tokens in shards' gated steps is or
+# implies the file (each names a runner, an installer, or a composite action,
+# never the files those read). W20 pins the whole `code` list to the change
+# classifier's harness list; these tests keep this one entry's reason in view.
 #
 # .gaia/manifest.json is the same shape on the cli-tests side, and it is
 # asserted here for the same reason. None of the literal tokens in
@@ -2116,3 +2670,550 @@ concurrency_tree_needs_packages() {
   }
 }
 
+
+# without_substring <text> <substring>: <text> with the first occurrence of
+# <substring> removed, matched literally (a sed or pattern substitution would
+# read the brackets and quotes these gates carry as syntax).
+without_substring() {
+  local text="$1" needle="$2"
+  case "$text" in
+    *"$needle"*) printf '%s%s' "${text%%"$needle"*}" "${text#*"$needle"}" ;;
+    *) printf '%s' "$text" ;;
+  esac
+}
+
+# W20. Harness lockstep. The `code` filter is what plans every bats leg whole
+# on a pull request, and the change classifier is what plans a leg whole from
+# inside the sharder; they must name the same harness machinery, or a path
+# arms one and not the other. And every install input the classifier lists
+# must arm the change-scoped legs (`scoped`) and the commitlint leg, whose
+# suites run against the install those inputs produce.
+
+CHANGE_SCOPE_SCRIPT_RELATIVE='.gaia/tests/bats-change-scope.sh'
+
+# w20_check <workflow> <harness-list-file> <install-input-file>
+w20_check() {
+  local workflow="$1" harness_file="$2" install_file="$3" code_list expected missing output_name listed
+  code_list="$(read_workflow filterlist "$workflow" shards code | LC_ALL=C sort -u)" || return 1
+  expected="$(LC_ALL=C sort -u "$harness_file")"
+  [ -n "$expected" ] || { echo "the classifier listed no harness path; W20 would assert nothing" >&2; return 1; }
+  [ "$code_list" = "$expected" ] || {
+    echo "the code filter and the classifier's harness list differ:" >&2
+    diff <(printf '%s\n' "$expected") <(printf '%s\n' "$code_list") >&2
+    return 1
+  }
+  [ -s "$install_file" ] || { echo "the classifier listed no install input; W20 would assert nothing" >&2; return 1; }
+  for output_name in scoped commitlint; do
+    listed="$(read_workflow filterlist "$workflow" shards "$output_name")" || return 1
+    missing="$(printf '%s\n' "$listed" | grep -vxF -f - "$install_file")" || true
+    [ -z "$missing" ] || {
+      echo "the $output_name filter is missing install inputs:" >&2
+      printf '%s\n' "$missing" >&2
+      return 1
+    }
+  done
+}
+
+w20_lists() {
+  bash "$REPO_ROOT/$CHANGE_SCOPE_SCRIPT_RELATIVE" --list-harness-paths >"$BATS_TEST_TMPDIR/harness" || return 1
+  bash "$REPO_ROOT/$CHANGE_SCOPE_SCRIPT_RELATIVE" --list-install-inputs >"$BATS_TEST_TMPDIR/install" || return 1
+}
+
+@test "W20: the code filter equals the classifier's harness list, and scoped and commitlint list every install input" {
+  require_yaml_parser
+  w20_lists || return 1
+  w20_check "$WORKFLOW" "$BATS_TEST_TMPDIR/harness" "$BATS_TEST_TMPDIR/install"
+}
+
+@test "W20 adversarial: dropping one harness glob from code, or one install input from commitlint, is caught" {
+  require_yaml_parser
+  local doctored="$BATS_TEST_TMPDIR/w20.yml" line
+  w20_lists || return 1
+
+  line="$(sole_line_matching "$WORKFLOW" "^ *- '\\*\\*/\\*-lib\\.sh'\$")" || return 1
+  delete_line "$WORKFLOW" "$line" "$doctored"
+  run w20_check "$doctored" "$BATS_TEST_TMPDIR/harness" "$BATS_TEST_TMPDIR/install"
+  [ "$status" -ne 0 ] || { echo "a code filter missing a harness glob passed W20" >&2; return 1; }
+
+  doctor_section "$WORKFLOW" "            commitlint:" "              - '.gaia/cli/package.json'" "" "$doctored" || return 1
+  run w20_check "$doctored" "$BATS_TEST_TMPDIR/harness" "$BATS_TEST_TMPDIR/install"
+  [ "$status" -ne 0 ] || { echo "a commitlint filter missing an install input passed W20" >&2; return 1; }
+  printf '%s\n' "$output" | grep -qxF -- '.gaia/cli/package.json' || { echo "W20 did not name the missing input: $output" >&2; return 1; }
+}
+
+# W21. The permissions map, exactly. The workflow default-denies, and each job
+# holds only what it uses: the shards read the tree and the pull request's
+# changed files, the aggregator reads nothing, and the reporter is the one job
+# with a write scope, issues only. A job joining the workflow must be added
+# here on purpose.
+
+# w21_check <workflow>
+w21_check() {
+  local workflow="$1" job_id expected actual gaps=""
+  [ "$(read_workflow permissions "$workflow")" = "{}" ] || gaps="${gaps}top-level permissions is not {}"$'\n'
+  for job_id in $(read_workflow jobs "$workflow"); do
+    case "$job_id" in
+      shards) expected='{"contents": "read", "pull-requests": "read"}' ;;
+      audit-ci-tests) expected='{}' ;;
+      report-main-status) expected='{"actions": "read", "contents": "read", "issues": "write"}' ;;
+      *)
+        gaps="${gaps}job ${job_id} is not in the permissions map"$'\n'
+        continue
+        ;;
+    esac
+    actual="$(read_workflow permissions "$workflow" "$job_id")" || return 1
+    [ "$actual" = "$expected" ] || gaps="${gaps}job ${job_id}: permissions ${actual}, expected ${expected}"$'\n'
+  done
+  [ -z "$gaps" ] || { printf '%s' "$gaps" >&2; return 1; }
+}
+
+@test "W21: every job's permissions equal the map, and the workflow default-denies" {
+  require_yaml_parser
+  w21_check "$WORKFLOW"
+}
+
+@test "W21 adversarial: contents: write on the reporter, issues: write on shards, or no top-level {} is caught" {
+  require_yaml_parser
+  local doctored="$BATS_TEST_TMPDIR/w21.yml"
+
+  doctor_section "$WORKFLOW" "  report-main-status:" "      contents: read" "      contents: write" "$doctored" || return 1
+  run w21_check "$doctored"
+  [ "$status" -ne 0 ] || { echo "contents: write on the reporter passed W21" >&2; return 1; }
+
+  doctor_section "$WORKFLOW" "  shards:" "      pull-requests: read" $'      pull-requests: read\n      issues: write' "$doctored" || return 1
+  run w21_check "$doctored"
+  [ "$status" -ne 0 ] || { echo "issues: write on shards passed W21" >&2; return 1; }
+
+  delete_line "$WORKFLOW" "permissions: {}" "$doctored"
+  run w21_check "$doctored"
+  [ "$status" -ne 0 ] || { echo "a workflow without top-level permissions: {} passed W21" >&2; return 1; }
+}
+
+# W22. The reporter's scope. It writes to the issue tracker, so it runs on a
+# push to main and nothing else, after the legs it reports on, with no
+# credential left in the checkout and every value through env:.
+
+REPORTER_ENVIRONMENT='BEFORE_SHA,GH_TOKEN,HEAD_SHA,REPOSITORY,RUN_ATTEMPT,RUN_ID,RUN_URL,SHARDS_RESULT'
+
+# w22_check <workflow>
+w22_check() {
+  local workflow="$1" expression needs persist steps name keys body count=0
+  expression="$(read_workflow if "$workflow" report-main-status)" || return 1
+  [ "$expression" = "always() && github.event_name == 'push' && github.ref == 'refs/heads/main'" ] || {
+    echo "report-main-status if: is not push-to-main only: ${expression}" >&2
+    return 1
+  }
+  needs="$(read_workflow needs "$workflow" report-main-status)" || return 1
+  [ "$needs" = "shards" ] || { echo "report-main-status needs: is not exactly [shards]: ${needs}" >&2; return 1; }
+  persist="$(read_workflow usesfield "$workflow" report-main-status actions/checkout persist-credentials)" || return 1
+  [ "$persist" = "false" ] || { echo "report-main-status checkout does not set persist-credentials: false" >&2; return 1; }
+  steps="$(read_workflow runsteps "$workflow" report-main-status)" || return 1
+  while IFS=$'\t' read -r name keys body; do
+    [ -n "$name" ] || continue
+    count=$((count + 1))
+    case "$body" in
+      *'${{'*) echo "report-main-status step ${name} interpolates into its run: body" >&2; return 1 ;;
+    esac
+    case "$body" in
+      *report-main-status.sh*)
+        [ "$keys" = "$REPORTER_ENVIRONMENT" ] || {
+          echo "report-main-status env carries ${keys}, expected ${REPORTER_ENVIRONMENT}" >&2
+          return 1
+        }
+        ;;
+    esac
+  done <<<"$steps"
+  [ "$count" -gt 0 ] || { echo "report-main-status has no run step" >&2; return 1; }
+  printf '%s\n' "$steps" | grep -qF 'report-main-status.sh' || { echo "report-main-status does not run the reporter" >&2; return 1; }
+}
+
+@test "W22: the reporter runs on push to main only, after shards, with no persisted credential and env-only values" {
+  require_yaml_parser
+  w22_check "$WORKFLOW"
+}
+
+@test "W22 adversarial: a reporter admitting dispatch or pull_request, or persisting credentials, is caught" {
+  require_yaml_parser
+  local doctored="$BATS_TEST_TMPDIR/w22.yml" line event
+  line="$(sole_line_matching "$WORKFLOW" "^    if: always\\(\\) && github\\.event_name == 'push' && github\\.ref == 'refs/heads/main'\$")" || return 1
+  for event in workflow_dispatch pull_request; do
+    replace_line "$WORKFLOW" "$line" "${line} || github.event_name == '${event}'" "$doctored"
+    run w22_check "$doctored"
+    [ "$status" -ne 0 ] || { echo "a reporter admitting ${event} passed W22" >&2; return 1; }
+  done
+
+  line="$(sole_line_matching "$WORKFLOW" '^ *persist-credentials: false$')" || return 1
+  delete_line "$WORKFLOW" "$line" "$doctored"
+  run w22_check "$doctored"
+  [ "$status" -ne 0 ] || { echo "a reporter checkout without persist-credentials: false passed W22" >&2; return 1; }
+}
+
+# W23. The reporter closes the issue only forward. A green run on a commit
+# that is not the red one or a descendant of it (a re-run of an older commit,
+# a run that finished out of order) proves nothing about main's tip, so the
+# close sits behind the compare call's verdict. Read statically from the
+# script: every close is inside the `identical | ahead` arm of a case over the
+# status a compare API call produced.
+
+REPORTER_RELATIVE='.gaia/tests/report-main-status.sh'
+
+# w23_check <script>
+w23_check() {
+  awk '
+    /^[[:space:]]*#/ { next }
+    /compare_status=.*api .*\/compare\// { compared = NR }
+    /case "\$compare_status" in/ { if (compared) in_case = 1; next }
+    in_case && /^[[:space:]]*(identical[[:space:]]*\|[[:space:]]*ahead|ahead[[:space:]]*\|[[:space:]]*identical)\)/ { in_arm = 1; next }
+    in_case && /^[[:space:]]*esac/ { in_case = 0; in_arm = 0 }
+    in_arm && /;;/ { in_arm = 0 }
+    /issue close/ {
+      closes++
+      if (!in_arm) { printf "line %d closes outside the identical|ahead arm of a compare verdict\n", NR > "/dev/stderr"; bad = 1 }
+    }
+    END {
+      if (!closes) { print "the reporter has no close path; W23 asserted nothing" > "/dev/stderr"; exit 1 }
+      exit bad
+    }
+  ' "$1"
+}
+
+@test "W23: the reporter closes the issue only after a compare verdict of identical or ahead" {
+  require_repo_path -f "$REPO_ROOT/$REPORTER_RELATIVE" "report-main-status.sh" || return 1
+  w23_check "$REPO_ROOT/$REPORTER_RELATIVE"
+}
+
+@test "W23 adversarial: a reporter copy with the comparison removed is caught" {
+  require_repo_path -f "$REPO_ROOT/$REPORTER_RELATIVE" "report-main-status.sh" || return 1
+  local copy="$BATS_TEST_TMPDIR/report-main-status.sh"
+  grep -vE 'compare_status=.*api .*/compare/|case "\$compare_status" in' "$REPO_ROOT/$REPORTER_RELATIVE" >"$copy" || true
+  cmp -s "$copy" "$REPO_ROOT/$REPORTER_RELATIVE" && { echo "removing the comparison left the copy unchanged" >&2; return 1; }
+  run w23_check "$copy"
+  [ "$status" -ne 0 ] || { echo "a reporter that closes without a compare verdict passed W23" >&2; return 1; }
+}
+
+# W24. The concurrency key. A push run's group is its own commit, so three
+# merges in quick succession each run to completion with their own verdict
+# (one shared group would cancel one and drop another as pending); a pull
+# request keeps one group per ref and cancels the superseded run.
+
+# w24_check <workflow>
+w24_check() {
+  local workflow="$1" lines group cancel
+  lines="$(read_workflow concurrency "$workflow")" || return 1
+  group="$(printf '%s\n' "$lines" | awk -F'\t' '$1 == "group" { print $2 }')"
+  cancel="$(printf '%s\n' "$lines" | awk -F'\t' '$1 == "cancel" { print $2 }')"
+  printf '%s' "$group" | grep -qF -- "github.event_name == 'push' && github.sha || github.ref" || {
+    echo "the top-level concurrency group is not keyed per commit for push and per ref otherwise: ${group}" >&2
+    return 1
+  }
+  [ "$cancel" = "github.event_name == 'pull_request'" ] || {
+    echo "cancel-in-progress is not true for pull_request only: ${cancel}" >&2
+    return 1
+  }
+}
+
+@test "W24: the concurrency group keys on the commit for push and the ref otherwise, cancelling pull requests only" {
+  require_yaml_parser
+  w24_check "$WORKFLOW"
+}
+
+@test "W24 adversarial: a static group key, or cancel-in-progress: true, is caught" {
+  require_yaml_parser
+  local doctored="$BATS_TEST_TMPDIR/w24.yml" line
+  line="$(sole_line_matching "$WORKFLOW" '^  group: ')" || return 1
+  replace_line "$WORKFLOW" "$line" "  group: \${{ github.workflow }}" "$doctored"
+  run w24_check "$doctored"
+  [ "$status" -ne 0 ] || { echo "a static concurrency group passed W24" >&2; return 1; }
+
+  line="$(sole_line_matching "$WORKFLOW" '^  cancel-in-progress: ')" || return 1
+  replace_line "$WORKFLOW" "$line" "  cancel-in-progress: true" "$doctored"
+  run w24_check "$doctored"
+  [ "$status" -ne 0 ] || { echo "cancel-in-progress: true passed W24" >&2; return 1; }
+}
+
+# W25. Install gating. A bats leg whose plan selected nothing installs nothing
+# and runs nothing (an apt, Node or browser install on an empty leg is the
+# cost, and the apt mirror the flake, this exists to avoid), and a leg whose
+# selection step never ran (a pull request arming neither `code` nor
+# `scoped`) runs nothing either. Evaluated per leg from the parsed gates, not
+# by matching gate text, so a gate that reaches the same result another way
+# passes and one that drops the mode reds wherever it sits. The concurrency
+# leg has no selection step and must keep its own bats install.
+
+SELECTION_STEP_NAME="Plan this shard's suites"
+
+# w25_check <workflow>
+w25_check() {
+  local workflow="$1" shard name verdict gaps="" arming selection_body bats_install ran
+  for shard in $(bash "$BATS_SHARDS" shards); do
+    while IFS=$'\t' read -r name verdict; do
+      [ "$verdict" = "run" ] || continue
+      case "$name" in actions/checkout@* | dorny/paths-filter@* | "$SELECTION_STEP_NAME") continue ;; esac
+      gaps="${gaps}${shard}: ${name} runs with mode=none"$'\n'
+    done < <(read_workflow evalgates "$workflow" shards "$shard" event=pull_request filter.scoped=true selection.mode=none)
+    while IFS=$'\t' read -r name verdict; do
+      [ "$verdict" = "run" ] || continue
+      case "$name" in actions/checkout@* | dorny/paths-filter@*) continue ;; esac
+      gaps="${gaps}${shard}: ${name} runs when no filter armed the leg"$'\n'
+    done < <(read_workflow evalgates "$workflow" shards "$shard" event=pull_request)
+  done
+
+  selection_body="$(read_workflow runsteps "$workflow" shards | awk -F'\t' -v name="$SELECTION_STEP_NAME" '$1 == name { print $3 }')"
+  case "$selection_body" in
+    'set -euo pipefail '*) ;;
+    *) gaps="${gaps}the selection step does not open with set -euo pipefail"$'\n' ;;
+  esac
+
+  bats_install="$(read_workflow runsteps "$workflow" shards | awk -F'\t' '$3 == "bash .gaia/tests/install-bats.sh" { print $1 }')"
+  for arming in "event=pull_request filter.code=true" "event=pull_request filter.scoped=true" "event=push" "event=workflow_dispatch"; do
+    # shellcheck disable=SC2086
+    ran="$(read_workflow evalgates "$workflow" shards concurrency $arming | awk -F'\t' '$2 == "run" { print $1 }')"
+    printf '%s\n' "$ran" | grep -qxF -f <(printf '%s\n' "$bats_install") \
+      || gaps="${gaps}concurrency: no bats install runs for ${arming}"$'\n'
+  done
+  [ -z "$gaps" ] || { printf '%s' "$gaps" >&2; return 1; }
+}
+
+@test "W25: an empty or unarmed bats leg installs and runs nothing, and the concurrency leg keeps its bats install" {
+  require_yaml_parser
+  w25_check "$WORKFLOW"
+}
+
+@test "W25 adversarial: dropping the mode gate from the apt step, or deleting the concurrency bats install, is caught" {
+  require_yaml_parser
+  local doctored="$BATS_TEST_TMPDIR/w25.yml" line mutated
+  line="$(gate_line_for_step "$WORKFLOW" 'Install the YAML parser and zsh')" || return 1
+  mutated="$(without_substring "$line" " && contains(fromJSON('[\"full\",\"scoped\"]'), steps.selection.outputs.mode)")"
+  assert_doctored "$line" "$mutated" "dropping the apt step's mode gate" || return 1
+  replace_line "$WORKFLOW" "$line" "$mutated" "$doctored"
+  run w25_check "$doctored"
+  [ "$status" -ne 0 ] || { echo "an apt step without the mode gate passed W25" >&2; return 1; }
+  printf '%s\n' "$output" | grep -qF -- 'Install the YAML parser and zsh runs' || { echo "W25 did not name the apt step: $output" >&2; return 1; }
+
+  delete_step "$WORKFLOW" 'Install pinned bats for the concurrency meter' "$doctored" || return 1
+  run w25_check "$doctored"
+  [ "$status" -ne 0 ] || { echo "a concurrency leg without a bats install passed W25" >&2; return 1; }
+}
+
+# W26. Dependency provisioning. A suite the installed-dependencies guard
+# derives as reading installed dependencies needs the root workspace on its
+# leg, unless another workflow provisions it (its backstop line). The set of
+# legs holding such a suite, rounded up to whole exchange groups for the
+# reason W10's header gives, must equal the RED-suite Node step's leg list.
+# Without this, a reshuffle or a newly marked suite lands on a leg that never
+# installs Node, and the suite fails there (or, if it skips, greens having
+# asserted nothing).
+
+DEPENDENCY_GUARD_RELATIVE='.gaia/tests/installed-dependencies-mark-guard.sh'
+NODE_STEP_NAME='Setup Node for the node-dependent RED suites'
+
+# node_provision_legs <sharder> <root> <derived-file> <backstopped-file>
+#
+# Every leg of every exchange group holding a suite in <derived-file> and not
+# in <backstopped-file>, one per line, LC_ALL=C sorted. Paths in both files
+# are relative to <root>; the sharder's listings are compared after the same
+# absolutizing W10's scan applies. Not piped through a loop, for the reason
+# shard_package_needs gives.
+node_provision_legs() {
+  local sharder="$1" root="$2" derived_file="$3" backstopped_file="$4"
+  local unprovisioned id listing relative_path absolute_path exit_status group legs=''
+  unprovisioned="$(grep -vxF -f "$backstopped_file" "$derived_file" | sed "s|^|$root/|")" || true
+  [ -n "$unprovisioned" ] || return 0
+  for id in $(bash "$sharder" shards); do
+    exit_status=0
+    listing="$(bash "$sharder" files "$id")" || exit_status=$?
+    if [ "$exit_status" -ne 0 ]; then
+      echo "node_provision_legs: the sharder could not list $id (exit $exit_status)" >&2
+      return 1
+    fi
+    while IFS= read -r relative_path || [ -n "$relative_path" ]; do
+      [ -n "$relative_path" ] || continue
+      case "$relative_path" in
+        /*) absolute_path="$relative_path" ;;
+        *) absolute_path="$root/$relative_path" ;;
+      esac
+      if printf '%s\n' "$unprovisioned" | grep -qxF -- "$absolute_path"; then
+        exit_status=0
+        group="$(bash "$sharder" group "$id")" || exit_status=$?
+        if [ "$exit_status" -ne 0 ]; then
+          echo "node_provision_legs: the sharder could not resolve $id's group (exit $exit_status)" >&2
+          return 1
+        fi
+        legs="$legs$group
+"
+        break
+      fi
+    done <<EOF
+$listing
+EOF
+  done
+  [ -n "$legs" ] || return 0
+  printf '%s' "$legs" | LC_ALL=C sort -u
+}
+
+# bats test_tags=whole-tree
+@test "W26: the Node step's leg list equals the groups holding an unprovisioned dependency suite" {
+  require_yaml_parser
+  local declared legs
+  bash "$REPO_ROOT/$DEPENDENCY_GUARD_RELATIVE" --list-derived >"$BATS_TEST_TMPDIR/derived" || return 1
+  bash "$REPO_ROOT/$DEPENDENCY_GUARD_RELATIVE" --list-backstopped >"$BATS_TEST_TMPDIR/backstopped" || return 1
+  [ -s "$BATS_TEST_TMPDIR/derived" ] || { echo "the guard derived no dependency suite; W26 would assert nothing" >&2; return 1; }
+  declared="$(read_workflow stepshards "$WORKFLOW" shards "$NODE_STEP_NAME")" || return 1
+  legs="$(node_provision_legs "$BATS_SHARDS" "$REPO_ROOT" "$BATS_TEST_TMPDIR/derived" "$BATS_TEST_TMPDIR/backstopped")" || return 1
+  [ -n "$legs" ] || { echo "no leg holds an unprovisioned dependency suite; W26 would assert nothing" >&2; return 1; }
+  [ "$declared" = "$legs" ] || {
+    echo "the Node step's leg list and the dependency suites disagree." >&2
+    echo "workflow names:" >&2
+    printf '%s\n' "$declared" >&2
+    echo "unprovisioned dependency suites need, rounded up to whole exchange groups:" >&2
+    printf '%s\n' "$legs" >&2
+    return 1
+  }
+}
+
+# A fixture tree the guard and the sharder both read: the guard's fallback
+# discovery (a root outside git) finds every suite in it, and the sharder's
+# seams point its scripts group at the directory holding the marked suite.
+# The marked suite runs vitest through pnpm, which the guard derives; with a
+# backstop line naming a workflow that names it, the guard lists it as
+# provisioned. The mark line is assembled at run time so this suite never
+# carries it at column 0 itself.
+seed_dependency_fixture() {
+  local root="$1" backstop="$2" mark_line
+  seed_seam_tree "$root/seams"
+  mark_line="$(printf '# bats %s' 'file_tags=installed-dependencies')"
+  {
+    printf '#!/usr/bin/env bats\n'
+    printf '%s\n' "$mark_line"
+    if [ "$backstop" = backstop ]; then
+      printf '# installed-dependencies backstop: .github/workflows/provisions.yml\n'
+    fi
+    printf 'run_vitest() {\n  pnpm exec vitest run\n}\n'
+  } >"$root/seams/needs/uses-vitest.bats"
+  mkdir -p "$root/.github/workflows"
+  printf 'name: Provisions\non: push\njobs:\n  run:\n    runs-on: ubuntu-latest\n    steps:\n      - run: bats seams/needs/uses-vitest.bats\n' \
+    >"$root/.github/workflows/provisions.yml"
+  bash "$REPO_ROOT/$DEPENDENCY_GUARD_RELATIVE" --root "$root" --list-derived >"$root/derived" || return 1
+  bash "$REPO_ROOT/$DEPENDENCY_GUARD_RELATIVE" --root "$root" --list-backstopped >"$root/backstopped" || return 1
+}
+
+# The fixture's legs, with the scripts seam on the directory holding the
+# marked suite and every other seam on the clean one.
+fixture_provision_legs() {
+  local root="$1"
+  SCRIPTS_TESTS_DIRECTORY="$root/seams/needs" HOOKS_DIRECTORY="$root/seams/clean" \
+    AUDIT_TESTS_DIRECTORY="$root/seams/clean" LIBRARY_DIRECTORY="$root/seams/clean" \
+    FORENSICS_DIRECTORY="$root/seams/clean" STATUSLINE_DIRECTORY="$root/seams/clean" \
+    node_provision_legs "$BATS_SHARDS" "$root" "$root/derived" "$root/backstopped"
+}
+
+@test "W26 adversarial: an unprovisioned dependency suite in a scripts leg is caught; the same suite with a backstop line adds no leg" {
+  require_yaml_parser
+  local root="$BATS_TEST_TMPDIR/dependency-fixture" declared legs
+  declared="$(read_workflow stepshards "$WORKFLOW" shards "$NODE_STEP_NAME")" || return 1
+
+  seed_dependency_fixture "$root" no-backstop || return 1
+  grep -qxF 'seams/needs/uses-vitest.bats' "$root/derived" || { echo "the guard did not derive the fixture suite:" >&2; cat "$root/derived" >&2; return 1; }
+  legs="$(fixture_provision_legs "$root")" || return 1
+  grep -qE '^scripts-[0-9]+$' <<<"$legs" || { echo "the fixture suite did not land on a scripts leg: $legs" >&2; return 1; }
+  [ "$declared" = "$legs" ] && { echo "the scripts legs matched the declared Node list" >&2; return 1; }
+
+  rm -rf "$root"
+  seed_dependency_fixture "$root" backstop || return 1
+  grep -qxF 'seams/needs/uses-vitest.bats' "$root/backstopped" || { echo "the guard did not accept the fixture's backstop line:" >&2; cat "$root/backstopped" >&2; return 1; }
+  legs="$(fixture_provision_legs "$root")" || return 1
+  [ -z "$legs" ] || { echo "a backstopped dependency suite still demanded legs: $legs" >&2; return 1; }
+}
+
+# W27. The full matrix on push and dispatch. Neither event has a filter
+# output, so the only way a leg runs whole there is that every step it would
+# run on the widest pull request (every filter true, the plan full and
+# needing Node and Chromium) also runs, the selection step plans `--full`,
+# and each bats leg reaches exactly one step that runs its whole shard.
+
+W27_WIDEST='event=pull_request filter.code=true filter.scoped=true filter.sandbox=true filter.commitlint=true selection.mode=full selection.needs_node=1 selection.needs_chromium=1'
+
+# w27_check <workflow>
+w27_check() {
+  local workflow="$1" shard event widest actual gaps="" run_steps ran count full_run
+  run_steps="$(read_workflow runsteps "$workflow" shards | awk -F'\t' 'index($3, "bats-shards.sh run \"$SHARD\"") { print $1 }')"
+  [ -n "$run_steps" ] || { echo "no step runs a whole shard; W27 would assert nothing" >&2; return 1; }
+  for event in push workflow_dispatch; do
+    for shard in $(read_workflow matrix "$workflow" shards); do
+      # shellcheck disable=SC2086
+      widest="$(read_workflow evalgates "$workflow" shards "$shard" $W27_WIDEST | awk -F'\t' '$2 == "run" && $1 !~ /^dorny\/paths-filter@/ { print $1 }')"
+      actual="$(read_workflow evalgates "$workflow" shards "$shard" "event=$event" selection.mode=full selection.needs_node=1 selection.needs_chromium=1 | awk -F'\t' '$2 == "run" { print $1 }')"
+      [ "$widest" = "$actual" ] || gaps="${gaps}${shard} on ${event}: runs [$(printf '%s' "$actual" | tr '\n' ',')] but the widest pull request runs [$(printf '%s' "$widest" | tr '\n' ',')]"$'\n'
+    done
+    for shard in $(bash "$BATS_SHARDS" shards); do
+      full_run="$(read_workflow evalenv "$workflow" shards FULL_RUN "$shard" "event=$event" | awk -F'\t' -v name="$SELECTION_STEP_NAME" '$1 == name { print $2 }')"
+      [ "$full_run" = "true" ] || gaps="${gaps}${shard} on ${event}: the selection step does not plan --full"$'\n'
+      ran="$(read_workflow evalgates "$workflow" shards "$shard" "event=$event" selection.mode=full selection.needs_node=1 selection.needs_chromium=1 | awk -F'\t' '$2 == "run" { print $1 }')"
+      count="$(printf '%s\n' "$ran" | grep -cxF -f <(printf '%s\n' "$run_steps"))" || true
+      [ "$count" -eq 1 ] || gaps="${gaps}${shard} on ${event}: ${count} steps run the whole shard, expected exactly 1"$'\n'
+    done
+  done
+  [ -z "$gaps" ] || { printf '%s' "$gaps" >&2; return 1; }
+}
+
+@test "W27: push and dispatch run every leg's widest step set, plan --full, and reach exactly one whole-shard run step" {
+  require_yaml_parser
+  w27_check "$WORKFLOW"
+}
+
+@test "W27 adversarial: a bats leg left out of every run step's leg list is caught" {
+  require_yaml_parser
+  local doctored="$BATS_TEST_TMPDIR/w27.yml" line mutated
+  line="$(gate_line_for_step "$WORKFLOW" 'Run a bats shard (single-shard legs)')" || return 1
+  mutated="${line/\"misc\"/\"misc-dropped\"}"
+  assert_doctored "$line" "$mutated" "dropping misc from the run step" || return 1
+  replace_line "$WORKFLOW" "$line" "$mutated" "$doctored"
+  run w27_check "$doctored"
+  [ "$status" -ne 0 ] || { echo "a bats leg with no run step passed W27" >&2; return 1; }
+  printf '%s\n' "$output" | grep -qF -- 'misc on push: 0 steps run the whole shard' || { echo "W27 did not name the leg: $output" >&2; return 1; }
+}
+
+@test "W27 adversarial: a selection step that drops push is caught" {
+  require_yaml_parser
+  local doctored="$BATS_TEST_TMPDIR/w27-selection.yml" line mutated
+  line="$(gate_line_for_step "$WORKFLOW" "$SELECTION_STEP_NAME")" || return 1
+  mutated="$(without_substring "$line" " || github.event_name == 'push'")"
+  assert_doctored "$line" "$mutated" "dropping push from the selection step" || return 1
+  replace_line "$WORKFLOW" "$line" "$mutated" "$doctored"
+  run w27_check "$doctored"
+  [ "$status" -ne 0 ] || { echo "a selection step skipped on push passed W27" >&2; return 1; }
+}
+
+# W28. The sandbox and commitlint legs arm on their own filter outputs (and
+# push and dispatch) only: a harness change runs every bats leg and the
+# concurrency meter whole, and those two legs run whole only when their own
+# filter matches.
+
+# w28_check <workflow>
+w28_check() {
+  local workflow="$1" leg ran gaps=""
+  for leg in sandbox commitlint; do
+    ran="$(read_workflow evalgates "$workflow" shards "$leg" event=pull_request filter.code=true filter.scoped=true | awk -F'\t' '$2 == "run" && $1 !~ /^(actions\/checkout|dorny\/paths-filter)@/ { print $1 }')"
+    [ -z "$ran" ] || gaps="${gaps}${leg}: runs [$(printf '%s' "$ran" | tr '\n' ',')] on code and scoped alone"$'\n'
+    ran="$(read_workflow evalgates "$workflow" shards "$leg" event=pull_request "filter.${leg}=true" | awk -F'\t' '$2 == "run" && $1 ~ /^Run / { print $1 }')"
+    [ -n "$ran" ] || gaps="${gaps}${leg}: no run step runs when its own filter matches"$'\n'
+  done
+  [ -z "$gaps" ] || { printf '%s' "$gaps" >&2; return 1; }
+}
+
+@test "W28: the sandbox and commitlint legs run on their own filter output, not on code or scoped" {
+  require_yaml_parser
+  w28_check "$WORKFLOW"
+}
+
+@test "W28 adversarial: a sandbox run step armed by code is caught" {
+  require_yaml_parser
+  local doctored="$BATS_TEST_TMPDIR/w28.yml" line mutated
+  line="$(gate_line_for_step "$WORKFLOW" 'Run .gaia/tests/sandbox bats suites')" || return 1
+  mutated="$(without_substring "$line" "steps.filter.outputs.sandbox == 'true' ||")"
+  mutated="${mutated/(/(steps.filter.outputs.sandbox == 'true' || steps.filter.outputs.code == 'true' ||}"
+  assert_doctored "$line" "$mutated" "arming the sandbox run on code" || return 1
+  replace_line "$WORKFLOW" "$line" "$mutated" "$doctored"
+  run w28_check "$doctored"
+  [ "$status" -ne 0 ] || { echo "a sandbox run step armed by code passed W28" >&2; return 1; }
+}

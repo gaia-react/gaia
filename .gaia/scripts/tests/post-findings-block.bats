@@ -453,6 +453,7 @@ extract_payload() {
   grep -qF "PR #777" <<<"$output"
 }
 
+# bats test_tags=whole-tree
 @test "jq absent: fails closed with a clear message" {
   write_sidecar code-audit-frontend '[]'
   path_no_jq="$(minimal_path jq)"

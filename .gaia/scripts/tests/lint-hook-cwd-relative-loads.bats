@@ -398,6 +398,7 @@ true  # Usage: [ -f .claude/hooks/lib/red-ledger.sh ] && . .claude/hooks/lib/red
   grep -qF -- "fewer than the floor" <<<"$output"
 }
 
+# bats test_tags=whole-tree
 @test "the real hook tree is clean" {
   run bash -c "cd '$REPO_ROOT' && bash '$LINTER' 2>&1"
   [ "$status" -eq 0 ]

@@ -272,6 +272,7 @@ jobs:
   grep -qF -- "nothing was scanned" <<<"$output"
 }
 
+# bats test_tags=whole-tree
 @test "the real repository tree is clean" {
   run bash -c "cd '$REPO_ROOT' && bash '$LINTER' 2>&1"
   [ "$status" -eq 0 ]

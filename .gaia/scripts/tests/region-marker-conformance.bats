@@ -14,6 +14,9 @@
 #
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
+# bats file_tags=installed-dependencies
+# installed-dependencies backstop: .github/workflows/cli-tests.yml
+
 setup() {
   THIS_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
   PROJECT_ROOT="$(git -C "$THIS_DIRECTORY" rev-parse --show-toplevel)"

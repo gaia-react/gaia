@@ -171,18 +171,21 @@ scratch_copy() {
 
 # --- the checks on the real tree -----------------------------------------
 
+# bats test_tags=whole-tree
 @test "each publishing command isolates through isolation.md and keeps no in-place arm" {
   run check_roster "$REPO_ROOT"
   printf '%s\n' "$output"
   [ "$status" -eq 0 ]
 }
 
+# bats test_tags=whole-tree
 @test "neither update command keeps an in-place arm" {
   run check_update_commands "$REPO_ROOT"
   printf '%s\n' "$output"
   [ "$status" -eq 0 ]
 }
 
+# bats test_tags=whole-tree
 @test "each publishing command orders its refusal, the pre-flight anchor, then the dispatch line" {
   run check_preflight "$REPO_ROOT"
   printf '%s\n' "$output"

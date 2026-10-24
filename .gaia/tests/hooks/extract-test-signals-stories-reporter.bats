@@ -10,6 +10,8 @@
 # extract-test-signals-stories.bats so the browser install is owed only to the
 # leg that holds this file.
 
+# bats file_tags=installed-dependencies
+
 setup_file() {
   HOME_ROOT=$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)
   REPORT="$BATS_FILE_TMPDIR/reporter.json"

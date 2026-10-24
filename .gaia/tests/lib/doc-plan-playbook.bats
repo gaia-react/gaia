@@ -60,6 +60,7 @@ every_sub_reference_listed() {
   [ "$count" -eq "$expected" ] || { printf 'read %s of %s files\n' "$count" "$expected" >&2; return 1; }
 }
 
+# bats test_tags=whole-tree
 @test "every plan/*.md is named in plan.md and listed in the command" {
   every_sub_reference_listed "$REPO_ROOT"
 }
@@ -91,6 +92,7 @@ no_orphan_route() {
   done <<<"$names"
 }
 
+# bats test_tags=whole-tree
 @test "every plan/<name>.md that plan.md or the command names exists" {
   no_orphan_route "$REPO_ROOT"
 }
@@ -111,6 +113,7 @@ audit_uses_lens_contract() {
   return 0
 }
 
+# bats test_tags=whole-tree
 @test "the decomposition audit names the lens contract and carries no reply-shaped schema" {
   audit_uses_lens_contract "$REPO_ROOT"
 }
@@ -144,6 +147,7 @@ step4_first_read() {
   grep -qE -- "Read .*/$REFERENCES_RELATIVE/plan/planner\.md" <<<"$first" || { printf 'the dispatch opens with: %s\n' "$first" >&2; return 1; }
 }
 
+# bats test_tags=whole-tree
 @test "plan.md step 4's dispatch makes plan/planner.md the planner's first Read" {
   step4_first_read "$REPO_ROOT"
 }

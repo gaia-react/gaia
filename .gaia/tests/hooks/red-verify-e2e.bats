@@ -26,6 +26,8 @@
 # the same way; so RED→GREEN proves a genuine signal handshake, and
 # edited-after-RED proves the handshake breaks when the body changes.
 
+# bats file_tags=installed-dependencies
+
 setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   . "$BATS_TEST_DIRNAME/helpers/package-fixture.sh"
