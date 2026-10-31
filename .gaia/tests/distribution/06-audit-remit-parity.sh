@@ -26,6 +26,9 @@
 #      (UAT-010).
 #   7. The bundled writer repairs a drifted shipped definition byte-exact
 #      (UAT-012).
+#   8. The shell member's staged remit region and staged roster entry both
+#      claim .claude/settings.json, and a scratch roster copy without that
+#      glob in the shell entry makes the roster check fail (guard can fail).
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 source "$HERE/lib/lib.sh"
@@ -272,6 +275,42 @@ fi
 repaired_sha="$(shasum -a 256 "$TARGET" | awk '{print $1}')"
 if [ "$repaired_sha" != "$original_sha" ]; then
   fail "repaired definition bytes ($repaired_sha) do not match pre-drift snapshot ($original_sha)"
+  exit 1
+fi
+
+# --- Assertion 8: the shell member owns the Claude settings file ---------
+SHELL_DEFINITION="$STAGING/.claude/agents/code-audit-shell.md"
+shell_entry_globs() {
+  awk '
+    /^  - name: code-audit-shell$/ { inside = 1; next }
+    inside && /^  - name:/ { exit }
+    inside && /^    globs:$/ { in_globs = 1; next }
+    inside && in_globs && /^    [a-z_]+:/ { exit }
+    inside && in_globs { print }
+  ' "$1"
+}
+region_globs "$SHELL_DEFINITION" | grep -qxF ".claude/settings.json" \
+  || { fail "the staged shell member's remit region does not name .claude/settings.json"; exit 1; }
+shell_entry_globs "$ROSTER" | grep -qF '".claude/settings.json"' \
+  || { fail "the staged roster's code-audit-shell entry does not grant .claude/settings.json"; exit 1; }
+
+UNGRANTED_ROSTER="$STAGING/.gaia/audit-ci-ungranted.yml"
+awk '
+  /^  - name: code-audit-shell$/ { inside = 1 }
+  inside && /^  - name:/ && !/code-audit-shell/ { inside = 0 }
+  inside && $0 == "      - \".claude/settings.json\"" { next }
+  { print }
+' "$ROSTER" > "$UNGRANTED_ROSTER"
+if cmp -s "$ROSTER" "$UNGRANTED_ROSTER"; then
+  rm -f "$UNGRANTED_ROSTER"
+  fail "could not remove the settings glob from the roster copy"
+  exit 1
+fi
+UNGRANTED_EXIT_STATUS=0
+bash "$CHECK" --root "$STAGING" --config "$UNGRANTED_ROSTER" >/dev/null 2>&1 || UNGRANTED_EXIT_STATUS=$?
+rm -f "$UNGRANTED_ROSTER"
+if [ "$UNGRANTED_EXIT_STATUS" -eq 0 ]; then
+  fail "guard-can-fail: the roster check accepted a remit region naming .claude/settings.json the roster no longer grants"
   exit 1
 fi
 

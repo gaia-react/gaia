@@ -717,6 +717,12 @@ YAML
   [ "$(region_sentence_lines "$keyed" | wc -l | tr -d ' ')" -eq 1 ]
   region_sentence_lines "$keyed" | grep -qF 'Filter the changed-file list against the globs above.'
   region_sentence_lines "$keyed" | grep -qF 'removes a GAIA-owned file this branch changes by applying a GAIA release'
+  region_sentence_lines "$keyed" | grep -qF 'manifest class' || return 1
+  region_sentence_lines "$keyed" | grep -qF 'is never removed this way' || return 1
+  region_sentence_lines "$unkeyed" | grep -qF 'manifest class' && return 1
+  region_sentence_lines "$unkeyed" | grep -qF 'is never removed this way' && return 1
+  region_sentence_lines "$default_agent" | grep -qF 'manifest class' && return 1
+  region_sentence_lines "$default_agent" | grep -qF 'is never removed this way' && return 1
   region_sentence_lines "$unkeyed" | grep -qF 'removes a GAIA-owned file' && return 1
   region_sentence_lines "$default_agent" | grep -qF 'removes a GAIA-owned file' && return 1
   region_sentence_lines "$unkeyed" | grep -qF 'Filter the changed-file list against the globs above.'

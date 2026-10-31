@@ -141,6 +141,7 @@ Apply each answer in the acting tree; every candidate path was validated inside 
 
 - **A candidate option** (`combine`, `gaia` and `higher` on a whole-file item): copy the candidate over the path, `cp <run dir>/candidates/<path>.<option id> <acting tree>/<path>`, one plain command per answer.
 - **A field item** (`higher`, `gaia` or `keep` on a `field-aware` entry): write the option's `value` to the item's `key` with the Edit tool, preserving the file's formatting. `keep` leaves the file as it is.
+- **Settings file**: when the path is `.claude/settings.json`, the `cp` or the Edit asks the human first, because GAIA guards that file in every permission mode. That prompt is expected: approve it when it is the answer just chosen. An unattended run cannot write the file through those routes.
 - **Remove**: back the file up into the report's `backupDir` first (`mkdir -p <acting tree>/<backupDir>/<parent directory of path>`, then `cp <acting tree>/<path> <acting tree>/<backupDir>/<path>`), then `rm <acting tree>/<path>`.
 - **Keep mine and Decide later**: leave the file unchanged.
 

@@ -71,7 +71,7 @@ REMIT_HEADING='## Remit and self-skip'
 # path. Kept here, not in the check: the check does not compare sentence text
 # (see verify-audit-roster.sh's remit invariant), so this is their one home.
 CLAIMANT_SENTENCE='Filter the changed-file list against the globs above. **If none match, self-skip cleanly.** Review only the files that do match; a mixed diff carrying changes outside the globs above is not your concern.'
-RELEASE_SKIP_SENTENCE='The scope resolver already removes a GAIA-owned file this branch changes by applying a GAIA release, so neither changed-file list carries one.'
+RELEASE_SKIP_SENTENCE='The scope resolver already removes a GAIA-owned file this branch changes by applying a GAIA release, so neither changed-file list carries one. A file GAIA ships for the project to edit (manifest class `shared`) is never removed this way, so every change to one reaches you.'
 DEFAULT_SENTENCE='Your globs above are a **second precedence tier**: every claimant member'\''s globs are matched first, first-match-wins over roster order, and a path any claimant claims belongs to that claimant even when a glob above also matches it. Only a path no claimant claims reaches you. The roster is the whole truth about your reach; nothing outside this region grants you a file it does not declare.'
 
 root=""

@@ -13,7 +13,7 @@ GAIA gives a project three things for the shell it writes: an audit member at th
 
 ## What GAIA gives an adopter for shell
 
-- **The shell audit member.** `code-audit-shell` (`.claude/agents/code-audit-shell.md`) is a member of the [[Code Audit Team]]. It reviews the shell you author, the hooks you add or edit, and your own edits to a shell file GAIA ships. It skips a change to a file the manifest lists as owned when that change comes from applying a GAIA release, so a GAIA update never dispatches it for GAIA's own shell.
+- **The shell audit member.** `code-audit-shell` (`.claude/agents/code-audit-shell.md`) is a member of the [[Code Audit Team]]. It reviews the shell you author, the hooks you add or edit, and your own edits to a shell file GAIA ships. It skips a change to a file the manifest lists as owned when that change comes from applying a GAIA release, so a GAIA update never dispatches it for GAIA's own shell. It also reviews `.claude/settings.json`, the file that registers the hooks, with a settings lens that lists every hook or permission rule a change removes, weakens or re-scopes; its GAIA-release skip never drops that file, since GAIA ships it for the project to edit.
 - **The bats stack.** `pnpm test:shell` runs suites under `tests/shell/` with the pinned npm `bats` package.
 - **The CI job.** The `Shellcheck and bats` job in `.github/workflows/tests.yml` lints the shell a pull request changes and runs the bats suite when shell changed. It is on by default.
 

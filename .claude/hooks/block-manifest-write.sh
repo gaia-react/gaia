@@ -18,7 +18,9 @@
 #   - Otherwise denied when the command writes the guarded path via an output
 #     redirect (>, >>), tee, sed -i (with or without a macOS '' backup
 #     suffix), sponge, or cp/mv with the guarded path as destination. Reading
-#     the manifest as a cp/mv source, or any other command, is allowed.
+#     the manifest as a cp/mv source, or any other command, is allowed. The
+#     detection lives in the shared lib/bash-write-target.sh; this hook keeps
+#     the path rule and the exemption.
 set -euo pipefail
 
 payload=$(cat)
@@ -46,6 +48,14 @@ if ! type gaia_hook_payload_read >/dev/null 2>&1; then
   printf 'BLOCKED: block-manifest-write.sh cannot load lib/hook-payload.sh, so this call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
   exit 2
 fi
+set +e
+# shellcheck source=lib/bash-write-target.sh
+[ -n "$_jq_library_directory" ] && [ -f "$_jq_library_directory/bash-write-target.sh" ] && . "$_jq_library_directory/bash-write-target.sh" 2>/dev/null
+set -e
+if ! type gaia_bash_command_writes_target >/dev/null 2>&1; then
+  printf 'BLOCKED: block-manifest-write.sh cannot load lib/bash-write-target.sh, so this call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
+  exit 2
+fi
 # An empty or unreadable payload names nothing to guard, and the hook stands
 # down with status 0, as the per-field reads did for an empty payload.
 gaia_hook_payload_read "$payload" || exit 0
@@ -64,22 +74,12 @@ deny() {
   exit 0
 }
 
-# Strip one matching pair of surrounding quotes from a token.
-strip_quotes() {
-  local text="$1"
-  case "$text" in
-    \"*\") text=${text#\"}; text=${text%\"} ;;
-    \'*\') text=${text#\'}; text=${text%\'} ;;
-  esac
-  printf '%s' "$text"
-}
-
 # Guarded path: after stripping surrounding quotes and a leading ./, the
 # path equals .gaia/manifest.json or ends with /.gaia/manifest.json (absolute
 # paths). Not guarded if any other character follows .json.
 is_guarded_path() {
   local candidate_path
-  candidate_path=$(strip_quotes "$1")
+  candidate_path=$(gaia_write_target_strip_quotes "$1")
   candidate_path=${candidate_path#./}
   [[ "$candidate_path" == ".gaia/manifest.json" || "$candidate_path" == */.gaia/manifest.json ]]
 }
@@ -99,76 +99,7 @@ case "$tool_name" in
     # Exemption marker: allow unconditionally, before any vector inspection.
     [[ "$command_line" == *"GAIA_MANIFEST_WRITE="* ]] && exit 0
 
-    # Tokenize every line of $command_line, not just the first: a write vector on
-    # line 2+ of a multi-line command (heredoc body, &&-joined block, plain
-    # newline-separated statements) must still be inspected.
-    tokens=()
-    while IFS= read -r line || [ -n "$line" ]; do
-      read -r -a line_tokens <<<"$line"
-      tokens+=(${line_tokens[@]+"${line_tokens[@]}"} ';')
-    done <<<"$command_line"
-    token_count=${#tokens[@]}
-
-    i=0
-    while [ "$i" -lt "$token_count" ]; do
-      token="${tokens[$i]}"
-
-      case "$token" in
-        '>' | '>>')
-          next="${tokens[$((i + 1))]:-}"
-          is_guarded_path "$next" && deny "$DENY_MESSAGE"
-          ;;
-        '>'*)
-          # No space after > or >>: operator and target land in one token
-          # (>.gaia/manifest.json, >>.gaia/manifest.json). Strip either
-          # prefix and inspect what's left as the target.
-          target="${token#>>}"
-          target="${target#>}"
-          is_guarded_path "$target" && deny "$DENY_MESSAGE"
-          ;;
-        tee | sponge)
-          j=$((i + 1))
-          while [ "$j" -lt "$token_count" ]; do
-            following_token="${tokens[$j]}"
-            case "$following_token" in
-              ';' | '&&' | '||' | '|') break ;;
-            esac
-            is_guarded_path "$following_token" && deny "$DENY_MESSAGE"
-            j=$((j + 1))
-          done
-          ;;
-        sed)
-          has_i=0
-          found=0
-          j=$((i + 1))
-          while [ "$j" -lt "$token_count" ]; do
-            following_token="${tokens[$j]}"
-            case "$following_token" in
-              ';' | '&&' | '||' | '|') break ;;
-            esac
-            [[ "$following_token" == "-i" || "$following_token" == -i* ]] && has_i=1
-            is_guarded_path "$following_token" && found=1
-            j=$((j + 1))
-          done
-          [ "$has_i" -eq 1 ] && [ "$found" -eq 1 ] && deny "$DENY_MESSAGE"
-          ;;
-        cp | mv)
-          destination=""
-          j=$((i + 1))
-          while [ "$j" -lt "$token_count" ]; do
-            following_token="${tokens[$j]}"
-            case "$following_token" in
-              ';' | '&&' | '||' | '|') break ;;
-            esac
-            [[ "$following_token" == -* ]] || destination="$following_token"
-            j=$((j + 1))
-          done
-          is_guarded_path "$destination" && deny "$DENY_MESSAGE"
-          ;;
-      esac
-
-      i=$((i + 1))
-    done
+    gaia_bash_command_writes_target "$command_line" is_guarded_path && deny "$DENY_MESSAGE"
 
     exit 0
     ;;

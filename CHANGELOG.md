@@ -14,6 +14,10 @@ A release change that requires the adopter to act, run a command or hand-migrate
 
 ## [Unreleased]
 
+### Added
+
+- Claude now asks before editing `.claude/settings.json`, the file that registers every GAIA hook and permission rule, in every permission mode including bypassPermissions, through the edit tools and the common shell write shapes; an unattended run cannot make the change through those routes. A pull request that changes it is now reviewed by the shell audit member, which lists any hook or permission rule the change removes or weakens. `.claude/settings.json` is a shared file, so a customized copy takes a three-way merge on update.
+
 ### Security
 
 - **glob:** Storybook's docgen plugin now resolves glob 14.0.3 through a security floor, closing GHSA-3g3m-2fjr-6pw4 (medium). It is a development-time dependency and never reaches the built app (#3204)

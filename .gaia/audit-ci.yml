@@ -357,6 +357,8 @@ auditors:
       - "**/*.sh"
       - "**/*.bats"
       - ".claude/hooks/**"
+      # Owns the file that registers the hooks it already reviews.
+      - ".claude/settings.json"
       - ".githooks/**"
     skip_gaia_release_changes: true
     light_review: true

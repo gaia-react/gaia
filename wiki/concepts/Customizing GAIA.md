@@ -3,7 +3,7 @@ type: concept
 title: Customizing GAIA
 status: active
 created: 2026-10-23
-updated: 2026-10-23
+updated: 2026-10-29
 tags: [concept, claude, configuration, customization]
 ---
 
@@ -32,7 +32,7 @@ jq -r --arg path '<repo-relative path>' '.files[$path] // "adopter-owned"' .gaia
 | Team preferences: isolation policy, sandbox recommendation, fitness nudge threshold | `.gaia/project.json` | adopter-owned | [[Project Config]] | `jq . .gaia/project.json` parses |
 | Add a rule, skill, agent or command | `.claude/rules/`, `.claude/skills/`, `.claude/agents/`, `.claude/commands/`, or the package's own `.claude/` | adopter-owned (new file) | [[Claude Integration Conventions]] (layer choice, `paths:` scoping) | `.gaia/cli/gaia fitness check --json` |
 | Change a shipped rule, skill, agent or command | the shipped file | `owned` | layer a new file on it where possible (above) | `.gaia/cli/gaia fitness check --json` |
-| Add, disable or override a hook | `.claude/hooks/`, registered in `.claude/settings.json` | `shared` settings, `owned` bundled hooks | [[Claude Hooks#Adding hooks]], [[Claude Hooks#Disabling or overriding a hook]]; the shell audit member reviews hooks you add or edit | `./.gaia/cli/gaia packages sync-settings --check` |
+| Add, disable or override a hook | `.claude/hooks/`, registered in `.claude/settings.json` | `shared` settings, `owned` bundled hooks | [[Claude Hooks#Adding hooks]], [[Claude Hooks#Disabling or overriding a hook]]; the shell audit member reviews hooks you add or edit; an edit to `.claude/settings.json` asks first in every permission mode, so an unattended run cannot make it through those routes, and the shell audit member reviews settings changes too | `./.gaia/cli/gaia packages sync-settings --check` |
 | Package-only settings (permissions, env) | `frontend/.claude/settings.overlay.json` | `shared` | [[Package Descriptor]] | `./.gaia/cli/gaia packages sync-settings`, then `--check` |
 | Add a package beside `frontend/` (a backend) | the package folder, `pnpm-workspace.yaml`, `.gaia/packages.json` | adopter-owned, `shared`, sentinel | [[Claude Integration Conventions#6. Monorepo retrofit playbook]] | that playbook's closing verify block |
 | Add a Code Audit Team member | a new agent, its `.gaia/audit-ci.yml` roster entry, and any new finding classes in `.gaia/finding-classes.json` | adopter-owned (new agent), `shared` roster, sentinel classes file | [[Registering a Code Audit Team Member]] | `bash .gaia/scripts/verify-audit-roster.sh` ([[Registering a Code Audit Team Member#6. Verify the roster]]) |

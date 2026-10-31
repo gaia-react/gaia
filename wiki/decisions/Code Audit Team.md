@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-07-09
 created: 2026-07-09
-updated: 2026-10-23
+updated: 2026-10-29
 tags: [decision, claude, audit]
 ---
 
@@ -15,6 +15,8 @@ The pre-merge gate is a **config-driven roster of auditor members**, not a singl
 ## Roster shape
 
 Each `auditors:` entry carries a `name`, a `globs` list, an `audience` (`adopter` or `maintainer`), optional light-review keys, an optional `skip_gaia_release_changes` key (literal `true` or `false`, never on the default member), and, on exactly one entry, `default: true`. Every member, the default included, declares its own domain in `globs`; there is no implicit domain inferred from anywhere else. Ownership resolves in two precedence tiers: every **claimant** member's (a member without `default: true`) globs are matched first, first-match-wins over roster order, so roster order among claimants is load-bearing; only once every claimant has failed to match does the **default** member's own globs apply, as a catch-all second tier. `audience: maintainer` entries sit inside `# gaia:maintainer-only` marker comments; the release scrub strips them from the shipped config, so an adopter clone's roster carries only the adopter-audience members. `.gaia/audit-ci.yml` is the one enumeration of each member's globs, and audience; there is no fallback roster, and a config without an `auditors:` block fails closed with a named reason.
+
+`.claude/settings.json` has a shipped owner, `code-audit-shell`. It is the file that registers the hooks that member already reviews, and without an owner a settings-only pull request on an adopter clone dispatched nobody and merged unreviewed: unclaimed harness paths are not counted as ownerless, and the merge gate's out-of-scope allowlist clears them. The member carries a conditional settings lens that names every hook registration and every allow, ask or deny rule a change removes, weakens or re-scopes. A settings change always gets a full review, because the light router's hard-Full floor holds `.claude/**`, and the member's GAIA-release skip does not drop it, since the manifest classes the file `shared` and only `owned` files are skipped.
 
 The default's `.github/workflows/**` glob and the workflows member's `.github/workflows/*.yml`/`*.yaml` globs overlap textually, but the two-tier precedence resolves it: the workflows member is a claimant, so a `.yml`/`.yaml` workflow file matches it first; in practice every file under `.github/workflows/` is itself a `.yml`/`.yaml` workflow, so the more specific claimant glob always wins there. The default still declares the broader glob so its stated domain matches what it used to implicitly cover, even though the claimant's narrower glob wins in practice.
 

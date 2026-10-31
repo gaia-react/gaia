@@ -105,6 +105,9 @@
       "Edit(wiki/**)",
       "WebFetch(domain:context7.com)"
     ],
+    "ask": [
+      "Edit(**/.claude/settings.json)"
+    ],
     "deny": [
       "Bash(git push --force-with-lease *main*)",
       "Bash(git push --force-with-lease *master*)",
@@ -261,6 +264,11 @@
             "type": "command",
             "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-manifest-write.sh\"",
             "statusMessage": "Checking manifest-write guard…"
+          },
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-settings-write.sh\"",
+            "statusMessage": "Checking settings-write guard…"
           },
           {
             "type": "command",

@@ -95,3 +95,44 @@ adopter_roster() {
   grep -qF '.claude/rules/bats-assertions.md' "$DEFINITION" || return 1
   true
 }
+
+@test "the shell entry claims the Claude settings file and leaves it off the hard-full list" {
+  local entry globs_block hard_full_block
+  entry="$(awk '/^  - name: code-audit-shell$/ { inside = 1; print; next } inside && /^  - name:/ { exit } inside && /^[a-z]/ { exit } inside { print }' "$ROSTER")"
+  [ -n "$entry" ]
+  globs_block="$(awk '/^    globs:$/ { inside = 1; next } inside && /^    [a-z_]+:/ { exit } inside { print }' <<<"$entry")"
+  hard_full_block="$(awk '/^    light_hard_full:$/ { inside = 1; next } inside && /^    [a-z_]+:/ { exit } inside { print }' <<<"$entry")"
+  [ -n "$globs_block" ]
+  [ -n "$hard_full_block" ]
+  grep -qF '".claude/settings.json"' <<<"$globs_block" || return 1
+  grep -qF '".claude/settings.json"' <<<"$hard_full_block" && return 1
+  true
+}
+
+# settings_lens_complete FILE: succeeds when FILE carries the settings lens,
+# wired into its Contents line and methodology, with the review requirements.
+settings_lens_complete() {
+  local file="$1" section topic
+  grep -qE '^## Conditional settings lens' "$file" || return 1
+  grep -qxF 'This lens activates only for `.claude/settings.json`.' "$file" || return 1
+  grep -E '^Contents:' "$file" | grep -qF 'Conditional settings lens' || return 1
+  grep -E '^[0-9]+\. ' "$file" | grep 'settings lens' | grep -qF '.claude/settings.json' || return 1
+  section="$(awk '/^## Conditional settings lens/ { inside = 1; next } inside && /^## / { exit } inside { print }' "$file")"
+  [ -n "$section" ] || return 1
+  for topic in 'removes' 'weakens' 're-scopes' 'permissions.deny' 'permissions.ask' 'permissions.allow' 'hook registration' 'found none'; do
+    grep -qF -- "$topic" <<<"$section" || return 1
+  done
+  return 0
+}
+
+@test "the definition carries the settings lens, its activation sentence, Contents entry and methodology step" {
+  settings_lens_complete "$DEFINITION"
+}
+
+@test "guard can fail: a definition without the settings lens section fails the lens predicate" {
+  local stripped="$BATS_TEST_TMPDIR/no-settings-lens.md"
+  awk '/^## Conditional settings lens/ { skipping = 1; next } skipping && /^## / { skipping = 0 } !skipping { print }' "$DEFINITION" > "$stripped"
+  cmp -s "$DEFINITION" "$stripped" && return 1
+  run settings_lens_complete "$stripped"
+  [ "$status" -ne 0 ]
+}

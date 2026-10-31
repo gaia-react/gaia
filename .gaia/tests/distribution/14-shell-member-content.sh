@@ -8,8 +8,9 @@
 # Assertions, in order:
 #   1. The bundle ships .claude/agents/code-audit-shell.md with the
 #      correctness core, a hook lens scoped to hooks, a bats lens scoped to
-#      .bats files, and none of the maintainer shell member's wildcard remit
-#      globs, its declarative-surface lens or its triage threshold.
+#      .bats files, a settings lens scoped to .claude/settings.json, and none
+#      of the maintainer shell member's wildcard remit globs, its
+#      declarative-surface lens or its triage threshold.
 #   2. Every path and wikilink the member definition, the shell stack
 #      reference and the shell wiki page cite exists in the bundle (the
 #      citation extraction is documented at check_citations), and none of the
@@ -22,7 +23,8 @@
 #      wiki page.
 #   5. Guard can fail: a scratch copy of the member definition with a planted
 #      citation of a nonexistent path fails the citation check, and one with a
-#      planted maintainer-only tool name fails the denylist check.
+#      planted maintainer-only tool name fails the denylist check, and one
+#      without the settings lens heading fails the settings lens check.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 source "$HERE/lib/lib.sh"
@@ -110,6 +112,12 @@ grep -qE '^## Conditional bats-suite lens' "$member" \
 # shellcheck disable=SC2016 # the backticks are literal Markdown
 grep -qF 'This lens activates only for `.bats` files' "$member" \
   || { fail "the bats lens is not scoped to .bats files"; exit 1; }
+# shellcheck disable=SC2016 # the backticks are literal Markdown
+check_settings_lens() {
+  grep -qE '^## Conditional settings lens' "$1" && grep -qxF 'This lens activates only for `.claude/settings.json`.' "$1"
+}
+check_settings_lens "$member" \
+  || { fail "member definition lacks the settings lens heading or its activation sentence"; exit 1; }
 for forbidden in 'Conditional declarative-surface lens' 'Triage threshold' 'harness-triage-threshold'; do
   if grep -qF -- "$forbidden" "$member"; then
     fail "member definition carries maintainer-only content: $forbidden"; exit 1
@@ -173,6 +181,12 @@ cp "$member" "$planted"
 printf '\nRun the suite with bats5 first.\n' >> "$planted"
 if (check_denylist "$planted" ${SHELL_DENYLIST[@]+"${SHELL_DENYLIST[@]}"}) 2>/dev/null; then
   fail "guard-can-fail: the denylist check accepted a planted maintainer-only tool name"; exit 1
+fi
+
+planted="$SCRATCH/planted-no-settings-lens.md"
+grep -vE '^## Conditional settings lens' "$member" > "$planted" || true
+if (check_settings_lens "$planted") 2>/dev/null; then
+  fail "guard-can-fail: the settings lens check accepted a definition without the lens heading"; exit 1
 fi
 
 pass "shell member, stack reference, wiki page and assertion rule are consistent and adopter-clean in the staged bundle"
